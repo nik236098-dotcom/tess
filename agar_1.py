@@ -11,6 +11,7 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 CONFIRM_ATTEMPTS = 6        # сколько раз ждём по 90 секунд
 CONFIRM_WAIT = 90           # длительность одного ожидания, секунд
 AUTH_PAGE_TIMEOUT = 60      # сколько ждём переход на mobile-id-auth
+RESERVE_TIMEOUT = 30        # сколько ждём страницу с номером после Элемента 6
 CLOSE_FAILED_WINDOW = True  # закрывать окно, если оно не стало успешным
 
 REPEAT_BTN_XPATH = '//*[@id="root"]/div/div/div/main/div/div/div/div[2]/button'
@@ -128,6 +129,7 @@ while row_index<len(rows):
 
     num = pas = current_url = digits = None
     window_ok = False
+    reached_confirmation = False  # дошли ли до цикла подтверждения 6x90
 
     try:
         driver.get("https://saratov.beeline.ru/basket/")
@@ -183,7 +185,17 @@ while row_index<len(rows):
         ], "Элемент 6")
 
         # Сохраняем ссылку и номер
-        phone_text_elem=wait.until(EC.presence_of_element_located((By.XPATH,'//*[@id="root"]/div/div/main/div/div[1]/div/div/p[2]')))
+        # Отдельный, более длинный таймаут: после Элемента 6 страница с номером
+        # может грузиться дольше 15 с. Если элемент так и не появился — это ошибка
+        # ДО цикла подтверждения, и окно останется открытым (см. finally) для разбора.
+        try:
+            phone_text_elem = WebDriverWait(driver, RESERVE_TIMEOUT).until(
+                EC.presence_of_element_located((By.XPATH,'//*[@id="root"]/div/div/main/div/div[1]/div/div/p[2]'))
+            )
+        except TimeoutException:
+            print(f"Номер не появился за {RESERVE_TIMEOUT} с после Элемента 6 "
+                  f"(текущий URL: {driver.current_url}). Окно оставлено открытым для разбора.")
+            raise
         digits=re.sub(r"[^\d+]","",phone_text_elem.text.strip()); current_url=driver.current_url
         with open(log_file,"a",encoding="utf-8") as f:
             f.write(f"{current_url}|{digits}\n")
@@ -233,6 +245,7 @@ while row_index<len(rows):
                   f"(текущий URL: {driver.current_url}) — всё равно жду подтверждение")
 
         # --- цикл ожидания подтверждения (6 раз по 90 секунд) ---
+        reached_confirmation = True
         window_ok = wait_confirmation(driver)
 
         if window_ok:
@@ -249,8 +262,10 @@ while row_index<len(rows):
         print(f"Ошибка ({type(e).__name__}): {e}")
         traceback.print_exc()
     finally:
-        # успешное окно оставляем открытым, неуспешное — закрываем (если включено)
-        if not window_ok and CLOSE_FAILED_WINDOW:
+        # Закрываем окно ТОЛЬКО если цикл подтверждения реально отработал и вернул неуспех.
+        # Ошибка на любом шаге ДО цикла (например, номер не появился после Элемента 6)
+        # оставляет окно открытым, чтобы можно было разобраться, что пошло не так.
+        if reached_confirmation and not window_ok and CLOSE_FAILED_WINDOW:
             try:
                 driver.quit()
                 print("Неуспешное окно закрыто")
