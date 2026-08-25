@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+proxy_auth_ext.zip
+clients.xlsx
+все логи.txt
