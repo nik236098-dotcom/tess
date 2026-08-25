@@ -222,7 +222,7 @@ while row_index<len(rows):
             break
 
         # --- ожидание загрузки mobile-id-auth ---
-        # таймаут здесь НЕ должен обрывать окно: ждём подтверждение в любом случае
+        # ВАЖНО: таймаут здесь НЕ обрывает окно — цикл подтверждения запускается в любом случае.
         try:
             WebDriverWait(driver, AUTH_PAGE_TIMEOUT).until(
                 EC.url_contains("mobile-id-auth")
@@ -232,7 +232,7 @@ while row_index<len(rows):
             print(f"Не дождался перехода на mobile-id-auth за {AUTH_PAGE_TIMEOUT} с "
                   f"(текущий URL: {driver.current_url}) — всё равно жду подтверждение")
 
-        # --- цикл ожидания подтверждения ---
+        # --- цикл ожидания подтверждения (6 раз по 90 секунд) ---
         window_ok = wait_confirmation(driver)
 
         if window_ok:
