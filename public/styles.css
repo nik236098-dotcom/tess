@@ -302,10 +302,14 @@ input:focus, select:focus { outline: none; border-color: var(--gold-line); }
 .seat.me .card-face.small.ten .corner b { font-size: 13px; }
 
 .card-face.back {
+  /* Рубашка: плотный синий в тонкую диагональ и белая рамка по краю. */
   background:
-    repeating-linear-gradient(45deg, #2c4f79 0 5px, #1d3a5c 5px 10px);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.22);
+    repeating-linear-gradient(48deg, rgba(255, 255, 255, 0.09) 0 3px, rgba(255, 255, 255, 0) 3px 7px),
+    linear-gradient(155deg, #4257d9 0%, #2a37a8 55%, #1a2178 100%);
+  border: 2.5px solid #f5f7fc;
+  box-shadow: 0 3px 9px rgba(0, 0, 0, 0.5), inset 0 0 6px rgba(0, 0, 0, 0.35);
 }
+.card-face.small.back { border-width: 2px; }
 @keyframes deal { from { opacity: 0; transform: translateY(-10px) scale(0.92); } }
 
 /* ═══ Места ═══ */
