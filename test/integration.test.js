@@ -167,8 +167,11 @@ test('после обрыва связи игрок возвращается з�
   guest.send({ type: 'sit', seat: 1 });
   await guest.wait((m) => m.type === 'state' && m.you.seatIndex === 1);
 
+  // Ждём именно закрытия сокета, а не «на глазок», иначе тест плавает.
+  const closed = once(guest.socket, 'close');
   guest.close();
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  await closed;
+  await new Promise((resolve) => setTimeout(resolve, 50));
 
   // Тот же devId — сервер узнаёт игрока и сажает обратно.
   const again = connect(port);
@@ -182,4 +185,95 @@ test('после обрыва связи игрок возвращается з�
   assert.strictEqual(restored.you.seatIndex, 1);
   assert.strictEqual(restored.seats[1].stack, 750);
   assert.strictEqual(restored.seats[1].connected, true);
+});
+
+test('открытые столы видны в общем списке', { timeout: 10000 }, async (t) => {
+  const port = await startServer(t);
+
+  const host = connect(port);
+  const stranger = connect(port);
+  await Promise.all([once(host.socket, 'open'), once(stranger.socket, 'open')]);
+  t.after(() => {
+    host.close();
+    stranger.close();
+  });
+
+  host.send({ type: 'auth', name: 'Аня', devId: 'open-host' });
+  stranger.send({ type: 'auth', name: 'Прохожий', devId: 'stranger' });
+  await Promise.all([host.wait(byType('auth_ok')), stranger.wait(byType('auth_ok'))]);
+
+  host.send({ type: 'create_room', settings: { smallBlind: 25, bigBlind: 50 } });
+  const { code } = await host.wait(byType('joined'));
+
+  // Постороннему хватает списка — код спрашивать не нужно.
+  stranger.send({ type: 'list_rooms' });
+  const list = await stranger.wait(byType('rooms'));
+  const found = list.rooms.find((room) => room.code === code);
+  assert.ok(found, 'стол виден в списке');
+  assert.strictEqual(found.host, 'Аня');
+  assert.strictEqual(found.smallBlind, 25);
+
+  stranger.send({ type: 'join_room', code: found.code });
+  const joined = await stranger.wait(byType('joined'));
+  assert.strictEqual(joined.code, code);
+});
+
+test('закрытый стол в списке не показывается', { timeout: 10000 }, async (t) => {
+  const port = await startServer(t);
+
+  const host = connect(port);
+  const stranger = connect(port);
+  await Promise.all([once(host.socket, 'open'), once(stranger.socket, 'open')]);
+  t.after(() => {
+    host.close();
+    stranger.close();
+  });
+
+  host.send({ type: 'auth', name: 'Аня', devId: 'private-host' });
+  stranger.send({ type: 'auth', name: 'Прохожий', devId: 'stranger2' });
+  await Promise.all([host.wait(byType('auth_ok')), stranger.wait(byType('auth_ok'))]);
+
+  host.send({ type: 'create_room', settings: { isPublic: false } });
+  const { code } = await host.wait(byType('joined'));
+
+  stranger.send({ type: 'list_rooms' });
+  const list = await stranger.wait(byType('rooms'));
+  assert.ok(!list.rooms.some((room) => room.code === code), 'закрытый стол скрыт');
+
+  // Но по коду в него всё равно можно зайти.
+  stranger.send({ type: 'join_room', code });
+  assert.strictEqual((await stranger.wait(byType('joined'))).code, code);
+});
+
+test('выдача фишек доходит до всех клиентов', { timeout: 10000 }, async (t) => {
+  const port = await startServer(t);
+
+  const host = connect(port);
+  const guest = connect(port);
+  await Promise.all([once(host.socket, 'open'), once(guest.socket, 'open')]);
+  t.after(() => {
+    host.close();
+    guest.close();
+  });
+
+  host.send({ type: 'auth', name: 'Аня', devId: 'chip-host' });
+  guest.send({ type: 'auth', name: 'Боря', devId: 'chip-guest' });
+  await Promise.all([host.wait(byType('auth_ok')), guest.wait(byType('auth_ok'))]);
+
+  host.send({ type: 'create_room', settings: { buyIn: 1000 } });
+  const { code } = await host.wait(byType('joined'));
+  guest.send({ type: 'join_room', code });
+  await guest.wait(byType('joined'));
+  host.send({ type: 'sit', seat: 0 });
+  guest.send({ type: 'sit', seat: 1 });
+  await guest.wait((m) => m.type === 'state' && m.seats.filter((s) => !s.empty).length === 2);
+
+  host.send({ type: 'grant_chips', target: 'Боря', amount: 750 });
+  const updated = await guest.wait((m) => m.type === 'state' && m.seats[1].stack === 1750);
+  assert.strictEqual(updated.seats[1].stack, 1750);
+
+  // Гость раздавать фишки не может.
+  guest.send({ type: 'grant_chips', target: 'Аня', amount: 999 });
+  const error = await guest.wait(byType('error'));
+  assert.match(error.message, /только хозяин/);
 });

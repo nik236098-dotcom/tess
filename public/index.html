@@ -30,7 +30,17 @@
 
         <div id="lobby-actions" class="lobby-actions hidden">
           <div class="card">
-            <h2>Присоединиться</h2>
+            <div class="card-head">
+              <h2>Открытые столы</h2>
+              <button id="rooms-refresh" class="link-btn">обновить</button>
+            </div>
+            <div id="rooms-list" class="rooms-list">
+              <p class="hint">Ищем открытые столы…</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Зайти по коду</h2>
             <div class="row">
               <input id="join-code" class="code-input" type="text" maxlength="5" placeholder="КОД" autocomplete="off" autocapitalize="characters" />
               <button id="join-btn" class="btn btn-primary">Войти</button>
@@ -67,6 +77,10 @@
                 </select>
               </label>
             </div>
+            <label class="switch">
+              <input id="set-public" type="checkbox" checked />
+              <span>Открытый стол — друзья увидят его в списке и зайдут без кода</span>
+            </label>
             <button id="create-btn" class="btn btn-primary">Создать стол</button>
           </div>
 
@@ -148,6 +162,32 @@
           <div id="turn-timer" class="turn-timer"><i></i></div>
         </div>
       </footer>
+
+      <aside id="chips-sheet" class="sheet hidden">
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 id="chips-title">Фишки</h3>
+            <button id="chips-close" class="icon-btn">×</button>
+          </div>
+          <p id="chips-stack" class="muted small">Стек —</p>
+          <div class="chips-presets">
+            <button class="chip-btn" data-chips="100">+100</button>
+            <button class="chip-btn" data-chips="500">+500</button>
+            <button class="chip-btn" data-chips="1000">+1000</button>
+            <button class="chip-btn" data-chips="5000">+5000</button>
+          </div>
+          <label class="field">
+            <span>Своё количество</span>
+            <input id="chips-amount" type="number" min="0" step="10" inputmode="numeric" placeholder="например 2500" />
+          </label>
+          <div class="chips-actions">
+            <button id="chips-give" class="btn btn-primary">Выдать</button>
+            <button id="chips-take" class="btn btn-ghost">Забрать</button>
+            <button id="chips-set" class="btn btn-ghost">Сделать стеком</button>
+          </div>
+          <p class="hint">То же самое командой в чате: <code>/дать Боря 500</code>, <code>/всем 1000</code>, <code>/помощь</code>.</p>
+        </div>
+      </aside>
 
       <aside id="log-panel" class="log-panel hidden">
         <div class="log-head">

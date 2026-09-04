@@ -335,3 +335,78 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   .card-face .rank { font-size: 17px; }
   .seat { width: 82px; }
 }
+
+/* ——— Список открытых столов ——— */
+
+.card-head { display: flex; align-items: center; justify-content: space-between; }
+.link-btn {
+  background: none; border: none; color: var(--accent);
+  font: 600 13px inherit; cursor: pointer; padding: 0;
+}
+
+.rooms-list { display: flex; flex-direction: column; gap: 8px; }
+.room-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.room-row .room-main { flex: 1; min-width: 0; }
+.room-row .room-title {
+  font-weight: 600; font-size: 14px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.room-row .room-meta { font-size: 12px; color: var(--muted); }
+.room-row .btn { padding: 8px 14px; font-size: 13px; }
+.room-row.full .btn { opacity: 0.6; }
+.room-badge {
+  font-size: 10px; padding: 2px 7px; border-radius: 999px;
+  background: rgba(70, 178, 106, 0.2); color: #7ee0a0;
+}
+
+.switch { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: var(--muted); }
+.switch input { width: 20px; height: 20px; flex: none; accent-color: var(--accent); padding: 0; }
+
+/* ——— Комбинация над игроком ——— */
+
+.seat-combo {
+  font-size: 10px; font-weight: 700; line-height: 1.2;
+  padding: 2px 7px; border-radius: 999px;
+  background: rgba(10, 20, 16, 0.9);
+  border: 1px solid rgba(232, 194, 106, 0.5);
+  color: var(--gold);
+  white-space: nowrap; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ——— Шторка выдачи фишек ——— */
+
+.sheet {
+  position: absolute; inset: 0;
+  background: rgba(6, 9, 12, 0.72);
+  display: flex; align-items: flex-end;
+  z-index: 30;
+}
+.sheet-body {
+  width: 100%;
+  background: var(--surface);
+  border-radius: 18px 18px 0 0;
+  padding: 16px 16px calc(18px + var(--safe-bottom));
+  display: flex; flex-direction: column; gap: 12px;
+  animation: sheet-up 0.2s ease;
+}
+@keyframes sheet-up { from { transform: translateY(20px); opacity: 0; } }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; }
+.sheet-head h3 { margin: 0; font-size: 17px; }
+.chips-presets { display: flex; gap: 6px; }
+.chips-actions { display: flex; gap: 8px; }
+.chips-actions .btn { flex: 1; padding: 12px 6px; font-size: 14px; }
+.sheet code {
+  background: var(--surface-2); border-radius: 5px;
+  padding: 1px 5px; font-size: 12px;
+}
+.seat.clickable .seat-body { cursor: pointer; }
+.log-line.system { color: var(--gold); }
+.card-face.ten .rank { font-size: 17px; letter-spacing: -1px; }
+.card-face.small.ten .rank { font-size: 12px; }

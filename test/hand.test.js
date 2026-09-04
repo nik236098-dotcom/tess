@@ -168,23 +168,76 @@ test('после олл-инов борд докручивается до рив
   assert.strictEqual(total, 400, 'фишки не появляются и не исчезают');
 });
 
-test('фишки сохраняются в случайных раздачах', () => {
-  for (let i = 0; i < 300; i++) {
-    const stacks = [1, 2, 3, 4].map(() => 20 + Math.floor(Math.random() * 500));
-    const hand = new Hand({ players: players(...stacks), dealerIndex: i % 4, smallBlind: 10, bigBlind: 20 });
+test('пот, за который некому бороться, возвращается вкладчикам', () => {
+  // Двое торговались между собой поверх олл-инов, а потом оба спасовали.
+  // Их деньги не должны исчезнуть: за этот уровень ставок бороться уже некому.
+  const hand = new Hand({
+    players: players(153, 519, 35, 42),
+    dealerIndex: 3,
+    smallBlind: 10,
+    bigBlind: 20,
+  });
+
+  const moves = [
+    ['p2', 'call'], ['p3', 'raise', 40], ['p0', 'call'], ['p1', 'raise', 60],
+    ['p2', 'call'], ['p3', 'call'], ['p0', 'raise', 80], ['p1', 'raise', 100], ['p0', 'call'],
+    ['p0', 'raise', 20], ['p1', 'call'],
+    ['p0', 'check'], ['p1', 'check'],
+    ['p0', 'fold'], ['p1', 'fold'],
+  ];
+  for (const [id, action, amount] of moves) hand.act(id, action, amount);
+
+  assert.ok(hand.complete);
+  const total = hand.players.reduce((sum, p) => sum + p.stack, 0);
+  assert.strictEqual(total, 749, 'фишки не исчезли');
+
+  // 156 фишек уровня, до которого не дотянулись олл-ины, делятся пополам.
+  assert.strictEqual(hand.player('p0').stack, 33 + 78);
+  assert.strictEqual(hand.player('p1').stack, 399 + 78);
+  assert.deepStrictEqual(
+    hand.result.refunds.map((r) => r.amount).sort(),
+    [78, 78]
+  );
+});
+
+// Детерминированный генератор: падение всегда воспроизводится по номеру попытки.
+function mulberry32(seed) {
+  let a = seed;
+  return function next() {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+test('фишки сохраняются в двух тысячах случайных раздач', () => {
+  for (let seed = 1; seed <= 2000; seed++) {
+    const rng = mulberry32(seed);
+    const count = 2 + Math.floor(rng() * 3);
+    const stacks = Array.from({ length: count }, () => 20 + Math.floor(rng() * 500));
+    const hand = new Hand({
+      players: players(...stacks),
+      dealerIndex: Math.floor(rng() * count),
+      smallBlind: 10,
+      bigBlind: 20,
+      rng,
+    });
+
     let guard = 0;
-    while (!hand.complete && guard++ < 200) {
+    while (!hand.complete && guard++ < 300) {
       const actor = hand.actingPlayer;
       const legal = hand.legalActions(actor.id);
-      const roll = Math.random();
+      const roll = rng();
       if (roll < 0.15) hand.act(actor.id, 'fold');
-      else if (roll < 0.75) hand.act(actor.id, legal.canCheck ? 'check' : 'call');
+      else if (roll < 0.7) hand.act(actor.id, legal.canCheck ? 'check' : 'call');
       else if (legal.canRaise) hand.act(actor.id, 'raise', legal.minRaiseTo);
       else hand.act(actor.id, legal.canCheck ? 'check' : 'call');
     }
-    assert.ok(hand.complete, 'раздача должна завершаться');
-    const before = stacks.reduce((a, b) => a + b, 0);
+
+    assert.ok(hand.complete, `раздача ${seed} должна завершаться`);
     const after = hand.players.reduce((sum, p) => sum + p.stack, 0);
-    assert.strictEqual(after, before, 'сумма фишек не меняется');
+    assert.strictEqual(after, stacks.reduce((a, b) => a + b, 0), `раздача ${seed}: сумма фишек изменилась`);
   }
 });

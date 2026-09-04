@@ -23,6 +23,8 @@ const state = {
   raiseTouched: false,
   reconnectDelay: 500,
   chat: [],
+  rooms: [],
+  chipsSeat: null, // индекс места, которому выдаём фишки
 };
 
 const $ = (id) => document.getElementById(id);
@@ -146,6 +148,7 @@ function handleMessage(message) {
       $('dev-login').classList.add('hidden');
       $('lobby-actions').classList.remove('hidden');
       setStatus(`Вы вошли как ${message.user.name}`);
+      startRoomsPolling();
       if (message.startParam) state.pendingRoom = normalizeCode(message.startParam);
       if (state.pendingRoom) {
         send({ type: 'join_room', code: state.pendingRoom });
@@ -162,6 +165,15 @@ function handleMessage(message) {
     case 'state':
       state.room = message;
       renderTable();
+      break;
+    case 'rooms':
+      state.rooms = message.rooms;
+      renderRooms();
+      break;
+    case 'system':
+      state.chat.push({ name: 'Стол', text: message.text, at: Date.now(), system: true });
+      renderLog();
+      toast(message.text);
       break;
     case 'chat':
       state.chat.push(message);
@@ -189,12 +201,65 @@ function showLobby() {
   $('screen-table').classList.add('hidden');
   $('screen-lobby').classList.remove('hidden');
   if (tg && tg.BackButton) tg.BackButton.hide();
+  startRoomsPolling();
 }
 
 function showTable() {
   $('screen-lobby').classList.add('hidden');
   $('screen-table').classList.remove('hidden');
   if (tg && tg.BackButton) tg.BackButton.show();
+  stopRoomsPolling();
+  closeChipsSheet();
+}
+
+// ——— Открытые столы ———
+
+let roomsTimer = null;
+
+function startRoomsPolling() {
+  if (!state.user) return;
+  send({ type: 'list_rooms' });
+  if (roomsTimer) return;
+  roomsTimer = setInterval(() => {
+    if (state.socket && state.socket.readyState === WebSocket.OPEN) send({ type: 'list_rooms' });
+  }, 5000);
+}
+
+function stopRoomsPolling() {
+  if (roomsTimer) clearInterval(roomsTimer);
+  roomsTimer = null;
+}
+
+function renderRooms() {
+  const list = $('rooms-list');
+  if (!state.rooms.length) {
+    list.innerHTML = '<p class="hint">Пока никто не создал открытый стол. Создайте свой — друзья увидят его здесь.</p>';
+    return;
+  }
+
+  list.innerHTML = '';
+  for (const room of state.rooms) {
+    const row = document.createElement('div');
+    row.className = `room-row${room.hasFreeSeat ? '' : ' full'}`;
+    const badge = room.running ? '<span class="room-badge">идёт игра</span>' : '';
+    row.innerHTML = `
+      <div class="room-main">
+        <div class="room-title">${escapeHtml(room.title)} ${badge}</div>
+        <div class="room-meta">
+          ${room.players}/${room.maxPlayers} за столом · блайнды ${room.smallBlind}/${room.bigBlind} · вход ${room.buyIn}
+        </div>
+      </div>
+    `;
+    const button = document.createElement('button');
+    button.className = 'btn btn-primary';
+    button.textContent = room.hasFreeSeat ? 'Играть' : 'Смотреть';
+    button.addEventListener('click', () => {
+      haptic('light');
+      send({ type: 'join_room', code: room.code });
+    });
+    row.appendChild(button);
+    list.appendChild(row);
+  }
 }
 
 function setStatus(text) {
@@ -230,8 +295,9 @@ function renderTable() {
   if (!room) return;
 
   $('room-code').textContent = room.code;
+  const privacy = room.settings.isPublic ? '' : ' · закрытый';
   $('room-blinds').textContent =
-    `блайнды ${room.settings.smallBlind}/${room.settings.bigBlind} · вход ${room.settings.buyIn}`;
+    `блайнды ${room.settings.smallBlind}/${room.settings.bigBlind} · вход ${room.settings.buyIn}${privacy}`;
 
   renderBoard(room);
   renderSeats(room);
@@ -264,7 +330,10 @@ function cardNode(code, small = false) {
   }
   const suit = SUITS[code[1]] || SUITS.s;
   if (suit.red) node.classList.add('red');
-  node.innerHTML = `<span class="rank">${code[0]}</span><span class="suit">${suit.symbol}</span>`;
+  // Десятку привычнее видеть как «10», а не как «T».
+  const rank = code[0] === 'T' ? '10' : code[0];
+  if (rank === '10') node.classList.add('ten');
+  node.innerHTML = `<span class="rank">${rank}</span><span class="suit">${suit.symbol}</span>`;
   return node;
 }
 
@@ -302,6 +371,14 @@ function renderSeats(room) {
     if (seat.isActing) node.classList.add('acting');
     if (seat.userId === room.you.userId) node.classList.add('me');
 
+    // Подсказка комбинации — над картами игрока.
+    if (seat.combination) {
+      const combo = document.createElement('div');
+      combo.className = 'seat-combo';
+      combo.textContent = seat.combination;
+      node.appendChild(combo);
+    }
+
     const cards = document.createElement('div');
     cards.className = 'seat-cards';
     if (seat.cards) {
@@ -324,6 +401,11 @@ function renderSeats(room) {
 
     node.appendChild(cards);
     node.appendChild(body);
+
+    if (room.you.isHost) {
+      node.classList.add('clickable');
+      body.addEventListener('click', () => openChipsSheet(seat));
+    }
 
     if (seat.bet > 0) {
       const bet = document.createElement('div');
@@ -473,7 +555,9 @@ function renderLog() {
     ...room.log.map((line) => ({ at: line.at, html: `<div class="log-line">${escapeHtml(line.text)}</div>` })),
     ...state.chat.map((line) => ({
       at: line.at,
-      html: `<div class="log-line chat"><b>${escapeHtml(line.name)}</b>: ${escapeHtml(line.text)}</div>`,
+      html: line.system
+        ? `<div class="log-line system">${escapeHtml(line.text)}</div>`
+        : `<div class="log-line chat"><b>${escapeHtml(line.name)}</b>: ${escapeHtml(line.text)}</div>`,
     })),
   ].sort((a, b) => a.at - b.at);
 
@@ -503,6 +587,7 @@ function bindUi() {
         buyIn: Number($('set-buyin').value),
         maxPlayers: Number($('set-seats').value),
         turnSeconds: Number($('set-turn').value),
+        isPublic: $('set-public').checked,
       },
     });
   });
@@ -518,6 +603,19 @@ function bindUi() {
     }
     send({ type: 'join_room', code });
   });
+
+  $('rooms-refresh').addEventListener('click', () => send({ type: 'list_rooms' }));
+
+  $('chips-close').addEventListener('click', closeChipsSheet);
+  $('chips-sheet').addEventListener('click', (event) => {
+    if (event.target === $('chips-sheet')) closeChipsSheet();
+  });
+  document.querySelectorAll('[data-chips]').forEach((button) => {
+    button.addEventListener('click', () => grantChips(button.dataset.chips, 'add'));
+  });
+  $('chips-give').addEventListener('click', () => grantChips($('chips-amount').value, 'add'));
+  $('chips-take').addEventListener('click', () => grantChips(-Math.abs(Number($('chips-amount').value)), 'add'));
+  $('chips-set').addEventListener('click', () => grantChips($('chips-amount').value, 'set'));
 
   $('btn-leave').addEventListener('click', leaveRoom);
   $('btn-code').addEventListener('click', copyCode);
@@ -571,6 +669,34 @@ function bindUi() {
       send({ type: 'ping' });
     }
   });
+}
+
+// ——— Выдача фишек ———
+
+function openChipsSheet(seat) {
+  // Адресуем по номеру места: имена могут совпадать.
+  state.chipsSeat = seat.index;
+  $('chips-title').textContent = `Фишки: ${seat.name}`;
+  $('chips-stack').textContent = `Сейчас в стеке ${seat.stack}`;
+  $('chips-amount').value = '';
+  $('chips-sheet').classList.remove('hidden');
+  haptic('light');
+}
+
+function closeChipsSheet() {
+  state.chipsSeat = null; // null — шторка закрыта; ноль это валидный номер места
+  $('chips-sheet').classList.add('hidden');
+}
+
+function grantChips(amount, mode = 'add') {
+  if (state.chipsSeat === null) return;
+  const value = Math.floor(Number(amount));
+  if (!Number.isFinite(value) || (mode === 'add' && value === 0)) {
+    toast('Введите количество фишек');
+    return;
+  }
+  send({ type: 'grant_chips', target: String(state.chipsSeat + 1), amount: value, mode });
+  closeChipsSheet();
 }
 
 function applyPreset(preset) {

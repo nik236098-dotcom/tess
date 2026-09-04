@@ -219,7 +219,27 @@ function createApp(options = {}) {
         withRoom(client, (room) => room.applyAction(client.user.id, message.action, message.amount));
         break;
       case 'chat':
-        withRoom(client, (room) => room.chat(client.user.id, message.text));
+        withRoom(client, (room) => {
+          const reply = room.chat(client.user.id, message.text);
+          if (reply) client.send({ type: 'system', text: reply });
+        });
+        break;
+      case 'grant_chips':
+        withRoom(client, (room) => {
+          const { seat, applied, target } = room.grantChips(
+            client.user.id,
+            message.target,
+            message.amount,
+            message.mode === 'set' ? 'set' : 'add'
+          );
+          client.send({
+            type: 'system',
+            text: applied ? `${seat.name}: стек ${target}` : `${seat.name} получит фишки после раздачи`,
+          });
+        });
+        break;
+      case 'list_rooms':
+        client.send({ type: 'rooms', rooms: publicRooms() });
         break;
       case 'ping':
         client.send({ type: 'pong', at: Date.now() });
@@ -227,6 +247,15 @@ function createApp(options = {}) {
       default:
         client.fail(`Неизвестная команда: ${message.type}`);
     }
+  }
+
+  // Открытые столы: их видно всем, чтобы друзья заходили без кода.
+  function publicRooms() {
+    return [...rooms.values()]
+      .filter((room) => room.settings.isPublic && [...room.members.values()].some((m) => m.connected))
+      .map((room) => room.summary())
+      .sort((a, b) => b.players - a.players || a.code.localeCompare(b.code))
+      .slice(0, 30);
   }
 
   function withRoom(client, action) {

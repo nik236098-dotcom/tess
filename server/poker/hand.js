@@ -373,10 +373,20 @@ class Hand {
 
     const pots = this._buildPots();
     const payouts = new Map();
+    const refunds = new Map();
 
     for (const pot of pots) {
       const contenders = pot.eligible.filter((id) => evaluated.has(id));
-      if (contenders.length === 0) continue;
+      if (contenders.length === 0) {
+        // За этот пот бороться некому: все его вкладчики спасовали, а остальные
+        // игроки не доставали до этого уровня ставок. Живьём так не бывает
+        // (последний оставшийся просто забирает банк), но фишки должны
+        // вернуться тем, кто их поставил, — как невостребованная ставка.
+        this._share(pot.amount, pot.contributors, refunds);
+        pot.winners = [];
+        pot.refunded = true;
+        continue;
+      }
       let best = null;
       let winners = [];
       for (const id of contenders) {
@@ -389,23 +399,14 @@ class Hand {
           winners.push(id);
         }
       }
-      const share = Math.floor(pot.amount / winners.length);
-      let remainder = pot.amount - share * winners.length;
-      // Нечётные фишки уходят ближайшему к баттону слева — как по правилам.
-      const ordered = this._orderFromDealer(winners);
-      for (const id of ordered) {
-        let amount = share;
-        if (remainder > 0) {
-          amount += 1;
-          remainder -= 1;
-        }
-        payouts.set(id, (payouts.get(id) || 0) + amount);
-      }
+      this._share(pot.amount, winners, payouts);
       pot.winners = winners;
     }
 
-    for (const [id, amount] of payouts) {
+    for (const [id, amount] of payouts) this.player(id).stack += amount;
+    for (const [id, amount] of refunds) {
       this.player(id).stack += amount;
+      this._log({ type: 'refund', playerId: id, amount });
     }
 
     this.actingIndex = null;
@@ -413,7 +414,8 @@ class Hand {
     this.result = {
       showdown: true,
       board: this.board.slice(),
-      pots: pots.map((p) => ({ amount: p.amount, winners: p.winners || [] })),
+      pots: pots.map((p) => ({ amount: p.amount, winners: p.winners || [], refunded: Boolean(p.refunded) })),
+      refunds: [...refunds.entries()].map(([id, amount]) => ({ id, amount })),
       winners: [...payouts.entries()].map(([id, amount]) => ({
         id,
         amount,
@@ -431,6 +433,21 @@ class Hand {
     this._log({ type: 'showdown', result: this.result });
   }
 
+  // Делит сумму между игроками; нечётные фишки уходят ближайшему
+  // к баттону слева — как по правилам живой игры.
+  _share(amount, ids, into) {
+    const share = Math.floor(amount / ids.length);
+    let remainder = amount - share * ids.length;
+    for (const id of this._orderFromDealer(ids)) {
+      let value = share;
+      if (remainder > 0) {
+        value += 1;
+        remainder -= 1;
+      }
+      into.set(id, (into.get(id) || 0) + value);
+    }
+  }
+
   // Основной банк и сайд-поты по уровням вложений.
   _buildPots() {
     const levels = [...new Set(this.players.map((p) => p.total).filter((t) => t > 0))].sort((a, b) => a - b);
@@ -442,9 +459,15 @@ class Hand {
       const eligible = contributors.filter((p) => !p.folded).map((p) => p.id);
       if (amount > 0) {
         const last = pots[pots.length - 1];
+        const ids = contributors.map((p) => p.id);
         // Схлопываем соседние поты с одинаковым составом претендентов.
-        if (last && sameMembers(last.eligible, eligible)) last.amount += amount;
-        else pots.push({ amount, eligible });
+        // Поты без претендентов не сливаем: для них важен состав вкладчиков.
+        if (last && eligible.length > 0 && sameMembers(last.eligible, eligible)) {
+          last.amount += amount;
+          last.contributors = [...new Set([...last.contributors, ...ids])];
+        } else {
+          pots.push({ amount, eligible, contributors: ids });
+        }
       }
       previous = level;
     }
