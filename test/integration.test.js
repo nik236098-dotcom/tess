@@ -250,7 +250,7 @@ test('закрытый стол в списке не показывается', 
   assert.strictEqual((await stranger.wait(byType('joined'))).code, code);
 });
 
-test('админ выдаёт фишки на баланс по Telegram ID', { timeout: 10000 }, async (t) => {
+test('админ выдаёт деньги на баланс по Telegram ID', { timeout: 10000 }, async (t) => {
   // Админ определяется списком ID, а не тем, кто создал стол.
   const port = await startServer(t, { devAdmin: false, adminIds: ['dev:boss'] });
 
@@ -308,9 +308,10 @@ test('команда /дать адресуется по ID, а не по име
 
   admin.send({ type: 'create_room', settings: {} });
   await admin.wait(byType('joined'));
-  admin.send({ type: 'chat', text: '/дать dev:sasha-2 700' });
+  // Админ пишет сумму в долларах — на баланс ложатся центы.
+  admin.send({ type: 'chat', text: '/дать dev:sasha-2 7' });
   const reply = await admin.wait(byType('system'));
-  assert.match(reply.text, /700|баланс/);
+  assert.match(reply.text, /\$7\.00|баланс/);
 
   const changed = await second.wait(byType('balance'));
   assert.strictEqual(changed.balance, start + 700);

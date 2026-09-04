@@ -58,7 +58,7 @@ test('админ выдаёт, списывает и выставляет бал
   assert.strictEqual(bank.grant('5', 500, 'add').account.balance, 1500);
   assert.strictEqual(bank.grant('5', -200, 'add').account.balance, 1300);
   assert.strictEqual(bank.grant('5', 42, 'set').account.balance, 42);
-  assert.throws(() => bank.grant('5', -100, 'add'), /столько фишек нет/);
+  assert.throws(() => bank.grant('5', -100, 'add'), /столько нет/);
   assert.throws(() => bank.grant('999', 100, 'add'), /не найден/);
 });
 

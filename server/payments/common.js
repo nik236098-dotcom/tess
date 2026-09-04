@@ -5,7 +5,15 @@ const crypto = require('crypto');
 // Общее для обоих платёжных провайдеров: ошибки, HTTP-запрос и проверка подписи.
 // Внешних зависимостей нет — как и во всём остальном проекте.
 
-class PaymentError extends Error {}
+// ambiguous = мы не знаем, выполнил ли сервис операцию: связь оборвалась,
+// вышло время или пришёл 5xx. Для вывода денег это принципиально: вернуть
+// сумму на баланс после такой ошибки — значит рискнуть выплатить дважды.
+class PaymentError extends Error {
+  constructor(message, { ambiguous = false } = {}) {
+    super(message);
+    this.ambiguous = ambiguous;
+  }
+}
 
 const DEFAULT_TIMEOUT_MS = 15000;
 
@@ -34,7 +42,8 @@ async function requestJson(url, { method = 'GET', headers = {}, body = null, tim
     const reason = error && (error.name === 'TimeoutError' || error.name === 'AbortError')
       ? 'превышено время ожидания'
       : error.message;
-    throw new PaymentError(`Платёжный сервис недоступен: ${reason}`);
+    // Запрос мог дойти и выполниться — ответ просто не вернулся.
+    throw new PaymentError(`Платёжный сервис недоступен: ${reason}`, { ambiguous: true });
   }
 
   const text = await response.text();
@@ -42,7 +51,7 @@ async function requestJson(url, { method = 'GET', headers = {}, body = null, tim
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new PaymentError(`Платёжный сервис ответил не JSON (HTTP ${response.status})`);
+    throw new PaymentError(`Платёжный сервис ответил не JSON (HTTP ${response.status})`, { ambiguous: true });
   }
   return { status: response.status, data: parsed };
 }

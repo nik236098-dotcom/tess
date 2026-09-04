@@ -26,7 +26,10 @@ function fakeFetch(responses) {
     calls.push({ url: String(url), init });
     const handler = responses.find((item) => String(url).includes(item.match));
     if (!handler) throw new Error(`Нет заготовленного ответа для ${url}`);
-    const body = typeof handler.body === 'function' ? handler.body(String(url), init) : handler.body;
+    // Обрыв связи: ответа нет вообще, и что стало с запросом — неизвестно.
+    if (handler.throws) throw handler.throws;
+    // await — чтобы заготовка могла быть асинхронной и придержать ответ.
+    const body = typeof handler.body === 'function' ? await handler.body(String(url), init) : handler.body;
     return {
       status: handler.status || 200,
       text: async () => JSON.stringify(body),
@@ -110,7 +113,7 @@ test('Crypto Bot: счёт создаётся и в payload уходит наш 
   const invoice = await payments.createTopUp(user, 'cryptobot', 5);
 
   assert.strictEqual(invoice.amount, 5);
-  assert.strictEqual(invoice.chips, 5000);
+  assert.strictEqual(invoice.cents, 500, '5 USDT = $5.00');
   assert.strictEqual(invoice.status, 'pending');
   assert.strictEqual(invoice.url, 'https://t.me/CryptoBot/app?startapp=IVoc1abc');
   assert.strictEqual(seenPayload, invoice.id, 'в payload должен уйти id нашей записи');
@@ -129,7 +132,7 @@ test('xRocket: счёт создаётся через POST /tg-invoices', async 
   const invoice = await payments.createTopUp(user, 'xrocket', 5);
 
   assert.strictEqual(invoice.url, 'https://t.me/xrocket?start=inv_777');
-  assert.strictEqual(invoice.chips, 5000);
+  assert.strictEqual(invoice.cents, 500, '5 USDT = $5.00');
 
   const request = fetchImpl.calls[0];
   assert.strictEqual(request.init.method, 'POST');
@@ -156,7 +159,7 @@ test('неподключённый способ оплаты отвергает�
 
 // ——— Вебхуки ———
 
-test('Crypto Bot: вебхук с верной подписью начисляет фишки', async () => {
+test('Crypto Bot: вебхук с верной подписью зачисляет деньги', async () => {
   const { payments, accounts } = setup({
     responses: [{ match: 'createInvoice', body: (url) => cryptoBotInvoice(new URL(url).searchParams.get('payload')) }],
   });
@@ -172,11 +175,11 @@ test('Crypto Bot: вебхук с верной подписью начисляе
   const result = payments.handleWebhook('cryptobot', rawBody, sign(CRYPTOBOT_TOKEN, rawBody));
 
   assert.strictEqual(result.handled, true);
-  assert.strictEqual(result.credited, 5000);
-  assert.strictEqual(accounts.balanceOf('42'), 5000);
+  assert.strictEqual(result.credited, 500);
+  assert.strictEqual(accounts.balanceOf('42'), 500);
 });
 
-test('xRocket: вебхук с верной подписью начисляет фишки', async () => {
+test('xRocket: вебхук с верной подписью зачисляет деньги', async () => {
   const { payments, accounts } = setup({
     provider: 'xrocket',
     responses: [{ match: '/tg-invoices', body: (url, init) => xrocketInvoice(JSON.parse(init.body).payload) }],
@@ -200,8 +203,8 @@ test('xRocket: вебхук с верной подписью начисляет 
   const result = payments.handleWebhook('xrocket', rawBody, sign(XROCKET_TOKEN, rawBody));
 
   assert.strictEqual(result.handled, true);
-  assert.strictEqual(result.credited, 5000);
-  assert.strictEqual(accounts.balanceOf('42'), 5000);
+  assert.strictEqual(result.credited, 500);
+  assert.strictEqual(accounts.balanceOf('42'), 500);
 });
 
 test('вебхук с чужой подписью ничего не начисляет', async () => {
@@ -240,7 +243,7 @@ test('подменённое тело вебхука ломает подпись
   assert.strictEqual(accounts.balanceOf('42'), 0);
 });
 
-test('повторный вебхук не начисляет фишки второй раз', async () => {
+test('повторный вебхук не зачисляет деньги второй раз', async () => {
   const { payments, accounts } = setup({
     responses: [{ match: 'createInvoice', body: (url) => cryptoBotInvoice(new URL(url).searchParams.get('payload')) }],
   });
@@ -259,7 +262,7 @@ test('повторный вебхук не начисляет фишки вто�
   assert.strictEqual(first.already, false);
   assert.strictEqual(second.already, true);
   assert.strictEqual(second.credited, 0);
-  assert.strictEqual(accounts.balanceOf('42'), 5000, 'баланс вырос ровно один раз');
+  assert.strictEqual(accounts.balanceOf('42'), 500, 'баланс вырос ровно один раз');
 });
 
 test('вебхук про неизвестный счёт не трогает чужие балансы', async () => {
@@ -304,7 +307,7 @@ test('счёт закрывается опросом, если вебхук не
   const refreshed = await payments.refresh(invoice.id);
 
   assert.strictEqual(refreshed.status, 'paid');
-  assert.strictEqual(accounts.balanceOf('42'), 5000);
+  assert.strictEqual(accounts.balanceOf('42'), 500);
 });
 
 test('опрос после вебхука не начисляет повторно', async () => {
@@ -327,10 +330,10 @@ test('опрос после вебхука не начисляет повтор�
   payments.handleWebhook('cryptobot', rawBody, sign(CRYPTOBOT_TOKEN, rawBody));
   await payments.refresh(invoice.id);
 
-  assert.strictEqual(accounts.balanceOf('42'), 5000);
+  assert.strictEqual(accounts.balanceOf('42'), 500);
 });
 
-test('фишки считаются по фактически оплаченной сумме', async () => {
+test('зачисляем по фактически оплаченной сумме', async () => {
   const { payments, accounts } = setup({
     provider: 'xrocket',
     responses: [{ match: '/tg-invoices', body: (url, init) => xrocketInvoice(JSON.parse(init.body).payload) }],
@@ -353,7 +356,7 @@ test('фишки считаются по фактически оплаченно
 
   payments.handleWebhook('xrocket', rawBody, sign(XROCKET_TOKEN, rawBody));
 
-  assert.strictEqual(accounts.balanceOf('42'), 7500);
+  assert.strictEqual(accounts.balanceOf('42'), 750, '7.5 USDT = $7.50');
 });
 
 test('больше пяти неоплаченных счетов игроку не выдаётся', async () => {
@@ -379,5 +382,155 @@ test('счёт заводится даже игроку, которого ещё
   });
   payments.handleWebhook('cryptobot', rawBody, sign(CRYPTOBOT_TOKEN, rawBody));
 
-  assert.strictEqual(accounts.balanceOf('777'), 5000);
+  assert.strictEqual(accounts.balanceOf('777'), 500);
+});
+
+// ——— Вывод средств ———
+//
+// Здесь ошибка стоит настоящих денег, поэтому проверяем обе развилки:
+// внятный отказ сервиса (деньги вернуть) и оборванную связь (не возвращать).
+
+const networkError = () => Object.assign(new Error('socket hang up'), { name: 'TypeError' });
+
+function payoutSetup({ responses = [], balance = 10000, options = {} } = {}) {
+  const kit = setup({ responses, options });
+  kit.accounts.deposit('42', balance);
+  return kit;
+}
+
+test('вывод списывает деньги и уходит в платёжный сервис', async () => {
+  const { payments, accounts, fetchImpl } = payoutSetup({
+    responses: [{ match: 'transfer', body: { ok: true, result: { transfer_id: 9001, status: 'completed', amount: '25' } } }],
+  });
+
+  const payout = await payments.createPayout(user, 'cryptobot', 2500);
+
+  assert.strictEqual(payout.status, 'done');
+  assert.strictEqual(payout.cents, 2500);
+  assert.strictEqual(payout.amount, 25, '$25.00 = 25 USDT при курсе 1:1');
+  assert.strictEqual(accounts.balanceOf('42'), 7500);
+
+  const params = new URL(fetchImpl.calls[0].url).searchParams;
+  assert.strictEqual(params.get('user_id'), '42');
+  assert.strictEqual(params.get('asset'), 'USDT');
+  assert.strictEqual(params.get('amount'), '25');
+  assert.strictEqual(params.get('spend_id'), payout.id, 'spend_id делает повтор безопасным');
+});
+
+test('внятный отказ сервиса возвращает деньги на баланс', async () => {
+  const { payments, accounts } = payoutSetup({
+    responses: [{ match: 'transfer', status: 400, body: { ok: false, error: { code: 400, name: 'NOT_ENOUGH_COINS' } } }],
+  });
+
+  await assert.rejects(() => payments.createPayout(user, 'cryptobot', 2500), /NOT_ENOUGH_COINS/);
+  assert.strictEqual(accounts.balanceOf('42'), 10000, 'деньги вернулись целиком');
+
+  const stuck = payments.stuckPayouts();
+  assert.strictEqual(stuck.length, 0, 'отменённая выплата не считается зависшей');
+});
+
+test('оборванная связь НЕ возвращает деньги: перевод мог пройти', async () => {
+  const { payments, accounts } = payoutSetup({
+    responses: [{ match: 'transfer', throws: networkError() }],
+  });
+
+  await assert.rejects(() => payments.createPayout(user, 'cryptobot', 2500), /в обработке/);
+
+  // Это главное в тесте: автоматический возврат здесь означал бы выплату дважды.
+  assert.strictEqual(accounts.balanceOf('42'), 7500, 'деньги остаются списанными');
+  const stuck = payments.stuckPayouts();
+  assert.strictEqual(stuck.length, 1);
+  assert.strictEqual(stuck[0].status, 'unknown');
+});
+
+test('повтор зависшей выплаты идёт с тем же ключом идемпотентности', async () => {
+  let attempt = 0;
+  const { payments, accounts, fetchImpl } = payoutSetup({
+    responses: [{
+      match: 'transfer',
+      body: () => {
+        attempt += 1;
+        if (attempt === 1) throw networkError();
+        return { ok: true, result: { transfer_id: 9002, status: 'completed', amount: '25' } };
+      },
+    }],
+  });
+
+  await assert.rejects(() => payments.createPayout(user, 'cryptobot', 2500));
+  const stuck = payments.stuckPayouts()[0];
+
+  const resolved = await payments.retryPayout(stuck.id);
+
+  assert.strictEqual(resolved.status, 'done');
+  assert.strictEqual(accounts.balanceOf('42'), 7500, 'повтор не списывает второй раз');
+  const keys = fetchImpl.calls.map((call) => new URL(call.url).searchParams.get('spend_id'));
+  assert.strictEqual(keys[0], keys[1], 'оба запроса с одним spend_id — сервис выполнит перевод один раз');
+});
+
+test('больше баланса не вывести', async () => {
+  const { payments, accounts, fetchImpl } = payoutSetup({
+    balance: 500,
+    responses: [{ match: 'transfer', body: { ok: true, result: { transfer_id: 1, status: 'completed', amount: '25' } } }],
+  });
+
+  await assert.rejects(() => payments.createPayout(user, 'cryptobot', 2500), /не хватает/);
+  assert.strictEqual(accounts.balanceOf('42'), 500);
+  assert.strictEqual(fetchImpl.calls.length, 0, 'до сервиса запрос не дошёл');
+});
+
+test('сумма ниже минимума не выводится', async () => {
+  const { payments, fetchImpl } = payoutSetup({ options: { minPayoutCents: 100 } });
+  await assert.rejects(() => payments.createPayout(user, 'cryptobot', 50), /Минимальная сумма вывода/);
+  assert.strictEqual(fetchImpl.calls.length, 0);
+});
+
+test('на отладочный вход вывод не работает: такого пользователя в Telegram нет', async () => {
+  const { payments, accounts, fetchImpl } = payoutSetup();
+  accounts.ensure({ id: 'dev:tester', name: 'Тестер' });
+  accounts.deposit('dev:tester', 10000);
+
+  await assert.rejects(
+    () => payments.createPayout({ id: 'dev:tester', name: 'Тестер' }, 'cryptobot', 2500),
+    /только при входе через Telegram/,
+  );
+  assert.strictEqual(accounts.balanceOf('dev:tester'), 10000);
+  assert.strictEqual(fetchImpl.calls.length, 0);
+});
+
+test('второй вывод не запускается, пока идёт первый', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const { payments, accounts } = payoutSetup({
+    responses: [{
+      match: 'transfer',
+      body: async () => {
+        await gate;
+        return { ok: true, result: { transfer_id: 3, status: 'completed', amount: '25' } };
+      },
+    }],
+  });
+
+  const first = payments.createPayout(user, 'cryptobot', 2500);
+  await assert.rejects(() => payments.createPayout(user, 'cryptobot', 2500), /ещё выполняется/);
+
+  release();
+  await first;
+  assert.strictEqual(accounts.balanceOf('42'), 7500, 'списание ровно одно');
+});
+
+test('xRocket: вывод уходит с ключом идемпотентности transferId', async () => {
+  const { payments, fetchImpl } = payoutSetup({});
+  const xrocket = new XRocketProvider({
+    token: XROCKET_TOKEN,
+    fetchImpl: fakeFetch([{ match: '/app/transfer', body: { success: true, data: { id: 42, tgUserId: 42, currency: 'USDT', amount: 25 } } }]),
+  });
+  payments.providers.set('xrocket', xrocket);
+
+  const payout = await payments.createPayout(user, 'xrocket', 2500);
+
+  assert.strictEqual(payout.status, 'done');
+  const sent = JSON.parse(xrocket.fetchImpl.calls[0].init.body);
+  assert.strictEqual(sent.transferId, payout.id);
+  assert.strictEqual(sent.tgUserId, 42);
+  assert.strictEqual(sent.amount, 25);
 });

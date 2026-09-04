@@ -33,15 +33,40 @@ const state = {
   bjBet: 0,
   bjBetTouched: false,
   unread: 0,
+  tab: 'home', // главная | игры
+  wins: [], // лента последних выигрышей
   topup: {
-    config: { enabled: false, providers: [], presets: [], chipsPerUnit: 0, minAmount: 0, maxAmount: 0 },
+    config: {
+      enabled: false, providers: [], presets: [], presetCents: [],
+      centsPerUnit: 100, minAmount: 0, maxAmount: 0,
+      payout: { enabled: false, minCents: 0, maxCents: 0, providers: [] },
+    },
     provider: null, // id выбранного платёжного сервиса
     invoice: null, // счёт, который сейчас ждёт оплаты
     busy: false,
   },
+  payout: { provider: null, busy: false, last: null },
 };
 
 const $ = (id) => document.getElementById(id);
+
+// Сервер считает деньги целыми центами (см. server/money.js), а показываем
+// мы доллары. Здесь ровно те же правила округления, что и на сервере.
+function money(cents) {
+  const value = Math.round(Number(cents) || 0);
+  const sign = value < 0 ? '-' : '';
+  const absolute = Math.abs(value);
+  return `${sign}$${Math.floor(absolute / 100)}.${String(absolute % 100).padStart(2, '0')}`;
+}
+
+// "12.34", "$12,34", -5 -> центы. null, если это не сумма.
+function toCents(input) {
+  const text = String(input ?? '').trim().replace(/\s+/g, '').replace(',', '.').replace(/^\$/, '');
+  if (!/^-?\d*\.?\d*$/.test(text) || text === '' || text === '.' || text === '-') return null;
+  const value = Number(text);
+  if (!Number.isFinite(value)) return null;
+  return Math.round(value * 100);
+}
 
 // ——— Запуск ———
 
@@ -166,6 +191,8 @@ function handleMessage(message) {
       if (state.isAdmin) send({ type: 'admin_accounts' });
       $('dev-login').classList.add('hidden');
       $('lobby-actions').classList.remove('hidden');
+      $('bottom-nav').classList.remove('hidden');
+      showTab(state.tab);
       setStatus(`Вы вошли как ${message.user.name}`);
       startRoomsPolling();
       if (message.startParam) state.pendingRoom = normalizeCode(message.startParam);
@@ -208,7 +235,7 @@ function handleMessage(message) {
     case 'topup_paid':
       stopTopUpPolling();
       if (state.topup.invoice && state.topup.invoice.id === message.id) {
-        state.topup.invoice = { ...state.topup.invoice, status: 'paid', creditedChips: message.chips };
+        state.topup.invoice = { ...state.topup.invoice, status: 'paid', creditedCents: message.cents };
         renderTopUpInvoice();
       }
       haptic('success');
@@ -218,7 +245,21 @@ function handleMessage(message) {
       break;
     case 'rooms':
       state.rooms = message.rooms;
+      if (message.wins) state.wins = message.wins;
       renderRooms();
+      renderWins();
+      break;
+    case 'leaders':
+      renderLeaders(message.leaders);
+      break;
+    case 'history':
+      renderHistory(message.history);
+      break;
+    case 'payout_status':
+      state.payout.busy = false;
+      state.payout.last = message.payout;
+      renderPayout();
+      if (message.payout.status === 'done') haptic('success');
       break;
     case 'system':
       state.chat.push({ name: 'Стол', text: message.text, at: Date.now(), system: true });
@@ -239,7 +280,9 @@ function handleMessage(message) {
       break;
     case 'error':
       state.topup.busy = false;
+      state.payout.busy = false;
       renderTopUpControls();
+      renderPayoutControls();
       toast(message.message);
       haptic('error');
       break;
@@ -268,6 +311,31 @@ function showTable() {
   closeChipsSheet();
 }
 
+// Главная и Игры — это две панели одного экрана лобби: столы и лента
+// выигрышей приходят одним и тем же сообщением, переключение ничего не грузит.
+function showTab(tab) {
+  state.tab = tab === 'games' ? 'games' : 'home';
+  $('tab-home').classList.toggle('hidden', state.tab !== 'home');
+  $('tab-games').classList.toggle('hidden', state.tab !== 'games');
+  for (const button of document.querySelectorAll('.nav-btn')) {
+    button.classList.toggle('is-active', button.dataset.tab === state.tab);
+  }
+  const scroller = document.querySelector('.lobby');
+  if (scroller) scroller.scrollTop = 0;
+}
+
+// Раскрывающиеся разделы главной: открытый ровно один.
+const PANELS = ['topup-card', 'payout-card', 'leaders-card', 'history-card'];
+
+function togglePanel(id) {
+  const target = $(id);
+  const opening = target.classList.contains('hidden');
+  for (const panel of PANELS) $(panel).classList.add('hidden');
+  if (opening) target.classList.remove('hidden');
+  for (const tile of document.querySelectorAll('.tile')) tile.classList.remove('is-active');
+  return opening;
+}
+
 // ——— Открытые столы ———
 
 let roomsTimer = null;
@@ -289,9 +357,18 @@ function stopRoomsPolling() {
 // ——— Баланс и админ-панель ———
 
 function renderAccount() {
-  $('balance-value').textContent = String(state.balance);
+  $('balance-value').textContent = money(state.balance);
   $('my-id').textContent = state.user ? state.user.id : '—';
   $('admin-card').classList.toggle('hidden', !state.isAdmin);
+
+  renderPayoutControls();
+
+  const avatar = $('avatar');
+  const photo = state.user && state.user.photoUrl;
+  if (photo && avatar.dataset.photo !== photo) {
+    avatar.dataset.photo = photo;
+    avatar.innerHTML = `<img src="${escapeHtml(photo)}" alt="" />`;
+  }
 }
 
 function renderAccounts(accounts) {
@@ -310,7 +387,7 @@ function renderAccounts(accounts) {
         ${escapeHtml(account.name)}${escapeHtml(nick)}
         <div class="account-id">${escapeHtml(account.id)}</div>
       </div>
-      <div class="account-balance">${account.balance}</div>
+      <div class="account-balance">${money(account.balance)}</div>
     `;
     // Тап по строке подставляет игрока в поле выдачи.
     row.addEventListener('click', () => {
@@ -323,20 +400,24 @@ function renderAccounts(accounts) {
 
 function adminGrant(mode, sign = 1) {
   const target = $('admin-target').value.trim();
-  const amount = Number($('admin-amount').value);
+  const amount = toCents($('admin-amount').value);
   if (!target) {
     toast('Укажите Telegram ID или @ник');
     return;
   }
-  if (!Number.isFinite(amount)) {
-    toast('Укажите количество фишек');
+  if (amount === null || !Number.isFinite(amount)) {
+    toast('Укажите сумму в долларах, например 50');
     return;
   }
   send({ type: 'admin_grant', target, amount: mode === 'set' ? amount : sign * Math.abs(amount), mode });
   setTimeout(() => send({ type: 'admin_accounts' }), 200);
 }
 
+// Каждый открытый стол виден и в «Активных играх» на главной, и полным
+// списком во вкладке «Игры» — данные одни и те же, отличается только вид.
 function renderRooms() {
+  renderActiveGames();
+
   const list = $('rooms-list');
   if (!state.rooms.length) {
     list.innerHTML = '<p class="hint">Пока никто не создал открытый стол. Создайте свой — друзья увидят его здесь.</p>';
@@ -354,8 +435,8 @@ function renderRooms() {
         <div class="room-meta">
           ${room.game === 'blackjack' ? 'Блекджек' : 'Холдем'} · ${room.players}/${room.maxPlayers} за столом ·
           ${room.game === 'blackjack'
-            ? `ставки ${room.minBet}–${room.maxBet}`
-            : `блайнды ${room.smallBlind}/${room.bigBlind}`} · вход ${room.buyIn}
+            ? `ставки ${money(room.minBet)}–${money(room.maxBet)}`
+            : `блайнды ${money(room.smallBlind)}/${money(room.bigBlind)}`} · вход ${money(room.buyIn)}
         </div>
       </div>
     `;
@@ -369,6 +450,97 @@ function renderRooms() {
     row.appendChild(button);
     list.appendChild(row);
   }
+}
+
+// «Активные игры» на главной: те же открытые столы, но плиткой и с банком.
+function renderActiveGames() {
+  const list = $('home-rooms');
+  if (!state.rooms.length) {
+    list.innerHTML = '<p class="hint">Открытых столов сейчас нет. Создайте свой во вкладке «Игры».</p>';
+    return;
+  }
+
+  list.innerHTML = '';
+  for (const room of state.rooms) {
+    const card = document.createElement('div');
+    card.className = 'game-card';
+    card.innerHTML = `
+      <div class="game-card-title">${escapeHtml(room.title)}</div>
+      <div class="game-card-line">Игроков: ${room.players}/${room.maxPlayers}</div>
+      <div class="game-card-pot">Банк: ${money(room.pot || 0)}</div>
+    `;
+    const button = document.createElement('button');
+    button.className = 'btn';
+    button.textContent = room.hasFreeSeat ? 'Присоединиться' : 'Смотреть';
+    button.addEventListener('click', () => {
+      haptic('light');
+      send({ type: 'join_room', code: room.code });
+    });
+    card.appendChild(button);
+    list.appendChild(card);
+  }
+}
+
+function renderWins() {
+  const card = $('wins-card');
+  const list = $('wins-list');
+  card.classList.toggle('hidden', !state.wins.length);
+  if (!state.wins.length) return;
+
+  list.innerHTML = state.wins.map((win) => `
+    <div class="win-card">
+      <span class="win-sum">+${money(win.amount)}</span>
+      <span class="win-game">${win.game === 'blackjack' ? 'Блекджек' : 'Покер'}</span>
+      <span class="win-name">${escapeHtml(win.name)}</span>
+    </div>
+  `).join('');
+}
+
+function renderLeaders(leaders) {
+  const list = $('leaders-list');
+  if (!leaders || !leaders.length) {
+    list.innerHTML = '<p class="hint">Пока пусто.</p>';
+    return;
+  }
+  list.innerHTML = leaders.map((account, index) => `
+    <div class="account-row">
+      <div class="account-name">${index + 1}. ${escapeHtml(account.name)}</div>
+      <div class="account-balance">${money(account.balance)}</div>
+    </div>
+  `).join('');
+}
+
+function renderHistory(history) {
+  const list = $('history-list');
+  if (!history || !history.length) {
+    list.innerHTML = '<p class="hint">Операций пока не было.</p>';
+    return;
+  }
+
+  const titles = {
+    paid: 'Пополнение', expired: 'Счёт истёк',
+    done: 'Вывод', failed: 'Вывод отменён', unknown: 'Вывод в обработке', pending: 'Вывод',
+  };
+
+  list.innerHTML = history.map((item) => {
+    const income = item.kind === 'topup';
+    const amount = income ? (item.creditedCents || item.cents) : item.cents;
+    // Неудачный вывод деньги вернул, истёкший счёт ничего не принёс —
+    // такие строки не должны выглядеть как движение денег.
+    const nothing = (income && item.status !== 'paid') || item.status === 'failed';
+    const tone = nothing ? 'is-bad' : (income ? 'is-in' : 'is-out');
+    const sign = nothing ? '' : (income ? '+' : '−');
+    const when = new Date(item.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `
+      <div class="history-row">
+        <div>
+          <div>${titles[item.status] || item.status}</div>
+          <div class="history-meta">${escapeHtml(item.providerTitle)} · ${when}</div>
+        </div>
+        <div class="history-sum ${tone}">${sign}${money(amount)}</div>
+      </div>
+    `;
+  }).join('');
 }
 
 function setStatus(text) {
@@ -416,8 +588,8 @@ function renderTable() {
   else if (room.status === 'playing' && phases[room.phase]) tail = phases[room.phase];
 
   $('room-subtitle').textContent = blackjack
-    ? `Блекджек · ${room.settings.minBet}–${room.settings.maxBet} · ${tail}`
-    : `Холдем · ${room.settings.smallBlind}/${room.settings.bigBlind} · ${tail}`;
+    ? `Блекджек · ${money(room.settings.minBet)}–${money(room.settings.maxBet)} · ${tail}`
+    : `Холдем · ${money(room.settings.smallBlind)}/${money(room.settings.bigBlind)} · ${tail}`;
 
   renderBoard(room);
   renderSeats(room);
@@ -437,7 +609,7 @@ function renderFeed(room) {
     pill.className = 'feed-pill';
     const amount = entry.amount === null || entry.amount === undefined
       ? ''
-      : ` <span class="amount">${entry.amount}</span>`;
+      : ` <span class="amount">${money(entry.amount)}</span>`;
     const allIn = entry.allIn ? ' <span class="amount">олл-ин</span>' : '';
     pill.innerHTML = `<b>${escapeHtml(entry.name)}</b> — ${escapeHtml(entry.action)}${amount}${allIn}`;
     feed.appendChild(pill);
@@ -462,7 +634,7 @@ function renderBoard(room) {
   if (room.potTotal > 0) {
     pot.classList.remove('hidden');
     pot.querySelector('.pot-label').textContent = 'БАНК';
-    $('pot-value').textContent = room.potTotal;
+    $('pot-value').textContent = money(room.potTotal);
   } else {
     pot.classList.add('hidden');
   }
@@ -537,7 +709,7 @@ function renderSeats(room) {
     plate.className = 'seat-plate';
     const stack = seat.allIn
       ? '<div class="seat-stack allin">ALL-IN</div>'
-      : `<div class="seat-stack">${seat.stack}</div>`;
+      : `<div class="seat-stack">${money(seat.stack)}</div>`;
     plate.innerHTML = `<div class="seat-name">${escapeHtml(seat.name)}</div>${stack}`;
     if (state.isAdmin) {
       node.classList.add('clickable');
@@ -668,7 +840,7 @@ function renderResult(room) {
     const title = result.winner === 'push'
       ? 'Ничья'
       : `Выигрывает ${escapeHtml(result.winnerName)}`;
-    const sum = result.winner === 'push' ? '' : `<div class="win-amount">+${result.amount}</div>`;
+    const sum = result.winner === 'push' ? '' : `<div class="win-amount">+${money(result.amount)}</div>`;
     const totals = (result.players || [])
       .map((player) => `${escapeHtml(player.name)} ${player.total}`)
       .join(' · ');
@@ -689,12 +861,12 @@ function renderResult(room) {
       <div class="win-avatar">${escapeHtml((winner.name || '?').trim()[0].toUpperCase())}</div>
       <div class="win-title">Выигрывает ${escapeHtml(winner.name)}</div>
       ${combo}
-      <div class="win-amount">+${winner.amount}</div>
+      <div class="win-amount">+${money(winner.amount)}</div>
       <div class="win-note">фишек</div>
     `;
   } else {
     const rows = result.winners
-      .map((w) => `<div class="win-combo">${escapeHtml(w.name)} +${w.amount}</div>`)
+      .map((w) => `<div class="win-combo">${escapeHtml(w.name)} +${money(w.amount)}</div>`)
       .join('');
     pop.innerHTML = `<div class="win-title">Банк разделён</div>${rows}`;
   }
@@ -736,8 +908,8 @@ function renderControls(room) {
   const short = !seated && you.balance < room.settings.buyIn;
   chip.classList.toggle('hidden', seated || myTurn);
   chip.innerHTML = short
-    ? `На балансе <b>${you.balance}</b> — на вход нужно <b>${room.settings.buyIn}</b>. Попросите админа выдать фишки`
-    : `На балансе <b>${you.balance}</b> фишек · вход <b>${room.settings.buyIn}</b>`;
+    ? `На балансе <b>${money(you.balance)}</b> — на вход нужно <b>${money(room.settings.buyIn)}</b>. Пополните баланс на главной`
+    : `На балансе <b>${money(you.balance)}</b> · вход <b>${money(room.settings.buyIn)}</b>`;
   if (short) sitBtn.classList.add('hidden');
 
   if (room.game === 'blackjack') {
@@ -762,7 +934,7 @@ function renderControls(room) {
 
   const callBtn = $('btn-call');
   callBtn.classList.toggle('hidden', !legal.canCall);
-  callBtn.textContent = `Колл ${legal.callAmount}`;
+  callBtn.textContent = `Колл ${money(legal.callAmount)}`;
 
   const raiseBtn = $('btn-raise');
   raiseBtn.classList.toggle('hidden', !legal.canRaise);
@@ -778,8 +950,8 @@ function renderControls(room) {
     if (!state.raiseTouched) state.raiseTo = legal.minRaiseTo;
     state.raiseTo = clamp(state.raiseTo, legal.minRaiseTo, legal.maxRaiseTo);
     range.value = String(state.raiseTo);
-    $('raise-value').textContent = String(state.raiseTo);
-    raiseBtn.textContent = state.raiseTo >= legal.maxRaiseTo ? 'Олл-ин' : `Рейз ${state.raiseTo}`;
+    $('raise-value').textContent = money(state.raiseTo);
+    raiseBtn.textContent = state.raiseTo >= legal.maxRaiseTo ? 'Олл-ин' : `Рейз ${money(state.raiseTo)}`;
   }
 
   startTurnTimer(room);
@@ -814,8 +986,8 @@ function renderBlackjackControls(room) {
     if (!state.bjBetTouched) state.bjBet = betTurn.min;
     state.bjBet = clamp(state.bjBet, betTurn.min, betTurn.max);
     range.value = String(state.bjBet);
-    $('bj-bet-value').textContent = String(state.bjBet);
-    $('bj-bet').textContent = `Поставить ${state.bjBet}`;
+    $('bj-bet-value').textContent = money(state.bjBet);
+    $('bj-bet').textContent = `Поставить ${money(state.bjBet)}`;
   }
 
   if (legal) {
@@ -879,6 +1051,10 @@ function renderLog() {
 
 function applyTopUpConfig(config) {
   state.topup.config = config;
+  const payoutProviders = (config.payout && config.payout.providers) || [];
+  if (!payoutProviders.some((provider) => provider.id === state.payout.provider)) {
+    state.payout.provider = payoutProviders.length ? payoutProviders[0].id : null;
+  }
   if (!config.enabled) {
     state.topup.provider = null;
   } else if (!config.providers.some((provider) => provider.id === state.topup.provider)) {
@@ -897,13 +1073,17 @@ function currentProvider() {
 
 function renderTopUp() {
   const { config } = state.topup;
-  const card = $('topup-card');
-  card.classList.toggle('hidden', !config.enabled);
-  if (!config.enabled) return;
+  $('btn-topup').disabled = !config.enabled;
+  if (!config.enabled) {
+    $('topup-card').classList.add('hidden');
+    $('payout-card').classList.add('hidden');
+    $('btn-payout').disabled = true;
+    return;
+  }
 
   const provider = currentProvider();
   $('topup-rate').textContent = provider
-    ? `1 ${provider.currency} = ${config.chipsPerUnit} фишек`
+    ? `1 ${provider.currency} = ${money(config.centsPerUnit)}`
     : '';
 
   // Кнопки сервисов рисуем, только когда их больше одного: с единственным
@@ -933,7 +1113,7 @@ function renderTopUp() {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `topup-preset${amount === current ? ' is-active' : ''}`;
-    button.innerHTML = `<b>${amount}</b><br><span class="hint">${amount * config.chipsPerUnit}</span>`;
+    button.innerHTML = `<b>${amount}</b><br><span class="hint">${money(amount * config.centsPerUnit)}</span>`;
     button.addEventListener('click', () => {
       $('topup-amount').value = String(amount);
       renderTopUp();
@@ -947,6 +1127,7 @@ function renderTopUp() {
 
   renderTopUpControls();
   renderTopUpInvoice();
+  renderPayout();
 }
 
 function renderTopUpControls() {
@@ -954,12 +1135,12 @@ function renderTopUpControls() {
   if (!config.enabled) return;
   const provider = currentProvider();
   const amount = Number($('topup-amount').value);
-  const chips = Number.isFinite(amount) && amount > 0 ? Math.floor(amount * config.chipsPerUnit) : 0;
+  const cents = Number.isFinite(amount) && amount > 0 ? Math.round(amount * config.centsPerUnit) : 0;
 
-  $('topup-chips').innerHTML = chips > 0 && provider
-    ? `${amount} ${escapeHtml(provider.currency)} → <b>${chips}</b> фишек`
+  $('topup-chips').innerHTML = cents > 0 && provider
+    ? `${amount} ${escapeHtml(provider.currency)} → <b>${money(cents)}</b>`
     : '&nbsp;';
-  $('topup-create').disabled = busy || chips <= 0;
+  $('topup-create').disabled = busy || cents <= 0;
   $('topup-create').textContent = busy ? 'Создаём счёт…' : 'Выставить счёт';
 }
 
@@ -969,13 +1150,13 @@ function renderTopUpInvoice() {
   box.classList.toggle('hidden', !invoice);
   if (!invoice) return;
 
-  $('topup-invoice-sum').textContent = `${invoice.amount} ${invoice.currency} → ${invoice.chips} фишек`;
+  $('topup-invoice-sum').textContent = `${invoice.amount} ${invoice.currency} → ${money(invoice.cents)}`;
 
   const label = $('topup-invoice-state');
   label.classList.toggle('is-paid', invoice.status === 'paid');
   label.classList.toggle('is-expired', invoice.status === 'expired');
   if (invoice.status === 'paid') {
-    label.textContent = `Оплачено · +${invoice.creditedChips || invoice.chips} фишек`;
+    label.textContent = `Оплачено · +${money(invoice.creditedCents || invoice.cents)}`;
   } else if (invoice.status === 'expired') {
     label.textContent = 'Счёт истёк';
   } else {
@@ -1015,6 +1196,106 @@ function openPayLink(url) {
   else window.open(url, '_blank');
 }
 
+// ——— Вывод ———
+
+function payoutProvider() {
+  const { providers } = state.topup.config.payout;
+  return providers.find((item) => item.id === state.payout.provider) || providers[0] || null;
+}
+
+function renderPayout() {
+  const payout = state.topup.config.payout;
+  if (!payout.enabled) {
+    $('btn-payout').disabled = true;
+    return;
+  }
+  $('btn-payout').disabled = false;
+
+  const provider = payoutProvider();
+  $('payout-rate').textContent = provider
+    ? `${money(state.topup.config.centsPerUnit)} = 1 ${provider.currency}`
+    : '';
+
+  // Кнопки сервисов показываем, только если их правда несколько.
+  const box = $('payout-providers');
+  box.classList.toggle('hidden', payout.providers.length < 2);
+  box.innerHTML = '';
+  if (payout.providers.length > 1) {
+    for (const item of payout.providers) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      const active = provider && item.id === provider.id;
+      button.className = `topup-provider${active ? ' is-active' : ''}`;
+      button.innerHTML = `<b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.currency)}</span>`;
+      button.addEventListener('click', () => {
+        state.payout.provider = item.id;
+        renderPayout();
+      });
+      box.appendChild(button);
+    }
+  }
+
+  $('payout-amount').min = String(payout.minCents / 100);
+  $('payout-amount').max = String(Math.min(payout.maxCents, state.balance) / 100);
+  $('payout-amount').placeholder = `от ${money(payout.minCents).slice(1)}`;
+
+  renderPayoutControls();
+  renderPayoutState();
+}
+
+function renderPayoutControls() {
+  const payout = state.topup.config.payout;
+  if (!payout.enabled) return;
+  const cents = toCents($('payout-amount').value);
+  const enough = cents !== null && cents > 0 && cents <= state.balance && cents >= payout.minCents;
+
+  $('payout-note').innerHTML = cents && cents > 0
+    ? `${money(cents)} · на балансе ${money(state.balance)}`
+    : `Минимум ${money(payout.minCents)} · на балансе ${money(state.balance)}`;
+  $('payout-send').disabled = state.payout.busy || !enough;
+  $('payout-send').textContent = state.payout.busy ? 'Отправляем…' : 'Вывести';
+}
+
+function renderPayoutState() {
+  const box = $('payout-state');
+  const last = state.payout.last;
+  box.classList.toggle('hidden', !last);
+  if (!last) return;
+
+  $('payout-state-sum').textContent = `${money(last.cents)} → ${last.amount} ${last.currency}`;
+  const label = $('payout-state-text');
+  label.classList.toggle('is-paid', last.status === 'done');
+  label.classList.toggle('is-expired', last.status === 'failed' || last.status === 'unknown');
+  label.textContent = {
+    done: 'Отправлено',
+    pending: 'Отправляем…',
+    failed: `Не вышло: ${last.error || 'сервис отказал'}`,
+    unknown: 'В обработке — сервис не ответил, деньги не потеряны',
+  }[last.status] || last.status;
+}
+
+function createPayout() {
+  const payout = state.topup.config.payout;
+  const provider = payoutProvider();
+  const cents = toCents($('payout-amount').value);
+  if (!provider) return;
+  if (cents === null || cents <= 0) {
+    toast('Введите сумму');
+    return;
+  }
+  if (cents < payout.minCents) {
+    toast(`Минимальная сумма вывода — ${money(payout.minCents)}`);
+    return;
+  }
+  if (cents > state.balance) {
+    toast(`На балансе только ${money(state.balance)}`);
+    return;
+  }
+  state.payout.busy = true;
+  renderPayoutControls();
+  send({ type: 'payout_create', provider: provider.id, cents });
+}
+
 let topupTimer = null;
 
 // Вебхук может быть не настроен (или не дойти) — поэтому пока счёт висит,
@@ -1052,18 +1333,19 @@ function bindUi() {
   });
 
   $('create-btn').addEventListener('click', () => {
+    // Настройки стола игрок задаёт в долларах, сервер считает в центах.
     const common = {
       game: state.game,
-      buyIn: Number($('set-buyin').value),
+      buyIn: toCents($('set-buyin').value),
       turnSeconds: Number($('set-turn').value),
       isPublic: $('set-public').checked,
     };
     const settings = state.game === 'blackjack'
-      ? { ...common, minBet: Number($('set-minbet').value), maxBet: Number($('set-maxbet').value) }
+      ? { ...common, minBet: toCents($('set-minbet').value), maxBet: toCents($('set-maxbet').value) }
       : {
         ...common,
-        smallBlind: Number($('set-sb').value),
-        bigBlind: Number($('set-bb').value),
+        smallBlind: toCents($('set-sb').value),
+        bigBlind: toCents($('set-bb').value),
         maxPlayers: Number($('set-seats').value),
       };
     send({ type: 'create_room', settings });
@@ -1080,6 +1362,40 @@ function bindUi() {
     }
     send({ type: 'join_room', code });
   });
+
+  // Нижняя навигация
+  for (const button of document.querySelectorAll('.nav-btn')) {
+    button.addEventListener('click', () => {
+      haptic('light');
+      showTab(button.dataset.tab);
+    });
+  }
+
+  // Кнопки денег и плитки главной
+  $('btn-topup').addEventListener('click', () => {
+    if (togglePanel('topup-card')) renderTopUp();
+  });
+  $('btn-payout').addEventListener('click', () => {
+    if (togglePanel('payout-card')) renderPayout();
+  });
+  $('tile-friends').addEventListener('click', inviteFriends);
+  $('tile-leaders').addEventListener('click', () => {
+    if (togglePanel('leaders-card')) {
+      $('tile-leaders').classList.add('is-active');
+      send({ type: 'leaders' });
+    }
+  });
+  $('tile-history').addEventListener('click', () => {
+    if (togglePanel('history-card')) {
+      $('tile-history').classList.add('is-active');
+      send({ type: 'history' });
+    }
+  });
+  $('leaders-refresh').addEventListener('click', () => send({ type: 'leaders' }));
+  $('history-refresh').addEventListener('click', () => send({ type: 'history' }));
+
+  $('payout-amount').addEventListener('input', renderPayoutControls);
+  $('payout-send').addEventListener('click', createPayout);
 
   $('topup-amount').addEventListener('input', renderTopUp);
   $('topup-create').addEventListener('click', createTopUp);
@@ -1098,6 +1414,7 @@ function bindUi() {
   });
 
   $('rooms-refresh').addEventListener('click', () => send({ type: 'list_rooms' }));
+  $('rooms-refresh-games').addEventListener('click', () => send({ type: 'list_rooms' }));
   $('admin-refresh').addEventListener('click', () => send({ type: 'admin_accounts' }));
   $('admin-give').addEventListener('click', () => adminGrant('add', 1));
   $('admin-take').addEventListener('click', () => adminGrant('add', -1));
@@ -1116,7 +1433,7 @@ function bindUi() {
     button.addEventListener('click', () => grantChips(button.dataset.chips, 'add'));
   });
   $('chips-give').addEventListener('click', () => grantChips($('chips-amount').value, 'add'));
-  $('chips-take').addEventListener('click', () => grantChips(-Math.abs(Number($('chips-amount').value)), 'add'));
+  $('chips-take').addEventListener('click', () => grantChips(-Math.abs(Number($('chips-amount').value) || 0), 'add'));
   $('chips-set').addEventListener('click', () => grantChips($('chips-amount').value, 'set'));
 
   $('btn-leave').addEventListener('click', leaveRoom);
@@ -1235,9 +1552,9 @@ function closeChipsSheet() {
 
 function grantChips(amount, mode = 'add') {
   if (!state.chipsSeat) return;
-  const value = Math.floor(Number(amount));
-  if (!Number.isFinite(value) || (mode === 'add' && value === 0)) {
-    toast('Введите количество фишек');
+  const value = toCents(amount);
+  if (value === null || !Number.isFinite(value) || (mode === 'add' && value === 0)) {
+    toast('Введите сумму в долларах');
     return;
   }
   send({ type: 'admin_grant', target: state.chipsSeat, amount: value, mode });
@@ -1289,6 +1606,19 @@ function copyCode() {
   toast(`Код стола ${text} скопирован`);
 }
 
+// Приглашение в приложение вообще, без привязки к столу: это лобби, а не стол.
+function inviteFriends() {
+  const { botUsername, appShortName } = state.config;
+  if (tg && botUsername && appShortName) {
+    const link = `https://t.me/${botUsername}/${appShortName}`;
+    const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Заходи играть — покер и блекджек прямо в Telegram')}`;
+    tg.openTelegramLink(share);
+    return;
+  }
+  if (navigator.clipboard) navigator.clipboard.writeText(location.origin).catch(() => {});
+  toast('Ссылка скопирована');
+}
+
 function invite() {
   const room = state.room;
   if (!room) return;
@@ -1296,7 +1626,7 @@ function invite() {
 
   if (tg && botUsername && appShortName) {
     const link = `https://t.me/${botUsername}/${appShortName}?startapp=${room.code}`;
-    const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Заходи играть в покер на фишки!')}`;
+    const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Заходи за стол — покер и блекджек в Telegram')}`;
     tg.openTelegramLink(share);
     return;
   }

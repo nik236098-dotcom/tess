@@ -47,7 +47,7 @@ class XRocketProvider {
 
     if (!data || data.success !== true) {
       const error = data && (data.message || (Array.isArray(data.errors) && data.errors.map((e) => e.error || e.message).join(', ')));
-      throw new PaymentError(`xRocket отказал: ${error || `HTTP ${status}`}`);
+      throw new PaymentError(`xRocket отказал: ${error || `HTTP ${status}`}`, { ambiguous: status >= 500 });
     }
     return data.data;
   }
@@ -93,6 +93,32 @@ class XRocketProvider {
       url: invoice.link || null,
       fallbackUrl: null,
       paidAt: (fact && fact.paid) || invoice.paid || null,
+    };
+  }
+
+  // ——— Выплата ———
+
+  get supportsPayout() {
+    return true;
+  }
+
+  // transferId — ключ идемпотентности: повтор с тем же ключом не создаёт
+  // второй перевод, поэтому запрос можно безопасно повторить.
+  async payout({ userId, amount, spendId, comment = null }) {
+    const transfer = await this.call('/app/transfer', {
+      method: 'POST',
+      body: {
+        tgUserId: Number(userId),
+        currency: this.currency,
+        amount: Number(amount),
+        transferId: spendId,
+        description: comment || undefined,
+      },
+    });
+    return {
+      id: String(transfer.id),
+      status: 'completed',
+      amount: Number(transfer.amount),
     };
   }
 

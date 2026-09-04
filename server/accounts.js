@@ -3,11 +3,15 @@
 const fs = require('fs');
 const path = require('path');
 
-// Баланс игрока — отдельная сущность, не связанная со столом.
-// Фишки со стола и на стол переезжают только через сесть / встать / пополнить.
+const { formatMoney } = require('./money');
 
-const DEFAULT_START_BALANCE = 10000;
-const MAX_BALANCE = 1000000000;
+// Баланс игрока — отдельная сущность, не связанная со столом.
+// Деньги со стола и на стол переезжают только через сесть / встать / пополнить.
+//
+// Все суммы здесь — целые центы (см. money.js): $100.00 хранится как 10000.
+
+const DEFAULT_START_BALANCE = 10000; // $100.00
+const MAX_BALANCE = 1000000000; // $10 000 000.00
 
 class AccountError extends Error {}
 
@@ -131,7 +135,7 @@ class Accounts {
     if (!account) throw new AccountError('Счёт не найден');
     if (value <= 0) throw new AccountError('Некорректная сумма');
     if (account.balance < value) {
-      throw new AccountError(`На балансе не хватает фишек: нужно ${value}, есть ${account.balance}`);
+      throw new AccountError(`На балансе не хватает денег: нужно ${formatMoney(value)}, есть ${formatMoney(account.balance)}`);
     }
     account.balance -= value;
     this._changed(account);
@@ -153,10 +157,10 @@ class Accounts {
     if (!account) throw new AccountError(`Игрок «${targetQuery}» не найден. Нужен Telegram ID или @ник`);
 
     const value = Math.floor(Number(amount));
-    if (!Number.isFinite(value)) throw new AccountError('Укажите количество фишек числом');
+    if (!Number.isFinite(value)) throw new AccountError('Укажите сумму числом');
 
     const target = mode === 'set' ? value : account.balance + value;
-    if (target < 0) throw new AccountError(`У игрока столько фишек нет: на балансе ${account.balance}`);
+    if (target < 0) throw new AccountError(`У игрока столько нет: на балансе ${formatMoney(account.balance)}`);
     if (target > MAX_BALANCE) throw new AccountError('Слишком большой баланс');
 
     const delta = target - account.balance;

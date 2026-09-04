@@ -13,12 +13,6 @@
     <!-- Экран входа -->
     <section id="screen-lobby" class="screen">
       <div class="lobby">
-        <div class="brand">
-          <div class="brand-chip">♠</div>
-          <h1>Покер с друзьями</h1>
-          <p class="muted">Техасский холдем на игровые фишки. Никаких денег — только азарт и вечерние посиделки.</p>
-        </div>
-
         <div id="dev-login" class="card hidden">
           <label class="field">
             <span>Как вас зовут</span>
@@ -29,163 +23,256 @@
         </div>
 
         <div id="lobby-actions" class="lobby-actions hidden">
-          <div class="card balance-card">
-            <div class="balance-main">
-              <span class="balance-label">Ваш баланс</span>
-              <b id="balance-value">—</b>
-              <span class="balance-unit">фишек</span>
+
+          <!-- ═══ Вкладка «Главная» ═══ -->
+          <div id="tab-home" class="tab-panel">
+            <div class="account-head">
+              <div id="avatar" class="avatar-big">♠</div>
+              <div class="account-sums">
+                <span class="account-label">БАЛАНС</span>
+                <b id="balance-value">$0.00</b>
+              </div>
             </div>
+
+            <div class="account-actions">
+              <button id="btn-topup" class="btn btn-primary btn-money">+&nbsp; Пополнить</button>
+              <button id="btn-payout" class="btn btn-dark btn-money">↗&nbsp; Вывести</button>
+            </div>
+
+            <div class="tiles">
+              <button id="tile-friends" class="tile">
+                <span class="tile-icon">👥</span>
+                <span>Друзья</span>
+              </button>
+              <button id="tile-leaders" class="tile">
+                <span class="tile-icon">🏆</span>
+                <span>Лидеры</span>
+              </button>
+              <button id="tile-history" class="tile">
+                <span class="tile-icon">🧾</span>
+                <span>История</span>
+              </button>
+            </div>
+
+            <!-- Пополнение -->
+            <div id="topup-card" class="card hidden">
+              <div class="card-head">
+                <h2>Пополнить баланс</h2>
+                <span class="hint" id="topup-rate"></span>
+              </div>
+              <div id="topup-providers" class="topup-providers"></div>
+              <div id="topup-presets" class="topup-presets"></div>
+              <div class="row">
+                <input id="topup-amount" class="topup-amount" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Сумма" />
+                <button id="topup-create" class="btn btn-primary">Выставить счёт</button>
+              </div>
+              <p class="hint" id="topup-chips">&nbsp;</p>
+
+              <div id="topup-invoice" class="topup-invoice hidden">
+                <div class="topup-invoice-head">
+                  <b id="topup-invoice-sum">—</b>
+                  <span id="topup-invoice-state" class="topup-state">Ждём оплату…</span>
+                </div>
+                <div class="chips-actions">
+                  <button id="topup-pay" class="btn btn-primary">Оплатить</button>
+                  <button id="topup-check" class="btn btn-ghost">Я оплатил</button>
+                  <button id="topup-cancel" class="btn btn-ghost">Отмена</button>
+                </div>
+              </div>
+
+              <p class="hint">Оплата проходит в боте платёжного сервиса. Деньги придут на баланс сразу после оплаты.</p>
+            </div>
+
+            <!-- Вывод -->
+            <div id="payout-card" class="card hidden">
+              <div class="card-head">
+                <h2>Вывести деньги</h2>
+                <span class="hint" id="payout-rate"></span>
+              </div>
+              <div id="payout-providers" class="topup-providers"></div>
+              <div class="row">
+                <input id="payout-amount" class="topup-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Сумма в $" />
+                <button id="payout-send" class="btn btn-primary">Вывести</button>
+              </div>
+              <p class="hint" id="payout-note">&nbsp;</p>
+              <div id="payout-state" class="topup-invoice hidden">
+                <div class="topup-invoice-head">
+                  <b id="payout-state-sum">—</b>
+                  <span id="payout-state-text" class="topup-state">Отправляем…</span>
+                </div>
+              </div>
+              <p class="hint">Деньги уходят в Telegram-бот платёжного сервиса на ваш аккаунт.</p>
+            </div>
+
+            <!-- Лидеры -->
+            <div id="leaders-card" class="card hidden">
+              <div class="card-head">
+                <h2>Лидеры</h2>
+                <button id="leaders-refresh" class="link-btn">обновить</button>
+              </div>
+              <div id="leaders-list" class="accounts-list"></div>
+            </div>
+
+            <!-- История -->
+            <div id="history-card" class="card hidden">
+              <div class="card-head">
+                <h2>История операций</h2>
+                <button id="history-refresh" class="link-btn">обновить</button>
+              </div>
+              <div id="history-list" class="accounts-list"></div>
+            </div>
+
+            <!-- Активные игры -->
+            <div class="card">
+              <div class="card-head">
+                <h2><span class="head-icon">🎮</span> Активные игры</h2>
+                <button id="rooms-refresh" class="link-btn">обновить</button>
+              </div>
+              <div id="home-rooms" class="active-games">
+                <p class="hint">Ищем открытые столы…</p>
+              </div>
+            </div>
+
+            <!-- Последние выигрыши -->
+            <div id="wins-card" class="card hidden">
+              <h2>Последние выигрыши</h2>
+              <div id="wins-list" class="wins-row"></div>
+            </div>
+
+            <div id="admin-card" class="card hidden">
+              <div class="card-head">
+                <h2>Админ: балансы</h2>
+                <button id="admin-refresh" class="link-btn">обновить счета</button>
+              </div>
+              <div class="settings-grid">
+                <label class="field">
+                  <span>Telegram ID или @ник</span>
+                  <input id="admin-target" type="text" placeholder="123456789" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>Сколько, $</span>
+                  <input id="admin-amount" type="number" step="1" placeholder="50" inputmode="decimal" />
+                </label>
+              </div>
+              <div class="chips-actions">
+                <button id="admin-give" class="btn btn-primary">Выдать</button>
+                <button id="admin-take" class="btn btn-ghost">Забрать</button>
+                <button id="admin-set" class="btn btn-ghost">Выставить</button>
+              </div>
+              <div id="admin-accounts" class="accounts-list"></div>
+              <p class="hint">То же командой в чате стола: <code>/дать 123456789 50</code>, <code>/помощь</code>.</p>
+            </div>
+
             <button id="btn-my-id" class="id-row">
               Ваш Telegram ID: <b id="my-id">—</b> <span class="copy-hint">нажмите, чтобы скопировать</span>
             </button>
-            <p class="hint">Фишки выдаёт админ — назовите ему этот ID.</p>
           </div>
 
-          <div id="topup-card" class="card hidden">
-            <div class="card-head">
-              <h2>Пополнить баланс</h2>
-              <span class="hint" id="topup-rate"></span>
-            </div>
-            <div id="topup-providers" class="topup-providers"></div>
-            <div id="topup-presets" class="topup-presets"></div>
-            <div class="row">
-              <input id="topup-amount" class="topup-amount" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Сумма" />
-              <button id="topup-create" class="btn btn-primary">Выставить счёт</button>
-            </div>
-            <p class="hint" id="topup-chips">&nbsp;</p>
-
-            <div id="topup-invoice" class="topup-invoice hidden">
-              <div class="topup-invoice-head">
-                <b id="topup-invoice-sum">—</b>
-                <span id="topup-invoice-state" class="topup-state">Ждём оплату…</span>
+          <!-- ═══ Вкладка «Игры» ═══ -->
+          <div id="tab-games" class="tab-panel hidden">
+            <div class="card">
+              <div class="card-head">
+                <h2>Открытые столы</h2>
+                <button id="rooms-refresh-games" class="link-btn">обновить</button>
               </div>
-              <div class="chips-actions">
-                <button id="topup-pay" class="btn btn-primary">Оплатить</button>
-                <button id="topup-check" class="btn btn-ghost">Я оплатил</button>
-                <button id="topup-cancel" class="btn btn-ghost">Отмена</button>
+              <div id="rooms-list" class="rooms-list">
+                <p class="hint">Ищем открытые столы…</p>
               </div>
             </div>
 
-            <p class="hint">Оплата проходит в боте платёжного сервиса. Фишки придут на баланс сразу после оплаты.</p>
+            <div class="card">
+              <h2>Зайти по коду</h2>
+              <div class="row">
+                <input id="join-code" class="code-input" type="text" maxlength="5" placeholder="КОД" autocomplete="off" autocapitalize="characters" />
+                <button id="join-btn" class="btn btn-primary">Войти</button>
+              </div>
+              <p class="hint">Попросите у друга код стола из пяти символов.</p>
+            </div>
+
+            <div class="card">
+              <h2>Создать стол</h2>
+              <div class="game-picker">
+                <button type="button" class="game-option is-active" data-game="holdem">
+                  <b>Холдем</b><span>покер, 2–9 игроков</span>
+                </button>
+                <button type="button" class="game-option" data-game="blackjack">
+                  <b>Блекджек</b><span>вдвоём, кто ближе к 21</span>
+                </button>
+              </div>
+              <div class="settings-grid" id="holdem-settings">
+                <label class="field">
+                  <span>Малый блайнд, $</span>
+                  <input id="set-sb" type="number" min="0.01" step="0.01" value="0.05" inputmode="decimal" />
+                </label>
+                <label class="field">
+                  <span>Большой блайнд, $</span>
+                  <input id="set-bb" type="number" min="0.02" step="0.01" value="0.10" inputmode="decimal" />
+                </label>
+                <label class="field">
+                  <span>Вход за стол, $</span>
+                  <input id="set-buyin" type="number" min="0.2" step="1" value="10" inputmode="decimal" />
+                </label>
+                <label class="field">
+                  <span>Мест за столом</span>
+                  <select id="set-seats">
+                    <option>2</option><option>3</option><option>4</option><option>5</option>
+                    <option selected>6</option><option>7</option><option>8</option><option>9</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="settings-grid hidden" id="blackjack-settings">
+                <label class="field">
+                  <span>Минимальная ставка, $</span>
+                  <input id="set-minbet" type="number" min="0.01" step="0.01" value="0.10" inputmode="decimal" />
+                </label>
+                <label class="field">
+                  <span>Максимальная ставка, $</span>
+                  <input id="set-maxbet" type="number" min="0.01" step="0.1" value="2" inputmode="decimal" />
+                </label>
+              </div>
+
+              <div class="settings-grid">
+                <label class="field">
+                  <span>Секунд на ход</span>
+                  <select id="set-turn">
+                    <option>20</option><option>30</option><option selected>45</option><option>60</option><option>90</option>
+                  </select>
+                </label>
+              </div>
+              <label class="switch">
+                <input id="set-public" type="checkbox" checked />
+                <span>Открытый стол — он появится в «Активных играх» у всех</span>
+              </label>
+              <button id="create-btn" class="btn btn-primary">Создать стол</button>
+            </div>
+
+            <details class="card rules">
+              <summary>Правила и порядок комбинаций</summary>
+              <ol class="rules-list">
+                <li>Каждому — две закрытые карты, на стол выкладываются пять общих.</li>
+                <li>Торговля идёт четыре круга: до флопа, после флопа, после тёрна и после ривера.</li>
+                <li>Собираем лучшую комбинацию из пяти карт — своих и общих в любом сочетании.</li>
+              </ol>
+              <div class="combos">
+                <span>Флеш-рояль</span><span>Стрит-флеш</span><span>Каре</span><span>Фулл-хаус</span>
+                <span>Флеш</span><span>Стрит</span><span>Тройка</span><span>Две пары</span><span>Пара</span><span>Старшая карта</span>
+              </div>
+            </details>
           </div>
-
-          <div id="admin-card" class="card hidden">
-            <div class="card-head">
-              <h2>Админ: фишки</h2>
-              <button id="admin-refresh" class="link-btn">обновить счета</button>
-            </div>
-            <div class="settings-grid">
-              <label class="field">
-                <span>Telegram ID или @ник</span>
-                <input id="admin-target" type="text" placeholder="123456789" autocomplete="off" />
-              </label>
-              <label class="field">
-                <span>Сколько фишек</span>
-                <input id="admin-amount" type="number" step="100" placeholder="5000" inputmode="numeric" />
-              </label>
-            </div>
-            <div class="chips-actions">
-              <button id="admin-give" class="btn btn-primary">Выдать</button>
-              <button id="admin-take" class="btn btn-ghost">Забрать</button>
-              <button id="admin-set" class="btn btn-ghost">Выставить</button>
-            </div>
-            <div id="admin-accounts" class="accounts-list"></div>
-            <p class="hint">То же командой в чате стола: <code>/дать 123456789 5000</code>, <code>/помощь</code>.</p>
-          </div>
-
-          <div class="card">
-            <div class="card-head">
-              <h2>Открытые столы</h2>
-              <button id="rooms-refresh" class="link-btn">обновить</button>
-            </div>
-            <div id="rooms-list" class="rooms-list">
-              <p class="hint">Ищем открытые столы…</p>
-            </div>
-          </div>
-
-          <div class="card">
-            <h2>Зайти по коду</h2>
-            <div class="row">
-              <input id="join-code" class="code-input" type="text" maxlength="5" placeholder="КОД" autocomplete="off" autocapitalize="characters" />
-              <button id="join-btn" class="btn btn-primary">Войти</button>
-            </div>
-            <p class="hint">Попросите у друга код стола из пяти символов.</p>
-          </div>
-
-          <div class="card">
-            <h2>Создать стол</h2>
-            <div class="game-picker">
-              <button type="button" class="game-option is-active" data-game="holdem">
-                <b>Холдем</b><span>покер, 2–9 игроков</span>
-              </button>
-              <button type="button" class="game-option" data-game="blackjack">
-                <b>Блекджек</b><span>вдвоём, кто ближе к 21</span>
-              </button>
-            </div>
-            <div class="settings-grid" id="holdem-settings">
-              <label class="field">
-                <span>Малый блайнд</span>
-                <input id="set-sb" type="number" min="1" step="1" value="5" inputmode="numeric" />
-              </label>
-              <label class="field">
-                <span>Большой блайнд</span>
-                <input id="set-bb" type="number" min="2" step="1" value="10" inputmode="numeric" />
-              </label>
-              <label class="field">
-                <span>Стартовый стек</span>
-                <input id="set-buyin" type="number" min="20" step="10" value="1000" inputmode="numeric" />
-              </label>
-              <label class="field">
-                <span>Мест за столом</span>
-                <select id="set-seats">
-                  <option>2</option><option>3</option><option>4</option><option>5</option>
-                  <option selected>6</option><option>7</option><option>8</option><option>9</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="settings-grid hidden" id="blackjack-settings">
-              <label class="field">
-                <span>Минимальная ставка</span>
-                <input id="set-minbet" type="number" min="1" step="1" value="10" inputmode="numeric" />
-              </label>
-              <label class="field">
-                <span>Максимальная ставка</span>
-                <input id="set-maxbet" type="number" min="1" step="10" value="200" inputmode="numeric" />
-              </label>
-            </div>
-
-            <div class="settings-grid">
-              <label class="field">
-                <span>Секунд на ход</span>
-                <select id="set-turn">
-                  <option>20</option><option>30</option><option selected>45</option><option>60</option><option>90</option>
-                </select>
-              </label>
-            </div>
-            <label class="switch">
-              <input id="set-public" type="checkbox" checked />
-              <span>Открытый стол — друзья увидят его в списке и зайдут без кода</span>
-            </label>
-            <button id="create-btn" class="btn btn-primary">Создать стол</button>
-          </div>
-
-          <details class="card rules">
-            <summary>Правила и порядок комбинаций</summary>
-            <ol class="rules-list">
-              <li>Каждому — две закрытые карты, на стол выкладываются пять общих.</li>
-              <li>Торговля идёт четыре круга: до флопа, после флопа, после тёрна и после ривера.</li>
-              <li>Собираем лучшую комбинацию из пяти карт — своих и общих в любом сочетании.</li>
-            </ol>
-            <div class="combos">
-              <span>Флеш-рояль</span><span>Стрит-флеш</span><span>Каре</span><span>Фулл-хаус</span>
-              <span>Флеш</span><span>Стрит</span><span>Тройка</span><span>Две пары</span><span>Пара</span><span>Старшая карта</span>
-            </div>
-          </details>
         </div>
 
         <div id="lobby-status" class="status">Подключаемся…</div>
       </div>
+
+      <nav id="bottom-nav" class="bottom-nav hidden">
+        <button class="nav-btn" data-tab="games">
+          <span class="nav-icon">🎲</span><span>Игры</span>
+        </button>
+        <button class="nav-btn is-active" data-tab="home">
+          <span class="nav-icon">🏠</span><span>Главная</span>
+        </button>
+      </nav>
     </section>
 
     <!-- Экран стола -->
@@ -293,14 +380,14 @@
           </div>
           <p id="chips-stack" class="muted small">Баланс —</p>
           <div class="chips-presets">
-            <button class="chip-btn" data-chips="100">+100</button>
-            <button class="chip-btn" data-chips="500">+500</button>
-            <button class="chip-btn" data-chips="1000">+1000</button>
-            <button class="chip-btn" data-chips="5000">+5000</button>
+            <button class="chip-btn" data-chips="1">+$1</button>
+            <button class="chip-btn" data-chips="5">+$5</button>
+            <button class="chip-btn" data-chips="10">+$10</button>
+            <button class="chip-btn" data-chips="50">+$50</button>
           </div>
           <label class="field">
             <span>Своё количество</span>
-            <input id="chips-amount" type="number" min="0" step="10" inputmode="numeric" placeholder="например 2500" />
+            <input id="chips-amount" type="number" min="0" step="1" inputmode="decimal" placeholder="например 25" />
           </label>
           <div class="chips-actions">
             <button id="chips-give" class="btn btn-primary">Выдать</button>

@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const { once } = require('node:events');
 
 // Проверяем пополнение целиком: команда из мини-аппа → счёт → вебхук по HTTP
-// → фишки на балансе и сообщение игроку.
+// → деньги на балансе и сообщение игроку.
 const { createApp } = require('../server/index');
 const { Accounts } = require('../server/accounts');
 const { Payments } = require('../server/payments');
@@ -105,7 +105,7 @@ function paidWebhook(recordId) {
   });
 }
 
-test('игрок пополняет баланс: счёт, вебхук, фишки', { timeout: 10000 }, async (t) => {
+test('игрок пополняет баланс: счёт, вебхук, деньги', { timeout: 10000 }, async (t) => {
   const { port, accounts } = await startServer(t);
 
   const client = connect(port);
@@ -119,7 +119,7 @@ test('игрок пополняет баланс: счёт, вебхук, фиш
 
   client.send({ type: 'topup_create', provider: 'cryptobot', amount: 5 });
   const { invoice } = await client.wait(byType('topup_invoice'));
-  assert.strictEqual(invoice.chips, 5000);
+  assert.strictEqual(invoice.cents, 500, '5 USDT = $5.00');
   assert.strictEqual(invoice.url, 'https://t.me/CryptoBot/app?startapp=IVoc1');
   assert.strictEqual(accounts.balanceOf(auth.user.id), 0, 'до оплаты баланс не меняется');
 
@@ -132,10 +132,10 @@ test('игрок пополняет баланс: счёт, вебхук, фиш
   assert.strictEqual(response.status, 200);
 
   const paid = await client.wait(byType('topup_paid'));
-  assert.strictEqual(paid.chips, 5000);
+  assert.strictEqual(paid.cents, 500);
   const balance = await client.wait(byType('balance'));
-  assert.strictEqual(balance.balance, 5000);
-  assert.strictEqual(accounts.balanceOf(auth.user.id), 5000);
+  assert.strictEqual(balance.balance, 500);
+  assert.strictEqual(accounts.balanceOf(auth.user.id), 500);
 });
 
 test('вебхук с неверной подписью отвергается и баланс не растёт', { timeout: 10000 }, async (t) => {
@@ -199,7 +199,7 @@ test('настройки пополнения отдаются в /config', { ti
   const config = await (await fetch(`http://127.0.0.1:${port}/config`)).json();
 
   assert.strictEqual(config.topup.enabled, true);
-  assert.strictEqual(config.topup.chipsPerUnit, 1000);
+  assert.strictEqual(config.topup.centsPerUnit, 100, '1 USDT = $1.00');
   assert.ok(Array.isArray(config.topup.presets));
   // Токенов и прочих секретов в публичном конфиге быть не должно.
   assert.ok(!JSON.stringify(config).includes(TOKEN));

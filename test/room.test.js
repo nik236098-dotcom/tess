@@ -32,7 +32,7 @@ test('посадка списывает вход с баланса, а уход 
   assert.strictEqual(room.seats[0], null);
 });
 
-test('без фишек на балансе за стол не сесть', (t) => {
+test('без денег на балансе за стол не сесть', (t) => {
   const room = table({ balance: 1000, players: ['Аня', 'Боря'] });
   t.after(() => room.dispose());
 
@@ -40,7 +40,7 @@ test('без фишек на балансе за стол не сесть', (t) 
   room.bankRef.ensure({ id: 'u2', name: 'Вика' });
   room.bankRef.grant('u2', 100, 'set');
 
-  assert.throws(() => room.sit('u2', 2), /не хватает фишек/);
+  assert.throws(() => room.sit('u2', 2), /не хватает денег/);
   assert.strictEqual(room.seats[2], null);
 });
 

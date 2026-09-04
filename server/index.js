@@ -10,6 +10,7 @@ const { verifyInitData } = require('./telegram');
 const { Room, RoomError, normalizeSettings } = require('./room');
 const { Accounts, AccountError, DEFAULT_START_BALANCE } = require('./accounts');
 const { createPayments, PaymentError } = require('./payments');
+const { formatMoney, parseMoney } = require('./money');
 const { loadEnv } = require('./env');
 
 loadEnv();
@@ -18,6 +19,7 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const ROOM_TTL_MS = 30 * 60 * 1000; // пустую комнату держим полчаса
 const WEBHOOK_PREFIX = '/pay/'; // /pay/<провайдер>/webhook
 const MAX_WEBHOOK_BYTES = 64 * 1024; // тело вебхука заведомо меньше
+const RECENT_WINS_LIMIT = 12; // лента «Последние выигрыши» на главной
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // без похожих символов
 
 const MIME = {
@@ -66,11 +68,21 @@ function createApp(options = {}) {
     client.send({
       type: 'topup_paid',
       id: record.id,
-      chips: record.creditedChips,
+      cents: record.creditedCents,
       amount: record.paidAmount ?? record.amount,
       currency: record.currency,
     });
-    client.send({ type: 'system', text: `Баланс пополнен на ${record.creditedChips} фишек` });
+    client.send({ type: 'system', text: `Баланс пополнен на ${formatMoney(record.creditedCents)}` });
+  };
+
+  // Вывод сменил состояние — сообщаем владельцу счёта.
+  payments.onPayout = (record) => {
+    const client = clientsByUser.get(record.userId);
+    if (!client) return;
+    client.send({ type: 'payout_status', payout: payments.payoutView(record) });
+    if (record.status === 'done') {
+      client.send({ type: 'system', text: `Выплата ${formatMoney(record.cents)} отправлена в ${record.currency}` });
+    }
   };
 
   // Без токена бота приложение работает локально «для себя» — там админ каждый.
@@ -88,6 +100,8 @@ function createApp(options = {}) {
 
   const rooms = new Map(); // код -> Room
   const clientsByUser = new Map(); // id пользователя -> клиент
+  // Последние выигрыши для главной. Живут в памяти: это витрина, а не отчёт.
+  const recentWins = [];
 
   // ——— Комнаты ———
 
@@ -104,6 +118,11 @@ function createApp(options = {}) {
     rooms.set(room.code, room);
     room.on('update', () => broadcastState(room));
     room.on('chat', (message) => broadcast(room, { type: 'chat', ...message }));
+    room.on('win', (win) => {
+      if (!win || win.amount <= 0) return;
+      recentWins.unshift({ ...win, at: Date.now() });
+      recentWins.length = Math.min(recentWins.length, RECENT_WINS_LIMIT);
+    });
   }
 
   function markEmpty(room) {
@@ -348,8 +367,17 @@ function createApp(options = {}) {
       case 'topup_status':
         checkTopUp(client, message.id);
         break;
+      case 'payout_create':
+        createPayout(client, message.provider, message.cents);
+        break;
+      case 'history':
+        client.send({ type: 'history', history: payments.historyFor(client.user.id) });
+        break;
+      case 'leaders':
+        client.send({ type: 'leaders', leaders: accounts.list(20) });
+        break;
       case 'list_rooms':
-        client.send({ type: 'rooms', rooms: publicRooms() });
+        client.send({ type: 'rooms', rooms: publicRooms(), wins: recentWins });
         break;
       case 'ping':
         client.send({ type: 'pong', at: Date.now() });
@@ -376,10 +404,10 @@ function createApp(options = {}) {
       const { account, delta } = accounts.grant(String(target || '').trim(), amount, mode === 'set' ? 'set' : 'add');
       const changed = delta === 0
         ? 'без изменений'
-        : `${delta > 0 ? '+' : ''}${delta}`;
+        : `${delta > 0 ? '+' : ''}${formatMoney(delta)}`;
       client.send({
         type: 'system',
-        text: `${account.name} (${account.id}): ${changed}, баланс ${account.balance}`,
+        text: `${account.name} (${account.id}): ${changed}, баланс ${formatMoney(account.balance)}`,
       });
       // Получателю говорим отдельно — он мог сидеть в другой комнате.
       const receiver = clientsByUser.get(account.id);
@@ -387,8 +415,8 @@ function createApp(options = {}) {
         receiver.send({
           type: 'system',
           text: delta > 0
-            ? `Админ начислил ${delta} фишек. Баланс: ${account.balance}`
-            : `Админ списал ${Math.abs(delta)} фишек. Баланс: ${account.balance}`,
+            ? `Админ начислил ${formatMoney(delta)}. Баланс: ${formatMoney(account.balance)}`
+            : `Админ списал ${formatMoney(Math.abs(delta))}. Баланс: ${formatMoney(account.balance)}`,
         });
       }
       return account;
@@ -443,17 +471,37 @@ function createApp(options = {}) {
       });
   }
 
+  // Вывод: сумма приходит в центах, всё остальное считает сервер.
+  function createPayout(client, providerId, cents) {
+    if (!payments.payoutEnabled) {
+      client.fail('Вывод сейчас не подключён');
+      return;
+    }
+    payments
+      .createPayout(client.user, providerId, cents)
+      .then((payout) => client.send({ type: 'payout_status', payout }))
+      .catch((error) => {
+        if (error instanceof PaymentError) {
+          client.fail(error.message);
+          return;
+        }
+        console.error('Не удалось выполнить вывод:', error);
+        client.fail('Не удалось выполнить вывод, попробуйте позже');
+      });
+  }
+
   const COMMAND_HELP = [
     'Команды:',
     '/баланс — свой баланс',
     '/id — свой Telegram ID',
     '',
-    'Для админа (адресат — Telegram ID или @ник):',
-    '/дать 123456789 5000 — начислить',
-    '/забрать 123456789 1000 — списать',
-    '/установить 123456789 10000 — выставить баланс',
+    'Для админа (адресат — Telegram ID или @ник, суммы в долларах):',
+    '/дать 123456789 50 — начислить $50.00',
+    '/забрать 123456789 10 — списать $10.00',
+    '/установить 123456789 100 — выставить баланс $100.00',
     '/баланс 123456789 — посмотреть чужой баланс',
     '/счета — список счетов',
+    '/выплаты — зависшие выводы',
   ].join('\n');
 
   function runCommand(client, line) {
@@ -464,11 +512,12 @@ function createApp(options = {}) {
       if (!tokens.length) throw new RoomError('Укажите Telegram ID или @ник');
       return tokens[0];
     };
+    // Админ пишет сумму в долларах — внутрь она уходит центами.
     const amount = () => {
-      if (tokens.length < 2) throw new RoomError('Укажите количество фишек');
-      const value = Number(tokens[1]);
-      if (!Number.isFinite(value)) throw new RoomError('Количество должно быть числом');
-      return value;
+      if (tokens.length < 2) throw new RoomError('Укажите сумму в долларах, например 50');
+      const cents = parseMoney(tokens[1]);
+      if (cents === null) throw new RoomError('Сумма должна быть числом, например 50 или 12.34');
+      return cents;
     };
 
     switch (command) {
@@ -483,35 +532,55 @@ function createApp(options = {}) {
 
       case 'баланс':
       case 'balance': {
-        if (!tokens.length) return `Ваш баланс: ${accounts.balanceOf(client.user.id)} фишек`;
+        if (!tokens.length) return `Ваш баланс: ${formatMoney(accounts.balanceOf(client.user.id))}`;
         if (!isAdmin(client.user)) throw new RoomError('Чужой баланс смотрит только админ');
         const account = accounts.find(target());
         if (!account) throw new RoomError(`Игрок «${target()}» не найден`);
-        return `${account.name} (${account.id}): ${account.balance} фишек`;
+        return `${account.name} (${account.id}): ${formatMoney(account.balance)}`;
       }
 
       case 'дать':
       case 'выдать':
       case 'give': {
         const account = grantBalance(client, target(), Math.abs(amount()), 'add');
-        return `${account.name}: баланс ${account.balance}`;
+        return `${account.name}: баланс ${formatMoney(account.balance)}`;
       }
       case 'забрать':
       case 'take': {
         const account = grantBalance(client, target(), -Math.abs(amount()), 'add');
-        return `${account.name}: баланс ${account.balance}`;
+        return `${account.name}: баланс ${formatMoney(account.balance)}`;
       }
       case 'установить':
       case 'set': {
         const account = grantBalance(client, target(), amount(), 'set');
-        return `${account.name}: баланс ${account.balance}`;
+        return `${account.name}: баланс ${formatMoney(account.balance)}`;
       }
 
       case 'счета':
       case 'accounts': {
         if (!isAdmin(client.user)) throw new RoomError('Команда только для админа');
-        const rows = accounts.list(15).map((a) => `${a.id} · ${a.name} — ${a.balance}`);
+        const rows = accounts.list(15).map((a) => `${a.id} · ${a.name} — ${formatMoney(a.balance)}`);
         return rows.length ? ['Счета:', ...rows].join('\n') : 'Счетов пока нет';
+      }
+
+      // Выплаты, по которым сервис не ответил внятно: деньги списаны, а
+      // дошли ли — неизвестно. Их нужно разобрать руками.
+      case 'выплаты':
+      case 'payouts': {
+        if (!isAdmin(client.user)) throw new RoomError('Команда только для админа');
+        const stuck = payments.stuckPayouts();
+        if (!stuck.length) return 'Зависших выплат нет';
+        const rows = stuck.map((p) => `${p.id} · ${p.userName || p.userId} — ${formatMoney(p.cents)} (${p.status})`);
+        return ['Зависшие выплаты:', ...rows, '', 'Повторить: /повторить <id>'].join('\n');
+      }
+      case 'повторить':
+      case 'retry': {
+        if (!isAdmin(client.user)) throw new RoomError('Команда только для админа');
+        const payoutId = target();
+        payments.retryPayout(payoutId)
+          .then((payout) => client.send({ type: 'system', text: `Выплата ${payoutId}: ${payout.status}` }))
+          .catch((error) => client.send({ type: 'system', text: `Выплата ${payoutId}: ${error.message}` }));
+        return 'Повторяю выплату…';
       }
 
       default:
@@ -701,7 +770,7 @@ if (require.main === module) {
       console.warn('Для боевого запуска обязательно задайте TELEGRAM_BOT_TOKEN.');
     }
     if (!String(process.env.TELEGRAM_ADMIN_IDS || '').trim()) {
-      console.warn('TELEGRAM_ADMIN_IDS не задан: выдавать фишки будет некому.');
+      console.warn('TELEGRAM_ADMIN_IDS не задан: выдавать деньги будет некому.');
       console.warn('Укажите свой Telegram ID, например TELEGRAM_ADMIN_IDS=123456789');
     }
   });

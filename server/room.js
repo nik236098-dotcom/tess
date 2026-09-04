@@ -5,6 +5,7 @@ const { Hand, ActionError } = require('./poker/hand');
 const { BlackjackDuel, BlackjackError, handValue } = require('./blackjack/round');
 const { cardToString, rankOf, RANK_CHARS } = require('./poker/cards');
 const { bestHand } = require('./poker/evaluator');
+const { formatMoney } = require('./money');
 
 const SUIT_SYMBOLS = { c: '♣', d: '♦', h: '♥', s: '♠' };
 
@@ -191,7 +192,7 @@ class Room extends EventEmitter {
       missedTurns: 0,
       joinedHand: this.handNumber,
     };
-    this.pushLog(`${member.name} занимает место ${seatIndex + 1}, стек ${buyIn}`);
+    this.pushLog(`${member.name} занимает место ${seatIndex + 1}, стек ${formatMoney(buyIn)}`);
     this.maybeStartHand();
     this.touch();
   }
@@ -237,7 +238,7 @@ class Room extends EventEmitter {
     this.seats[index] = null;
     if (this.bank && seat.stack > 0) this.bank.deposit(seat.userId, seat.stack);
     if (!silent) {
-      this.pushLog(`${seat.name} освобождает место, ${seat.stack} фишек ушли на баланс`);
+      this.pushLog(`${seat.name} освобождает место, ${formatMoney(seat.stack)} ушли на баланс`);
     }
     this.touch();
   }
@@ -272,7 +273,7 @@ class Room extends EventEmitter {
     seat.sittingOut = false;
     seat.autoSitOut = false;
     seat.brokeSitOut = false;
-    this.pushLog(`${seat.name} пополняет стек на ${amount}, теперь ${seat.stack}`);
+    this.pushLog(`${seat.name} пополняет стек на ${formatMoney(amount)}, теперь ${formatMoney(seat.stack)}`);
     this.maybeStartHand();
     this.touch();
   }
@@ -296,7 +297,7 @@ class Room extends EventEmitter {
     });
     this.seats = seats;
     this.settings = next;
-    this.pushLog(`Настройки стола обновлены: блайнды ${next.smallBlind}/${next.bigBlind}, вход ${next.buyIn}`);
+    this.pushLog(`Настройки стола обновлены: блайнды ${formatMoney(next.smallBlind)}/${formatMoney(next.bigBlind)}, вход ${formatMoney(next.buyIn)}`);
     this.touch();
   }
 
@@ -310,7 +311,7 @@ class Room extends EventEmitter {
 
   start(userId) {
     if (userId !== this.hostId) throw new RoomError('Игру начинает хозяин стола');
-    if (this.eligibleSeats().length < 2) throw new RoomError('Нужно минимум два игрока с фишками');
+    if (this.eligibleSeats().length < 2) throw new RoomError('Нужно минимум два игрока с деньгами на столе');
     this.autoStart = true;
     this.pushLog('Игра началась. Удачи!');
     this.maybeStartHand();
@@ -437,7 +438,7 @@ class Room extends EventEmitter {
 
     this.status = 'playing';
     this.noteAction(userId);
-    this.pushLog(`Играют по ${value} с каждого`);
+    this.pushLog(`Играют по ${formatMoney(value)} с каждого`);
     this.logRoundEvents();
     if (this.round.complete) this.finishRound();
     else this.armTurnTimer();
@@ -487,8 +488,18 @@ class Room extends EventEmitter {
     for (const player of this.lastResult.players) {
       this.pushLog(`${player.name}: ${player.cards.map(prettyText).join(' ')} — ${player.total}`);
     }
-    if (!winnerName) this.pushLog(`Ничья: ${result.reason}`);
-    else this.pushLog(`${winnerName} забирает ${result.amount} (${result.reason})`);
+    if (!winnerName) {
+      this.pushLog(`Ничья: ${result.reason}`);
+    } else {
+      this.pushLog(`${winnerName} забирает ${formatMoney(result.amount)} (${result.reason})`);
+      this.emit('win', {
+        userId: result.winnerId,
+        name: winnerName,
+        amount: result.amount,
+        game: 'blackjack',
+        code: this.code,
+      });
+    }
 
     for (const seat of this.seats) {
       if (seat && seat.stack === 0) {
@@ -610,7 +621,14 @@ class Room extends EventEmitter {
 
     for (const winner of this.lastResult.winners) {
       const combo = winner.hand ? ` (${winner.hand.name})` : '';
-      this.pushLog(`${winner.name} выигрывает ${winner.amount}${combo}`);
+      this.pushLog(`${winner.name} выигрывает ${formatMoney(winner.amount)}${combo}`);
+      this.emit('win', {
+        userId: winner.userId,
+        name: winner.name,
+        amount: winner.amount,
+        game: 'holdem',
+        code: this.code,
+      });
     }
 
     // Кто просил встать посреди раздачи — уходит теперь, с остатком на баланс.
@@ -754,7 +772,7 @@ class Room extends EventEmitter {
         const names = { flop: 'Флоп', turn: 'Тёрн', river: 'Ривер' };
         this.pushLog(`${names[event.street]}: ${event.board.map(prettyCard).join(' ')}`);
       } else if (event.type === 'refund') {
-        this.pushLog(`${this.nameOf(event.playerId)} получает назад ${event.amount}`);
+        this.pushLog(`${this.nameOf(event.playerId)} получает назад ${formatMoney(event.amount)}`);
       }
     }
   }
@@ -887,6 +905,13 @@ class Room extends EventEmitter {
   }
 
   // Короткая карточка стола для списка открытых игр.
+  // Сколько сейчас в банке: и для стола, и для карточки в списке игр.
+  currentPot() {
+    if (this.hand) return this.hand.totalPot;
+    if (this.round) return this.round.bet * 2;
+    return 0;
+  }
+
   summary() {
     const seated = this.seats.filter(Boolean);
     return {
@@ -902,6 +927,7 @@ class Room extends EventEmitter {
       maxBet: this.settings.maxBet,
       buyIn: this.settings.buyIn,
       running: this.autoStart,
+      pot: this.currentPot(),
       hasFreeSeat: this.seats.some((seat) => !seat),
       watchers: this.members.size,
       isPublic: this.settings.isPublic,

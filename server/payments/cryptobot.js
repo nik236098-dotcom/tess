@@ -51,7 +51,9 @@ class CryptoBotProvider {
 
     if (!data || data.ok !== true) {
       const error = data && data.error ? (data.error.name || JSON.stringify(data.error)) : `HTTP ${status}`;
-      throw new PaymentError(`Crypto Bot отказал: ${error}`);
+      // 5xx — сервис мог принять запрос и упасть уже после этого, поэтому
+      // такой отказ считаем неопределённым; осмысленный 4xx — это отказ.
+      throw new PaymentError(`Crypto Bot отказал: ${error}`, { ambiguous: status >= 500 });
     }
     return data.result;
   }
@@ -110,6 +112,31 @@ class CryptoBotProvider {
       url: invoice.mini_app_invoice_url || invoice.bot_invoice_url || invoice.pay_url || null,
       fallbackUrl: invoice.bot_invoice_url || null,
       paidAt: invoice.paid_at || null,
+    };
+  }
+
+  // ——— Выплата ———
+
+  // Переводы возможны только в криптоактиве: счёт в фиате — это цена,
+  // а перевести «10 рублей» через Crypto Bot нельзя.
+  get supportsPayout() {
+    return this.currencyType === 'crypto';
+  }
+
+  // spendId делает запрос идемпотентным: с одним и тем же spend_id Crypto Bot
+  // выполнит перевод ровно один раз, сколько бы раз мы ни повторили запрос.
+  async payout({ userId, amount, spendId, comment = null }) {
+    const transfer = await this.call('transfer', {
+      user_id: userId,
+      asset: this.currency,
+      amount: String(amount),
+      spend_id: spendId,
+      comment,
+    });
+    return {
+      id: String(transfer.transfer_id),
+      status: transfer.status || 'completed',
+      amount: Number(transfer.amount),
     };
   }
 
