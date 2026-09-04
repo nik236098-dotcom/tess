@@ -265,6 +265,116 @@ systemctl restart poker
 cp /var/lib/poker/accounts.json /root/accounts-$(date +%F).json
 ```
 
+## Переход на версию с деньгами
+
+В ветке `claude/crypto-bot-xrocket-integration-it584m` баланс стал денежным:
+пополнение и вывод криптой, суммы в долларах. Обновление сложнее обычного
+`git pull` — из-за одной вещи, которую важно решить до запуска.
+
+### Балансы меняют смысл
+
+Раньше баланс считался в фишках, теперь **то же число читается как центы**:
+
+| В файле | Было | Станет |
+| --- | --- | --- |
+| `10000` | 10000 фишек | $100.00 |
+| `250000` | 250000 фишек | $2500.00 |
+
+Числа в файле не меняются — меняется их трактовка. Если фишки раздавались
+щедро «на поиграть», а вывод включён, эти суммы станут **выводимыми
+настоящими деньгами**. Поэтому балансы стоит пересчитать заранее:
+
+```bash
+cd /opt/poker/app
+
+# Посмотреть, что получится (ничего не записывает)
+sudo -u poker node scripts/rescale-balances.js /var/lib/poker/accounts.json --divide 100
+
+# Записать: делит все балансы на 100 и делает бэкап рядом
+sudo -u poker node scripts/rescale-balances.js /var/lib/poker/accounts.json --divide 100 --apply
+
+# Или начать с чистого листа
+sudo -u poker node scripts/rescale-balances.js /var/lib/poker/accounts.json --zero --apply
+```
+
+Делитель выбираете вы: `--divide 100` превратит 10000 фишек в $100.00,
+`--divide 1000` — в $10.00.
+
+### Порядок обновления
+
+Сначала обновитесь **без токенов платёжных сервисов**: раздел «Пополнить»
+не появится, вывода не будет, и можно спокойно посмотреть новый интерфейс.
+
+```bash
+# 1. Бэкап
+cp /var/lib/poker/accounts.json /root/accounts-$(date +%F).json
+
+# 2. Код
+cd /opt/poker/app
+sudo -u poker git fetch origin
+sudo -u poker git checkout claude/crypto-bot-xrocket-integration-it584m
+sudo -u poker git pull
+
+# 3. Тесты — 110 штук, зависимостей по-прежнему нет
+sudo -u poker npm test
+
+# 4. Балансы (см. выше)
+sudo -u poker node scripts/rescale-balances.js /var/lib/poker/accounts.json --divide 100 --apply
+
+# 5. Перезапуск
+systemctl restart poker
+journalctl -u poker -n 30 --no-pager
+```
+
+Откройте мини-апп: внизу должны появиться вкладки «Игры» и «Главная»,
+баланс — в долларах. Кнопки «Пополнить» и «Вывести» пока неактивны.
+
+### Включить деньги
+
+Когда интерфейс проверен — добавьте токены в `/opt/poker/app/.env`:
+
+```sh
+CRYPTOBOT_TOKEN=12345:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+XROCKET_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxx
+TOPUP_CURRENCY=USDT
+TOPUP_USD_PER_UNIT=1
+WITHDRAW_MIN_AMOUNT=1
+```
+
+Затем пропишите адреса вебхуков в настройках приложения **внутри самих
+ботов** (Crypto Bot: My Apps → Webhooks; xRocket: настройки приложения):
+
+```
+https://ВАШ_ДОМЕН/pay/cryptobot/webhook
+https://ВАШ_ДОМЕН/pay/xrocket/webhook
+```
+
+И перезапустите: `systemctl restart poker`.
+
+Проверить, что сервер видит платёжные сервисы:
+
+```bash
+curl -s https://ВАШ_ДОМЕН/config | python3 -m json.tool
+# в topup должно быть "enabled": true, а в topup.payout — список сервисов
+```
+
+Начните с тестовой сети: токен от [@CryptoTestnetBot](https://t.me/CryptoTestnetBot)
+плюс `CRYPTOBOT_TESTNET=1` — весь путь проверяется без настоящих денег.
+
+Чтобы вывод работал, на балансе приложения в Crypto Bot или xRocket должны
+быть деньги: выплаты уходят именно оттуда.
+
+### Откат
+
+Ветка со старой версией никуда не делась:
+
+```bash
+cd /opt/poker/app
+sudo -u poker git checkout claude/telegram-poker-miniapp-tot7jh
+cp /root/accounts-$(date +%F).json /var/lib/poker/accounts.json
+systemctl restart poker
+```
+
 ## Если домена нет
 
 `ВАШ_ДОМЕН` в шаге 6 — это настоящее имя, A-запись которого указывает на IP сервера.
