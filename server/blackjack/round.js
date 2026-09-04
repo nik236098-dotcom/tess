@@ -69,7 +69,8 @@ class BlackjackDuel {
     this.events = [];
 
     this._log({ type: 'deal' });
-    this._checkNaturals();
+    // Если раздали сразу 21, добирать нечего — ход переходит сам.
+    this._skipIfDone();
   }
 
   // ——— Чтение ———
@@ -140,41 +141,55 @@ class BlackjackDuel {
     return this.deck[this.deckPos++];
   }
 
-  _checkNaturals() {
-    const firstNatural = isBlackjack(this.cards[this.firstId]);
-    const secondNatural = isBlackjack(this.cards[this.secondId]);
-    if (!firstNatural && !secondNatural) return;
-
-    if (firstNatural && secondNatural) this._finish(null, 'блекджек у обоих');
-    else if (firstNatural) this._finish(this.firstId, 'блекджек');
-    else this._finish(this.secondId, 'блекджек');
-  }
-
   _afterCard(id) {
     const value = this.valueOf(id);
-    if (value.busted) {
-      // Перебрал — соперник забирает, добирать ему уже незачем.
-      this._finish(this.opponentOf(id), 'перебор у соперника');
-      return;
-    }
-    // На 21 добирать нечего — ход переходит сам.
-    if (value.total === BLACKJACK) this._advance();
+    // Перебор заканчивает ход, но не раздачу: соперник ходит вслепую
+    // и вполне может перебрать следом. Тогда будет ничья.
+    if (value.busted || value.total === BLACKJACK) this._advance();
   }
 
   _advance() {
     if (this.phase === 'first') {
       this.phase = 'second';
+      this._skipIfDone();
       return;
     }
     this._compare();
   }
 
+  // Тому, у кого перебор или ровно 21, решать уже нечего.
+  _skipIfDone() {
+    const id = this.actingId;
+    if (!id) return;
+    const value = this.valueOf(id);
+    if (value.busted || value.total === BLACKJACK) this._advance();
+  }
+
   _compare() {
-    const first = this.valueOf(this.firstId).total;
-    const second = this.valueOf(this.secondId).total;
-    if (first > second) this._finish(this.firstId, `${first} против ${second}`);
-    else if (second > first) this._finish(this.secondId, `${second} против ${first}`);
-    else this._finish(null, `поровну, ${first}`);
+    const first = this.valueOf(this.firstId);
+    const second = this.valueOf(this.secondId);
+
+    if (first.busted && second.busted) {
+      this._finish(null, `перебор у обоих: ${first.total} и ${second.total}`);
+      return;
+    }
+    if (first.busted) {
+      this._finish(this.secondId, `перебор у соперника (${first.total})`);
+      return;
+    }
+    if (second.busted) {
+      this._finish(this.firstId, `перебор у соперника (${second.total})`);
+      return;
+    }
+
+    if (first.total > second.total) this._finish(this.firstId, this._reason(first, second));
+    else if (second.total > first.total) this._finish(this.secondId, this._reason(second, first));
+    else this._finish(null, `поровну, ${first.total}`);
+  }
+
+  _reason(winner, loser) {
+    const natural = winner.total === BLACKJACK ? 'блекджек! ' : '';
+    return `${natural}${winner.total} против ${loser.total}`;
   }
 
   // winnerId === null означает ничью.

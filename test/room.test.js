@@ -203,7 +203,7 @@ test('ставка проверяется на минимум и максиму�
   assert.strictEqual(room.status, 'playing');
 });
 
-test('карты открыты у обоих — прятать нечего', (t) => {
+test('карты соперника закрыты, пока идёт раздача', (t) => {
   const room = blackjackTable();
   t.after(() => room.dispose());
   room.start('u0');
@@ -211,14 +211,34 @@ test('карты открыты у обоих — прятать нечего', 
   const second = room.seats[room.secondSeat].userId;
   room.applyAction(opener, 'bet', 50);
 
-  for (const viewer of [opener, second]) {
-    const view = room.stateFor(viewer);
-    for (const seat of view.seats.filter((s) => !s.empty)) {
-      assert.strictEqual(seat.cards.length, 2);
-      assert.ok(!seat.cards.includes('??'), 'закрытых карт в этой игре нет');
-      assert.match(seat.combination, /^Очки: \d+$/);
-    }
-  }
+  const view = room.stateFor(opener);
+  const mine = view.seats[room.openerSeat];
+  const theirs = view.seats[room.secondSeat];
+
+  assert.ok(!mine.cards.includes('??'), 'свои карты видно');
+  assert.match(mine.combination, /^Очки: \d+$/);
+  assert.deepStrictEqual(theirs.cards, ['??', '??'], 'чужие закрыты');
+  assert.strictEqual(theirs.total, null, 'и очки соперника не подсказываем');
+
+  // После раздачи руки открываются обоим.
+  room.applyAction(opener, 'stand');
+  room.applyAction(second, 'stand');
+  const after = room.stateFor(opener).seats[room.secondSeat];
+  assert.ok(!after.cards.includes('??'));
+  assert.match(after.combination, /^Очки: \d+$/);
+});
+
+test('в журнале не видно, какую карту взял соперник', (t) => {
+  const room = blackjackTable();
+  t.after(() => room.dispose());
+  room.start('u0');
+  const opener = room.seats[room.openerSeat].userId;
+  room.applyAction(opener, 'bet', 50);
+  if (room.round.legalActions(opener)) room.applyAction(opener, 'hit');
+
+  const lines = room.log.map((line) => line.text).join('\n');
+  assert.match(lines, /берёт карту/);
+  assert.ok(!/берёт [2-9TJQKA]/.test(lines), 'достоинство карты в журнал не попадает');
 });
 
 test('очередь ходить первым переходит к сопернику', (t) => {

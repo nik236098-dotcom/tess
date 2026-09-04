@@ -10,8 +10,13 @@ const SUIT_SYMBOLS = { c: '♣', d: '♦', h: '♥', s: '♠' };
 
 // Для журнала карты приятнее читать со значками мастей: «K♦», а не «Kd».
 function prettyCard(card) {
-  const text = cardToString(card);
-  return text[0] + (SUIT_SYMBOLS[text[1]] || text[1]);
+  return prettyText(cardToString(card));
+}
+
+// То же самое, но для карты, уже приведённой к строке вида «Kd».
+function prettyText(text) {
+  const rank = text[0] === 'T' ? '10' : text[0];
+  return rank + (SUIT_SYMBOLS[text[1]] || text[1]);
 }
 
 const DEFAULT_SETTINGS = {
@@ -493,6 +498,9 @@ class Room extends EventEmitter {
         })),
     };
 
+    for (const player of this.lastResult.players) {
+      this.pushLog(`${player.name}: ${player.cards.map(prettyText).join(' ')} — ${player.total}`);
+    }
     if (!winnerName) this.pushLog(`Ничья: ${result.reason}`);
     else this.pushLog(`${winnerName} забирает ${result.amount} (${result.reason})`);
 
@@ -543,7 +551,8 @@ class Room extends EventEmitter {
     const events = this.round.events.splice(0);
     for (const event of events) {
       if (event.type === 'hit') {
-        this.pushLog(`${this.nameOf(event.playerId)} берёт ${prettyCard(event.card)}`);
+        // Достоинство карты не пишем: журнал видят оба, а руки закрыты.
+        this.pushLog(`${this.nameOf(event.playerId)} берёт карту`);
       } else if (event.type === 'stand') {
         this.pushLog(`${this.nameOf(event.playerId)} останавливается`);
       }
@@ -764,17 +773,27 @@ class Room extends EventEmitter {
     this.emit('update');
   }
 
-  // Состояние блекджекового стола. Прятать нечего: карты открыты у обоих.
+  // Состояние блекджекового стола. Карты соперника закрыты до конца раздачи:
+  // иначе, видя чужую руку, легко решить за него — брать ещё или хватит.
   blackjackStateFor(userId) {
     const round = this.round;
+    const revealed = Boolean(round && round.complete);
 
     const seats = this.seats.map((seat, index) => {
       if (!seat) return { index, empty: true };
 
       const isOpener = index === this.openerSeat;
+      const isMe = seat.userId === userId;
       const playing = Boolean(round);
-      const cards = playing ? round.cardsOf(seat.userId).map(cardToString) : null;
-      const total = playing ? round.valueOf(seat.userId).total : null;
+      const open = isMe || revealed;
+
+      let cards = null;
+      let total = null;
+      if (playing) {
+        const own = round.cardsOf(seat.userId);
+        cards = open ? own.map(cardToString) : own.map(() => '??');
+        total = open ? round.valueOf(seat.userId).total : null;
+      }
 
       return {
         index,
@@ -790,7 +809,9 @@ class Room extends EventEmitter {
         cards: cards && cards.length ? cards : null,
         total,
         busted: total !== null && total > 21,
-        combination: total === null ? null : `Очки: ${total}`,
+        combination: total === null
+          ? (playing ? `${cards.length} карты` : null)
+          : `Очки: ${total}`,
         roleLabel: this.status === 'waiting' && !round ? null : (isOpener ? 'ходит первым' : 'ходит вторым'),
         lastAction: null,
         bet: round ? round.bet : 0,

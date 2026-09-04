@@ -28,6 +28,8 @@ const state = {
   isAdmin: false,
   chipsSeat: null, // индекс места, которому выдаём фишки
   game: 'holdem', // выбранная в лобби игра
+  shownCards: new Set(), // какие карты уже «прилетели» — чтобы не анимировать их снова
+  shownHand: null,
   bjBet: 0,
   bjBetTouched: false,
   unread: 0,
@@ -411,8 +413,17 @@ function renderFeed(room) {
 
 function renderBoard(room) {
   const board = $('board');
-  board.innerHTML = '';
-  for (const card of room.board || []) board.appendChild(cardNode(card));
+  const codes = (room.board || []).join(',');
+  // Если борд не изменился, не трогаем DOM: иначе карты каждый раз
+  // пересоздаются и заново проигрывают анимацию раздачи.
+  if (board.dataset.cards !== codes) {
+    const known = board.dataset.cards ? board.dataset.cards.split(',') : [];
+    board.innerHTML = '';
+    (room.board || []).forEach((card, index) => {
+      board.appendChild(cardNode(card, false, known[index] !== card));
+    });
+    board.dataset.cards = codes;
+  }
 
   const pot = $('pot');
   if (room.potTotal > 0) {
@@ -424,9 +435,9 @@ function renderBoard(room) {
   }
 }
 
-function cardNode(code, small = false) {
+function cardNode(code, small = false, animate = true) {
   const node = document.createElement('div');
-  node.className = `card-face${small ? ' small' : ''}`;
+  node.className = `card-face${small ? ' small' : ''}${animate ? '' : ' no-anim'}`;
   if (code === '??') {
     node.classList.add('back');
     return node;
@@ -443,6 +454,11 @@ function cardNode(code, small = false) {
 }
 
 function renderSeats(room) {
+  if (state.shownHand !== room.handNumber) {
+    state.shownHand = room.handNumber;
+    state.shownCards.clear();
+  }
+
   const container = $('seats');
   container.innerHTML = '';
 
@@ -499,7 +515,14 @@ function renderSeats(room) {
     if (seat.cards) {
       const cards = document.createElement('div');
       cards.className = 'seat-cards';
-      for (const card of seat.cards) cards.appendChild(cardNode(card, true));
+      seat.cards.forEach((card, position) => {
+        // Ключ помнит, что именно уже лежало на этом месте: новая карта
+        // прилетает с анимацией, а прежние просто перерисовываются.
+        const key = `${seat.index}:${position}:${card}`;
+        const fresh = !state.shownCards.has(key);
+        state.shownCards.add(key);
+        cards.appendChild(cardNode(card, true, fresh));
+      });
       node.appendChild(cards);
     }
 

@@ -639,3 +639,4 @@ input:focus, select:focus { outline: none; border-color: var(--gold-line); }
   background: rgba(230, 189, 99, 0.1);
 }
 .game-option.is-active b { color: var(--gold-soft); }
+.card-face.no-anim { animation: none; }

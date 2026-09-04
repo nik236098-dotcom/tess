@@ -34,7 +34,7 @@ test('туз считается то за 11, то за 1', () => {
   assert.deepStrictEqual(value('Kh Qc 5d'), { total: 25, soft: false, busted: true });
 });
 
-test('карты обоих открыты сразу — прятать нечего', () => {
+test('каждому по две карты', () => {
   const game = duel(['Kh', '7c'], ['9d', '6s']);
   assert.strictEqual(game.cardsOf('a').length, 2);
   assert.strictEqual(game.cardsOf('b').length, 2);
@@ -69,31 +69,47 @@ test('равные суммы — ничья, фишки не двигаются
   assert.strictEqual(game.stackOf('b'), 1000);
 });
 
-test('перебор сразу отдаёт банк сопернику', () => {
+test('перебор не заканчивает раздачу — соперник ещё ходит', () => {
   const game = duel(['Kh', '7c'], ['9d', '6s'], ['Qh']);
   game.act('a', 'hit'); // 17 + 10 = перебор
-  assert.ok(game.complete, 'соперник добирать уже не должен');
+  assert.ok(!game.complete, 'соперник не должен узнать об этом и обязан походить сам');
+  assert.strictEqual(game.actingId, 'b');
+
+  game.act('b', 'stand');
   assert.strictEqual(game.result.winnerId, 'b');
-  assert.match(game.result.reason, /перебор/);
   assert.strictEqual(game.stackOf('b'), 1100);
 });
 
-test('перебор второго тоже заканчивает раздачу', () => {
+test('перебрали оба — ничья, никто ничего не теряет', () => {
+  const game = duel(['Kh', '7c'], ['9d', '8s'], ['Qh', 'Ts']);
+  game.act('a', 'hit'); // 27
+  game.act('b', 'hit'); // 27
+  assert.strictEqual(game.result.winnerId, null);
+  assert.match(game.result.reason, /перебор у обоих/);
+  assert.strictEqual(game.stackOf('a'), 1000);
+  assert.strictEqual(game.stackOf('b'), 1000);
+});
+
+test('перебор второго отдаёт банк первому', () => {
   const game = duel(['Kh', '7c'], ['9d', '6s'], ['Qh']);
   game.act('a', 'stand');
   game.act('b', 'hit'); // 15 + 10 = перебор
   assert.strictEqual(game.result.winnerId, 'a');
 });
 
-test('блекджек у одного заканчивает раздачу сразу', () => {
+test('21 с двух карт не обрывает раздачу, но выигрывает', () => {
   const game = duel(['Ah', 'Kc'], ['9d', '7s']);
-  assert.ok(game.complete);
+  assert.ok(!game.complete, 'соперник всё равно ходит — он не видит чужих карт');
+  assert.strictEqual(game.legalActions('a'), null, 'на 21 добирать нечего');
+  assert.strictEqual(game.actingId, 'b');
+
+  game.act('b', 'stand');
   assert.strictEqual(game.result.winnerId, 'a');
-  assert.strictEqual(game.result.reason, 'блекджек');
+  assert.match(game.result.reason, /блекджек/);
   assert.strictEqual(game.result.amount, 100, 'платится ровно ставка — казино тут нет');
 });
 
-test('блекджек у обоих — ничья', () => {
+test('21 у обоих — ничья', () => {
   const game = duel(['Ah', 'Kc'], ['Ad', 'Qs']);
   assert.strictEqual(game.result.winnerId, null);
   assert.strictEqual(game.stackOf('a'), 1000);
