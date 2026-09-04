@@ -223,18 +223,18 @@ test('карты соперника закрыты, пока идёт разда
   const second = room.seats[room.secondSeat].userId;
   room.applyAction(opener, 'bet', 50);
 
-  const view = room.stateFor(opener);
-  const mine = view.seats[room.openerSeat];
-  const theirs = view.seats[room.secondSeat];
+  const view = room.stateFor(second);
+  const mine = view.seats[room.secondSeat];
+  const theirs = view.seats[room.openerSeat];
 
   assert.ok(!mine.cards.includes('??'), 'свои карты видно');
   assert.match(mine.combination, /^Очки: \d+$/);
   assert.deepStrictEqual(theirs.cards, ['??', '??'], 'чужие закрыты');
   assert.strictEqual(theirs.total, null, 'и очки соперника не подсказываем');
 
-  // После раздачи руки открываются обоим.
-  room.applyAction(opener, 'stand');
-  room.applyAction(second, 'stand');
+  // После раздачи руки открываются обоим. Ходы делаем через playOut:
+  // при 21 с двух карт ход переходит сам, и жать «стоп» вслепую нельзя.
+  playOut(room);
   const after = room.stateFor(opener).seats[room.secondSeat];
   assert.ok(!after.cards.includes('??'));
   assert.match(after.combination, /^Очки: \d+$/);
@@ -246,11 +246,15 @@ test('в журнале не видно, какую карту взял сопе
   room.start('u0');
   const opener = room.seats[room.openerSeat].userId;
   room.applyAction(opener, 'bet', 50);
-  if (room.round.legalActions(opener)) room.applyAction(opener, 'hit');
+
+  // Событие добора подставляем сами: какие карты придут — дело случая,
+  // а проверить нужно ровно то, как оно попадает в журнал.
+  room.round.events.push({ type: 'hit', playerId: opener, card: stringToCard('Ks') });
+  room.logRoundEvents();
 
   const lines = room.log.map((line) => line.text).join('\n');
   assert.match(lines, /берёт карту/);
-  assert.ok(!/берёт [2-9TJQKA]/.test(lines), 'достоинство карты в журнал не попадает');
+  assert.ok(!/берёт[^\n]*[♠♥♦♣]/.test(lines), 'достоинство карты в журнал не попадает');
 });
 
 test('очередь ходить первым переходит к сопернику', (t) => {
