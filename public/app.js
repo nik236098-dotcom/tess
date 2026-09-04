@@ -372,7 +372,7 @@ function renderTable() {
 
   const blackjack = room.game === 'blackjack';
   const phases = blackjack
-    ? { player: 'Ход игрока', dealer: 'Ход банкира', complete: 'Итог' }
+    ? { first: 'Ход первого', second: 'Ход второго', complete: 'Итог' }
     : { preflop: 'Префлоп', flop: 'Флоп', turn: 'Тёрн', river: 'Ривер', showdown: 'Вскрытие', complete: 'Вскрытие' };
 
   // Пока идёт раздача показываем этап, между раздачами — код стола.
@@ -417,7 +417,7 @@ function renderBoard(room) {
   const pot = $('pot');
   if (room.potTotal > 0) {
     pot.classList.remove('hidden');
-    pot.querySelector('.pot-label').textContent = room.game === 'blackjack' ? 'СТАВКА' : 'БАНК';
+    pot.querySelector('.pot-label').textContent = 'БАНК';
     $('pot-value').textContent = room.potTotal;
   } else {
     pot.classList.add('hidden');
@@ -576,10 +576,10 @@ function renderMessage(room) {
     return;
   }
   if (room.status === 'betting') {
-    const bettor = room.seats[room.bettorSeat];
+    const opener = room.seats[room.openerSeat];
     node.textContent = room.you.betTurn
-      ? 'Ваша ставка'
-      : `Ждём ставку: ${bettor ? bettor.name : 'игрок'}`;
+      ? 'Назначьте ставку'
+      : `Ставку назначает ${opener ? opener.name : 'соперник'}`;
     return;
   }
   if (seated < 2) node.textContent = 'Нужно минимум два игрока';
@@ -607,11 +607,14 @@ function renderResult(room) {
       ? 'Ничья'
       : `Выигрывает ${escapeHtml(result.winnerName)}`;
     const sum = result.winner === 'push' ? '' : `<div class="win-amount">+${result.amount}</div>`;
+    const totals = (result.players || [])
+      .map((player) => `${escapeHtml(player.name)} ${player.total}`)
+      .join(' · ');
     pop.innerHTML = `
       <div class="win-title">${title}</div>
-      <div class="win-combo">${escapeHtml(result.reason)}${result.natural ? ' — блекджек!' : ''}</div>
+      <div class="win-combo">${escapeHtml(result.reason)}</div>
       ${sum}
-      <div class="win-note">${escapeHtml(result.playerName)} ${result.playerTotal} · ${escapeHtml(result.dealerName)} ${result.dealerTotal}</div>
+      <div class="win-note">${totals}</div>
     `;
     pop.classList.remove('hidden');
     return;
@@ -756,7 +759,6 @@ function renderBlackjackControls(room) {
 
   if (legal) {
     $('bj-hit').classList.toggle('hidden', !legal.canHit);
-    $('bj-double').classList.toggle('hidden', !legal.canDouble);
     $('bj-stand').classList.remove('hidden');
   }
 
@@ -913,7 +915,6 @@ function bindUi() {
 
   $('bj-hit').addEventListener('click', () => act('hit'));
   $('bj-stand').addEventListener('click', () => act('stand'));
-  $('bj-double').addEventListener('click', () => act('double'));
   $('bj-bet').addEventListener('click', () => {
     haptic('success');
     state.bjBetTouched = false;

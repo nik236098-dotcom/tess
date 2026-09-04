@@ -2,7 +2,7 @@
 
 const { EventEmitter } = require('events');
 const { Hand, ActionError } = require('./poker/hand');
-const { BlackjackRound, BlackjackError, handValue } = require('./blackjack/round');
+const { BlackjackDuel, BlackjackError, handValue } = require('./blackjack/round');
 const { cardToString, rankOf, RANK_CHARS } = require('./poker/cards');
 const { bestHand } = require('./poker/evaluator');
 
@@ -140,7 +140,7 @@ class Room extends EventEmitter {
     if (this.isBlackjack) {
       if (this.status === 'betting') return true;
       return Boolean(this.round && !this.round.complete
-        && (this.round.playerId === userId || this.round.dealerId === userId));
+        && (this.round.firstId === userId || this.round.secondId === userId));
     }
     return Boolean(this.hand && !this.hand.complete && this.hand.player(userId));
   }
@@ -385,7 +385,8 @@ class Room extends EventEmitter {
 
   // ——— Блекджек ———
 
-  // Роли меняются каждую раздачу: кто держал банк, тот теперь ставит.
+  // Очередь начинать переходит по кругу: кто в прошлый раз ходил вторым,
+  // теперь назначает ставку и ходит первым.
   startRound() {
     this.clearTurnTimer();
     this.clearNextHandTimer();
@@ -399,54 +400,57 @@ class Room extends EventEmitter {
       return;
     }
 
-    this.dealerSeat = nextOccupiedSeat(eligible.map((e) => e.index), this.dealerSeat, this.seats.length);
-    this.bettorSeat = eligible.find((e) => e.index !== this.dealerSeat).index;
+    this.openerSeat = nextOccupiedSeat(eligible.map((e) => e.index), this.openerSeat ?? -1, this.seats.length);
+    this.secondSeat = eligible.find((e) => e.index !== this.openerSeat).index;
     this.handNumber += 1;
     this.status = 'betting';
 
     this.feed = [];
-    this.pushLog(`Раздача №${this.handNumber}: банк держит ${this.seats[this.dealerSeat].name}`);
+    this.pushLog(`Раздача №${this.handNumber}: ставку назначает ${this.seats[this.openerSeat].name}`);
     this.armBetTimer();
     this.touch();
   }
 
+  // Ставят оба поровну, поэтому потолок — меньший из двух стеков.
   get maxBet() {
-    if (this.bettorSeat === undefined || this.dealerSeat < 0) return 0;
-    const bettor = this.seats[this.bettorSeat];
-    const dealer = this.seats[this.dealerSeat];
-    if (!bettor || !dealer) return 0;
-    return Math.min(this.settings.maxBet, bettor.stack, dealer.stack);
+    if (this.openerSeat === undefined || this.secondSeat === undefined) return 0;
+    const opener = this.seats[this.openerSeat];
+    const second = this.seats[this.secondSeat];
+    if (!opener || !second) return 0;
+    return Math.min(this.settings.maxBet, opener.stack, second.stack);
   }
 
   placeBet(userId, amount) {
     if (!this.isBlackjack) throw new RoomError('Ставки делаются иначе');
     if (this.status !== 'betting') throw new RoomError('Сейчас не время ставить');
-    const seatIndex = this.seatIndexOf(userId);
-    if (seatIndex !== this.bettorSeat) throw new RoomError('В этой раздаче вы держите банк');
+    if (this.seatIndexOf(userId) !== this.openerSeat) {
+      throw new RoomError('В этой раздаче ставку назначает соперник');
+    }
 
-    const bettor = this.seats[this.bettorSeat];
-    const dealer = this.seats[this.dealerSeat];
+    const opener = this.seats[this.openerSeat];
+    const second = this.seats[this.secondSeat];
     const value = Math.floor(Number(amount));
     if (!Number.isFinite(value)) throw new RoomError('Ставка должна быть числом');
     if (value < this.settings.minBet) throw new RoomError(`Минимальная ставка — ${this.settings.minBet}`);
     if (value > this.maxBet) throw new RoomError(`Максимальная ставка сейчас — ${this.maxBet}`);
 
     try {
-      this.round = new BlackjackRound({
-        playerId: bettor.userId,
-        dealerId: dealer.userId,
+      this.round = new BlackjackDuel({
+        firstId: opener.userId,
+        secondId: second.userId,
         bet: value,
-        playerStack: bettor.stack,
-        dealerStack: dealer.stack,
+        firstStack: opener.stack,
+        secondStack: second.stack,
       });
     } catch (error) {
       throw new RoomError(error.message);
     }
 
     this.status = 'playing';
-    this.pushLog(`${bettor.name} ставит ${value}`);
+    this.pushLog(`Играют по ${value} с каждого`);
     this.logRoundEvents();
-    this.armTurnTimer();
+    if (this.round.complete) this.finishRound();
+    else this.armTurnTimer();
     this.touch();
   }
 
@@ -468,30 +472,29 @@ class Room extends EventEmitter {
     this.clearTurnTimer();
     const result = this.round.result;
 
-    this.seats[this.bettorSeat].stack = result.playerStack;
-    this.seats[this.dealerSeat].stack = result.dealerStack;
+    for (const seat of this.seats) {
+      if (seat && result.stacks[seat.userId] !== undefined) seat.stack = result.stacks[seat.userId];
+    }
 
-    const bettorName = this.seats[this.bettorSeat].name;
-    const dealerName = this.seats[this.dealerSeat].name;
-    const winnerName = result.winner === 'player' ? bettorName : dealerName;
-
+    const winnerName = result.winnerId ? this.nameOf(result.winnerId) : null;
     this.lastResult = {
       game: 'blackjack',
-      winner: result.winner,
-      winnerName: result.winner === 'push' ? null : winnerName,
+      winner: result.winnerId ? 'player' : 'push',
+      winnerName,
       reason: result.reason,
-      natural: result.natural,
-      amount: Math.abs(result.delta),
-      playerName: bettorName,
-      dealerName,
-      playerCards: result.playerCards.map(cardToString),
-      dealerCards: result.dealerCards.map(cardToString),
-      playerTotal: result.playerTotal,
-      dealerTotal: result.dealerTotal,
+      amount: result.amount,
+      players: [this.openerSeat, this.secondSeat]
+        .map((index) => this.seats[index])
+        .filter(Boolean)
+        .map((seat) => ({
+          name: seat.name,
+          total: result.totals[seat.userId],
+          cards: (result.cards[seat.userId] || []).map(cardToString),
+        })),
     };
 
-    if (result.winner === 'push') this.pushLog(`Ничья: ${result.reason}`);
-    else this.pushLog(`${winnerName} выигрывает ${Math.abs(result.delta)} (${result.reason})`);
+    if (!winnerName) this.pushLog(`Ничья: ${result.reason}`);
+    else this.pushLog(`${winnerName} забирает ${result.amount} (${result.reason})`);
 
     for (const seat of this.seats) {
       if (seat && seat.stack === 0) {
@@ -505,17 +508,16 @@ class Room extends EventEmitter {
     });
 
     this.status = 'waiting';
-    const delay = SHOWDOWN_PAUSE_MS;
     this.nextHandTimer = setTimeout(() => {
       this.nextHandTimer = null;
       this.maybeStartHand();
       this.touch();
-    }, delay);
+    }, SHOWDOWN_PAUSE_MS);
     this.nextHandTimer.unref?.();
-    this.nextHandAt = Date.now() + delay;
+    this.nextHandAt = Date.now() + SHOWDOWN_PAUSE_MS;
   }
 
-  // Не поставил вовремя — ставим минимум, чтобы стол не стоял.
+  // Не назначил ставку вовремя — ставим минимум, чтобы стол не стоял.
   armBetTimer() {
     this.clearTurnTimer();
     const seconds = this.settings.turnSeconds;
@@ -523,11 +525,11 @@ class Room extends EventEmitter {
     this.turnTimer = setTimeout(() => {
       this.turnTimer = null;
       if (this.status !== 'betting') return;
-      const bettor = this.seats[this.bettorSeat];
-      if (!bettor) return;
+      const opener = this.seats[this.openerSeat];
+      if (!opener) return;
       try {
-        this.placeBet(bettor.userId, Math.min(this.settings.minBet, this.maxBet));
-        this.pushLog(`${bettor.name} не успел выбрать ставку — поставили минимум`);
+        this.placeBet(opener.userId, Math.min(this.settings.minBet, this.maxBet));
+        this.pushLog(`${opener.name} не успел выбрать ставку — поставили минимум`);
       } catch {
         this.status = 'waiting';
         this.touch();
@@ -542,15 +544,11 @@ class Room extends EventEmitter {
     for (const event of events) {
       if (event.type === 'hit') {
         this.pushLog(`${this.nameOf(event.playerId)} берёт ${prettyCard(event.card)}`);
-      } else if (event.type === 'double') {
-        this.pushLog(`${this.nameOf(event.playerId)} удваивает до ${event.bet}, берёт ${prettyCard(event.card)}`);
       } else if (event.type === 'stand') {
         this.pushLog(`${this.nameOf(event.playerId)} останавливается`);
-      } else if (event.type === 'reveal') {
-        this.pushLog(`Дилер открывает карты: ${event.cards.map(prettyCard).join(' ')}`);
       }
 
-      const words = { hit: 'берёт карту', stand: 'останавливается', double: 'удваивает' };
+      const words = { hit: 'берёт карту', stand: 'останавливается' };
       if (words[event.type]) {
         this.pushFeed({ name: this.nameOf(event.playerId), action: words[event.type], amount: null, allIn: false });
       }
@@ -766,68 +764,43 @@ class Room extends EventEmitter {
     this.emit('update');
   }
 
-  // Состояние блекджекового стола. Закрытая карта дилера видна только ему.
+  // Состояние блекджекового стола. Прятать нечего: карты открыты у обоих.
   blackjackStateFor(userId) {
     const round = this.round;
-    const revealed = !round || round.phase !== 'player' || round.complete;
 
     const seats = this.seats.map((seat, index) => {
       if (!seat) return { index, empty: true };
 
-      const isDealer = index === this.dealerSeat;
-      const isMe = seat.userId === userId;
-      let cards = null;
-      let total = null;
-      let hidden = false;
+      const isOpener = index === this.openerSeat;
+      const playing = Boolean(round);
+      const cards = playing ? round.cardsOf(seat.userId).map(cardToString) : null;
+      const total = playing ? round.valueOf(seat.userId).total : null;
 
-      if (round) {
-        if (isDealer) {
-          if (revealed || isMe) {
-            cards = round.dealerCards.map(cardToString);
-            total = handValue(round.dealerCards).total;
-          } else {
-            // Дырка закрыта: показываем первую карту и сумму только по ней.
-            cards = [cardToString(round.dealerCards[0]), '??'];
-            total = handValue([round.dealerCards[0]]).total;
-            hidden = true;
-          }
-        } else {
-          cards = round.playerCards.map(cardToString);
-          total = handValue(round.playerCards).total;
-        }
-      }
-
-      const acting = Boolean(round && !round.complete && round.actingId === seat.userId);
       return {
         index,
         empty: false,
         userId: seat.userId,
         name: seat.name,
         photoUrl: seat.photoUrl,
-        stack: round && !round.complete
-          ? (isDealer ? round.dealerStack : round.playerStack)
-          : seat.stack,
+        stack: round && !round.complete ? round.stackOf(seat.userId) : seat.stack,
         sittingOut: seat.sittingOut,
         connected: seat.connected,
         isHost: seat.userId === this.hostId,
-        role: this.status === 'waiting' && !round ? null : (isDealer ? 'dealer' : 'player'),
-        isDealer,
-        isActing: acting,
-        cards,
+        isActing: Boolean(round && !round.complete && round.actingId === seat.userId),
+        cards: cards && cards.length ? cards : null,
         total,
-        hiddenTotal: hidden,
         busted: total !== null && total > 21,
-        combination: total === null ? null : (hidden ? `${total} + ?` : `Очки: ${total}`),
-        roleLabel: this.status === 'waiting' && !round ? null : (isDealer ? 'держит банк' : 'ставит'),
+        combination: total === null ? null : `Очки: ${total}`,
+        roleLabel: this.status === 'waiting' && !round ? null : (isOpener ? 'ходит первым' : 'ходит вторым'),
         lastAction: null,
-        bet: !isDealer && round ? round.bet : 0,
+        bet: round ? round.bet : 0,
+        isDealer: false,
       };
     });
 
     const mySeatIndex = this.seatIndexOf(userId);
     const myTurn = Boolean(round && !round.complete && round.actingId === userId);
-    const legal = myTurn ? round.legalActions(userId) : null;
-    const myBetTurn = this.status === 'betting' && mySeatIndex === this.bettorSeat;
+    const myBetTurn = this.status === 'betting' && mySeatIndex === this.openerSeat;
 
     return {
       type: 'state',
@@ -840,12 +813,13 @@ class Room extends EventEmitter {
       settings: this.settings,
       handNumber: this.handNumber,
       phase: round ? round.phase : null,
-      pot: round ? round.bet : 0,
-      potTotal: round ? round.bet : 0,
+      // В банке лежат обе ставки.
+      pot: round ? round.bet * 2 : 0,
+      potTotal: round ? round.bet * 2 : 0,
       board: [],
       seats,
-      dealerSeat: this.dealerSeat,
-      bettorSeat: this.bettorSeat === undefined ? null : this.bettorSeat,
+      dealerSeat: -1,
+      openerSeat: this.openerSeat === undefined ? null : this.openerSeat,
       turnDeadline: this.turnDeadline,
       nextHandAt: this.nextHandAt || null,
       lastResult: this.lastResult,
@@ -861,7 +835,6 @@ class Room extends EventEmitter {
         stack: mySeatIndex >= 0 ? seats[mySeatIndex].stack : 0,
         balance: this.bank ? this.bank.balanceOf(userId) : 0,
         sittingOut: mySeatIndex >= 0 ? this.seats[mySeatIndex].sittingOut : false,
-        role: mySeatIndex >= 0 && seats[mySeatIndex] ? seats[mySeatIndex].role : null,
         canRebuy: mySeatIndex >= 0
           && this.seats[mySeatIndex].stack < this.settings.buyIn
           && (this.bank ? this.bank.balanceOf(userId) > 0 : true)
@@ -869,7 +842,7 @@ class Room extends EventEmitter {
         betTurn: myBetTurn
           ? { min: Math.min(this.settings.minBet, this.maxBet), max: this.maxBet }
           : null,
-        legal,
+        legal: myTurn ? round.legalActions(userId) : null,
       },
     };
   }

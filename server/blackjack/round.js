@@ -1,10 +1,9 @@
 'use strict';
 
-const { freshDeck, shuffle, rankOf, RANK_CHARS } = require('../poker/cards');
+const { freshDeck, shuffle, rankOf } = require('../poker/cards');
 
-// Одна раздача блекджека на двоих: один игрок ставит, второй держит банк.
-// Дилер здесь живой человек, поэтому «добирать до 17» его никто не заставляет —
-// он решает сам. Фишки переходят между двумя игроками, ниоткуда не берутся.
+// Блекджек между двумя игроками, без дилера и без банка.
+// Оба ставят поровну, карты у обоих открыты, кто ближе к 21 — тот и забрал.
 
 const BLACKJACK = 21;
 
@@ -40,34 +39,31 @@ function isBlackjack(cards) {
 
 class BlackjackError extends Error {}
 
-class BlackjackRound {
-  // playerId ставит, dealerId держит банк.
-  constructor({ playerId, dealerId, bet, playerStack, dealerStack, rng = Math.random, deck = null }) {
-    if (playerId === dealerId) throw new BlackjackError('Игрок и дилер — один и тот же человек');
+class BlackjackDuel {
+  // firstId ходит первым (он же назначал ставку), secondId — вторым.
+  constructor({ firstId, secondId, bet, firstStack, secondStack, rng = Math.random, deck = null }) {
+    if (firstId === secondId) throw new BlackjackError('Нужны два разных игрока');
 
-    const maxBet = Math.min(playerStack, dealerStack);
+    const maxBet = Math.min(firstStack, secondStack);
     const amount = Math.floor(Number(bet));
     if (!Number.isFinite(amount) || amount <= 0) throw new BlackjackError('Ставка должна быть больше нуля');
     if (amount > maxBet) throw new BlackjackError(`Такую ставку не потянуть: максимум ${maxBet}`);
 
-    this.playerId = playerId;
-    this.dealerId = dealerId;
+    this.firstId = firstId;
+    this.secondId = secondId;
     this.bet = amount;
-    this.playerStack = playerStack;
-    this.dealerStack = dealerStack;
-    this.doubled = false;
+    this.stacks = { [firstId]: firstStack, [secondId]: secondStack };
+    this.cards = { [firstId]: [], [secondId]: [] };
 
     this.deck = deck ? deck.slice() : shuffle(freshDeck(), rng);
     this.deckPos = 0;
-    // Карты идут по кругу, как за живым столом: игроку, дилеру, игроку, дилеру.
-    this.playerCards = [];
-    this.dealerCards = [];
-    this.playerCards.push(this._draw());
-    this.dealerCards.push(this._draw());
-    this.playerCards.push(this._draw());
-    this.dealerCards.push(this._draw());
+    // Карты идут по кругу, как за живым столом.
+    for (let round = 0; round < 2; round++) {
+      this.cards[firstId].push(this._draw());
+      this.cards[secondId].push(this._draw());
+    }
 
-    this.phase = 'player'; // player -> dealer -> complete
+    this.phase = 'first'; // first -> second -> complete
     this.complete = false;
     this.result = null;
     this.events = [];
@@ -80,35 +76,32 @@ class BlackjackRound {
 
   get actingId() {
     if (this.complete) return null;
-    return this.phase === 'player' ? this.playerId : this.dealerId;
+    return this.phase === 'first' ? this.firstId : this.secondId;
   }
 
-  get playerValue() {
-    return handValue(this.playerCards);
+  cardsOf(id) {
+    return this.cards[id] ? this.cards[id].slice() : [];
   }
 
-  get dealerValue() {
-    return handValue(this.dealerCards);
+  valueOf(id) {
+    return handValue(this.cards[id] || []);
   }
 
-  // Пока ходит игрок, вторая карта дилера закрыта.
-  visibleDealerCards() {
-    if (this.phase === 'player') return [this.dealerCards[0]];
-    return this.dealerCards.slice();
+  stackOf(id) {
+    return this.stacks[id] || 0;
+  }
+
+  opponentOf(id) {
+    return id === this.firstId ? this.secondId : this.firstId;
   }
 
   legalActions(id) {
     if (this.complete || id !== this.actingId) return null;
-    if (this.phase === 'player') {
-      const value = this.playerValue;
-      const canDouble = this.playerCards.length === 2
-        && !this.doubled
-        && this.playerStack >= this.bet * 2
-        && this.dealerStack >= this.bet * 2;
-      return { canHit: !value.busted && value.total < BLACKJACK, canStand: true, canDouble };
-    }
-    const value = this.dealerValue;
-    return { canHit: !value.busted && value.total < BLACKJACK, canStand: true, canDouble: false };
+    const value = this.valueOf(id);
+    return {
+      canHit: !value.busted && value.total < BLACKJACK,
+      canStand: true,
+    };
   }
 
   // ——— Ходы ———
@@ -120,26 +113,14 @@ class BlackjackRound {
     switch (action) {
       case 'hit': {
         if (!legal.canHit) throw new BlackjackError('Брать больше нельзя');
-        const cards = this.phase === 'player' ? this.playerCards : this.dealerCards;
-        cards.push(this._draw());
-        this._log({ type: 'hit', playerId: id, card: cards[cards.length - 1] });
-        this._afterCard();
+        this.cards[id].push(this._draw());
+        this._log({ type: 'hit', playerId: id, card: this.cards[id][this.cards[id].length - 1] });
+        this._afterCard(id);
         break;
       }
       case 'stand': {
         this._log({ type: 'stand', playerId: id });
         this._advance();
-        break;
-      }
-      case 'double': {
-        if (!legal.canDouble) throw new BlackjackError('Удвоить сейчас нельзя');
-        this.bet *= 2;
-        this.doubled = true;
-        this.playerCards.push(this._draw());
-        this._log({ type: 'double', playerId: id, card: this.playerCards[this.playerCards.length - 1], bet: this.bet });
-        // После удвоения берётся ровно одна карта, дальше ход переходит дилеру.
-        if (this.playerValue.busted) this._finish('dealer', 'перебор у игрока');
-        else this._advance();
         break;
       }
       default:
@@ -160,21 +141,20 @@ class BlackjackRound {
   }
 
   _checkNaturals() {
-    const playerNatural = isBlackjack(this.playerCards);
-    const dealerNatural = isBlackjack(this.dealerCards);
-    if (!playerNatural && !dealerNatural) return;
+    const firstNatural = isBlackjack(this.cards[this.firstId]);
+    const secondNatural = isBlackjack(this.cards[this.secondId]);
+    if (!firstNatural && !secondNatural) return;
 
-    this.phase = 'dealer'; // карты дилера открываются
-    if (playerNatural && dealerNatural) this._finish('push', 'блекджек у обоих');
-    else if (playerNatural) this._finish('player', 'блекджек', { natural: true });
-    else this._finish('dealer', 'блекджек у дилера');
+    if (firstNatural && secondNatural) this._finish(null, 'блекджек у обоих');
+    else if (firstNatural) this._finish(this.firstId, 'блекджек');
+    else this._finish(this.secondId, 'блекджек');
   }
 
-  _afterCard() {
-    const value = this.phase === 'player' ? this.playerValue : this.dealerValue;
+  _afterCard(id) {
+    const value = this.valueOf(id);
     if (value.busted) {
-      if (this.phase === 'player') this._finish('dealer', 'перебор у игрока');
-      else this._finish('player', 'перебор у дилера');
+      // Перебрал — соперник забирает, добирать ему уже незачем.
+      this._finish(this.opponentOf(id), 'перебор у соперника');
       return;
     }
     // На 21 добирать нечего — ход переходит сам.
@@ -182,51 +162,47 @@ class BlackjackRound {
   }
 
   _advance() {
-    if (this.phase === 'player') {
-      this.phase = 'dealer';
-      this._log({ type: 'reveal', cards: this.dealerCards.slice() });
-      // Если дилеру уже нечем ходить, сразу считаем.
-      const value = this.dealerValue;
-      if (value.busted) this._finish('player', 'перебор у дилера');
-      else if (value.total === BLACKJACK) this._compare();
+    if (this.phase === 'first') {
+      this.phase = 'second';
       return;
     }
     this._compare();
   }
 
   _compare() {
-    const player = this.playerValue.total;
-    const dealer = this.dealerValue.total;
-    if (player > dealer) this._finish('player', `${player} против ${dealer}`);
-    else if (dealer > player) this._finish('dealer', `${dealer} против ${player}`);
-    else this._finish('push', `поровну, ${player}`);
+    const first = this.valueOf(this.firstId).total;
+    const second = this.valueOf(this.secondId).total;
+    if (first > second) this._finish(this.firstId, `${first} против ${second}`);
+    else if (second > first) this._finish(this.secondId, `${second} против ${first}`);
+    else this._finish(null, `поровну, ${first}`);
   }
 
-  _finish(winner, reason, { natural = false } = {}) {
-    // Натуральный блекджек платит полторы ставки.
-    let delta = 0;
-    if (winner === 'player') delta = natural ? Math.floor(this.bet * 1.5) : this.bet;
-    else if (winner === 'dealer') delta = -this.bet;
+  // winnerId === null означает ничью.
+  _finish(winnerId, reason) {
+    let amount = 0;
+    if (winnerId) {
+      // Больше, чем есть у проигравшего, не заберёшь.
+      amount = Math.min(this.bet, this.stacks[this.opponentOf(winnerId)]);
+      this.stacks[winnerId] += amount;
+      this.stacks[this.opponentOf(winnerId)] -= amount;
+    }
 
-    // Дилер не может заплатить больше, чем у него есть.
-    delta = Math.max(-this.dealerStack, Math.min(delta, this.dealerStack));
-
-    this.playerStack += delta;
-    this.dealerStack -= delta;
     this.phase = 'complete';
     this.complete = true;
     this.result = {
-      winner,
+      winnerId,
       reason,
-      natural,
       bet: this.bet,
-      delta,
-      playerCards: this.playerCards.slice(),
-      dealerCards: this.dealerCards.slice(),
-      playerTotal: this.playerValue.total,
-      dealerTotal: this.dealerValue.total,
-      playerStack: this.playerStack,
-      dealerStack: this.dealerStack,
+      amount,
+      totals: {
+        [this.firstId]: this.valueOf(this.firstId).total,
+        [this.secondId]: this.valueOf(this.secondId).total,
+      },
+      cards: {
+        [this.firstId]: this.cardsOf(this.firstId),
+        [this.secondId]: this.cardsOf(this.secondId),
+      },
+      stacks: { ...this.stacks },
     };
     this._log({ type: 'result', result: this.result });
   }
@@ -236,4 +212,4 @@ class BlackjackRound {
   }
 }
 
-module.exports = { BlackjackRound, BlackjackError, handValue, isBlackjack, cardValue, BLACKJACK, RANK_CHARS };
+module.exports = { BlackjackDuel, BlackjackError, handValue, isBlackjack, cardValue, BLACKJACK };
