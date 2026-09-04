@@ -99,7 +99,7 @@ fi
 
 # Кто держит нужный порт: чужой сервис на 443 — самая частая причина
 # «сайт по HTTPS не отвечает», при том что nginx жив и настроен верно.
-PORT_OWNER="$(ss -tlnp 2>/dev/null | awk -v p=":$PORT " '$4 ~ p {print $NF}' | head -n1 || true)"
+PORT_OWNER="$(ss -tlnp 2>/dev/null | awk -v p=":$PORT\$" '$4 ~ p {print $NF}' | head -n1 || true)"
 if [[ -n "$PORT_OWNER" && "$PORT_OWNER" != *nginx* ]]; then
   echo "→ Порт $PORT занят не nginx, а вот этим:"
   echo "     $PORT_OWNER"

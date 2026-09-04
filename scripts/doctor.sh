@@ -102,7 +102,7 @@ DUPES="$(grep -rls "server_name[[:space:]].*$DOMAIN" /etc/nginx/sites-enabled/ 2
 [[ -n "$DUPES" ]] && bad "на этот домен есть ещё конфиг: $DUPES (уберите лишний)" || ok "дублирующих конфигов нет"
 
 head2 "Порт $PORT"
-OWNER="$(ss -tlnp 2>/dev/null | awk -v p=":$PORT " '$4 ~ p {print $NF}' | head -1)"
+OWNER="$(ss -tlnp 2>/dev/null | awk -v p=":$PORT\$" '$4 ~ p {print $NF}' | head -1)"
 if [[ -z "$OWNER" ]]; then
   bad "порт $PORT никто не слушает"
 elif [[ "$OWNER" == *nginx* ]]; then
