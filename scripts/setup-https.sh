@@ -115,14 +115,23 @@ if command -v ufw >/dev/null; then
   ufw allow 'Nginx Full' >/dev/null 2>&1 || true
 fi
 
-echo "→ Выпускаю сертификат"
-if ! certbot --nginx -d "$DOMAIN" --agree-tos -m "$EMAIL" --redirect --non-interactive; then
-  echo
-  echo "  Certbot не справился. Частые причины:"
-  echo "   • порт 80 закрыт снаружи — проверьте: ufw status"
-  echo "   • домен указывает не на этот сервер"
-  echo "   • у домена есть AAAA-запись, а по IPv6 сервер недоступен"
-  exit 1
+if [[ -s "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
+  # Сертификат уже выпускали: заново просить не надо (и лимиты Let's Encrypt целее),
+  # достаточно прописать его в конфиг nginx. Без --non-interactive certbot
+  # показал бы меню и завис бы в ожидании ответа.
+  echo "→ Сертификат уже есть, прописываю его в nginx"
+  certbot install --cert-name "$DOMAIN" --nginx --redirect --non-interactive
+else
+  echo "→ Выпускаю сертификат"
+  if ! certbot certonly --nginx -d "$DOMAIN" --agree-tos -m "$EMAIL" --non-interactive; then
+    echo
+    echo "  Certbot не справился. Частые причины:"
+    echo "   • порт 80 закрыт снаружи — проверьте: ufw status"
+    echo "   • домен указывает не на этот сервер"
+    echo "   • у домена есть AAAA-запись, а по IPv6 сервер недоступен"
+    exit 1
+  fi
+  certbot install --cert-name "$DOMAIN" --nginx --redirect --non-interactive
 fi
 
 # Certbot умеет завершиться с нулём, не выпустив сертификат, — проверяем результат.

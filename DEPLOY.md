@@ -351,6 +351,14 @@ certbot --nginx -d ВАШ_ДОМЕН --agree-tos -m ваша@почта --redire
 ```
 
   Обратите внимание: `ваша@почта` надо заменить на настоящий адрес, иначе certbot откажет.
+
+  Если certbot предлагает меню «Attempt to reinstall this existing certificate» —
+  сертификат уже выпущен, его надо просто прописать в nginx, без обращения к Let's Encrypt:
+
+```bash
+certbot install --cert-name ВАШ_ДОМЕН --nginx --redirect
+systemctl reload nginx
+```
 - **Telegram пишет, что приложение недоступно** — в BotFather указан `http://`,
   голый IP или адрес с самоподписанным сертификатом.
 - **«Откройте приложение через Telegram» в браузере** — так и задумано: с заданным
