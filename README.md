@@ -68,8 +68,8 @@ PORT=3000
 Проверить токен и повесить кнопку меню бота:
 
 ```bash
-node scripts/setup-bot.js                    # покажет имя бота и подскажет TELEGRAM_BOT_USERNAME
-node scripts/setup-bot.js https://ваш.домен  # кнопка «Играть» будет открывать стол
+node scripts/setup-bot.js                           # покажет имя бота и подскажет TELEGRAM_BOT_USERNAME
+node scripts/setup-bot.js https://ваш.домен --save  # кнопка «Играть» + имя бота в .env
 ```
 
 **Пошаговая установка на сервер со всеми командами — в [DEPLOY.md](DEPLOY.md).**

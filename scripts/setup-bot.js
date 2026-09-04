@@ -3,17 +3,39 @@
 
 // Проверяет токен и настраивает кнопку меню бота, чтобы она открывала мини-приложение.
 //
-//   node scripts/setup-bot.js                      — просто проверить токен
-//   node scripts/setup-bot.js https://ваш.домен    — ещё и повесить кнопку меню
+//   node scripts/setup-bot.js                             — просто проверить токен
+//   node scripts/setup-bot.js https://ваш.домен           — ещё и повесить кнопку меню
+//   node scripts/setup-bot.js https://ваш.домен --save    — и вписать имя бота в .env
 //
 // Токен берётся из .env или переменной окружения TELEGRAM_BOT_TOKEN.
 
+const fs = require('fs');
+const path = require('path');
 const { loadEnv } = require('../server/env');
 
 loadEnv();
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const url = process.argv[2];
+const args = process.argv.slice(2);
+const save = args.includes('--save');
+const url = args.find((argument) => !argument.startsWith('--'));
+
+// Правит одну строку в .env, не трогая остальные.
+function saveToEnv(key, value) {
+  const file = path.join(__dirname, '..', '.env');
+  let text = '';
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    console.warn(`  Файл .env не найден — впишите вручную: ${key}=${value}`);
+    return;
+  }
+  const line = `${key}=${value}`;
+  const pattern = new RegExp(`^${key}=.*$`, 'm');
+  text = pattern.test(text) ? text.replace(pattern, line) : `${text.replace(/\s*$/, '')}\n${line}\n`;
+  fs.writeFileSync(file, text);
+  console.log(`  В .env записано ${line}`);
+}
 
 async function call(method, body) {
   let response;
@@ -59,7 +81,12 @@ async function call(method, body) {
 
   const me = await call('getMe');
   console.log(`Токен рабочий. Бот: ${me.first_name} @${me.username} (id ${me.id})`);
-  console.log(`Впишите в .env:  TELEGRAM_BOT_USERNAME=${me.username}`);
+  if (save) {
+    saveToEnv('TELEGRAM_BOT_USERNAME', me.username);
+  } else if (process.env.TELEGRAM_BOT_USERNAME !== me.username) {
+    console.log(`Впишите в .env:  TELEGRAM_BOT_USERNAME=${me.username}`);
+    console.log('(или запустите эту же команду с ключом --save — впишет сам)');
+  }
 
   if (!url) {
     console.log('\nЧтобы кнопка меню открывала стол, запустите:');

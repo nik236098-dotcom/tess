@@ -208,16 +208,19 @@ ufw status
 ```bash
 cd /opt/poker/app
 NODE_BIN="$(command -v node)"
-sudo -u poker "$NODE_BIN" scripts/setup-bot.js                    # проверит токен, скажет имя бота
-sudo -u poker "$NODE_BIN" scripts/setup-bot.js https://ВАШ_ДОМЕН  # кнопка «Играть» в чате бота
+sudo -u poker "$NODE_BIN" scripts/setup-bot.js                           # проверит токен, скажет имя бота
+sudo -u poker "$NODE_BIN" scripts/setup-bot.js https://ВАШ_ДОМЕН --save  # кнопка «Играть» + имя бота в .env
 ```
+
+Ключ `--save` сам впишет `TELEGRAM_BOT_USERNAME` в `.env` — не придётся копировать руками.
+После него перезапустите сервис: `systemctl restart poker`.
 
 Полный путь здесь не для красоты: `sudo` ищет программы по своему короткому списку
 каталогов, и `node`, поставленный не в `/usr/bin`, там не найдётся — будет
 `sudo: node: command not found`.
 
-Имя бота из первой команды впишите в `.env` как `TELEGRAM_BOT_USERNAME` — оно нужно
-для кнопки «позвать друзей», и перезапустите сервис: `systemctl restart poker`.
+Имя бота нужно для кнопки «позвать друзей»: с `--save` оно попадёт в `.env` само,
+без ключа — скрипт просто напечатает строку, которую надо вписать.
 
 ## 10. Первый запуск
 
