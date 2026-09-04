@@ -35,7 +35,19 @@ async function call(method, body) {
     // Так отвечают прокси и фильтры трафика — покажем, что именно пришло.
     throw new Error(`api.telegram.org ответил не по-телеграмному (HTTP ${response.status}): ${text.slice(0, 120)}`);
   }
-  if (!data.ok) throw new Error(`${method}: ${data.description || 'неизвестная ошибка'}`);
+  if (!data.ok) {
+    if (response.status === 401) {
+      throw new Error(
+        'Telegram не признал токен (Unauthorized).\n' +
+        '  • В .env всё ещё заглушка из .env.example? Проверьте:\n' +
+        "      grep '^TELEGRAM_BOT_TOKEN=' .env | cut -d= -f2 | cut -d: -f1\n" +
+        '    Должен показать номер вашего бота, а не 123456.\n' +
+        '  • Токен отзывали в BotFather? Тогда возьмите новый: /mybots → бот → API Token.\n' +
+        '  • После правки .env перезапустите сервис: systemctl restart poker'
+      );
+    }
+    throw new Error(`${method}: ${data.description || 'неизвестная ошибка'}`);
+  }
   return data.result;
 }
 
