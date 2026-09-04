@@ -853,11 +853,12 @@ class Room extends EventEmitter {
         userId,
         seatIndex: mySeatIndex < 0 ? null : mySeatIndex,
         isHost: userId === this.hostId,
+        ...this.controlsFor(userId),
         stack: mySeatIndex >= 0 ? seats[mySeatIndex].stack : 0,
         balance: this.bank ? this.bank.balanceOf(userId) : 0,
         sittingOut: mySeatIndex >= 0 ? this.seats[mySeatIndex].sittingOut : false,
         canRebuy: mySeatIndex >= 0
-          && this.seats[mySeatIndex].stack < this.settings.buyIn
+          && this.seats[mySeatIndex].stack < this.settings.buyIn / 2
           && (this.bank ? this.bank.balanceOf(userId) > 0 : true)
           && !this.inActiveHand(userId),
         betTurn: myBetTurn
@@ -865,6 +866,21 @@ class Room extends EventEmitter {
           : null,
         legal: myTurn ? round.legalActions(userId) : null,
       },
+    };
+  }
+
+  // Кнопки управления столом: показываем их только когда есть что нажимать.
+  controlsFor(userId) {
+    const seatIndex = this.seatIndexOf(userId);
+    const seat = seatIndex >= 0 ? this.seats[seatIndex] : null;
+    const ready = this.eligibleSeats().length;
+    return {
+      canStart: userId === this.hostId && !this.autoStart && ready >= 2,
+      canPause: userId === this.hostId && this.autoStart,
+      // Пропускать имеет смысл, только если раздачи идут и есть с кем играть;
+      // тому, кто уже пропускает, кнопка нужна, чтобы вернуться.
+      canSitOut: Boolean(seat) && this.autoStart && (seat.sittingOut || ready >= 2),
+      paused: !this.autoStart && this.handNumber > 0,
     };
   }
 
@@ -990,11 +1006,12 @@ class Room extends EventEmitter {
         userId,
         seatIndex: mySeatIndex < 0 ? null : mySeatIndex,
         isHost: userId === this.hostId,
+        ...this.controlsFor(userId),
         stack: mySeatIndex >= 0 ? (hand && hand.player(userId) ? hand.player(userId).stack : this.seats[mySeatIndex].stack) : 0,
         sittingOut: mySeatIndex >= 0 ? this.seats[mySeatIndex].sittingOut : false,
         balance: this.bank ? this.bank.balanceOf(userId) : 0,
         canRebuy: mySeatIndex >= 0
-          && this.seats[mySeatIndex].stack < this.settings.buyIn
+          && this.seats[mySeatIndex].stack < this.settings.buyIn / 2
           && (this.bank ? this.bank.balanceOf(userId) > 0 : true)
           && !this.inActiveHand(userId),
         legal: legal && {

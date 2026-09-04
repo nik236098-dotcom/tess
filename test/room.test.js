@@ -63,6 +63,18 @@ test('уход посреди раздачи откладывается до е�
   assert.strictEqual(room.bankRef.balanceOf(actor), 5000, 'весь стек вернулся на баланс');
 });
 
+test('пополнение предлагается, только когда стек реально просел', (t) => {
+  const room = table({ balance: 3000 });
+  t.after(() => room.dispose());
+
+  const seat = room.seatOf('u1');
+  seat.stack = 990; // потеряли всего десятку
+  assert.strictEqual(room.stateFor('u1').you.canRebuy, false, 'кнопка не должна лезть после первой потери');
+
+  seat.stack = 200;
+  assert.strictEqual(room.stateFor('u1').you.canRebuy, true);
+});
+
 test('пополнение стека берёт фишки с баланса', (t) => {
   const room = table({ balance: 3000 });
   t.after(() => room.dispose());
@@ -284,4 +296,70 @@ test('уход посреди раздачи откладывается до е�
   assert.ok(room.seatOf(opener), 'место держится, пока идёт раздача');
   playOut(room);
   assert.strictEqual(room.seatIndexOf(opener), -1, 'после раздачи место освободилось');
+});
+
+// ——— Кнопки управления столом ———
+
+test('кнопки появляются только когда есть что нажимать', (t) => {
+  const bank = new Accounts({ startingBalance: 10000 });
+  ['Аня', 'Боря'].forEach((name, i) => bank.ensure({ id: `u${i}`, name }));
+  const room = new Room('CTRL1', { id: 'u0', name: 'Аня' }, { buyIn: 1000 }, { bank });
+  room.addMember({ id: 'u1', name: 'Боря' });
+  t.after(() => room.dispose());
+
+  const host = () => room.stateFor('u0').you;
+
+  assert.deepStrictEqual(
+    { start: host().canStart, pause: host().canPause, sitOut: host().canSitOut },
+    { start: false, pause: false, sitOut: false },
+    'за пустым столом нажимать нечего'
+  );
+
+  room.sit('u0', 0);
+  assert.strictEqual(host().canStart, false, 'в одиночку игру не начать');
+  assert.strictEqual(host().canSitOut, false, 'пропускать тоже нечего');
+
+  room.sit('u1', 1);
+  assert.strictEqual(host().canStart, true);
+  assert.strictEqual(host().canPause, false);
+
+  room.start('u0');
+  assert.strictEqual(host().canStart, false, 'игра уже идёт');
+  assert.strictEqual(host().canPause, true);
+  assert.strictEqual(host().canSitOut, true);
+
+  room.pause('u0');
+  assert.strictEqual(host().paused, true, 'состояние паузы видно клиенту');
+  assert.strictEqual(host().canStart, true, 'и её можно снять');
+  assert.strictEqual(host().canSitOut, false, 'на паузе пропускать нечего');
+});
+
+test('пропускающий может вернуться, даже если играть больше не с кем', (t) => {
+  const bank = new Accounts({ startingBalance: 10000 });
+  ['Аня', 'Боря'].forEach((name, i) => bank.ensure({ id: `u${i}`, name }));
+  const room = new Room('CTRL2', { id: 'u0', name: 'Аня' }, { buyIn: 1000 }, { bank });
+  room.addMember({ id: 'u1', name: 'Боря' });
+  room.sit('u0', 0);
+  room.sit('u1', 1);
+  room.start('u0');
+  t.after(() => room.dispose());
+
+  room.setSittingOut('u0', true);
+  room.setSittingOut('u1', true);
+  assert.strictEqual(room.stateFor('u0').you.canSitOut, true, 'кнопка нужна, чтобы вернуться');
+  assert.strictEqual(room.stateFor('u0').you.sittingOut, true);
+});
+
+test('гость за столом видит кнопки хозяина выключенными', (t) => {
+  const bank = new Accounts({ startingBalance: 10000 });
+  ['Аня', 'Боря'].forEach((name, i) => bank.ensure({ id: `u${i}`, name }));
+  const room = new Room('CTRL3', { id: 'u0', name: 'Аня' }, { buyIn: 1000 }, { bank });
+  room.addMember({ id: 'u1', name: 'Боря' });
+  room.sit('u0', 0);
+  room.sit('u1', 1);
+  t.after(() => room.dispose());
+
+  const guest = room.stateFor('u1').you;
+  assert.strictEqual(guest.canStart, false);
+  assert.strictEqual(guest.canPause, false);
 });
