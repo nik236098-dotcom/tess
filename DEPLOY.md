@@ -240,21 +240,35 @@ cp /var/lib/poker/accounts.json /root/accounts-$(date +%F).json
 
 1. Зайдите на [duckdns.org](https://www.duckdns.org) и войдите (Google, GitHub — что удобнее).
 2. Придумайте имя, например `pokergena`, и нажмите **add domain**. Получится `pokergena.duckdns.org`.
-3. Скопируйте свой **token** с той же страницы и привяжите домен к серверу:
+3. На странице DuckDNS два поля адреса — **current ip** и **current ipv6**.
+   Заполняйте только первое, IPv6 оставьте пустым: если вписать туда лишнее,
+   у домена появится AAAA-запись, Let's Encrypt пойдёт проверять именно по ней
+   и получит отказ, хотя по IPv4 всё работает.
+
+   Адреса сервера узнаются так:
 
 ```bash
-# выполняется на сервере; подставьте своё имя, токен и IP сервера
-curl "https://www.duckdns.org/update?domains=pokergena&token=ВАШ_ТОКЕН&ip=IP_СЕРВЕРА"
+curl -s -4 ifconfig.me    # IPv4 — этот адрес и вписывайте
+curl -s -6 ifconfig.me    # IPv6 — если пусто или ошибка, поле ipv6 не трогайте
+```
+
+4. Либо не заполняйте форму руками, а привяжите домен командой с сервера:
+
+```bash
+# подставьте своё имя и токен; IP подставится сам
+curl "https://www.duckdns.org/update?domains=pokergena&token=ВАШ_ТОКЕН&ip=$(curl -s -4 ifconfig.me)&ipv6="
 # в ответ должно прийти: OK
 ```
 
-4. Проверьте, что имя резолвится в ваш IP:
+   Пустой `ipv6=` в конце заодно вычищает случайно проставленную AAAA-запись.
+
+5. Проверьте, что имя резолвится в ваш IPv4 и никуда больше:
 
 ```bash
-dig +short pokergena.duckdns.org
+getent ahosts pokergena.duckdns.org
 ```
 
-5. Дальше идите по шагу 6, подставляя `pokergena.duckdns.org` вместо `ВАШ_ДОМЕН`:
+6. Дальше идите по шагу 6, подставляя `pokergena.duckdns.org` вместо `ВАШ_ДОМЕН`:
 
 ```bash
 sed -i 's/poker.example.com/pokergena.duckdns.org/' /etc/nginx/sites-available/poker

@@ -32,19 +32,40 @@ if [[ "$EUID" -ne 0 ]]; then
 fi
 
 echo "→ Проверяю, куда указывает $DOMAIN"
-SERVER_IP="$(curl -fsS --max-time 10 ifconfig.me || true)"
-DOMAIN_IP="$(getent hosts "$DOMAIN" | awk '{print $1}' | head -n1 || true)"
+SERVER_IPV4="$(curl -fsS -4 --max-time 10 ifconfig.me 2>/dev/null || true)"
+SERVER_IPV6="$(curl -fsS -6 --max-time 10 ifconfig.me 2>/dev/null || true)"
+DOMAIN_IPS="$(getent ahosts "$DOMAIN" 2>/dev/null | awk '{print $1}' | sort -u || true)"
 
-if [[ -z "$DOMAIN_IP" ]]; then
-  echo "  Имя $DOMAIN пока не резолвится. Создайте A-запись на $SERVER_IP и подождите пару минут."
+if [[ -z "$DOMAIN_IPS" ]]; then
+  echo "  Имя $DOMAIN пока не резолвится."
+  echo "  Заведите A-запись на $SERVER_IPV4 и подождите пару минут."
   exit 1
 fi
-if [[ -n "$SERVER_IP" && "$DOMAIN_IP" != "$SERVER_IP" ]]; then
-  echo "  $DOMAIN указывает на $DOMAIN_IP, а сервер имеет адрес $SERVER_IP."
-  echo "  Сертификат так не выпустится — поправьте A-запись и повторите."
+
+echo "  $DOMAIN резолвится в: $(echo "$DOMAIN_IPS" | tr '\n' ' ')"
+[[ -n "$SERVER_IPV4" ]] && echo "  IPv4 сервера: $SERVER_IPV4"
+[[ -n "$SERVER_IPV6" ]] && echo "  IPv6 сервера: $SERVER_IPV6"
+
+MATCHED=0
+for ip in $DOMAIN_IPS; do
+  [[ "$ip" == "$SERVER_IPV4" || ( -n "$SERVER_IPV6" && "$ip" == "$SERVER_IPV6" ) ]] && MATCHED=1
+done
+if [[ "$MATCHED" -eq 0 ]]; then
+  echo "  Домен указывает не на этот сервер — сертификат не выпустится."
+  echo "  Поправьте запись и повторите."
   exit 1
 fi
-echo "  Порядок: $DOMAIN → $DOMAIN_IP"
+
+# Самая частая беда с бесплатными DNS: заполнили поле IPv6 наугад.
+# Let's Encrypt предпочитает AAAA, и проверка уходит в никуда.
+STRAY_IPV6="$(echo "$DOMAIN_IPS" | grep ':' || true)"
+if [[ -n "$STRAY_IPV6" && "$STRAY_IPV6" != "$SERVER_IPV6" ]]; then
+  echo
+  echo "  ВНИМАНИЕ: у домена есть AAAA-запись $STRAY_IPV6, а сервер по этому адресу недоступен."
+  echo "  Let's Encrypt пойдёт именно по IPv6 и получит отказ."
+  echo "  На duckdns.org очистите поле ipv6 (или: curl \"https://www.duckdns.org/update?domains=ИМЯ&token=ТОКЕН&ipv6=\")"
+  exit 1
+fi
 
 echo "→ Ставлю nginx и certbot, если их нет"
 export DEBIAN_FRONTEND=noninteractive
