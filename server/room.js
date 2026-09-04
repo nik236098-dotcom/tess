@@ -2,6 +2,7 @@
 
 const { EventEmitter } = require('events');
 const { Hand, ActionError } = require('./poker/hand');
+const { BlackjackRound, BlackjackError, handValue } = require('./blackjack/round');
 const { cardToString, rankOf, RANK_CHARS } = require('./poker/cards');
 const { bestHand } = require('./poker/evaluator');
 
@@ -14,17 +15,24 @@ function prettyCard(card) {
 }
 
 const DEFAULT_SETTINGS = {
+  game: 'holdem', // holdem | blackjack
   smallBlind: 5,
   bigBlind: 10,
+  minBet: 10, // для блекджека
+  maxBet: 500,
   buyIn: 1000,
   maxPlayers: 6,
   turnSeconds: 45,
   isPublic: true, // стол по умолчанию виден всем в списке
 };
 
+const GAME_NAMES = { holdem: 'Холдем', blackjack: 'Блекджек' };
+
 const SETTING_LIMITS = {
   smallBlind: [1, 10000],
   bigBlind: [2, 20000],
+  minBet: [1, 100000],
+  maxBet: [1, 1000000],
   buyIn: [20, 1000000],
   maxPlayers: [2, 9],
   turnSeconds: [10, 180],
@@ -43,12 +51,13 @@ class Room extends EventEmitter {
     this.code = code;
     this.hostId = host.id;
     this.hostName = host.name;
-    this.title = `Стол ${host.name}`;
     this.settings = normalizeSettings(settings);
+    this.title = `${this.settings.game === 'blackjack' ? 'Блекджек' : 'Стол'} ${host.name}`;
     this.seats = new Array(this.settings.maxPlayers).fill(null);
     this.members = new Map(); // userId -> { id, name, photoUrl, connected }
     this.status = 'waiting';
     this.hand = null;
+    this.round = null; // раздача блекджека
     this.dealerSeat = -1;
     this.handNumber = 0;
     this.log = [];
@@ -126,6 +135,16 @@ class Room extends EventEmitter {
     return this.members.size === 0;
   }
 
+  // Участвует ли игрок прямо сейчас в незавершённой раздаче.
+  inActiveHand(userId) {
+    if (this.isBlackjack) {
+      if (this.status === 'betting') return true;
+      return Boolean(this.round && !this.round.complete
+        && (this.round.playerId === userId || this.round.dealerId === userId));
+    }
+    return Boolean(this.hand && !this.hand.complete && this.hand.player(userId));
+  }
+
   seatOf(userId) {
     return this.seats.find((s) => s && s.userId === userId) || null;
   }
@@ -173,6 +192,14 @@ class Room extends EventEmitter {
     const index = this.seatIndexOf(userId);
     if (index < 0) return;
     const seat = this.seats[index];
+
+    if (this.isBlackjack && this.inActiveHand(userId)) {
+      // Посреди блекджековой раздачи место держим до её конца.
+      seat.leaveAfterHand = true;
+      if (!silent) this.pushLog(`${seat.name} уходит после раздачи`);
+      this.touch();
+      return;
+    }
 
     const inHand = this.hand && !this.hand.complete && this.hand.player(userId);
     if (inHand && !inHand.folded) {
@@ -229,9 +256,7 @@ class Room extends EventEmitter {
   rebuy(userId) {
     const seat = this.seatOf(userId);
     if (!seat) throw new RoomError('Вы не за столом');
-    if (this.hand && !this.hand.complete && this.hand.player(userId)) {
-      throw new RoomError('Пополнить стек можно между раздачами');
-    }
+    if (this.inActiveHand(userId)) throw new RoomError('Пополнить стек можно между раздачами');
     if (seat.stack >= this.settings.buyIn) throw new RoomError('Фишек и так достаточно');
 
     const needed = this.settings.buyIn - seat.stack;
@@ -306,6 +331,7 @@ class Room extends EventEmitter {
   maybeStartHand() {
     if (!this.autoStart) return;
     if (this.hand && !this.hand.complete) return;
+    if (this.isBlackjack && (this.status === 'betting' || (this.round && !this.round.complete))) return;
     if (this.nextHandTimer) return;
     const eligible = this.eligibleSeats();
     if (eligible.length < 2) {
@@ -315,7 +341,15 @@ class Room extends EventEmitter {
     this.startHand();
   }
 
+  get isBlackjack() {
+    return this.settings.game === 'blackjack';
+  }
+
   startHand() {
+    if (this.isBlackjack) {
+      this.startRound();
+      return;
+    }
     this.clearTurnTimer();
     this.clearNextHandTimer();
     this.lastResult = null;
@@ -349,7 +383,186 @@ class Room extends EventEmitter {
     this.touch();
   }
 
+  // ——— Блекджек ———
+
+  // Роли меняются каждую раздачу: кто держал банк, тот теперь ставит.
+  startRound() {
+    this.clearTurnTimer();
+    this.clearNextHandTimer();
+    this.lastResult = null;
+    this.round = null;
+
+    const eligible = this.eligibleSeats();
+    if (eligible.length < 2) {
+      this.status = 'waiting';
+      this.touch();
+      return;
+    }
+
+    this.dealerSeat = nextOccupiedSeat(eligible.map((e) => e.index), this.dealerSeat, this.seats.length);
+    this.bettorSeat = eligible.find((e) => e.index !== this.dealerSeat).index;
+    this.handNumber += 1;
+    this.status = 'betting';
+
+    this.feed = [];
+    this.pushLog(`Раздача №${this.handNumber}: банк держит ${this.seats[this.dealerSeat].name}`);
+    this.armBetTimer();
+    this.touch();
+  }
+
+  get maxBet() {
+    if (this.bettorSeat === undefined || this.dealerSeat < 0) return 0;
+    const bettor = this.seats[this.bettorSeat];
+    const dealer = this.seats[this.dealerSeat];
+    if (!bettor || !dealer) return 0;
+    return Math.min(this.settings.maxBet, bettor.stack, dealer.stack);
+  }
+
+  placeBet(userId, amount) {
+    if (!this.isBlackjack) throw new RoomError('Ставки делаются иначе');
+    if (this.status !== 'betting') throw new RoomError('Сейчас не время ставить');
+    const seatIndex = this.seatIndexOf(userId);
+    if (seatIndex !== this.bettorSeat) throw new RoomError('В этой раздаче вы держите банк');
+
+    const bettor = this.seats[this.bettorSeat];
+    const dealer = this.seats[this.dealerSeat];
+    const value = Math.floor(Number(amount));
+    if (!Number.isFinite(value)) throw new RoomError('Ставка должна быть числом');
+    if (value < this.settings.minBet) throw new RoomError(`Минимальная ставка — ${this.settings.minBet}`);
+    if (value > this.maxBet) throw new RoomError(`Максимальная ставка сейчас — ${this.maxBet}`);
+
+    try {
+      this.round = new BlackjackRound({
+        playerId: bettor.userId,
+        dealerId: dealer.userId,
+        bet: value,
+        playerStack: bettor.stack,
+        dealerStack: dealer.stack,
+      });
+    } catch (error) {
+      throw new RoomError(error.message);
+    }
+
+    this.status = 'playing';
+    this.pushLog(`${bettor.name} ставит ${value}`);
+    this.logRoundEvents();
+    this.armTurnTimer();
+    this.touch();
+  }
+
+  applyRoundAction(userId, action) {
+    if (!this.round || this.round.complete) throw new RoomError('Сейчас нет активной раздачи');
+    try {
+      this.round.act(userId, action);
+    } catch (error) {
+      if (error instanceof BlackjackError) throw new RoomError(error.message);
+      throw error;
+    }
+    this.logRoundEvents();
+    if (this.round.complete) this.finishRound();
+    else this.armTurnTimer();
+    this.touch();
+  }
+
+  finishRound() {
+    this.clearTurnTimer();
+    const result = this.round.result;
+
+    this.seats[this.bettorSeat].stack = result.playerStack;
+    this.seats[this.dealerSeat].stack = result.dealerStack;
+
+    const bettorName = this.seats[this.bettorSeat].name;
+    const dealerName = this.seats[this.dealerSeat].name;
+    const winnerName = result.winner === 'player' ? bettorName : dealerName;
+
+    this.lastResult = {
+      game: 'blackjack',
+      winner: result.winner,
+      winnerName: result.winner === 'push' ? null : winnerName,
+      reason: result.reason,
+      natural: result.natural,
+      amount: Math.abs(result.delta),
+      playerName: bettorName,
+      dealerName,
+      playerCards: result.playerCards.map(cardToString),
+      dealerCards: result.dealerCards.map(cardToString),
+      playerTotal: result.playerTotal,
+      dealerTotal: result.dealerTotal,
+    };
+
+    if (result.winner === 'push') this.pushLog(`Ничья: ${result.reason}`);
+    else this.pushLog(`${winnerName} выигрывает ${Math.abs(result.delta)} (${result.reason})`);
+
+    for (const seat of this.seats) {
+      if (seat && seat.stack === 0) {
+        seat.sittingOut = true;
+        seat.brokeSitOut = true;
+      }
+    }
+
+    this.seats.forEach((seat, index) => {
+      if (seat && seat.leaveAfterHand) this.releaseSeat(index, { silent: false });
+    });
+
+    this.status = 'waiting';
+    const delay = SHOWDOWN_PAUSE_MS;
+    this.nextHandTimer = setTimeout(() => {
+      this.nextHandTimer = null;
+      this.maybeStartHand();
+      this.touch();
+    }, delay);
+    this.nextHandTimer.unref?.();
+    this.nextHandAt = Date.now() + delay;
+  }
+
+  // Не поставил вовремя — ставим минимум, чтобы стол не стоял.
+  armBetTimer() {
+    this.clearTurnTimer();
+    const seconds = this.settings.turnSeconds;
+    this.turnDeadline = Date.now() + seconds * 1000;
+    this.turnTimer = setTimeout(() => {
+      this.turnTimer = null;
+      if (this.status !== 'betting') return;
+      const bettor = this.seats[this.bettorSeat];
+      if (!bettor) return;
+      try {
+        this.placeBet(bettor.userId, Math.min(this.settings.minBet, this.maxBet));
+        this.pushLog(`${bettor.name} не успел выбрать ставку — поставили минимум`);
+      } catch {
+        this.status = 'waiting';
+        this.touch();
+      }
+    }, seconds * 1000);
+    this.turnTimer.unref?.();
+  }
+
+  logRoundEvents() {
+    if (!this.round) return;
+    const events = this.round.events.splice(0);
+    for (const event of events) {
+      if (event.type === 'hit') {
+        this.pushLog(`${this.nameOf(event.playerId)} берёт ${prettyCard(event.card)}`);
+      } else if (event.type === 'double') {
+        this.pushLog(`${this.nameOf(event.playerId)} удваивает до ${event.bet}, берёт ${prettyCard(event.card)}`);
+      } else if (event.type === 'stand') {
+        this.pushLog(`${this.nameOf(event.playerId)} останавливается`);
+      } else if (event.type === 'reveal') {
+        this.pushLog(`Дилер открывает карты: ${event.cards.map(prettyCard).join(' ')}`);
+      }
+
+      const words = { hit: 'берёт карту', stand: 'останавливается', double: 'удваивает' };
+      if (words[event.type]) {
+        this.pushFeed({ name: this.nameOf(event.playerId), action: words[event.type], amount: null, allIn: false });
+      }
+    }
+  }
+
   applyAction(userId, action, amount) {
+    if (this.isBlackjack) {
+      if (action === 'bet') this.placeBet(userId, amount);
+      else this.applyRoundAction(userId, action);
+      return;
+    }
     if (!this.hand || this.hand.complete) throw new RoomError('Сейчас нет активной раздачи');
     const actor = this.hand.actingPlayer;
     if (!actor || actor.id !== userId) throw new RoomError('Сейчас не ваш ход');
@@ -432,6 +645,10 @@ class Room extends EventEmitter {
   // ——— Таймер хода ———
 
   armTurnTimer() {
+    if (this.isBlackjack) {
+      this.armRoundTimer();
+      return;
+    }
     this.clearTurnTimer();
     if (!this.hand || this.hand.complete || !this.hand.actingPlayer) return;
     const playerId = this.hand.actingPlayer.id;
@@ -448,6 +665,27 @@ class Room extends EventEmitter {
       this.hand.timeout(playerId);
       this.pushLog(`${this.nameOf(playerId)} не успевает походить — ${legal && legal.canCheck ? 'чек' : 'пас'}`);
       this.afterHandProgress();
+    }, seconds * 1000);
+    this.turnTimer.unref?.();
+  }
+
+  // В блекджеке просрочивший ход просто останавливается.
+  armRoundTimer() {
+    this.clearTurnTimer();
+    if (!this.round || this.round.complete || !this.round.actingId) return;
+    const playerId = this.round.actingId;
+    const seat = this.seatOf(playerId);
+    const seconds = seat && !seat.connected ? Math.min(10, this.settings.turnSeconds) : this.settings.turnSeconds;
+    this.turnDeadline = Date.now() + seconds * 1000;
+    this.turnTimer = setTimeout(() => {
+      this.turnTimer = null;
+      if (!this.round || this.round.complete || this.round.actingId !== playerId) return;
+      this.round.timeout(playerId);
+      this.pushLog(`${this.nameOf(playerId)} не успел походить — останавливается`);
+      this.logRoundEvents();
+      if (this.round.complete) this.finishRound();
+      else this.armTurnTimer();
+      this.touch();
     }, seconds * 1000);
     this.turnTimer.unref?.();
   }
@@ -528,6 +766,114 @@ class Room extends EventEmitter {
     this.emit('update');
   }
 
+  // Состояние блекджекового стола. Закрытая карта дилера видна только ему.
+  blackjackStateFor(userId) {
+    const round = this.round;
+    const revealed = !round || round.phase !== 'player' || round.complete;
+
+    const seats = this.seats.map((seat, index) => {
+      if (!seat) return { index, empty: true };
+
+      const isDealer = index === this.dealerSeat;
+      const isMe = seat.userId === userId;
+      let cards = null;
+      let total = null;
+      let hidden = false;
+
+      if (round) {
+        if (isDealer) {
+          if (revealed || isMe) {
+            cards = round.dealerCards.map(cardToString);
+            total = handValue(round.dealerCards).total;
+          } else {
+            // Дырка закрыта: показываем первую карту и сумму только по ней.
+            cards = [cardToString(round.dealerCards[0]), '??'];
+            total = handValue([round.dealerCards[0]]).total;
+            hidden = true;
+          }
+        } else {
+          cards = round.playerCards.map(cardToString);
+          total = handValue(round.playerCards).total;
+        }
+      }
+
+      const acting = Boolean(round && !round.complete && round.actingId === seat.userId);
+      return {
+        index,
+        empty: false,
+        userId: seat.userId,
+        name: seat.name,
+        photoUrl: seat.photoUrl,
+        stack: round && !round.complete
+          ? (isDealer ? round.dealerStack : round.playerStack)
+          : seat.stack,
+        sittingOut: seat.sittingOut,
+        connected: seat.connected,
+        isHost: seat.userId === this.hostId,
+        role: this.status === 'waiting' && !round ? null : (isDealer ? 'dealer' : 'player'),
+        isDealer,
+        isActing: acting,
+        cards,
+        total,
+        hiddenTotal: hidden,
+        busted: total !== null && total > 21,
+        combination: total === null ? null : (hidden ? `${total} + ?` : `Очки: ${total}`),
+        roleLabel: this.status === 'waiting' && !round ? null : (isDealer ? 'держит банк' : 'ставит'),
+        lastAction: null,
+        bet: !isDealer && round ? round.bet : 0,
+      };
+    });
+
+    const mySeatIndex = this.seatIndexOf(userId);
+    const myTurn = Boolean(round && !round.complete && round.actingId === userId);
+    const legal = myTurn ? round.legalActions(userId) : null;
+    const myBetTurn = this.status === 'betting' && mySeatIndex === this.bettorSeat;
+
+    return {
+      type: 'state',
+      game: 'blackjack',
+      code: this.code,
+      title: this.title,
+      hostId: this.hostId,
+      status: this.status,
+      running: this.autoStart,
+      settings: this.settings,
+      handNumber: this.handNumber,
+      phase: round ? round.phase : null,
+      pot: round ? round.bet : 0,
+      potTotal: round ? round.bet : 0,
+      board: [],
+      seats,
+      dealerSeat: this.dealerSeat,
+      bettorSeat: this.bettorSeat === undefined ? null : this.bettorSeat,
+      turnDeadline: this.turnDeadline,
+      nextHandAt: this.nextHandAt || null,
+      lastResult: this.lastResult,
+      log: this.log.slice(-25),
+      feed: this.feed.slice(-3),
+      spectators: [...this.members.values()]
+        .filter((m) => this.seatIndexOf(m.id) < 0)
+        .map((m) => ({ userId: m.id, name: m.name, photoUrl: m.photoUrl })),
+      you: {
+        userId,
+        seatIndex: mySeatIndex < 0 ? null : mySeatIndex,
+        isHost: userId === this.hostId,
+        stack: mySeatIndex >= 0 ? seats[mySeatIndex].stack : 0,
+        balance: this.bank ? this.bank.balanceOf(userId) : 0,
+        sittingOut: mySeatIndex >= 0 ? this.seats[mySeatIndex].sittingOut : false,
+        role: mySeatIndex >= 0 && seats[mySeatIndex] ? seats[mySeatIndex].role : null,
+        canRebuy: mySeatIndex >= 0
+          && this.seats[mySeatIndex].stack < this.settings.buyIn
+          && (this.bank ? this.bank.balanceOf(userId) > 0 : true)
+          && !this.inActiveHand(userId),
+        betTurn: myBetTurn
+          ? { min: Math.min(this.settings.minBet, this.maxBet), max: this.maxBet }
+          : null,
+        legal,
+      },
+    };
+  }
+
   // Короткая карточка стола для списка открытых игр.
   summary() {
     const seated = this.seats.filter(Boolean);
@@ -537,8 +883,11 @@ class Room extends EventEmitter {
       host: this.nameOf(this.hostId),
       players: seated.length,
       maxPlayers: this.settings.maxPlayers,
+      game: this.settings.game,
       smallBlind: this.settings.smallBlind,
       bigBlind: this.settings.bigBlind,
+      minBet: this.settings.minBet,
+      maxBet: this.settings.maxBet,
       buyIn: this.settings.buyIn,
       running: this.autoStart,
       hasFreeSeat: this.seats.some((seat) => !seat),
@@ -550,6 +899,7 @@ class Room extends EventEmitter {
   // ——— Состояние для клиента ———
 
   stateFor(userId) {
+    if (this.isBlackjack) return this.blackjackStateFor(userId);
     const hand = this.hand;
     const showdown = this.lastResult && this.lastResult.showdown ? this.lastResult : null;
     const revealed = new Map();
@@ -652,7 +1002,7 @@ class Room extends EventEmitter {
         canRebuy: mySeatIndex >= 0
           && this.seats[mySeatIndex].stack < this.settings.buyIn
           && (this.bank ? this.bank.balanceOf(userId) > 0 : true)
-          && !(hand && !hand.complete && hand.player(userId)),
+          && !this.inActiveHand(userId),
         legal: legal && {
           canFold: legal.canFold,
           canCheck: legal.canCheck,
@@ -685,9 +1035,20 @@ function normalizeSettings(raw) {
   }
   if (settings.bigBlind <= settings.smallBlind) settings.bigBlind = settings.smallBlind * 2;
   if (settings.buyIn < settings.bigBlind * 2) settings.buyIn = settings.bigBlind * 20;
+  const game = settings.game === 'blackjack' ? 'blackjack' : 'holdem';
+  if (game === 'blackjack') {
+    // Блекджек у нас строго на двоих: один ставит, второй держит банк.
+    settings.maxPlayers = 2;
+    if (settings.maxBet < settings.minBet) settings.maxBet = settings.minBet * 10;
+    if (settings.buyIn < settings.minBet * 2) settings.buyIn = settings.minBet * 20;
+  }
+
   return {
+    game,
     smallBlind: settings.smallBlind,
     bigBlind: settings.bigBlind,
+    minBet: settings.minBet,
+    maxBet: settings.maxBet,
     buyIn: settings.buyIn,
     maxPlayers: settings.maxPlayers,
     turnSeconds: settings.turnSeconds,

@@ -136,3 +136,128 @@ test('стол можно сделать закрытым', (t) => {
   t.after(() => room.dispose());
   assert.strictEqual(room.summary().isPublic, false);
 });
+
+// ——— Блекджек ———
+
+function blackjackTable({ settings = {}, balance = 10000 } = {}) {
+  const bank = new Accounts({ startingBalance: balance });
+  ['Аня', 'Боря'].forEach((name, i) => bank.ensure({ id: `u${i}`, name }));
+
+  const room = new Room(
+    'BJ001',
+    { id: 'u0', name: 'Аня' },
+    { game: 'blackjack', minBet: 10, maxBet: 200, buyIn: 1000, ...settings },
+    { bank }
+  );
+  room.addMember({ id: 'u1', name: 'Боря' });
+  room.sit('u0', 0);
+  room.sit('u1', 1);
+  room.bankRef = bank;
+  return room;
+}
+
+const playOut = (room) => {
+  let guard = 0;
+  while (room.round && !room.round.complete && guard++ < 30) {
+    room.applyAction(room.round.actingId, 'stand');
+  }
+};
+
+test('блекджековый стол всегда на два места', (t) => {
+  const room = blackjackTable({ settings: { maxPlayers: 6 } });
+  t.after(() => room.dispose());
+  assert.strictEqual(room.seats.length, 2);
+  assert.strictEqual(room.settings.game, 'blackjack');
+});
+
+test('раздача начинается со ставки, банк держит один из двоих', (t) => {
+  const room = blackjackTable();
+  t.after(() => room.dispose());
+  room.start('u0');
+
+  assert.strictEqual(room.status, 'betting');
+  assert.notStrictEqual(room.dealerSeat, room.bettorSeat);
+  const bettor = room.seats[room.bettorSeat].userId;
+  assert.deepStrictEqual(room.stateFor(bettor).you.betTurn, { min: 10, max: 200 });
+  assert.strictEqual(room.stateFor(room.seats[room.dealerSeat].userId).you.betTurn, null);
+});
+
+test('ставит только тот, кто в этой раздаче не банкир', (t) => {
+  const room = blackjackTable();
+  t.after(() => room.dispose());
+  room.start('u0');
+
+  const dealer = room.seats[room.dealerSeat].userId;
+  assert.throws(() => room.applyAction(dealer, 'bet', 50), /держите банк/);
+});
+
+test('ставка проверяется на минимум и максимум', (t) => {
+  const room = blackjackTable();
+  t.after(() => room.dispose());
+  room.start('u0');
+  const bettor = room.seats[room.bettorSeat].userId;
+
+  assert.throws(() => room.applyAction(bettor, 'bet', 5), /Минимальная ставка/);
+  assert.throws(() => room.applyAction(bettor, 'bet', 5000), /Максимальная ставка/);
+  room.applyAction(bettor, 'bet', 100);
+  assert.strictEqual(room.status, 'playing');
+});
+
+test('закрытая карта дилера видна только ему', (t) => {
+  const room = blackjackTable();
+  t.after(() => room.dispose());
+  room.start('u0');
+  const bettor = room.seats[room.bettorSeat].userId;
+  const dealer = room.seats[room.dealerSeat].userId;
+  room.applyAction(bettor, 'bet', 50);
+
+  const asPlayer = room.stateFor(bettor).seats[room.dealerSeat];
+  const asDealer = room.stateFor(dealer).seats[room.dealerSeat];
+  assert.strictEqual(asPlayer.cards[1], '??');
+  assert.notStrictEqual(asDealer.cards[1], '??');
+});
+
+test('роли меняются в следующей раздаче', (t) => {
+  const room = blackjackTable();
+  t.after(() => room.dispose());
+  room.start('u0');
+
+  const firstDealer = room.dealerSeat;
+  room.applyAction(room.seats[room.bettorSeat].userId, 'bet', 50);
+  playOut(room);
+  assert.ok(room.lastResult, 'раздача завершилась');
+
+  room.startRound();
+  assert.notStrictEqual(room.dealerSeat, firstDealer, 'банк перешёл ко второму игроку');
+});
+
+test('фишки только переходят между игроками', (t) => {
+  const room = blackjackTable();
+  t.after(() => room.dispose());
+  room.start('u0');
+
+  for (let i = 0; i < 25 && room.seats.every(Boolean); i++) {
+    if (room.status !== 'betting') room.startRound();
+    if (room.status !== 'betting') break;
+    const bettor = room.seats[room.bettorSeat].userId;
+    const max = room.maxBet;
+    if (max < room.settings.minBet) break;
+    room.applyAction(bettor, 'bet', Math.min(50, max));
+    playOut(room);
+    const total = room.seats.filter(Boolean).reduce((sum, seat) => sum + seat.stack, 0);
+    assert.strictEqual(total, 2000, `после раздачи ${i + 1} сумма фишек изменилась`);
+  }
+});
+
+test('уход посреди раздачи откладывается до её конца', (t) => {
+  const room = blackjackTable();
+  t.after(() => room.dispose());
+  room.start('u0');
+  const bettor = room.seats[room.bettorSeat].userId;
+  room.applyAction(bettor, 'bet', 50);
+
+  room.stand(bettor);
+  assert.ok(room.seatOf(bettor), 'место держится, пока идёт раздача');
+  playOut(room);
+  assert.strictEqual(room.seatIndexOf(bettor), -1, 'после раздачи место освободилось');
+});

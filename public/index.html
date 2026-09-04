@@ -86,7 +86,15 @@
 
           <div class="card">
             <h2>Создать стол</h2>
-            <div class="settings-grid">
+            <div class="game-picker">
+              <button type="button" class="game-option is-active" data-game="holdem">
+                <b>Холдем</b><span>покер, 2–9 игроков</span>
+              </button>
+              <button type="button" class="game-option" data-game="blackjack">
+                <b>Блекджек</b><span>на двоих, банк по очереди</span>
+              </button>
+            </div>
+            <div class="settings-grid" id="holdem-settings">
               <label class="field">
                 <span>Малый блайнд</span>
                 <input id="set-sb" type="number" min="1" step="1" value="5" inputmode="numeric" />
@@ -106,6 +114,20 @@
                   <option selected>6</option><option>7</option><option>8</option><option>9</option>
                 </select>
               </label>
+            </div>
+
+            <div class="settings-grid hidden" id="blackjack-settings">
+              <label class="field">
+                <span>Минимальная ставка</span>
+                <input id="set-minbet" type="number" min="1" step="1" value="10" inputmode="numeric" />
+              </label>
+              <label class="field">
+                <span>Максимальная ставка</span>
+                <input id="set-maxbet" type="number" min="1" step="10" value="200" inputmode="numeric" />
+              </label>
+            </div>
+
+            <div class="settings-grid">
               <label class="field">
                 <span>Секунд на ход</span>
                 <select id="set-turn">
@@ -214,6 +236,27 @@
             <button id="btn-raise" class="btn btn-raise">Рейз</button>
           </div>
           <div id="turn-timer" class="turn-timer"><i></i></div>
+        </div>
+
+        <div id="bj-bar" class="action-bar hidden">
+          <div class="raise-row hidden" id="bj-bet-row">
+            <div class="raise-presets">
+              <button class="chip-btn" data-bj-preset="min">мин</button>
+              <button class="chip-btn" data-bj-preset="half">половина</button>
+              <button class="chip-btn" data-bj-preset="max">макс</button>
+            </div>
+            <div class="raise-slider">
+              <input id="bj-range" type="range" min="0" max="100" value="0" />
+              <output id="bj-bet-value">0</output>
+            </div>
+            <button id="bj-bet" class="btn btn-primary">Поставить</button>
+          </div>
+          <div class="action-buttons hidden" id="bj-actions">
+            <button id="bj-stand" class="btn btn-fold">Хватит</button>
+            <button id="bj-hit" class="btn btn-call">Ещё карту</button>
+            <button id="bj-double" class="btn btn-raise">Удвоить</button>
+          </div>
+          <div id="bj-timer" class="turn-timer"><i></i></div>
         </div>
       </footer>
 

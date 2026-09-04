@@ -27,6 +27,9 @@ const state = {
   balance: 0,
   isAdmin: false,
   chipsSeat: null, // индекс места, которому выдаём фишки
+  game: 'holdem', // выбранная в лобби игра
+  bjBet: 0,
+  bjBetTouched: false,
   unread: 0,
 };
 
@@ -314,7 +317,10 @@ function renderRooms() {
       <div class="room-main">
         <div class="room-title">${escapeHtml(room.title)} ${badge}</div>
         <div class="room-meta">
-          ${room.players}/${room.maxPlayers} за столом · блайнды ${room.smallBlind}/${room.bigBlind} · вход ${room.buyIn}
+          ${room.game === 'blackjack' ? 'Блекджек' : 'Холдем'} · ${room.players}/${room.maxPlayers} за столом ·
+          ${room.game === 'blackjack'
+            ? `ставки ${room.minBet}–${room.maxBet}`
+            : `блайнды ${room.smallBlind}/${room.bigBlind}`} · вход ${room.buyIn}
         </div>
       </div>
     `;
@@ -364,20 +370,19 @@ function renderTable() {
 
   $('room-title').textContent = room.title || `Стол ${room.code}`;
 
-  const phases = {
-    preflop: 'Префлоп',
-    flop: 'Флоп',
-    turn: 'Тёрн',
-    river: 'Ривер',
-    showdown: 'Вскрытие',
-    complete: 'Вскрытие',
-  };
-  // Пока идёт раздача показываем улицу, между раздачами — код стола.
-  const tail = room.status === 'playing' && phases[room.phase]
-    ? phases[room.phase]
-    : `код ${room.code}`;
-  $('room-subtitle').textContent =
-    `Холдем · ${room.settings.smallBlind}/${room.settings.bigBlind} · ${tail}`;
+  const blackjack = room.game === 'blackjack';
+  const phases = blackjack
+    ? { player: 'Ход игрока', dealer: 'Ход банкира', complete: 'Итог' }
+    : { preflop: 'Префлоп', flop: 'Флоп', turn: 'Тёрн', river: 'Ривер', showdown: 'Вскрытие', complete: 'Вскрытие' };
+
+  // Пока идёт раздача показываем этап, между раздачами — код стола.
+  let tail = `код ${room.code}`;
+  if (room.status === 'betting') tail = 'Ставка';
+  else if (room.status === 'playing' && phases[room.phase]) tail = phases[room.phase];
+
+  $('room-subtitle').textContent = blackjack
+    ? `Блекджек · ${room.settings.minBet}–${room.settings.maxBet} · ${tail}`
+    : `Холдем · ${room.settings.smallBlind}/${room.settings.bigBlind} · ${tail}`;
 
   renderBoard(room);
   renderSeats(room);
@@ -412,6 +417,7 @@ function renderBoard(room) {
   const pot = $('pot');
   if (room.potTotal > 0) {
     pot.classList.remove('hidden');
+    pot.querySelector('.pot-label').textContent = room.game === 'blackjack' ? 'СТАВКА' : 'БАНК';
     $('pot-value').textContent = room.potTotal;
   } else {
     pot.classList.add('hidden');
@@ -549,6 +555,7 @@ function badge(kind, text) {
 function seatStatus(seat) {
   if (!seat.connected) return 'офлайн';
   if (seat.sittingOut) return 'пропускает';
+  if (seat.roleLabel) return seat.roleLabel;
   return actionWord(seat.lastAction);
 }
 
@@ -568,6 +575,13 @@ function renderMessage(room) {
     node.textContent = '';
     return;
   }
+  if (room.status === 'betting') {
+    const bettor = room.seats[room.bettorSeat];
+    node.textContent = room.you.betTurn
+      ? 'Ваша ставка'
+      : `Ждём ставку: ${bettor ? bettor.name : 'игрок'}`;
+    return;
+  }
   if (seated < 2) node.textContent = 'Нужно минимум два игрока';
   else if (!room.running) {
     node.textContent = room.you.isHost ? 'Нажмите «Начать игру»' : 'Ждём, когда хозяин начнёт игру';
@@ -578,8 +592,28 @@ function renderMessage(room) {
 function renderResult(room) {
   const pop = $('winner-pop');
   const result = room.lastResult;
-  if (!result || room.status === 'playing' || !result.winners.length) {
+  if (!result || room.status === 'playing' || room.status === 'betting'
+      || (result.game !== 'blackjack' && !result.winners.length)) {
     pop.classList.add('hidden');
+    return;
+  }
+
+  // В блекджеке игроки сидят сверху и снизу — поп-ап ставим по центру,
+  // иначе он закрывает карты банкира.
+  pop.classList.toggle('center', result.game === 'blackjack');
+
+  if (result.game === 'blackjack') {
+    const title = result.winner === 'push'
+      ? 'Ничья'
+      : `Выигрывает ${escapeHtml(result.winnerName)}`;
+    const sum = result.winner === 'push' ? '' : `<div class="win-amount">+${result.amount}</div>`;
+    pop.innerHTML = `
+      <div class="win-title">${title}</div>
+      <div class="win-combo">${escapeHtml(result.reason)}${result.natural ? ' — блекджек!' : ''}</div>
+      ${sum}
+      <div class="win-note">${escapeHtml(result.playerName)} ${result.playerTotal} · ${escapeHtml(result.dealerName)} ${result.dealerTotal}</div>
+    `;
+    pop.classList.remove('hidden');
     return;
   }
 
@@ -609,7 +643,8 @@ function renderControls(room) {
     renderAccount();
   }
   const seated = you.seatIndex !== null;
-  const myTurn = Boolean(you.legal);
+  // Свой ход — это и ход картами, и момент, когда надо назначить ставку.
+  const myTurn = Boolean(you.legal) || Boolean(you.betTurn);
 
   // Пока идёт свой ход, служебные кнопки убираем — на экране только действия.
   const hostBox = $('host-controls');
@@ -640,6 +675,12 @@ function renderControls(room) {
     ? `На балансе <b>${you.balance}</b> — на вход нужно <b>${room.settings.buyIn}</b>. Попросите админа выдать фишки`
     : `На балансе <b>${you.balance}</b> фишек · вход <b>${room.settings.buyIn}</b>`;
   if (short) sitBtn.classList.add('hidden');
+
+  if (room.game === 'blackjack') {
+    renderBlackjackControls(room);
+    return;
+  }
+  $('bj-bar').classList.add('hidden');
 
   // Панель действий появляется только на своём ходу.
   const legal = you.legal;
@@ -680,14 +721,56 @@ function renderControls(room) {
   startTurnTimer(room);
 }
 
+function renderBlackjackControls(room) {
+  const you = room.you;
+  $('action-bar').classList.add('hidden');
+
+  const bar = $('bj-bar');
+  const betRow = $('bj-bet-row');
+  const actions = $('bj-actions');
+  const betTurn = you.betTurn;
+  const legal = you.legal;
+
+  if (!betTurn && !legal) {
+    bar.classList.add('hidden');
+    state.bjBetTouched = false;
+    stopTurnTimer();
+    return;
+  }
+  bar.classList.remove('hidden');
+
+  betRow.classList.toggle('hidden', !betTurn);
+  actions.classList.toggle('hidden', !legal);
+
+  if (betTurn) {
+    const range = $('bj-range');
+    range.min = String(betTurn.min);
+    range.max = String(betTurn.max);
+    range.step = '1';
+    if (!state.bjBetTouched) state.bjBet = betTurn.min;
+    state.bjBet = clamp(state.bjBet, betTurn.min, betTurn.max);
+    range.value = String(state.bjBet);
+    $('bj-bet-value').textContent = String(state.bjBet);
+    $('bj-bet').textContent = `Поставить ${state.bjBet}`;
+  }
+
+  if (legal) {
+    $('bj-hit').classList.toggle('hidden', !legal.canHit);
+    $('bj-double').classList.toggle('hidden', !legal.canDouble);
+    $('bj-stand').classList.remove('hidden');
+  }
+
+  startTurnTimer(room, $('bj-timer').firstElementChild);
+}
+
 // ——— Таймер хода ———
 
 let turnTimerHandle = null;
-function startTurnTimer(room) {
+function startTurnTimer(room, target = null) {
   stopTurnTimer();
   if (!room.turnDeadline) return;
   const total = room.settings.turnSeconds * 1000;
-  const bar = $('turn-timer').firstElementChild;
+  const bar = target || $('turn-timer').firstElementChild;
   const tick = () => {
     const left = room.turnDeadline - Date.now();
     const ratio = clamp(left / total, 0, 1);
@@ -743,17 +826,21 @@ function bindUi() {
   });
 
   $('create-btn').addEventListener('click', () => {
-    send({
-      type: 'create_room',
-      settings: {
+    const common = {
+      game: state.game,
+      buyIn: Number($('set-buyin').value),
+      turnSeconds: Number($('set-turn').value),
+      isPublic: $('set-public').checked,
+    };
+    const settings = state.game === 'blackjack'
+      ? { ...common, minBet: Number($('set-minbet').value), maxBet: Number($('set-maxbet').value) }
+      : {
+        ...common,
         smallBlind: Number($('set-sb').value),
         bigBlind: Number($('set-bb').value),
-        buyIn: Number($('set-buyin').value),
         maxPlayers: Number($('set-seats').value),
-        turnSeconds: Number($('set-turn').value),
-        isPublic: $('set-public').checked,
-      },
-    });
+      };
+    send({ type: 'create_room', settings });
   });
 
   $('join-code').addEventListener('input', (event) => {
@@ -811,6 +898,49 @@ function bindUi() {
   $('btn-rebuy').addEventListener('click', () => send({ type: 'rebuy' }));
   $('btn-sitout').addEventListener('click', () => {
     send({ type: 'sit_out', value: !state.room.you.sittingOut });
+  });
+
+  document.querySelectorAll('[data-game]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.game = button.dataset.game;
+      document.querySelectorAll('[data-game]').forEach((other) => {
+        other.classList.toggle('is-active', other === button);
+      });
+      $('holdem-settings').classList.toggle('hidden', state.game !== 'holdem');
+      $('blackjack-settings').classList.toggle('hidden', state.game !== 'blackjack');
+    });
+  });
+
+  $('bj-hit').addEventListener('click', () => act('hit'));
+  $('bj-stand').addEventListener('click', () => act('stand'));
+  $('bj-double').addEventListener('click', () => act('double'));
+  $('bj-bet').addEventListener('click', () => {
+    haptic('success');
+    state.bjBetTouched = false;
+    send({ type: 'action', action: 'bet', amount: state.bjBet });
+    $('bj-bar').classList.add('hidden');
+  });
+  $('bj-range').addEventListener('input', (event) => {
+    state.bjBetTouched = true;
+    state.bjBet = Number(event.target.value);
+    $('bj-bet-value').textContent = String(state.bjBet);
+    $('bj-bet').textContent = `Поставить ${state.bjBet}`;
+  });
+  document.querySelectorAll('[data-bj-preset]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const betTurn = state.room && state.room.you.betTurn;
+      if (!betTurn) return;
+      const preset = button.dataset.bjPreset;
+      const value = preset === 'min' ? betTurn.min
+        : preset === 'max' ? betTurn.max
+          : Math.floor((betTurn.min + betTurn.max) / 2);
+      state.bjBetTouched = true;
+      state.bjBet = clamp(value, betTurn.min, betTurn.max);
+      $('bj-range').value = String(state.bjBet);
+      $('bj-bet-value').textContent = String(state.bjBet);
+      $('bj-bet').textContent = `Поставить ${state.bjBet}`;
+      haptic('light');
+    });
   });
 
   $('btn-fold').addEventListener('click', () => act('fold'));

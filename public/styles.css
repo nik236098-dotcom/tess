@@ -436,6 +436,8 @@ input:focus, select:focus { outline: none; border-color: var(--gold-line); }
   backdrop-filter: blur(8px);
   animation: pop-in 0.24s ease both;
 }
+.winner-pop.center { top: 36%; }
+
 .winner-pop .win-avatar {
   width: 42px; height: 42px; margin: 0 auto 6px;
   border-radius: 50%;
@@ -618,3 +620,22 @@ input:focus, select:focus { outline: none; border-color: var(--gold-line); }
   font-size: 12px; color: var(--muted); text-align: center;
 }
 .balance-chip b { color: var(--gold-soft); }
+
+/* ——— Выбор игры ——— */
+
+.game-picker { display: flex; gap: 8px; }
+.game-option {
+  flex: 1; padding: 10px 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 12px;
+  color: var(--muted);
+  font: inherit; text-align: center; cursor: pointer;
+}
+.game-option b { display: block; font-size: 14px; color: var(--text); }
+.game-option span { font-size: 11px; }
+.game-option.is-active {
+  border-color: var(--gold-line);
+  background: rgba(230, 189, 99, 0.1);
+}
+.game-option.is-active b { color: var(--gold-soft); }
