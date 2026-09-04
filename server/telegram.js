@@ -13,9 +13,12 @@ function verifyInitData(initData, botToken, { maxAgeSeconds = 86400 } = {}) {
   const hash = params.get('hash');
   if (!hash) return { ok: false, error: 'В initData нет подписи' };
 
+  // Из строки подписи исключается только hash. Поле signature (его присылают
+  // современные клиенты) нужно исключать лишь при сторонней проверке по Ed25519,
+  // а при проверке токеном бота оно участвует наравне с остальными.
   const pairs = [];
   for (const [key, value] of params) {
-    if (key === 'hash' || key === 'signature') continue;
+    if (key === 'hash') continue;
     pairs.push(`${key}=${value}`);
   }
   pairs.sort();

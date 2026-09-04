@@ -9,6 +9,7 @@ const BOT_TOKEN = '123456:TEST-TOKEN';
 
 function signInitData(fields) {
   const params = new URLSearchParams(fields);
+  // Так же, как это делает Telegram: из строки подписи убирается только hash.
   const pairs = [...params].map(([k, v]) => `${k}=${v}`).sort();
   const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
   const hash = crypto.createHmac('sha256', secret).update(pairs.join('\n')).digest('hex');
@@ -48,4 +49,21 @@ test('устаревшие данные отклоняются', () => {
 
 test('пустой initData отклоняется', () => {
   assert.strictEqual(verifyInitData('', BOT_TOKEN).ok, false);
+});
+
+test('initData с полем signature проверяется (его шлют новые клиенты)', () => {
+  const fields = validFields();
+  fields.signature = 'zHRQqAaSmZ4nKQ0BqZ1kUnJHTVJmXhE-fake-ed25519-signature';
+  const result = verifyInitData(signInitData(fields), BOT_TOKEN);
+  assert.strictEqual(result.ok, true, 'signature участвует в строке подписи наравне с остальными полями');
+  assert.strictEqual(result.user.id, '42');
+});
+
+test('подделка не проходит и при наличии signature', () => {
+  const fields = validFields();
+  fields.signature = 'подпись';
+  // Меняем signature уже после подписи — строка подписи перестаёт сходиться.
+  const initData = signInitData(fields).replace('signature=%D0%BF%D0%BE%D0%B4%D0%BF%D0%B8%D1%81%D1%8C', 'signature=other');
+  assert.notStrictEqual(initData.includes('signature=other'), false, 'подмена состоялась');
+  assert.strictEqual(verifyInitData(initData, BOT_TOKEN).ok, false);
 });
