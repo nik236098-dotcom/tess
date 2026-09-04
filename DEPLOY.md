@@ -25,8 +25,14 @@ apt install -y curl git nginx ufw
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt install -y nodejs
-node -v      # должно показать v22.x
+node -v            # должно показать v22.x
+command -v node    # должно показать /usr/bin/node
 ```
+
+Если `command -v node` показал другой путь (например `/snap/bin/node` или что-то
+внутри `~/.nvm`), запомните его — он понадобится в шаге 5, и команды `sudo -u poker node`
+придётся писать с полным путём. Проще всего поставить Node именно из NodeSource,
+как выше: тогда он окажется в `/usr/bin/node` и всё сойдётся само.
 
 ## 3. Отдельный пользователь и код
 
@@ -77,8 +83,11 @@ chown poker:poker /opt/poker/app/.env
 
 ## 5. Автозапуск через systemd
 
+Путь к Node подставляется автоматически — юнит собирается тем же `command -v node`:
+
 ```bash
-cat > /etc/systemd/system/poker.service <<'UNIT'
+NODE_BIN="$(command -v node)"
+cat > /etc/systemd/system/poker.service <<UNIT
 [Unit]
 Description=Покер с друзьями (Telegram Mini App)
 After=network.target
@@ -88,7 +97,7 @@ Type=simple
 User=poker
 Group=poker
 WorkingDirectory=/opt/poker/app
-ExecStart=/usr/bin/node server/index.js
+ExecStart=$NODE_BIN server/index.js
 Restart=always
 RestartSec=3
 Environment=NODE_ENV=production
@@ -103,6 +112,8 @@ ReadWritePaths=/var/lib/poker
 [Install]
 WantedBy=multi-user.target
 UNIT
+
+grep ExecStart /etc/systemd/system/poker.service   # проверьте, что путь не пустой
 
 systemctl daemon-reload
 systemctl enable --now poker
@@ -196,9 +207,14 @@ ufw status
 
 ```bash
 cd /opt/poker/app
-sudo -u poker node scripts/setup-bot.js                    # проверит токен, скажет имя бота
-sudo -u poker node scripts/setup-bot.js https://ВАШ_ДОМЕН  # кнопка «Играть» в чате бота
+NODE_BIN="$(command -v node)"
+sudo -u poker "$NODE_BIN" scripts/setup-bot.js                    # проверит токен, скажет имя бота
+sudo -u poker "$NODE_BIN" scripts/setup-bot.js https://ВАШ_ДОМЕН  # кнопка «Играть» в чате бота
 ```
+
+Полный путь здесь не для красоты: `sudo` ищет программы по своему короткому списку
+каталогов, и `node`, поставленный не в `/usr/bin`, там не найдётся — будет
+`sudo: node: command not found`.
 
 Имя бота из первой команды впишите в `.env` как `TELEGRAM_BOT_USERNAME` — оно нужно
 для кнопки «позвать друзей», и перезапустите сервис: `systemctl restart poker`.
@@ -307,6 +323,10 @@ ss -tlnp | grep -E ':(80|443|3000)'   # кто слушает порты
 
 Частые причины:
 
+- **`sudo: node: command not found`** — Node стоит не в `/usr/bin`. Посмотрите путь
+  через `command -v node` и подставляйте его целиком:
+  `sudo -u poker "$(command -v node)" scripts/setup-bot.js`.
+  Если команда ничего не вывела, Node просто не установлен — вернитесь к шагу 2.
 - **certbot ругается на домен** — A-запись ещё не разошлась или указывает не на этот сервер.
   Проверьте `dig +short ВАШ_ДОМЕН` и сравните с `curl -s ifconfig.me`.
 - **Стол открывается, но игроки не появляются** — в конфиге nginx нет строк
