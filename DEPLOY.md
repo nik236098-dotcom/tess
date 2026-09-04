@@ -215,6 +215,13 @@ sudo -u poker "$NODE_BIN" scripts/setup-bot.js https://ВАШ_ДОМЕН --save 
 Ключ `--save` сам впишет `TELEGRAM_BOT_USERNAME` в `.env` — не придётся копировать руками.
 После него перезапустите сервис: `systemctl restart poker`.
 
+Первая строка вывода называет бота, которому принадлежит токен — **проверьте её**.
+Если там оказался не тот бот, верните ему кнопку меню:
+
+```bash
+sudo -u poker "$NODE_BIN" scripts/setup-bot.js --reset-menu
+```
+
 Полный путь здесь не для красоты: `sudo` ищет программы по своему короткому списку
 каталогов, и `node`, поставленный не в `/usr/bin`, там не найдётся — будет
 `sudo: node: command not found`.

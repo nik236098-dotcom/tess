@@ -6,6 +6,7 @@
 //   node scripts/setup-bot.js                             — просто проверить токен
 //   node scripts/setup-bot.js https://ваш.домен           — ещё и повесить кнопку меню
 //   node scripts/setup-bot.js https://ваш.домен --save    — и вписать имя бота в .env
+//   node scripts/setup-bot.js --reset-menu                — вернуть кнопку меню бота как было
 //
 // Токен берётся из .env или переменной окружения TELEGRAM_BOT_TOKEN.
 
@@ -18,6 +19,7 @@ loadEnv();
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const args = process.argv.slice(2);
 const save = args.includes('--save');
+const resetMenu = args.includes('--reset-menu');
 const url = args.find((argument) => !argument.startsWith('--'));
 
 // Правит одну строку в .env, не трогая остальные.
@@ -88,9 +90,16 @@ async function call(method, body) {
     console.log('(или запустите эту же команду с ключом --save — впишет сам)');
   }
 
+  if (resetMenu) {
+    await call('setChatMenuButton', { menu_button: { type: 'default' } });
+    console.log(`Кнопка меню @${me.username} возвращена к обычной (список команд).`);
+    console.log('Если у бота была своя кнопка с мини-приложением, задайте её заново в BotFather.');
+    return;
+  }
+
   if (!url) {
     console.log('\nЧтобы кнопка меню открывала стол, запустите:');
-    console.log('  node scripts/setup-bot.js https://ваш.домен');
+    console.log('  node scripts/setup-bot.js https://ваш.домен --save');
     return;
   }
 
