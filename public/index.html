@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <title>Покер с друзьями</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230e3a2b'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23e8c26a'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Экран входа -->
+    <section id="screen-lobby" class="screen">
+      <div class="lobby">
+        <div class="brand">
+          <div class="brand-chip">♠</div>
+          <h1>Покер с друзьями</h1>
+          <p class="muted">Техасский холдем на игровые фишки. Никаких денег — только азарт и вечерние посиделки.</p>
+        </div>
+
+        <div id="dev-login" class="card hidden">
+          <label class="field">
+            <span>Как вас зовут</span>
+            <input id="dev-name" type="text" maxlength="24" placeholder="Имя за столом" autocomplete="off" />
+          </label>
+          <button id="dev-enter" class="btn btn-primary">Войти</button>
+          <p class="hint">Отладочный вход: сервер запущен без токена бота.</p>
+        </div>
+
+        <div id="lobby-actions" class="lobby-actions hidden">
+          <div class="card">
+            <h2>Присоединиться</h2>
+            <div class="row">
+              <input id="join-code" class="code-input" type="text" maxlength="5" placeholder="КОД" autocomplete="off" autocapitalize="characters" />
+              <button id="join-btn" class="btn btn-primary">Войти</button>
+            </div>
+            <p class="hint">Попросите у друга код стола из пяти символов.</p>
+          </div>
+
+          <div class="card">
+            <h2>Создать стол</h2>
+            <div class="settings-grid">
+              <label class="field">
+                <span>Малый блайнд</span>
+                <input id="set-sb" type="number" min="1" step="1" value="5" inputmode="numeric" />
+              </label>
+              <label class="field">
+                <span>Большой блайнд</span>
+                <input id="set-bb" type="number" min="2" step="1" value="10" inputmode="numeric" />
+              </label>
+              <label class="field">
+                <span>Стартовый стек</span>
+                <input id="set-buyin" type="number" min="20" step="10" value="1000" inputmode="numeric" />
+              </label>
+              <label class="field">
+                <span>Мест за столом</span>
+                <select id="set-seats">
+                  <option>2</option><option>3</option><option>4</option><option>5</option>
+                  <option selected>6</option><option>7</option><option>8</option><option>9</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Секунд на ход</span>
+                <select id="set-turn">
+                  <option>20</option><option>30</option><option selected>45</option><option>60</option><option>90</option>
+                </select>
+              </label>
+            </div>
+            <button id="create-btn" class="btn btn-primary">Создать стол</button>
+          </div>
+
+          <details class="card rules">
+            <summary>Правила и порядок комбинаций</summary>
+            <ol class="rules-list">
+              <li>Каждому — две закрытые карты, на стол выкладываются пять общих.</li>
+              <li>Торговля идёт четыре круга: до флопа, после флопа, после тёрна и после ривера.</li>
+              <li>Собираем лучшую комбинацию из пяти карт — своих и общих в любом сочетании.</li>
+            </ol>
+            <div class="combos">
+              <span>Флеш-рояль</span><span>Стрит-флеш</span><span>Каре</span><span>Фулл-хаус</span>
+              <span>Флеш</span><span>Стрит</span><span>Тройка</span><span>Две пары</span><span>Пара</span><span>Старшая карта</span>
+            </div>
+          </details>
+        </div>
+
+        <div id="lobby-status" class="status">Подключаемся…</div>
+      </div>
+    </section>
+
+    <!-- Экран стола -->
+    <section id="screen-table" class="screen hidden">
+      <header class="topbar">
+        <button id="btn-leave" class="icon-btn" title="Выйти">‹</button>
+        <div class="room-info">
+          <button id="btn-code" class="room-code" title="Скопировать код">Стол <b id="room-code">—</b></button>
+          <div id="room-blinds" class="muted small">блайнды —/—</div>
+        </div>
+        <button id="btn-invite" class="icon-btn" title="Позвать друзей">＋</button>
+        <button id="btn-log" class="icon-btn" title="История">≡</button>
+      </header>
+
+      <div class="table-wrap">
+        <div class="felt">
+          <div class="felt-inner"></div>
+          <div class="center">
+            <div id="pot" class="pot hidden"><span class="pot-label">Банк</span> <b id="pot-value">0</b></div>
+            <div id="board" class="board"></div>
+            <div id="table-message" class="table-message">Ждём игроков</div>
+          </div>
+          <div id="seats" class="seats"></div>
+        </div>
+      </div>
+
+      <div id="result-banner" class="result-banner hidden"></div>
+
+      <footer class="controls">
+        <div id="host-controls" class="host-controls hidden">
+          <button id="btn-start" class="btn btn-primary">Начать игру</button>
+          <button id="btn-pause" class="btn btn-ghost hidden">Пауза</button>
+        </div>
+
+        <div id="seat-controls" class="seat-controls hidden">
+          <button id="btn-sit" class="btn btn-primary hidden">Сесть за стол</button>
+          <button id="btn-rebuy" class="btn btn-ghost hidden">Пополнить стек</button>
+          <button id="btn-sitout" class="btn btn-ghost hidden">Пропустить раздачу</button>
+        </div>
+
+        <div id="action-bar" class="action-bar hidden">
+          <div class="raise-row hidden" id="raise-row">
+            <div class="raise-presets">
+              <button class="chip-btn" data-preset="min">мин</button>
+              <button class="chip-btn" data-preset="half">½ банка</button>
+              <button class="chip-btn" data-preset="pot">банк</button>
+              <button class="chip-btn" data-preset="max">олл-ин</button>
+            </div>
+            <div class="raise-slider">
+              <input id="raise-range" type="range" min="0" max="100" value="0" />
+              <output id="raise-value">0</output>
+            </div>
+          </div>
+          <div class="action-buttons">
+            <button id="btn-fold" class="btn btn-fold">Пас</button>
+            <button id="btn-check" class="btn btn-check">Чек</button>
+            <button id="btn-call" class="btn btn-call">Колл</button>
+            <button id="btn-raise" class="btn btn-raise">Рейз</button>
+          </div>
+          <div id="turn-timer" class="turn-timer"><i></i></div>
+        </div>
+      </footer>
+
+      <aside id="log-panel" class="log-panel hidden">
+        <div class="log-head">
+          <h3>История стола</h3>
+          <button id="btn-log-close" class="icon-btn">×</button>
+        </div>
+        <div id="log-list" class="log-list"></div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" type="text" maxlength="200" placeholder="Сказать что-нибудь…" autocomplete="off" />
+          <button class="btn btn-primary" type="submit">→</button>
+        </form>
+      </aside>
+    </section>
+
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

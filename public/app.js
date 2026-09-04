@@ -1,0 +1,645 @@
+'use strict';
+
+/* Клиент мини-аппа: тонкий слой поверх состояния, которое присылает сервер.
+   Вся игровая логика живёт на сервере — здесь только отрисовка и ввод. */
+
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+
+const SUITS = {
+  s: { symbol: '♠', red: false },
+  c: { symbol: '♣', red: false },
+  h: { symbol: '♥', red: true },
+  d: { symbol: '♦', red: true },
+};
+
+const state = {
+  socket: null,
+  connected: false,
+  user: null,
+  room: null,
+  config: { devLogin: false, botUsername: '', appShortName: '' },
+  pendingRoom: null,
+  raiseTo: 0,
+  raiseTouched: false,
+  reconnectDelay: 500,
+  chat: [],
+};
+
+const $ = (id) => document.getElementById(id);
+
+// ——— Запуск ———
+
+async function boot() {
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    applyTelegramTheme();
+    tg.onEvent('themeChanged', applyTelegramTheme);
+    // Обработчик системной кнопки «назад» регистрируем один раз.
+    if (tg.BackButton) tg.BackButton.onClick(leaveRoom);
+  }
+
+  try {
+    const response = await fetch('/config');
+    state.config = await response.json();
+  } catch {
+    /* конфиг не критичен — работаем со значениями по умолчанию */
+  }
+
+  state.pendingRoom = readRoomFromLaunch();
+  bindUi();
+  connect();
+}
+
+function readRoomFromLaunch() {
+  const fromTelegram = tg && tg.initDataUnsafe ? tg.initDataUnsafe.start_param : null;
+  const fromUrl = new URLSearchParams(location.search).get('room');
+  const code = (fromTelegram || fromUrl || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return code.length === 5 ? code : null;
+}
+
+function applyTelegramTheme() {
+  const params = tg.themeParams || {};
+  const root = document.documentElement.style;
+  if (params.bg_color) root.setProperty('--bg', params.bg_color);
+  if (params.secondary_bg_color) root.setProperty('--surface', params.secondary_bg_color);
+  if (params.text_color) root.setProperty('--text', params.text_color);
+  if (params.hint_color) root.setProperty('--muted', params.hint_color);
+  if (params.button_color) root.setProperty('--accent', params.button_color);
+  try {
+    tg.setHeaderColor(params.secondary_bg_color || '#171b21');
+  } catch {
+    /* старые версии клиента не поддерживают */
+  }
+}
+
+// ——— Соединение ———
+
+function connect() {
+  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+  const socket = new WebSocket(`${protocol}://${location.host}/ws`);
+  state.socket = socket;
+
+  socket.addEventListener('open', () => {
+    state.connected = true;
+    state.reconnectDelay = 500;
+    setStatus('Авторизуемся…');
+    authenticate();
+  });
+
+  socket.addEventListener('message', (event) => {
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    handleMessage(message);
+  });
+
+  socket.addEventListener('close', () => {
+    state.connected = false;
+    setStatus('Соединение потеряно, переподключаемся…');
+    // Экспоненциальная пауза, чтобы не долбить сервер при обрыве связи.
+    setTimeout(connect, state.reconnectDelay);
+    state.reconnectDelay = Math.min(state.reconnectDelay * 2, 10000);
+  });
+}
+
+function send(message) {
+  if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+    state.socket.send(JSON.stringify(message));
+  }
+}
+
+function authenticate() {
+  if (tg && tg.initData) {
+    send({ type: 'auth', initData: tg.initData });
+    return;
+  }
+  if (!state.config.devLogin) {
+    setStatus('Откройте приложение через Telegram');
+    return;
+  }
+  const saved = localStorage.getItem('poker:devName');
+  if (saved) {
+    send({ type: 'auth', name: saved, devId: deviceId() });
+  } else {
+    setStatus('Представьтесь, чтобы сесть за стол');
+    $('dev-login').classList.remove('hidden');
+  }
+}
+
+function deviceId() {
+  let id = localStorage.getItem('poker:devId');
+  if (!id) {
+    id = Math.random().toString(36).slice(2, 12);
+    localStorage.setItem('poker:devId', id);
+  }
+  return id;
+}
+
+function handleMessage(message) {
+  switch (message.type) {
+    case 'auth_ok':
+      state.user = message.user;
+      $('dev-login').classList.add('hidden');
+      $('lobby-actions').classList.remove('hidden');
+      setStatus(`Вы вошли как ${message.user.name}`);
+      if (message.startParam) state.pendingRoom = normalizeCode(message.startParam);
+      if (state.pendingRoom) {
+        send({ type: 'join_room', code: state.pendingRoom });
+        state.pendingRoom = null;
+      }
+      break;
+    case 'joined':
+      showTable();
+      break;
+    case 'left':
+      state.room = null;
+      showLobby();
+      break;
+    case 'state':
+      state.room = message;
+      renderTable();
+      break;
+    case 'chat':
+      state.chat.push(message);
+      if (state.chat.length > 50) state.chat.shift();
+      renderLog();
+      if (message.userId !== (state.user && state.user.id)) {
+        toast(`${message.name}: ${message.text}`);
+      }
+      break;
+    case 'error':
+      toast(message.message);
+      haptic('error');
+      break;
+    case 'replaced':
+      toast('Игра открыта в другом окне');
+      break;
+    default:
+      break;
+  }
+}
+
+// ——— Экраны ———
+
+function showLobby() {
+  $('screen-table').classList.add('hidden');
+  $('screen-lobby').classList.remove('hidden');
+  if (tg && tg.BackButton) tg.BackButton.hide();
+}
+
+function showTable() {
+  $('screen-lobby').classList.add('hidden');
+  $('screen-table').classList.remove('hidden');
+  if (tg && tg.BackButton) tg.BackButton.show();
+}
+
+function setStatus(text) {
+  $('lobby-status').textContent = text;
+}
+
+let toastTimer = null;
+function toast(text) {
+  const node = $('toast');
+  node.textContent = text;
+  node.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => node.classList.add('hidden'), 2600);
+}
+
+function haptic(kind) {
+  if (!tg || !tg.HapticFeedback) return;
+  try {
+    if (kind === 'error') tg.HapticFeedback.notificationOccurred('error');
+    else if (kind === 'success') tg.HapticFeedback.notificationOccurred('success');
+    else tg.HapticFeedback.impactOccurred('light');
+  } catch {
+    /* не критично */
+  }
+}
+
+const normalizeCode = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+
+// ——— Отрисовка стола ———
+
+function renderTable() {
+  const room = state.room;
+  if (!room) return;
+
+  $('room-code').textContent = room.code;
+  $('room-blinds').textContent =
+    `блайнды ${room.settings.smallBlind}/${room.settings.bigBlind} · вход ${room.settings.buyIn}`;
+
+  renderBoard(room);
+  renderSeats(room);
+  renderMessage(room);
+  renderControls(room);
+  renderResult(room);
+  renderLog();
+}
+
+function renderBoard(room) {
+  const board = $('board');
+  board.innerHTML = '';
+  for (const card of room.board || []) board.appendChild(cardNode(card));
+
+  const pot = $('pot');
+  if (room.potTotal > 0) {
+    pot.classList.remove('hidden');
+    $('pot-value').textContent = room.potTotal;
+  } else {
+    pot.classList.add('hidden');
+  }
+}
+
+function cardNode(code, small = false) {
+  const node = document.createElement('div');
+  node.className = `card-face${small ? ' small' : ''}`;
+  if (code === '??') {
+    node.classList.add('back');
+    return node;
+  }
+  const suit = SUITS[code[1]] || SUITS.s;
+  if (suit.red) node.classList.add('red');
+  node.innerHTML = `<span class="rank">${code[0]}</span><span class="suit">${suit.symbol}</span>`;
+  return node;
+}
+
+function renderSeats(room) {
+  const container = $('seats');
+  container.innerHTML = '';
+
+  const count = room.seats.length;
+  const mySeat = room.you.seatIndex;
+  // Своё место всегда внизу — так привычнее смотреть на стол.
+  const offset = mySeat === null ? 0 : mySeat;
+
+  room.seats.forEach((seat) => {
+    const position = ((seat.index - offset) + count) % count;
+    const angle = (90 + (position * 360) / count) * (Math.PI / 180);
+    const node = document.createElement('div');
+    node.className = 'seat';
+    node.style.left = `${50 + 40 * Math.cos(angle)}%`;
+    node.style.top = `${48 + 35 * Math.sin(angle)}%`;
+
+    if (seat.empty) {
+      node.classList.add('empty');
+      node.innerHTML = '<div class="seat-body"><div class="seat-name">Свободно</div><div class="seat-stack">сесть</div></div>';
+      if (room.you.seatIndex === null) {
+        node.addEventListener('click', () => {
+          haptic('light');
+          send({ type: 'sit', seat: seat.index });
+        });
+      }
+      container.appendChild(node);
+      return;
+    }
+
+    if (seat.folded) node.classList.add('folded');
+    if (seat.isActing) node.classList.add('acting');
+    if (seat.userId === room.you.userId) node.classList.add('me');
+
+    const cards = document.createElement('div');
+    cards.className = 'seat-cards';
+    if (seat.cards) {
+      for (const card of seat.cards) cards.appendChild(cardNode(card, true));
+    }
+
+    const tags = [];
+    if (seat.isDealer) tags.push('<span class="tag dealer">D</span>');
+    if (seat.allIn) tags.push('<span class="tag allin">олл-ин</span>');
+    if (!seat.connected) tags.push('<span class="tag away">офлайн</span>');
+    else if (seat.sittingOut) tags.push('<span class="tag away">пропускает</span>');
+
+    const body = document.createElement('div');
+    body.className = 'seat-body';
+    body.innerHTML = `
+      <div class="seat-name">${escapeHtml(seat.name)}</div>
+      <div class="seat-stack">${seat.stack}</div>
+      <div class="seat-tags">${tags.join('')}</div>
+    `;
+
+    node.appendChild(cards);
+    node.appendChild(body);
+
+    if (seat.bet > 0) {
+      const bet = document.createElement('div');
+      bet.className = 'seat-bet';
+      bet.textContent = seat.bet;
+      node.appendChild(bet);
+    } else {
+      const action = document.createElement('div');
+      action.className = 'seat-action';
+      action.textContent = actionWord(seat.lastAction);
+      node.appendChild(action);
+    }
+
+    container.appendChild(node);
+  });
+}
+
+function actionWord(action) {
+  return { fold: 'пас', check: 'чек', call: 'колл', bet: 'ставка', raise: 'рейз' }[action] || '';
+}
+
+function renderMessage(room) {
+  const node = $('table-message');
+  const seated = room.seats.filter((s) => !s.empty).length;
+
+  if (room.status === 'playing') {
+    node.textContent = '';
+    return;
+  }
+  if (seated < 2) node.textContent = 'Нужно минимум два игрока';
+  else if (!room.running) {
+    node.textContent = room.you.isHost ? 'Нажмите «Начать игру»' : 'Ждём, когда хозяин начнёт игру';
+  } else if (room.nextHandAt) node.textContent = 'Следующая раздача…';
+  else node.textContent = 'Ждём игроков';
+}
+
+function renderResult(room) {
+  const banner = $('result-banner');
+  const result = room.lastResult;
+  if (!result || room.status === 'playing') {
+    banner.classList.add('hidden');
+    return;
+  }
+  const parts = result.winners.map((w) => {
+    const combo = w.hand ? ` — ${w.hand.name}` : '';
+    return `${escapeHtml(w.name)} забирает ${w.amount}${escapeHtml(combo)}`;
+  });
+  banner.innerHTML = parts.join('<br>');
+  banner.classList.remove('hidden');
+}
+
+function renderControls(room) {
+  const you = room.you;
+  const seated = you.seatIndex !== null;
+  const myTurn = Boolean(you.legal);
+
+  // Пока идёт свой ход, служебные кнопки убираем — на экране только действия.
+  const hostBox = $('host-controls');
+  hostBox.classList.toggle('hidden', !you.isHost || myTurn);
+  $('btn-start').classList.toggle('hidden', room.running);
+  $('btn-pause').classList.toggle('hidden', !room.running);
+
+  const sitBtn = $('btn-sit');
+  const rebuyBtn = $('btn-rebuy');
+  const sitoutBtn = $('btn-sitout');
+  const hasFreeSeat = room.seats.some((s) => s.empty);
+
+  sitBtn.classList.toggle('hidden', seated || !hasFreeSeat);
+  rebuyBtn.classList.toggle('hidden', !you.canRebuy);
+  // Пропускать раздачи имеет смысл только когда игра идёт.
+  sitoutBtn.classList.toggle('hidden', !seated || !room.running);
+  sitoutBtn.textContent = you.sittingOut ? 'Вернуться в игру' : 'Пропустить раздачу';
+
+  const seatBox = $('seat-controls');
+  const seatButtonsVisible = [sitBtn, rebuyBtn, sitoutBtn].some((b) => !b.classList.contains('hidden'));
+  seatBox.classList.toggle('hidden', myTurn || !seatButtonsVisible);
+
+  // Панель действий появляется только на своём ходу.
+  const legal = you.legal;
+  const bar = $('action-bar');
+  if (!legal) {
+    bar.classList.add('hidden');
+    state.raiseTouched = false;
+    stopTurnTimer();
+    return;
+  }
+
+  bar.classList.remove('hidden');
+  $('btn-fold').classList.toggle('hidden', !legal.canFold);
+  $('btn-check').classList.toggle('hidden', !legal.canCheck);
+
+  const callBtn = $('btn-call');
+  callBtn.classList.toggle('hidden', !legal.canCall);
+  callBtn.textContent = `Колл ${legal.callAmount}`;
+
+  const raiseBtn = $('btn-raise');
+  raiseBtn.classList.toggle('hidden', !legal.canRaise);
+
+  const raiseRow = $('raise-row');
+  raiseRow.classList.toggle('hidden', !legal.canRaise);
+
+  if (legal.canRaise) {
+    const range = $('raise-range');
+    range.min = String(legal.minRaiseTo);
+    range.max = String(legal.maxRaiseTo);
+    range.step = '1';
+    if (!state.raiseTouched) state.raiseTo = legal.minRaiseTo;
+    state.raiseTo = clamp(state.raiseTo, legal.minRaiseTo, legal.maxRaiseTo);
+    range.value = String(state.raiseTo);
+    $('raise-value').textContent = String(state.raiseTo);
+    raiseBtn.textContent = state.raiseTo >= legal.maxRaiseTo ? 'Олл-ин' : `Рейз ${state.raiseTo}`;
+  }
+
+  startTurnTimer(room);
+}
+
+// ——— Таймер хода ———
+
+let turnTimerHandle = null;
+function startTurnTimer(room) {
+  stopTurnTimer();
+  if (!room.turnDeadline) return;
+  const total = room.settings.turnSeconds * 1000;
+  const bar = $('turn-timer').firstElementChild;
+  const tick = () => {
+    const left = room.turnDeadline - Date.now();
+    const ratio = clamp(left / total, 0, 1);
+    bar.style.width = `${ratio * 100}%`;
+    if (left <= 0) stopTurnTimer();
+  };
+  tick();
+  turnTimerHandle = setInterval(tick, 250);
+}
+
+function stopTurnTimer() {
+  if (turnTimerHandle) clearInterval(turnTimerHandle);
+  turnTimerHandle = null;
+}
+
+// ——— История и чат ———
+
+function renderLog() {
+  const room = state.room;
+  if (!room) return;
+  const list = $('log-list');
+  const entries = [
+    ...room.log.map((line) => ({ at: line.at, html: `<div class="log-line">${escapeHtml(line.text)}</div>` })),
+    ...state.chat.map((line) => ({
+      at: line.at,
+      html: `<div class="log-line chat"><b>${escapeHtml(line.name)}</b>: ${escapeHtml(line.text)}</div>`,
+    })),
+  ].sort((a, b) => a.at - b.at);
+
+  list.innerHTML = entries.map((e) => e.html).join('');
+  list.scrollTop = list.scrollHeight;
+}
+
+// ——— Ввод ———
+
+function bindUi() {
+  $('dev-enter').addEventListener('click', () => {
+    const name = $('dev-name').value.trim();
+    if (!name) {
+      toast('Введите имя');
+      return;
+    }
+    localStorage.setItem('poker:devName', name);
+    send({ type: 'auth', name, devId: deviceId() });
+  });
+
+  $('create-btn').addEventListener('click', () => {
+    send({
+      type: 'create_room',
+      settings: {
+        smallBlind: Number($('set-sb').value),
+        bigBlind: Number($('set-bb').value),
+        buyIn: Number($('set-buyin').value),
+        maxPlayers: Number($('set-seats').value),
+        turnSeconds: Number($('set-turn').value),
+      },
+    });
+  });
+
+  $('join-code').addEventListener('input', (event) => {
+    event.target.value = normalizeCode(event.target.value);
+  });
+  $('join-btn').addEventListener('click', () => {
+    const code = normalizeCode($('join-code').value);
+    if (code.length !== 5) {
+      toast('Код состоит из пяти символов');
+      return;
+    }
+    send({ type: 'join_room', code });
+  });
+
+  $('btn-leave').addEventListener('click', leaveRoom);
+  $('btn-code').addEventListener('click', copyCode);
+  $('btn-invite').addEventListener('click', invite);
+  $('btn-log').addEventListener('click', () => $('log-panel').classList.remove('hidden'));
+  $('btn-log-close').addEventListener('click', () => $('log-panel').classList.add('hidden'));
+
+  $('btn-start').addEventListener('click', () => send({ type: 'start' }));
+  $('btn-pause').addEventListener('click', () => send({ type: 'pause' }));
+  $('btn-sit').addEventListener('click', () => {
+    const free = state.room && state.room.seats.find((s) => s.empty);
+    if (free) send({ type: 'sit', seat: free.index });
+    else toast('Свободных мест нет');
+  });
+  $('btn-rebuy').addEventListener('click', () => send({ type: 'rebuy' }));
+  $('btn-sitout').addEventListener('click', () => {
+    send({ type: 'sit_out', value: !state.room.you.sittingOut });
+  });
+
+  $('btn-fold').addEventListener('click', () => act('fold'));
+  $('btn-check').addEventListener('click', () => act('check'));
+  $('btn-call').addEventListener('click', () => act('call'));
+  $('btn-raise').addEventListener('click', () => act('raise', state.raiseTo));
+
+  $('raise-range').addEventListener('input', (event) => {
+    state.raiseTouched = true;
+    state.raiseTo = Number(event.target.value);
+    $('raise-value').textContent = String(state.raiseTo);
+    const legal = state.room && state.room.you.legal;
+    if (legal) {
+      $('btn-raise').textContent = state.raiseTo >= legal.maxRaiseTo ? 'Олл-ин' : `Рейз ${state.raiseTo}`;
+    }
+  });
+
+  document.querySelectorAll('[data-preset]').forEach((button) => {
+    button.addEventListener('click', () => applyPreset(button.dataset.preset));
+  });
+
+  $('chat-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = $('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    send({ type: 'chat', text });
+    input.value = '';
+  });
+
+  // Не даём экрану засыпать посреди раздачи.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.socket && state.socket.readyState === WebSocket.OPEN) {
+      send({ type: 'ping' });
+    }
+  });
+}
+
+function applyPreset(preset) {
+  const room = state.room;
+  const legal = room && room.you.legal;
+  if (!legal || !legal.canRaise) return;
+
+  const mySeat = room.seats[room.you.seatIndex];
+  const myBet = mySeat ? mySeat.bet : 0;
+  // Банк после уравнивания — от него и считаем «половину» и «банк».
+  const potAfterCall = room.potTotal + legal.callAmount;
+
+  let value;
+  if (preset === 'min') value = legal.minRaiseTo;
+  else if (preset === 'max') value = legal.maxRaiseTo;
+  else if (preset === 'half') value = myBet + legal.callAmount + Math.floor(potAfterCall / 2);
+  else value = myBet + legal.callAmount + potAfterCall;
+
+  state.raiseTouched = true;
+  state.raiseTo = clamp(value, legal.minRaiseTo, legal.maxRaiseTo);
+  $('raise-range').value = String(state.raiseTo);
+  $('raise-value').textContent = String(state.raiseTo);
+  $('btn-raise').textContent = state.raiseTo >= legal.maxRaiseTo ? 'Олл-ин' : `Рейз ${state.raiseTo}`;
+  haptic('light');
+}
+
+function act(action, amount) {
+  haptic(action === 'fold' ? 'light' : 'success');
+  state.raiseTouched = false;
+  send({ type: 'action', action, amount });
+  $('action-bar').classList.add('hidden');
+}
+
+function leaveRoom() {
+  send({ type: 'leave_room' });
+  state.room = null;
+  showLobby();
+}
+
+function copyCode() {
+  const room = state.room;
+  if (!room) return;
+  const text = room.code;
+  if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+  toast(`Код стола ${text} скопирован`);
+}
+
+function invite() {
+  const room = state.room;
+  if (!room) return;
+  const { botUsername, appShortName } = state.config;
+
+  if (tg && botUsername && appShortName) {
+    const link = `https://t.me/${botUsername}/${appShortName}?startapp=${room.code}`;
+    const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Заходи играть в покер на фишки!')}`;
+    tg.openTelegramLink(share);
+    return;
+  }
+  copyCode();
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
+boot();

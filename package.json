@@ -1,0 +1,16 @@
+{
+  "name": "poker-friends-miniapp",
+  "version": "1.0.0",
+  "description": "Telegram Mini App: техасский холдем на игровые фишки для игры с друзьями",
+  "private": true,
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
