@@ -105,28 +105,45 @@
     <!-- Экран стола -->
     <section id="screen-table" class="screen hidden">
       <header class="topbar">
-        <button id="btn-leave" class="icon-btn" title="Выйти">‹</button>
-        <div class="room-info">
-          <button id="btn-code" class="room-code" title="Скопировать код">Стол <b id="room-code">—</b></button>
-          <div id="room-blinds" class="muted small">блайнды —/—</div>
-        </div>
-        <button id="btn-invite" class="icon-btn" title="Позвать друзей">＋</button>
-        <button id="btn-log" class="icon-btn" title="История">≡</button>
+        <button id="btn-leave" class="pill-btn">‹ Лобби</button>
+        <button id="btn-code" class="title-block">
+          <div id="room-title" class="room-title">Стол</div>
+          <div id="room-subtitle" class="room-subtitle">Холдем</div>
+        </button>
+        <button id="btn-invite" class="round-btn gold" title="Позвать друзей">+</button>
+        <button id="btn-close" class="round-btn danger" title="Выйти">×</button>
       </header>
 
       <div class="table-wrap">
-        <div class="felt">
-          <div class="felt-inner"></div>
-          <div class="center">
-            <div id="pot" class="pot hidden"><span class="pot-label">Банк</span> <b id="pot-value">0</b></div>
-            <div id="board" class="board"></div>
-            <div id="table-message" class="table-message">Ждём игроков</div>
+        <div id="feed" class="feed"></div>
+
+        <div class="rail">
+          <span class="rail-badge left">&#9827;</span>
+          <span class="rail-badge right">&#9827;</span>
+          <div class="felt">
+            <div class="felt-line"></div>
+            <div class="watermark">&#9824;</div>
+            <div class="center">
+              <div id="board" class="board"></div>
+              <div id="pot" class="pot hidden">
+                <span class="pot-label">БАНК</span>
+                <b id="pot-value">0</b>
+              </div>
+              <div id="table-message" class="table-message">Ждём игроков</div>
+            </div>
           </div>
-          <div id="seats" class="seats"></div>
         </div>
+        <div id="seats" class="seats"></div>
+
+        <div id="winner-pop" class="winner-pop hidden"></div>
+
+        <button id="btn-log" class="fab" title="История и чат">
+          <span class="fab-icon">&#128172;</span>
+          <span id="chat-badge" class="fab-badge hidden">0</span>
+        </button>
       </div>
 
-      <div id="result-banner" class="result-banner hidden"></div>
+      <div id="seat-hint" class="seat-hint hidden">Нажмите на свободное место, чтобы сесть в игру</div>
 
       <footer class="controls">
         <div id="host-controls" class="host-controls hidden">
@@ -135,7 +152,7 @@
         </div>
 
         <div id="seat-controls" class="seat-controls hidden">
-          <button id="btn-sit" class="btn btn-primary hidden">Сесть за стол</button>
+          <button id="btn-sit" class="btn btn-outline hidden">Сесть за стол</button>
           <button id="btn-rebuy" class="btn btn-ghost hidden">Пополнить стек</button>
           <button id="btn-sitout" class="btn btn-ghost hidden">Пропустить раздачу</button>
         </div>
@@ -154,7 +171,7 @@
             </div>
           </div>
           <div class="action-buttons">
-            <button id="btn-fold" class="btn btn-fold">Пас</button>
+            <button id="btn-fold" class="btn btn-fold">Фолд</button>
             <button id="btn-check" class="btn btn-check">Чек</button>
             <button id="btn-call" class="btn btn-call">Колл</button>
             <button id="btn-raise" class="btn btn-raise">Рейз</button>
@@ -167,7 +184,7 @@
         <div class="sheet-body">
           <div class="sheet-head">
             <h3 id="chips-title">Фишки</h3>
-            <button id="chips-close" class="icon-btn">×</button>
+            <button id="chips-close" class="round-btn">×</button>
           </div>
           <p id="chips-stack" class="muted small">Стек —</p>
           <div class="chips-presets">
@@ -185,14 +202,14 @@
             <button id="chips-take" class="btn btn-ghost">Забрать</button>
             <button id="chips-set" class="btn btn-ghost">Сделать стеком</button>
           </div>
-          <p class="hint">То же самое командой в чате: <code>/дать Боря 500</code>, <code>/всем 1000</code>, <code>/помощь</code>.</p>
+          <p class="hint">То же командой в чате: <code>/дать Боря 500</code>, <code>/всем 1000</code>, <code>/помощь</code>.</p>
         </div>
       </aside>
 
       <aside id="log-panel" class="log-panel hidden">
         <div class="log-head">
           <h3>История стола</h3>
-          <button id="btn-log-close" class="icon-btn">×</button>
+          <button id="btn-log-close" class="round-btn">×</button>
         </div>
         <div id="log-list" class="log-list"></div>
         <form id="chat-form" class="chat-form">

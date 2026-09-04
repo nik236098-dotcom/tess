@@ -25,6 +25,7 @@ const state = {
   chat: [],
   rooms: [],
   chipsSeat: null, // индекс места, которому выдаём фишки
+  unread: 0,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -178,6 +179,10 @@ function handleMessage(message) {
     case 'chat':
       state.chat.push(message);
       if (state.chat.length > 50) state.chat.shift();
+      if ($('log-panel').classList.contains('hidden')) {
+        state.unread += 1;
+        renderUnread();
+      }
       renderLog();
       if (message.userId !== (state.user && state.user.id)) {
         toast(`${message.name}: ${message.text}`);
@@ -294,17 +299,46 @@ function renderTable() {
   const room = state.room;
   if (!room) return;
 
-  $('room-code').textContent = room.code;
-  const privacy = room.settings.isPublic ? '' : ' · закрытый';
-  $('room-blinds').textContent =
-    `блайнды ${room.settings.smallBlind}/${room.settings.bigBlind} · вход ${room.settings.buyIn}${privacy}`;
+  $('room-title').textContent = room.title || `Стол ${room.code}`;
+
+  const phases = {
+    preflop: 'Префлоп',
+    flop: 'Флоп',
+    turn: 'Тёрн',
+    river: 'Ривер',
+    showdown: 'Вскрытие',
+    complete: 'Вскрытие',
+  };
+  // Пока идёт раздача показываем улицу, между раздачами — код стола.
+  const tail = room.status === 'playing' && phases[room.phase]
+    ? phases[room.phase]
+    : `код ${room.code}`;
+  $('room-subtitle').textContent =
+    `Холдем · ${room.settings.smallBlind}/${room.settings.bigBlind} · ${tail}`;
 
   renderBoard(room);
   renderSeats(room);
+  renderFeed(room);
   renderMessage(room);
   renderControls(room);
   renderResult(room);
   renderLog();
+}
+
+function renderFeed(room) {
+  const feed = $('feed');
+  feed.innerHTML = '';
+  if (room.status !== 'playing') return;
+  for (const entry of room.feed || []) {
+    const pill = document.createElement('div');
+    pill.className = 'feed-pill';
+    const amount = entry.amount === null || entry.amount === undefined
+      ? ''
+      : ` <span class="amount">${entry.amount}</span>`;
+    const allIn = entry.allIn ? ' <span class="amount">олл-ин</span>' : '';
+    pill.innerHTML = `<b>${escapeHtml(entry.name)}</b> — ${escapeHtml(entry.action)}${amount}${allIn}`;
+    feed.appendChild(pill);
+  }
 }
 
 function renderBoard(room) {
@@ -333,7 +367,9 @@ function cardNode(code, small = false) {
   // Десятку привычнее видеть как «10», а не как «T».
   const rank = code[0] === 'T' ? '10' : code[0];
   if (rank === '10') node.classList.add('ten');
-  node.innerHTML = `<span class="rank">${rank}</span><span class="suit">${suit.symbol}</span>`;
+  // Два угла, как на настоящей карте: второй перевёрнут.
+  const corner = (position) => `<span class="corner ${position}"><b>${rank}</b><i>${suit.symbol}</i></span>`;
+  node.innerHTML = corner('tl') + corner('br');
   return node;
 }
 
@@ -351,60 +387,58 @@ function renderSeats(room) {
     const angle = (90 + (position * 360) / count) * (Math.PI / 180);
     const node = document.createElement('div');
     node.className = 'seat';
-    node.style.left = `${50 + 40 * Math.cos(angle)}%`;
-    node.style.top = `${48 + 35 * Math.sin(angle)}%`;
+    node.style.left = `${50 + 46 * Math.cos(angle)}%`;
+    node.style.top = `${49 + 34 * Math.sin(angle)}%`;
 
     if (seat.empty) {
       node.classList.add('empty');
-      node.innerHTML = '<div class="seat-body"><div class="seat-name">Свободно</div><div class="seat-stack">сесть</div></div>';
-      if (room.you.seatIndex === null) {
-        node.addEventListener('click', () => {
+      const free = room.you.seatIndex === null;
+      if (free) node.classList.add('joinable');
+      const slot = document.createElement('div');
+      slot.className = 'seat-empty-slot';
+      slot.textContent = '+';
+      if (free) {
+        slot.addEventListener('click', () => {
           haptic('light');
           send({ type: 'sit', seat: seat.index });
         });
       }
+      node.appendChild(slot);
       container.appendChild(node);
       return;
     }
 
+    if (seat.userId === room.you.userId) node.classList.add('me');
     if (seat.folded) node.classList.add('folded');
     if (seat.isActing) node.classList.add('acting');
-    if (seat.userId === room.you.userId) node.classList.add('me');
+    if (!seat.connected || seat.sittingOut) node.classList.add('away');
 
-    // Подсказка комбинации — над картами игрока.
+    node.appendChild(avatarNode(seat));
+
+    const plate = document.createElement('div');
+    plate.className = 'seat-plate';
+    const stack = seat.allIn
+      ? '<div class="seat-stack allin">ALL-IN</div>'
+      : `<div class="seat-stack">${seat.stack}</div>`;
+    plate.innerHTML = `<div class="seat-name">${escapeHtml(seat.name)}</div>${stack}`;
+    if (room.you.isHost) {
+      node.classList.add('clickable');
+      plate.addEventListener('click', () => openChipsSheet(seat));
+    }
+    node.appendChild(plate);
+
+    if (seat.cards) {
+      const cards = document.createElement('div');
+      cards.className = 'seat-cards';
+      for (const card of seat.cards) cards.appendChild(cardNode(card, true));
+      node.appendChild(cards);
+    }
+
     if (seat.combination) {
       const combo = document.createElement('div');
       combo.className = 'seat-combo';
       combo.textContent = seat.combination;
       node.appendChild(combo);
-    }
-
-    const cards = document.createElement('div');
-    cards.className = 'seat-cards';
-    if (seat.cards) {
-      for (const card of seat.cards) cards.appendChild(cardNode(card, true));
-    }
-
-    const tags = [];
-    if (seat.isDealer) tags.push('<span class="tag dealer">D</span>');
-    if (seat.allIn) tags.push('<span class="tag allin">олл-ин</span>');
-    if (!seat.connected) tags.push('<span class="tag away">офлайн</span>');
-    else if (seat.sittingOut) tags.push('<span class="tag away">пропускает</span>');
-
-    const body = document.createElement('div');
-    body.className = 'seat-body';
-    body.innerHTML = `
-      <div class="seat-name">${escapeHtml(seat.name)}</div>
-      <div class="seat-stack">${seat.stack}</div>
-      <div class="seat-tags">${tags.join('')}</div>
-    `;
-
-    node.appendChild(cards);
-    node.appendChild(body);
-
-    if (room.you.isHost) {
-      node.classList.add('clickable');
-      body.addEventListener('click', () => openChipsSheet(seat));
     }
 
     if (seat.bet > 0) {
@@ -413,23 +447,59 @@ function renderSeats(room) {
       bet.textContent = seat.bet;
       node.appendChild(bet);
     } else {
-      const action = document.createElement('div');
-      action.className = 'seat-action';
-      action.textContent = actionWord(seat.lastAction);
-      node.appendChild(action);
+      const status = document.createElement('div');
+      status.className = 'seat-status';
+      status.textContent = seatStatus(seat);
+      node.appendChild(status);
     }
 
     container.appendChild(node);
   });
 }
 
+function avatarNode(seat) {
+  const avatar = document.createElement('div');
+  avatar.className = 'seat-avatar';
+  if (seat.photoUrl) {
+    const img = document.createElement('img');
+    img.src = seat.photoUrl;
+    img.alt = '';
+    avatar.appendChild(img);
+  } else {
+    avatar.textContent = (seat.name || '?').trim()[0].toUpperCase();
+  }
+
+  // Блайнды и баттон — бейджами на аватаре, как за живым столом.
+  if (seat.isBigBlind) avatar.appendChild(badge('bb', 'BB'));
+  else if (seat.isSmallBlind) avatar.appendChild(badge('sb', 'SB'));
+  if (seat.isDealer) avatar.appendChild(badge('d', 'D'));
+  return avatar;
+}
+
+function badge(kind, text) {
+  const node = document.createElement('span');
+  node.className = `pos-badge ${kind}`;
+  node.textContent = text;
+  return node;
+}
+
+function seatStatus(seat) {
+  if (!seat.connected) return 'офлайн';
+  if (seat.sittingOut) return 'пропускает';
+  return actionWord(seat.lastAction);
+}
+
 function actionWord(action) {
-  return { fold: 'пас', check: 'чек', call: 'колл', bet: 'ставка', raise: 'рейз' }[action] || '';
+  return { fold: 'фолд', check: 'чек', call: 'колл', bet: 'ставка', raise: 'рейз' }[action] || '';
 }
 
 function renderMessage(room) {
   const node = $('table-message');
   const seated = room.seats.filter((s) => !s.empty).length;
+
+  // Подсказка «сядьте за стол» — отдельной плашкой под столом.
+  const canSit = room.you.seatIndex === null && room.seats.some((s) => s.empty);
+  $('seat-hint').classList.toggle('hidden', !canSit);
 
   if (room.status === 'playing') {
     node.textContent = '';
@@ -443,18 +513,30 @@ function renderMessage(room) {
 }
 
 function renderResult(room) {
-  const banner = $('result-banner');
+  const pop = $('winner-pop');
   const result = room.lastResult;
-  if (!result || room.status === 'playing') {
-    banner.classList.add('hidden');
+  if (!result || room.status === 'playing' || !result.winners.length) {
+    pop.classList.add('hidden');
     return;
   }
-  const parts = result.winners.map((w) => {
-    const combo = w.hand ? ` — ${w.hand.name}` : '';
-    return `${escapeHtml(w.name)} забирает ${w.amount}${escapeHtml(combo)}`;
-  });
-  banner.innerHTML = parts.join('<br>');
-  banner.classList.remove('hidden');
+
+  if (result.winners.length === 1) {
+    const winner = result.winners[0];
+    const combo = winner.hand ? `<div class="win-combo">${escapeHtml(winner.hand.name)}</div>` : '';
+    pop.innerHTML = `
+      <div class="win-avatar">${escapeHtml((winner.name || '?').trim()[0].toUpperCase())}</div>
+      <div class="win-title">Выигрывает ${escapeHtml(winner.name)}</div>
+      ${combo}
+      <div class="win-amount">+${winner.amount}</div>
+      <div class="win-note">фишек</div>
+    `;
+  } else {
+    const rows = result.winners
+      .map((w) => `<div class="win-combo">${escapeHtml(w.name)} +${w.amount}</div>`)
+      .join('');
+    pop.innerHTML = `<div class="win-title">Банк разделён</div>${rows}`;
+  }
+  pop.classList.remove('hidden');
 }
 
 function renderControls(room) {
@@ -547,6 +629,12 @@ function stopTurnTimer() {
 
 // ——— История и чат ———
 
+function renderUnread() {
+  const badge = $('chat-badge');
+  badge.textContent = String(state.unread);
+  badge.classList.toggle('hidden', state.unread === 0);
+}
+
 function renderLog() {
   const room = state.room;
   if (!room) return;
@@ -620,7 +708,12 @@ function bindUi() {
   $('btn-leave').addEventListener('click', leaveRoom);
   $('btn-code').addEventListener('click', copyCode);
   $('btn-invite').addEventListener('click', invite);
-  $('btn-log').addEventListener('click', () => $('log-panel').classList.remove('hidden'));
+  $('btn-log').addEventListener('click', () => {
+    $('log-panel').classList.remove('hidden');
+    state.unread = 0;
+    renderUnread();
+  });
+  $('btn-close').addEventListener('click', leaveRoom);
   $('btn-log-close').addEventListener('click', () => $('log-panel').classList.add('hidden'));
 
   $('btn-start').addEventListener('click', () => send({ type: 'start' }));

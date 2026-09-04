@@ -51,6 +51,7 @@ class Room extends EventEmitter {
     this.dealerSeat = -1;
     this.handNumber = 0;
     this.log = [];
+    this.feed = []; // последние действия для плашек над столом
     this.lastResult = null;
     this.createdAt = Date.now();
     this.turnTimer = null;
@@ -362,6 +363,7 @@ class Room extends EventEmitter {
     this.hand.handNumber = this.handNumber;
     this.status = 'playing';
 
+    this.feed = [];
     this.pushLog(`Раздача №${this.handNumber} началась`);
     this.logHandEvents();
     this.armTurnTimer();
@@ -510,6 +512,12 @@ class Room extends EventEmitter {
     return this.members.get(userId)?.name || 'Игрок';
   }
 
+  // Плашки живут недолго и показывают только последние ходы.
+  pushFeed(entry) {
+    this.feed.push({ id: `${this.handNumber}-${this.feed.length}`, at: Date.now(), ...entry });
+    if (this.feed.length > 4) this.feed.splice(0, this.feed.length - 4);
+  }
+
   pushLog(text) {
     this.log.push({ id: this.log.length + 1, text, at: Date.now() });
     if (this.log.length > MAX_LOG) this.log.splice(0, this.log.length - MAX_LOG);
@@ -587,13 +595,19 @@ class Room extends EventEmitter {
       if (event.type === 'action') {
         const name = this.nameOf(event.playerId);
         const words = {
-          fold: 'пас',
+          fold: 'фолд',
           check: 'чек',
           call: `колл ${event.amount ?? ''}`.trim(),
           bet: `ставка ${event.amount}`,
           raise: `рейз до ${event.amount}`,
         };
         this.pushLog(`${name}: ${words[event.action] || event.action}${event.allIn ? ' (олл-ин)' : ''}`);
+        this.pushFeed({
+          name,
+          action: ACTION_WORDS[event.action] || event.action,
+          amount: event.action === 'fold' || event.action === 'check' ? null : event.amount ?? null,
+          allIn: Boolean(event.allIn),
+        });
       } else if (event.type === 'street') {
         const names = { flop: 'Флоп', turn: 'Тёрн', river: 'Ривер' };
         this.pushLog(`${names[event.street]}: ${event.board.map(prettyCard).join(' ')}`);
@@ -645,6 +659,14 @@ class Room extends EventEmitter {
       : 0;
     const potTotal = hand ? hand.totalPot : 0;
 
+    // Кто на блайндах — нужно для бейджей SB/BB на аватарах.
+    const blindSeat = (index) => {
+      if (!hand || index === undefined || !hand.players[index]) return -1;
+      return this.seatIndexOf(hand.players[index].id);
+    };
+    const sbSeat = blindSeat(hand ? hand.sbIndex : undefined);
+    const bbSeat = blindSeat(hand ? hand.bbIndex : undefined);
+
     const seats = this.seats.map((seat, index) => {
       if (!seat) return { index, empty: true };
       const inHand = hand ? hand.player(seat.userId) : null;
@@ -681,6 +703,8 @@ class Room extends EventEmitter {
         cards,
         combination,
         isDealer: index === this.dealerSeat,
+        isSmallBlind: index === sbSeat,
+        isBigBlind: index === bbSeat,
         isActing: Boolean(inHand && hand && !hand.complete && hand.actingPlayer && hand.actingPlayer.id === seat.userId),
       };
     });
@@ -707,6 +731,7 @@ class Room extends EventEmitter {
       nextHandAt: this.nextHandAt || null,
       lastResult: this.lastResult,
       log: this.log.slice(-25),
+      feed: this.feed.slice(-3),
       spectators: [...this.members.values()]
         .filter((m) => this.seatIndexOf(m.id) < 0)
         .map((m) => ({ userId: m.id, name: m.name, photoUrl: m.photoUrl })),
@@ -717,7 +742,7 @@ class Room extends EventEmitter {
         stack: mySeatIndex >= 0 ? (hand && hand.player(userId) ? hand.player(userId).stack : this.seats[mySeatIndex].stack) : 0,
         sittingOut: mySeatIndex >= 0 ? this.seats[mySeatIndex].sittingOut : false,
         canRebuy: mySeatIndex >= 0
-          && this.seats[mySeatIndex].stack < this.settings.buyIn
+          && this.seats[mySeatIndex].stack < this.settings.bigBlind
           && !(hand && !hand.complete && hand.player(userId)),
         legal: legal && {
           canFold: legal.canFold,
@@ -760,6 +785,14 @@ function normalizeSettings(raw) {
     isPublic: settings.isPublic !== false,
   };
 }
+
+const ACTION_WORDS = {
+  fold: 'фолд',
+  check: 'чек',
+  call: 'колл',
+  bet: 'ставка',
+  raise: 'рейз',
+};
 
 const COMMAND_HELP = [
   'Команды хозяина стола:',
