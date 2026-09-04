@@ -220,7 +220,43 @@ cp /var/lib/poker/accounts.json /root/accounts-$(date +%F).json
 
 ## Если домена нет
 
-Для разовых посиделок хватит туннеля Cloudflare — он выдаёт временный HTTPS-адрес:
+`ВАШ_ДОМЕН` в шаге 6 — это настоящее имя, A-запись которого указывает на IP сервера.
+На голый IP сертификат не выдают, а без HTTPS Telegram приложение не откроет.
+Есть два бесплатных выхода.
+
+### Вариант А: бесплатный поддомен DuckDNS (постоянный, рекомендую)
+
+1. Зайдите на [duckdns.org](https://www.duckdns.org) и войдите (Google, GitHub — что удобнее).
+2. Придумайте имя, например `pokergena`, и нажмите **add domain**. Получится `pokergena.duckdns.org`.
+3. Скопируйте свой **token** с той же страницы и привяжите домен к серверу:
+
+```bash
+# выполняется на сервере; подставьте своё имя, токен и IP сервера
+curl "https://www.duckdns.org/update?domains=pokergena&token=ВАШ_ТОКЕН&ip=IP_СЕРВЕРА"
+# в ответ должно прийти: OK
+```
+
+4. Проверьте, что имя резолвится в ваш IP:
+
+```bash
+dig +short pokergena.duckdns.org
+```
+
+5. Дальше идите по шагу 6, подставляя `pokergena.duckdns.org` вместо `ВАШ_ДОМЕН`:
+
+```bash
+sed -i 's/poker.example.com/pokergena.duckdns.org/' /etc/nginx/sites-available/poker
+ln -sf /etc/nginx/sites-available/poker /etc/nginx/sites-enabled/poker
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
+
+apt install -y certbot python3-certbot-nginx
+certbot --nginx -d pokergena.duckdns.org --agree-tos -m ваша@почта --redirect
+```
+
+Web App URL в BotFather: `https://pokergena.duckdns.org`.
+
+### Вариант Б: туннель Cloudflare (без сервера и домена, но временный)
 
 ```bash
 curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
@@ -228,8 +264,31 @@ dpkg -i cloudflared.deb
 cloudflared tunnel --url http://localhost:3000
 ```
 
-Полученный адрес вида `https://что-то.trycloudflare.com` вставьте в BotFather как Web App URL.
-Адрес живёт, пока запущен `cloudflared`, и после перезапуска меняется — для постоянной игры лучше домен.
+Адрес вида `https://что-то.trycloudflare.com` вставьте в BotFather как Web App URL.
+Он живёт, пока запущен `cloudflared`, и после перезапуска меняется — каждый раз придётся
+менять URL в BotFather. Для постоянной игры берите вариант А.
+
+## Если что-то не поднялось
+
+```bash
+systemctl status poker --no-pager     # запущено ли приложение
+journalctl -u poker -n 50 --no-pager  # его логи
+curl -s localhost:3000/health         # отвечает ли сервер локально
+nginx -t                              # синтаксис конфига nginx
+tail -n 30 /var/log/nginx/error.log   # ошибки nginx
+ss -tlnp | grep -E ':(80|443|3000)'   # кто слушает порты
+```
+
+Частые причины:
+
+- **certbot ругается на домен** — A-запись ещё не разошлась или указывает не на этот сервер.
+  Проверьте `dig +short ВАШ_ДОМЕН` и сравните с `curl -s ifconfig.me`.
+- **Стол открывается, но игроки не появляются** — в конфиге nginx нет строк
+  `proxy_set_header Upgrade $http_upgrade;` и `Connection "upgrade";`. Без них WebSocket не работает.
+- **Telegram пишет, что приложение недоступно** — в BotFather указан `http://`,
+  голый IP или адрес с самоподписанным сертификатом.
+- **«Откройте приложение через Telegram» в браузере** — так и задумано: с заданным
+  токеном вход возможен только из Telegram.
 
 ## Вариант с Docker
 
