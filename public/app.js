@@ -55,6 +55,17 @@ const $ = (id) => document.getElementById(id);
 // используются, чтобы вид не зависел от шрифта конкретной платформы.
 const icon = (name, extra = '') => `<svg class="icon ${extra}"><use href="#i-${name}"></use></svg>`;
 
+// Привязка обработчика по id. Если элемента нет — пишем в консоль и живём
+// дальше: одна пропавшая кнопка не должна мешать приложению подключиться.
+function on(id, event, handler) {
+  const element = $(id);
+  if (!element) {
+    console.warn(`Нет элемента #${id} — обработчик ${event} не повешен`);
+    return;
+  }
+  element.addEventListener(event, handler);
+}
+
 // Сервер считает деньги целыми центами (см. server/money.js), а показываем
 // мы доллары. Здесь ровно те же правила округления, что и на сервере.
 function money(cents) {
@@ -93,7 +104,14 @@ async function boot() {
   }
 
   state.pendingRoom = readRoomFromLaunch();
-  bindUi();
+  // Интерфейс не должен мешать связи: если разметка и скрипт разошлись
+  // (например, браузер подсунул старый app.js), играть всё равно можно.
+  try {
+    bindUi();
+  } catch (error) {
+    console.error('Не удалось навесить обработчики интерфейса:', error);
+    setStatus('Интерфейс обновился — перезапустите приложение');
+  }
   connect();
 }
 
@@ -1429,7 +1447,7 @@ function stopTopUpPolling() {
 // ——— Ввод ———
 
 function bindUi() {
-  $('dev-enter').addEventListener('click', () => {
+  on('dev-enter', 'click', () => {
     const name = $('dev-name').value.trim();
     if (!name) {
       toast('Введите имя');
@@ -1439,7 +1457,7 @@ function bindUi() {
     send({ type: 'auth', name, devId: deviceId() });
   });
 
-  $('create-btn').addEventListener('click', () => {
+  on('create-btn', 'click', () => {
     // Настройки стола игрок задаёт в долларах, сервер считает в центах.
     const common = {
       game: state.game,
@@ -1458,10 +1476,10 @@ function bindUi() {
     send({ type: 'create_room', settings });
   });
 
-  $('join-code').addEventListener('input', (event) => {
+  on('join-code', 'input', (event) => {
     event.target.value = normalizeCode(event.target.value);
   });
-  $('join-btn').addEventListener('click', () => {
+  on('join-btn', 'click', () => {
     const code = normalizeCode($('join-code').value);
     if (code.length !== 5) {
       toast('Код состоит из пяти символов');
@@ -1479,27 +1497,27 @@ function bindUi() {
   }
 
   // Кнопки денег и плитки главной
-  $('btn-topup').addEventListener('click', () => {
+  on('btn-topup', 'click', () => {
     if (togglePanel('topup-card')) renderTopUp();
   });
-  $('btn-payout').addEventListener('click', () => {
+  on('btn-payout', 'click', () => {
     if (togglePanel('payout-card')) renderPayout();
   });
-  $('tile-friends').addEventListener('click', inviteFriends);
-  $('tile-leaders').addEventListener('click', () => {
+  on('tile-friends', 'click', inviteFriends);
+  on('tile-leaders', 'click', () => {
     if (togglePanel('leaders-card')) {
       $('tile-leaders').classList.add('is-active');
       send({ type: 'leaders' });
     }
   });
-  $('tile-promo').addEventListener('click', () => {
+  on('tile-promo', 'click', () => {
     if (togglePanel('promo-card')) {
       $('tile-promo').classList.add('is-active');
       $('promo-code').focus();
     }
   });
-  $('promo-send').addEventListener('click', redeemPromo);
-  $('promo-code').addEventListener('keydown', (event) => {
+  on('promo-send', 'click', redeemPromo);
+  on('promo-code', 'keydown', (event) => {
     if (event.key === 'Enter') redeemPromo();
   });
 
@@ -1507,82 +1525,82 @@ function bindUi() {
   const openHelp = () => {
     if (togglePanel('help-card')) $('help-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
-  $('help-link').addEventListener('click', openHelp);
-  $('btn-menu').addEventListener('click', openHelp);
-  $('help-support').addEventListener('click', () => openExternal(state.links.support));
-  $('help-history').addEventListener('click', () => {
+  on('help-link', 'click', openHelp);
+  on('btn-menu', 'click', openHelp);
+  on('help-support', 'click', () => openExternal(state.links.support));
+  on('help-history', 'click', () => {
     if (togglePanel('history-card')) send({ type: 'history' });
   });
-  $('help-rules').addEventListener('click', () => {
+  on('help-rules', 'click', () => {
     showTab('games');
     const rules = $('rules-card');
     rules.open = true;
     rules.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
-  $('other-games').addEventListener('click', () => openExternal(state.links.community));
-  $('leaders-refresh').addEventListener('click', () => send({ type: 'leaders' }));
-  $('history-refresh').addEventListener('click', () => send({ type: 'history' }));
+  on('other-games', 'click', () => openExternal(state.links.community));
+  on('leaders-refresh', 'click', () => send({ type: 'leaders' }));
+  on('history-refresh', 'click', () => send({ type: 'history' }));
 
-  $('payout-amount').addEventListener('input', renderPayoutControls);
-  $('payout-send').addEventListener('click', createPayout);
+  on('payout-amount', 'input', renderPayoutControls);
+  on('payout-send', 'click', createPayout);
 
-  $('topup-amount').addEventListener('input', renderTopUp);
-  $('topup-create').addEventListener('click', createTopUp);
-  $('topup-pay').addEventListener('click', () => {
+  on('topup-amount', 'input', renderTopUp);
+  on('topup-create', 'click', createTopUp);
+  on('topup-pay', 'click', () => {
     const invoice = state.topup.invoice;
     if (invoice) openPayLink(invoice.url || invoice.fallbackUrl);
   });
-  $('topup-check').addEventListener('click', () => {
+  on('topup-check', 'click', () => {
     const invoice = state.topup.invoice;
     if (invoice) send({ type: 'topup_status', id: invoice.id });
   });
-  $('topup-cancel').addEventListener('click', () => {
+  on('topup-cancel', 'click', () => {
     stopTopUpPolling();
     state.topup.invoice = null;
     renderTopUpInvoice();
   });
 
-  $('rooms-refresh').addEventListener('click', () => send({ type: 'list_rooms' }));
-  $('rooms-refresh-games').addEventListener('click', () => send({ type: 'list_rooms' }));
-  $('admin-refresh').addEventListener('click', () => send({ type: 'admin_accounts' }));
-  $('admin-give').addEventListener('click', () => adminGrant('add', 1));
-  $('admin-take').addEventListener('click', () => adminGrant('add', -1));
-  $('admin-set').addEventListener('click', () => adminGrant('set'));
-  $('btn-my-id').addEventListener('click', () => {
+  on('rooms-refresh', 'click', () => send({ type: 'list_rooms' }));
+  on('rooms-refresh-games', 'click', () => send({ type: 'list_rooms' }));
+  on('admin-refresh', 'click', () => send({ type: 'admin_accounts' }));
+  on('admin-give', 'click', () => adminGrant('add', 1));
+  on('admin-take', 'click', () => adminGrant('add', -1));
+  on('admin-set', 'click', () => adminGrant('set'));
+  on('btn-my-id', 'click', () => {
     if (!state.user) return;
     if (navigator.clipboard) navigator.clipboard.writeText(state.user.id).catch(() => {});
     toast(`ID ${state.user.id} скопирован`);
   });
 
-  $('chips-close').addEventListener('click', closeChipsSheet);
-  $('chips-sheet').addEventListener('click', (event) => {
+  on('chips-close', 'click', closeChipsSheet);
+  on('chips-sheet', 'click', (event) => {
     if (event.target === $('chips-sheet')) closeChipsSheet();
   });
   document.querySelectorAll('[data-chips]').forEach((button) => {
     button.addEventListener('click', () => grantChips(button.dataset.chips, 'add'));
   });
-  $('chips-give').addEventListener('click', () => grantChips($('chips-amount').value, 'add'));
-  $('chips-take').addEventListener('click', () => grantChips(-Math.abs(Number($('chips-amount').value) || 0), 'add'));
-  $('chips-set').addEventListener('click', () => grantChips($('chips-amount').value, 'set'));
+  on('chips-give', 'click', () => grantChips($('chips-amount').value, 'add'));
+  on('chips-take', 'click', () => grantChips(-Math.abs(Number($('chips-amount').value) || 0), 'add'));
+  on('chips-set', 'click', () => grantChips($('chips-amount').value, 'set'));
 
-  $('btn-leave').addEventListener('click', leaveRoom);
-  $('btn-code').addEventListener('click', copyCode);
-  $('btn-invite').addEventListener('click', invite);
-  $('btn-log').addEventListener('click', () => {
+  on('btn-leave', 'click', leaveRoom);
+  on('btn-code', 'click', copyCode);
+  on('btn-invite', 'click', invite);
+  on('btn-log', 'click', () => {
     $('log-panel').classList.remove('hidden');
     state.unread = 0;
     renderUnread();
   });
-  $('btn-close').addEventListener('click', leaveRoom);
-  $('btn-log-close').addEventListener('click', () => $('log-panel').classList.add('hidden'));
+  on('btn-close', 'click', leaveRoom);
+  on('btn-log-close', 'click', () => $('log-panel').classList.add('hidden'));
 
-  $('btn-start').addEventListener('click', () => send({ type: 'start' }));
-  $('btn-sit').addEventListener('click', () => {
+  on('btn-start', 'click', () => send({ type: 'start' }));
+  on('btn-sit', 'click', () => {
     const free = state.room && state.room.seats.find((s) => s.empty);
     if (free) send({ type: 'sit', seat: free.index });
     else toast('Свободных мест нет');
   });
-  $('btn-rebuy').addEventListener('click', () => send({ type: 'rebuy' }));
+  on('btn-rebuy', 'click', () => send({ type: 'rebuy' }));
 
   document.querySelectorAll('[data-game]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -1595,15 +1613,15 @@ function bindUi() {
     });
   });
 
-  $('bj-hit').addEventListener('click', () => act('hit'));
-  $('bj-stand').addEventListener('click', () => act('stand'));
-  $('bj-bet').addEventListener('click', () => {
+  on('bj-hit', 'click', () => act('hit'));
+  on('bj-stand', 'click', () => act('stand'));
+  on('bj-bet', 'click', () => {
     haptic('success');
     state.bjBetTouched = false;
     send({ type: 'action', action: 'bet', amount: state.bjBet });
     $('bj-bar').classList.add('hidden');
   });
-  $('bj-range').addEventListener('input', (event) => {
+  on('bj-range', 'input', (event) => {
     state.bjBetTouched = true;
     state.bjBet = Number(event.target.value);
     $('bj-bet-value').textContent = money(state.bjBet);
@@ -1626,23 +1644,23 @@ function bindUi() {
     });
   });
 
-  $('btn-fold').addEventListener('click', () => act('fold'));
-  $('btn-check').addEventListener('click', () => act('check'));
-  $('btn-call').addEventListener('click', () => act('call'));
-  $('btn-raise').addEventListener('click', () => {
+  on('btn-fold', 'click', () => act('fold'));
+  on('btn-check', 'click', () => act('check'));
+  on('btn-call', 'click', () => act('call'));
+  on('btn-raise', 'click', () => {
     haptic('light');
     const row = $('raise-row');
     if (row.classList.contains('hidden')) openRaisePanel();
     else closeRaisePanel();
   });
-  $('raise-cancel').addEventListener('click', closeRaisePanel);
-  $('raise-confirm').addEventListener('click', () => act('raise', state.raiseTo));
-  $('btn-allin').addEventListener('click', () => {
+  on('raise-cancel', 'click', closeRaisePanel);
+  on('raise-confirm', 'click', () => act('raise', state.raiseTo));
+  on('btn-allin', 'click', () => {
     const legal = state.room && state.room.you.legal;
     if (legal && legal.canRaise) act('raise', legal.maxRaiseTo);
   });
 
-  $('raise-range').addEventListener('input', (event) => {
+  on('raise-range', 'input', (event) => {
     state.raiseTouched = true;
     state.raiseTo = Number(event.target.value);
     renderRaiseValue(state.room && state.room.you.legal);
@@ -1652,7 +1670,7 @@ function bindUi() {
     button.addEventListener('click', () => applyPreset(button.dataset.preset));
   });
 
-  $('chat-form').addEventListener('submit', (event) => {
+  on('chat-form', 'submit', (event) => {
     event.preventDefault();
     const input = $('chat-input');
     const text = input.value.trim();

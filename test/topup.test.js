@@ -226,3 +226,15 @@ test('без токенов провайдеров пополнение выкл
   const error = await client.wait(byType('error'));
   assert.match(error.message, /не подключено/i);
 });
+
+test('статика отдаётся с ревалидацией, чтобы обновление доходило сразу', { timeout: 10000 }, async (t) => {
+  const { port } = await startServer(t);
+
+  const page = await fetch(`http://127.0.0.1:${port}/index.html`);
+  const script = await fetch(`http://127.0.0.1:${port}/app.js`);
+
+  // Пятиминутный max-age приводил к тому, что браузер брал новый index.html
+  // и старый app.js: привязка к исчезнувшей кнопке роняла запуск.
+  assert.strictEqual(page.headers.get('cache-control'), 'no-store');
+  assert.strictEqual(script.headers.get('cache-control'), 'no-cache');
+});

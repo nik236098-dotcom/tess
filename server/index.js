@@ -824,7 +824,11 @@ function serveStatic(pathname, res) {
     const ext = path.extname(filePath).toLowerCase();
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': ext === '.html' ? 'no-store' : 'public, max-age=300',
+      // no-cache — не «не кэшировать», а «каждый раз спрашивать сервер».
+      // Пятиминутный max-age приводил к тому, что после обновления браузер
+      // отдавал новый index.html вместе со старым app.js, и приложение
+      // падало на первой же исчезнувшей кнопке.
+      'Cache-Control': ext === '.html' ? 'no-store' : 'no-cache',
     });
     res.end(data);
   });
