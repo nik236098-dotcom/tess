@@ -359,6 +359,18 @@ certbot --nginx -d ВАШ_ДОМЕН --agree-tos -m ваша@почта --redire
 certbot install --cert-name ВАШ_ДОМЕН --nginx --redirect
 systemctl reload nginx
 ```
+- **`conflicting server name` и `invalid PID number "" in "/run/nginx.pid"`** —
+  на один домен заведено два конфига, а сам nginx не запущен (перезагружать нечего).
+  Лечится так:
+
+```bash
+grep -rls "server_name.*ВАШ_ДОМЕН" /etc/nginx/sites-enabled/   # кто дублируется
+mv /etc/nginx/sites-enabled/ВАШ_ДОМЕН /root/                   # выключаем лишний
+nginx -t && systemctl start nginx
+certbot install --cert-name ВАШ_ДОМЕН --nginx --redirect
+systemctl reload nginx
+```
+
 - **Telegram пишет, что приложение недоступно** — в BotFather указан `http://`,
   голый IP или адрес с самоподписанным сертификатом.
 - **«Откройте приложение через Telegram» в браузере** — так и задумано: с заданным

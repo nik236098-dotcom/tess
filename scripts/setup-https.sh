@@ -80,6 +80,18 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq nginx certbot python3-certbot-nginx curl >/dev/null
 
+# Два блока с одним server_name — это «conflicting server name» и мусор в конфиге.
+# Чужие конфиги молча не трогаем: на сервере может жить другой сайт.
+CONFLICTS="$(grep -rls "server_name[[:space:]].*$DOMAIN" /etc/nginx/sites-enabled/ 2>/dev/null | grep -v '/poker$' || true)"
+if [[ -n "$CONFLICTS" ]]; then
+  echo "→ Для $DOMAIN уже есть другой конфиг nginx:"
+  echo "$CONFLICTS" | sed 's/^/     /'
+  echo
+  echo "  Два блока на один домен nginx не примет. Выключите лишний и повторите:"
+  echo "$CONFLICTS" | sed 's|^|     mv |; s|$| /root/|'
+  exit 1
+fi
+
 echo "→ Пишу конфиг nginx"
 cat > /etc/nginx/sites-available/poker <<CONF
 server {
@@ -107,7 +119,11 @@ CONF
 ln -sf /etc/nginx/sites-available/poker /etc/nginx/sites-enabled/poker
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
-systemctl reload nginx
+systemctl reload nginx 2>/dev/null || systemctl restart nginx
+systemctl is-active --quiet nginx || {
+  echo "  Nginx не поднялся. Смотрите: journalctl -u nginx -n 20 --no-pager"
+  exit 1
+}
 
 echo "→ Открываю порты в файрволе"
 if command -v ufw >/dev/null; then
@@ -133,6 +149,7 @@ else
   fi
   certbot install --cert-name "$DOMAIN" --nginx --redirect --non-interactive
 fi
+systemctl is-active --quiet nginx || systemctl start nginx
 
 # Certbot умеет завершиться с нулём, не выпустив сертификат, — проверяем результат.
 if [[ ! -s "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
