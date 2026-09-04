@@ -410,7 +410,13 @@ function createApp(options = {}) {
       }
       const verified = verifyInitData(message.initData, botToken);
       if (!verified.ok) {
-        client.fail(verified.error);
+        // Самая частая причина — в .env токен не того бота, под которым
+        // создан мини-апп. Скажем об этом прямо, а не «подпись не совпала».
+        const hint = verified.error.includes('не совпала')
+          ? `. Приложение запущено с токеном бота №${botToken.split(':')[0]} — проверьте, что мини-апп создан у этого же бота`
+          : '';
+        console.warn(`Не пустили игрока: ${verified.error}.${hint}`);
+        client.fail(verified.error + hint);
         return;
       }
       user = verified.user;
