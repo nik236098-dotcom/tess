@@ -72,6 +72,12 @@ node scripts/setup-bot.js                           # покажет имя бо
 node scripts/setup-bot.js https://ваш.домен --save  # кнопка «Играть» + имя бота в .env
 ```
 
+Если что-то не работает, диагностика одной командой:
+
+```bash
+sudo bash scripts/doctor.sh
+```
+
 **Пошаговая установка на сервер со всеми командами — в [DEPLOY.md](DEPLOY.md).**
 
 ### 3. HTTPS
