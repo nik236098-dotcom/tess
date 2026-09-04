@@ -3,110 +3,98 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { Room, RoomError, describeCombination } = require('../server/room');
+const { Accounts } = require('../server/accounts');
 const { stringToCard } = require('../server/poker/cards');
 
 const cards = (line) => line.split(' ').map(stringToCard);
 
-function table({ settings = {}, players = ['Аня', 'Боря'] } = {}) {
+function table({ settings = {}, players = ['Аня', 'Боря'], balance = 10000 } = {}) {
+  const bank = new Accounts({ startingBalance: balance });
+  players.forEach((name, i) => bank.ensure({ id: `u${i}`, name }));
+
   const host = { id: 'u0', name: players[0] };
-  const room = new Room('TEST1', host, { buyIn: 1000, smallBlind: 5, bigBlind: 10, ...settings });
+  const room = new Room('TEST1', host, { buyIn: 1000, smallBlind: 5, bigBlind: 10, ...settings }, { bank });
   players.slice(1).forEach((name, i) => room.addMember({ id: `u${i + 1}`, name }));
   players.forEach((_, i) => room.sit(`u${i}`, i));
+  room.bankRef = bank;
   return room;
 }
 
-test('хозяин выдаёт фишки командой из чата', (t) => {
-  const room = table();
+test('посадка списывает вход с баланса, а уход возвращает стек', (t) => {
+  const room = table({ balance: 5000 });
   t.after(() => room.dispose());
 
-  const reply = room.chat('u0', '/дать Боря 500');
-  assert.match(reply, /Боря/);
-  assert.strictEqual(room.seatOf('u1').stack, 1500);
-});
-
-test('фишки можно выдать по номеру места', (t) => {
-  const room = table();
-  t.after(() => room.dispose());
-
-  room.chat('u0', '/дать 2 250');
-  assert.strictEqual(room.seatOf('u1').stack, 1250);
-});
-
-test('команда /стек выставляет точный стек, /забрать списывает', (t) => {
-  const room = table();
-  t.after(() => room.dispose());
-
-  room.chat('u0', '/стек Боря 300');
-  assert.strictEqual(room.seatOf('u1').stack, 300);
-
-  room.chat('u0', '/забрать Боря 100');
-  assert.strictEqual(room.seatOf('u1').stack, 200);
-
-  assert.throws(() => room.chat('u0', '/забрать Боря 5000'), RoomError);
-});
-
-test('команда /всем раздаёт фишки всем за столом', (t) => {
-  const room = table({ players: ['Аня', 'Боря', 'Вика'] });
-  t.after(() => room.dispose());
-
-  room.chat('u0', '/всем 200');
-  assert.deepStrictEqual(
-    room.seats.filter(Boolean).map((seat) => seat.stack),
-    [1200, 1200, 1200]
-  );
-});
-
-test('фишки выдаёт только хозяин стола', (t) => {
-  const room = table();
-  t.after(() => room.dispose());
-
-  assert.throws(() => room.chat('u1', '/дать Аня 1000'), /только хозяин/);
+  assert.strictEqual(room.bankRef.balanceOf('u0'), 4000, 'вход в 1000 ушёл со счёта');
   assert.strictEqual(room.seatOf('u0').stack, 1000);
+
+  room.stand('u0');
+  assert.strictEqual(room.bankRef.balanceOf('u0'), 5000, 'стек вернулся на баланс');
+  assert.strictEqual(room.seats[0], null);
 });
 
-test('неизвестная команда и неизвестный игрок дают понятную ошибку', (t) => {
-  const room = table();
+test('без фишек на балансе за стол не сесть', (t) => {
+  const room = table({ balance: 1000, players: ['Аня', 'Боря'] });
   t.after(() => room.dispose());
 
-  assert.throws(() => room.chat('u0', '/чтототакое'), /Неизвестная команда/);
-  assert.throws(() => room.chat('u0', '/дать Петя 100'), /нет игрока/);
+  room.addMember({ id: 'u2', name: 'Вика' });
+  room.bankRef.ensure({ id: 'u2', name: 'Вика' });
+  room.bankRef.grant('u2', 100, 'set');
+
+  assert.throws(() => room.sit('u2', 2), /не хватает фишек/);
+  assert.strictEqual(room.seats[2], null);
 });
 
-test('во время раздачи фишки начисляются после её конца', (t) => {
-  const room = table();
+test('уход посреди раздачи откладывается до её конца', (t) => {
+  // Втроём пас одного игрока раздачу не заканчивает — есть на чём проверить.
+  const room = table({ balance: 5000, players: ['Аня', 'Боря', 'Вика'] });
   t.after(() => room.dispose());
   room.start('u0');
 
-  const before = room.hand.player('u1').stack;
-  room.chat('u0', '/дать Боря 500');
-  assert.strictEqual(room.hand.player('u1').stack, before, 'посреди раздачи стек не меняется');
+  const actor = room.hand.actingPlayer.id;
+  room.stand(actor);
+  assert.ok(room.seatOf(actor), 'место держится, пока идут ставки');
+  assert.strictEqual(room.seatOf(actor).leaveAfterHand, true);
+  assert.strictEqual(room.bankRef.balanceOf(actor), 4000, 'баланс пока не трогали');
 
-  // Хедз-ап: баттон пасует, раздача заканчивается, начисление применяется.
+  // Доигрываем: остаётся один игрок, раздача завершается.
   room.applyAction(room.hand.actingPlayer.id, 'fold');
-  assert.strictEqual(room.seatOf('u1').stack + room.seatOf('u0').stack, 2500);
-  assert.ok(room.seatOf('u1').stack >= 1500);
+
+  assert.strictEqual(room.seatIndexOf(actor), -1, 'после раздачи место освободилось');
+  assert.strictEqual(room.bankRef.balanceOf(actor), 5000, 'весь стек вернулся на баланс');
 });
 
-test('игрок без фишек возвращается в игру после выдачи', (t) => {
-  const room = table();
+test('пополнение стека берёт фишки с баланса', (t) => {
+  const room = table({ balance: 3000 });
   t.after(() => room.dispose());
 
-  room.chat('u0', '/стек Боря 0');
-  room.seatOf('u1').sittingOut = true;
-  room.seatOf('u1').brokeSitOut = true;
+  const seat = room.seatOf('u1');
+  seat.stack = 200;
+  room.rebuy('u1');
 
-  room.chat('u0', '/дать Боря 800');
-  assert.strictEqual(room.seatOf('u1').stack, 800);
-  assert.strictEqual(room.seatOf('u1').sittingOut, false);
+  assert.strictEqual(seat.stack, 1000, 'стек дотянули до размера входа');
+  assert.strictEqual(room.bankRef.balanceOf('u1'), 1200, 'списали ровно недостающие 800');
 });
 
-test('тот, кто пропускает раздачи по своей воле, так и остаётся вне игры', (t) => {
-  const room = table();
+test('пополнение ограничено остатком на балансе', (t) => {
+  const room = table({ balance: 1300 });
   t.after(() => room.dispose());
 
-  room.setSittingOut('u1', true);
-  room.chat('u0', '/дать Боря 500');
-  assert.strictEqual(room.seatOf('u1').sittingOut, true, 'решение игрока не отменяется выдачей фишек');
+  const seat = room.seatOf('u1');
+  seat.stack = 100;
+  room.rebuy('u1');
+
+  assert.strictEqual(seat.stack, 400, 'добавили всё, что было на балансе');
+  assert.strictEqual(room.bankRef.balanceOf('u1'), 0);
+});
+
+test('фишки со стола возвращаются на балансы при закрытии комнаты', (t) => {
+  const room = table({ balance: 5000 });
+  t.after(() => room.dispose());
+
+  room.cashOutAll();
+  assert.strictEqual(room.bankRef.balanceOf('u0'), 5000);
+  assert.strictEqual(room.bankRef.balanceOf('u1'), 5000);
+  assert.deepStrictEqual(room.seats.filter(Boolean), []);
 });
 
 test('подсказка комбинации считается по видимым картам', () => {
@@ -147,16 +135,4 @@ test('стол можно сделать закрытым', (t) => {
   const room = table({ settings: { isPublic: false } });
   t.after(() => room.dispose());
   assert.strictEqual(room.summary().isPublic, false);
-});
-
-test('команда /стек посреди раздачи выставляет ровно указанный стек', (t) => {
-  const room = table();
-  t.after(() => room.dispose());
-  room.start('u0');
-
-  room.chat('u0', '/стек Боря 1234');
-  assert.notStrictEqual(room.seatOf('u1').stack, 1234, 'посреди раздачи стек ещё прежний');
-
-  room.applyAction(room.hand.actingPlayer.id, 'fold');
-  assert.strictEqual(room.seatOf('u1').stack, 1234, 'после раздачи ровно столько, сколько выставили');
 });

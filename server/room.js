@@ -22,8 +22,6 @@ const DEFAULT_SETTINGS = {
   isPublic: true, // стол по умолчанию виден всем в списке
 };
 
-const MAX_STACK = 100000000;
-
 const SETTING_LIMITS = {
   smallBlind: [1, 10000],
   bigBlind: [2, 20000],
@@ -37,8 +35,11 @@ const FOLD_PAUSE_MS = 2500;
 const MAX_LOG = 60;
 
 class Room extends EventEmitter {
-  constructor(code, host, settings = {}) {
+  // bank — интерфейс балансов: { balanceOf, withdraw, deposit }.
+  // Комната сама фишки не создаёт: они приходят с баланса и уходят обратно.
+  constructor(code, host, settings = {}, { bank = null } = {}) {
     super();
+    this.bank = bank;
     this.code = code;
     this.hostId = host.id;
     this.hostName = host.name;
@@ -142,20 +143,28 @@ class Room extends EventEmitter {
     if (seatIndex < 0 || seatIndex >= this.seats.length) throw new RoomError('Такого места нет');
     if (this.seats[seatIndex]) throw new RoomError('Место занято');
 
+    const buyIn = this.settings.buyIn;
+    if (this.bank) {
+      try {
+        this.bank.withdraw(userId, buyIn);
+      } catch (error) {
+        throw new RoomError(error.message);
+      }
+    }
+
     this.seats[seatIndex] = {
       userId,
       name: member.name,
       photoUrl: member.photoUrl,
-      stack: this.settings.buyIn,
-      pendingChips: 0,
-      pendingStack: null,
+      stack: buyIn,
       sittingOut: false,
       autoSitOut: false,
       brokeSitOut: false,
+      leaveAfterHand: false,
       connected: true,
       joinedHand: this.handNumber,
     };
-    this.pushLog(`${member.name} занимает место ${seatIndex + 1}, стек ${this.settings.buyIn}`);
+    this.pushLog(`${member.name} занимает место ${seatIndex + 1}, стек ${buyIn}`);
     this.maybeStartHand();
     this.touch();
   }
@@ -165,7 +174,8 @@ class Room extends EventEmitter {
     if (index < 0) return;
     const seat = this.seats[index];
 
-    if (this.hand && this.hand.player(userId) && !this.hand.player(userId).folded && !this.hand.complete) {
+    const inHand = this.hand && !this.hand.complete && this.hand.player(userId);
+    if (inHand && !inHand.folded) {
       // Нельзя просто исчезнуть посреди раздачи — сначала пас.
       try {
         this.applyAction(userId, 'fold');
@@ -173,9 +183,35 @@ class Room extends EventEmitter {
         /* ход уже перешёл дальше */
       }
     }
+
+    if (this.hand && !this.hand.complete && this.hand.player(userId)) {
+      // Фишки ещё в раздаче: место освободим и вернём остаток после вскрытия.
+      seat.leaveAfterHand = true;
+      if (!silent) this.pushLog(`${seat.name} уходит после раздачи`);
+      this.touch();
+      return;
+    }
+
+    this.releaseSeat(index, { silent });
+  }
+
+  // Убирает игрока с места и возвращает его стек на баланс.
+  releaseSeat(index, { silent = false } = {}) {
+    const seat = this.seats[index];
+    if (!seat) return;
     this.seats[index] = null;
-    if (!silent) this.pushLog(`${seat.name} освобождает место`);
+    if (this.bank && seat.stack > 0) this.bank.deposit(seat.userId, seat.stack);
+    if (!silent) {
+      this.pushLog(`${seat.name} освобождает место, ${seat.stack} фишек ушли на баланс`);
+    }
     this.touch();
+  }
+
+  // Все встают из-за стола: комнату закрывают или сервер выключается.
+  cashOutAll() {
+    this.seats.forEach((seat, index) => {
+      if (seat) this.releaseSeat(index, { silent: true });
+    });
   }
 
   setSittingOut(userId, value) {
@@ -189,91 +225,34 @@ class Room extends EventEmitter {
     this.touch();
   }
 
-  // Фишки игровые, поэтому обнулившийся стек можно пополнить в любой момент между раздачами.
+  // Пополнение стека до размера входа — фишки берутся с баланса игрока.
   rebuy(userId) {
     const seat = this.seatOf(userId);
     if (!seat) throw new RoomError('Вы не за столом');
     if (this.hand && !this.hand.complete && this.hand.player(userId)) {
       throw new RoomError('Пополнить стек можно между раздачами');
     }
-    if (seat.stack >= this.settings.buyIn) {
-      throw new RoomError('Фишек и так достаточно');
+    if (seat.stack >= this.settings.buyIn) throw new RoomError('Фишек и так достаточно');
+
+    const needed = this.settings.buyIn - seat.stack;
+    const available = this.bank ? this.bank.balanceOf(userId) : needed;
+    const amount = Math.min(needed, available);
+    if (amount <= 0) throw new RoomError('На балансе нет фишек — попросите админа выдать');
+
+    if (this.bank) {
+      try {
+        this.bank.withdraw(userId, amount);
+      } catch (error) {
+        throw new RoomError(error.message);
+      }
     }
-    seat.stack = this.settings.buyIn;
+    seat.stack += amount;
     seat.sittingOut = false;
     seat.autoSitOut = false;
     seat.brokeSitOut = false;
-    this.pushLog(`${seat.name} пополняет стек до ${this.settings.buyIn}`);
+    this.pushLog(`${seat.name} пополняет стек на ${amount}, теперь ${seat.stack}`);
     this.maybeStartHand();
     this.touch();
-  }
-
-  // Находит место по номеру, имени или части имени — как удобнее набрать в команде.
-  findSeat(reference) {
-    const query = String(reference || '').trim();
-    if (!query) return null;
-
-    const asNumber = Number(query);
-    if (Number.isInteger(asNumber) && asNumber >= 1 && asNumber <= this.seats.length) {
-      return this.seats[asNumber - 1];
-    }
-
-    const lower = query.toLowerCase();
-    const seated = this.seats.filter(Boolean);
-    const exact = seated.filter((seat) => seat.name.toLowerCase() === lower);
-    if (exact.length === 1) return exact[0];
-    const partial = seated.filter((seat) => seat.name.toLowerCase().startsWith(lower));
-    if (partial.length === 1) return partial[0];
-    if (partial.length > 1) throw new RoomError(`Под «${query}» подходит несколько игроков — уточните имя`);
-    return null;
-  }
-
-  // Хозяин стола выдаёт, забирает или выставляет фишки.
-  // mode: 'add' | 'set'.  Фишки игровые, поэтому банк ниоткуда не берётся.
-  grantChips(actorId, reference, amount, mode = 'add') {
-    if (actorId !== this.hostId) throw new RoomError('Фишки выдаёт только хозяин стола');
-
-    const value = Math.floor(Number(amount));
-    if (!Number.isFinite(value)) throw new RoomError('Укажите количество фишек числом');
-    if (mode === 'add' && value === 0) throw new RoomError('Ноль фишек выдавать незачем');
-    if (mode === 'set' && value < 0) throw new RoomError('Стек не может быть отрицательным');
-
-    const seat = this.findSeat(reference);
-    if (!seat) throw new RoomError(`За столом нет игрока «${reference}»`);
-
-    const inHand = Boolean(this.hand && !this.hand.complete && this.hand.player(seat.userId));
-    const currentStack = inHand ? this.hand.player(seat.userId).stack : seat.stack;
-    const target = mode === 'set' ? value : currentStack + (seat.pendingChips || 0) + value;
-
-    if (target < 0) throw new RoomError(`У игрока ${seat.name} столько фишек нет`);
-    if (target > MAX_STACK) throw new RoomError('Слишком большой стек');
-
-    if (inHand) {
-      // Посреди раздачи стек трогать нельзя — применим сразу после вскрытия.
-      if (mode === 'set') {
-        // Точный стек выставляем как есть, не смешивая с итогом раздачи.
-        seat.pendingStack = target;
-        seat.pendingChips = 0;
-      } else {
-        seat.pendingStack = null;
-        seat.pendingChips = target - currentStack;
-      }
-      this.pushLog(`${seat.name}: ${describeGrant(target - currentStack, mode, target)} — применим после раздачи`);
-      this.touch();
-      return { seat, applied: false, target };
-    }
-
-    const delta = target - seat.stack;
-    seat.stack = target;
-    // Кто пропускал раздачи только из-за пустого стека — с фишками снова в игре.
-    if (target > 0 && seat.brokeSitOut) {
-      seat.sittingOut = false;
-      seat.brokeSitOut = false;
-    }
-    this.pushLog(`${seat.name}: ${describeGrant(delta, mode, target)}`);
-    this.maybeStartHand();
-    this.touch();
-    return { seat, applied: true, target };
   }
 
   updateSettings(userId, patch) {
@@ -426,24 +405,10 @@ class Room extends EventEmitter {
       this.pushLog(`${winner.name} выигрывает ${winner.amount}${combo}`);
     }
 
-    // Фишки, выданные хозяином посреди раздачи, применяем теперь.
-    for (const seat of this.seats) {
-      if (!seat) continue;
-      if (seat.pendingStack === null || seat.pendingStack === undefined) {
-        if (!seat.pendingChips) continue;
-        seat.stack = Math.max(0, seat.stack + seat.pendingChips);
-        this.pushLog(`${seat.name}: начислено ${seat.pendingChips > 0 ? '+' : ''}${seat.pendingChips}, стек ${seat.stack}`);
-      } else {
-        seat.stack = seat.pendingStack;
-        this.pushLog(`${seat.name}: стек выставлен на ${seat.stack}`);
-        seat.pendingStack = null;
-      }
-      seat.pendingChips = 0;
-      if (seat.stack > 0 && seat.brokeSitOut) {
-        seat.sittingOut = false;
-        seat.brokeSitOut = false;
-      }
-    }
+    // Кто просил встать посреди раздачи — уходит теперь, с остатком на баланс.
+    this.seats.forEach((seat, index) => {
+      if (seat && seat.leaveAfterHand) this.releaseSeat(index, { silent: false });
+    });
 
     // Кто остался без фишек — уходит в «сижу мимо» до пополнения.
     for (const seat of this.seats) {
@@ -525,66 +490,8 @@ class Room extends EventEmitter {
 
   chat(userId, text) {
     const clean = String(text || '').slice(0, 200).trim();
-    if (!clean) return undefined;
-    if (clean.startsWith('/')) return this.runCommand(userId, clean);
+    if (!clean) return;
     this.emit('chat', { userId, name: this.nameOf(userId), text: clean, at: Date.now() });
-    return undefined;
-  }
-
-  // Команды из чата. Возвращает текст ответа лично автору команды.
-  runCommand(userId, line) {
-    const tokens = line.slice(1).split(/\s+/).filter(Boolean);
-    const command = (tokens.shift() || '').toLowerCase();
-
-    // Последний аргумент — сумма, всё перед ним — имя или номер места.
-    const takeTarget = () => {
-      if (tokens.length < 2) throw new RoomError('Формат: /дать <имя или место> <сколько>');
-      const amount = tokens[tokens.length - 1];
-      const reference = tokens.slice(0, -1).join(' ');
-      return { reference, amount };
-    };
-
-    switch (command) {
-      case 'дать':
-      case 'выдать':
-      case 'give': {
-        const { reference, amount } = takeTarget();
-        const { seat, applied, target } = this.grantChips(userId, reference, Math.abs(Number(amount)), 'add');
-        return applied
-          ? `${seat.name}: выдано ${Math.abs(Math.floor(Number(amount)))}, стек ${target}`
-          : `${seat.name} получит фишки после раздачи`;
-      }
-      case 'забрать':
-      case 'take': {
-        const { reference, amount } = takeTarget();
-        const { seat, applied, target } = this.grantChips(userId, reference, -Math.abs(Number(amount)), 'add');
-        return applied ? `${seat.name}: стек ${target}` : `Спишем у ${seat.name} после раздачи`;
-      }
-      case 'стек':
-      case 'set': {
-        const { reference, amount } = takeTarget();
-        const { seat, applied, target } = this.grantChips(userId, reference, Number(amount), 'set');
-        return applied ? `${seat.name}: стек ${target}` : `Стек ${seat.name} изменится после раздачи`;
-      }
-      case 'всем':
-      case 'all': {
-        if (userId !== this.hostId) throw new RoomError('Фишки выдаёт только хозяин стола');
-        if (!tokens.length) throw new RoomError('Формат: /всем <сколько>');
-        const amount = Number(tokens[0]);
-        const seated = this.seats.filter(Boolean);
-        if (!seated.length) throw new RoomError('За столом ещё никого нет');
-        for (const seat of seated) {
-          this.grantChips(userId, String(this.seatIndexOf(seat.userId) + 1), amount, 'add');
-        }
-        return `Выдано по ${Math.floor(amount)} каждому за столом`;
-      }
-      case 'помощь':
-      case 'help':
-      case '?':
-        return COMMAND_HELP;
-      default:
-        throw new RoomError(`Неизвестная команда «/${command}». Наберите /помощь`);
-    }
   }
 
   // Превращает события движка в понятные строки журнала.
@@ -741,8 +648,10 @@ class Room extends EventEmitter {
         isHost: userId === this.hostId,
         stack: mySeatIndex >= 0 ? (hand && hand.player(userId) ? hand.player(userId).stack : this.seats[mySeatIndex].stack) : 0,
         sittingOut: mySeatIndex >= 0 ? this.seats[mySeatIndex].sittingOut : false,
+        balance: this.bank ? this.bank.balanceOf(userId) : 0,
         canRebuy: mySeatIndex >= 0
-          && this.seats[mySeatIndex].stack < this.settings.bigBlind
+          && this.seats[mySeatIndex].stack < this.settings.buyIn
+          && (this.bank ? this.bank.balanceOf(userId) > 0 : true)
           && !(hand && !hand.complete && hand.player(userId)),
         legal: legal && {
           canFold: legal.canFold,
@@ -794,15 +703,6 @@ const ACTION_WORDS = {
   raise: 'рейз',
 };
 
-const COMMAND_HELP = [
-  'Команды хозяина стола:',
-  '/дать <имя или место> <сколько> — выдать фишки',
-  '/забрать <имя или место> <сколько> — списать фишки',
-  '/стек <имя или место> <сколько> — выставить стек',
-  '/всем <сколько> — выдать всем за столом',
-  'Вместо имени можно указать номер места: /дать 3 500',
-].join('\n');
-
 // Подсказка «что у меня собралось». Считается только по картам,
 // которые смотрящий и так видит, поэтому подсмотреть чужую руку через неё нельзя.
 function describeCombination(hole, board) {
@@ -811,12 +711,6 @@ function describeCombination(hole, board) {
   // До флопа подсказываем только карманную пару — остальное было бы шумом.
   if (rankOf(hole[0]) === rankOf(hole[1])) return `Пара ${RANK_CHARS[rankOf(hole[0])]}`;
   return null;
-}
-
-function describeGrant(delta, mode, target) {
-  if (mode === 'set') return `стек выставлен на ${target}`;
-  if (delta > 0) return `выдано ${delta} фишек, стек ${target}`;
-  return `списано ${Math.abs(delta)} фишек, стек ${target}`;
 }
 
 class RoomError extends Error {}

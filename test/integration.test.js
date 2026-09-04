@@ -8,8 +8,13 @@ const { once } = require('node:events');
 // так проверяется и самописный протокол WebSocket, и обмен командами.
 const { createApp } = require('../server/index');
 
-async function startServer(t) {
-  const server = createApp({ botToken: '', devLogin: true });
+async function startServer(t, options = {}) {
+  const server = createApp({
+    botToken: '',
+    devLogin: true,
+    accountsFile: null,
+    ...options,
+  });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.shutdown());
   return server.address().port;
@@ -245,35 +250,95 @@ test('закрытый стол в списке не показывается', 
   assert.strictEqual((await stranger.wait(byType('joined'))).code, code);
 });
 
-test('выдача фишек доходит до всех клиентов', { timeout: 10000 }, async (t) => {
-  const port = await startServer(t);
+test('админ выдаёт фишки на баланс по Telegram ID', { timeout: 10000 }, async (t) => {
+  // Админ определяется списком ID, а не тем, кто создал стол.
+  const port = await startServer(t, { devAdmin: false, adminIds: ['dev:boss'] });
 
-  const host = connect(port);
-  const guest = connect(port);
-  await Promise.all([once(host.socket, 'open'), once(guest.socket, 'open')]);
+  const admin = connect(port);
+  const player = connect(port);
+  await Promise.all([once(admin.socket, 'open'), once(player.socket, 'open')]);
   t.after(() => {
-    host.close();
-    guest.close();
+    admin.close();
+    player.close();
   });
 
-  host.send({ type: 'auth', name: 'Аня', devId: 'chip-host' });
-  guest.send({ type: 'auth', name: 'Боря', devId: 'chip-guest' });
-  await Promise.all([host.wait(byType('auth_ok')), guest.wait(byType('auth_ok'))]);
+  admin.send({ type: 'auth', name: 'Админ', devId: 'boss' });
+  player.send({ type: 'auth', name: 'Игрок', devId: 'player1' });
+  const [adminAuth, playerAuth] = await Promise.all([
+    admin.wait(byType('auth_ok')),
+    player.wait(byType('auth_ok')),
+  ]);
+  assert.strictEqual(adminAuth.isAdmin, true);
+  assert.strictEqual(playerAuth.isAdmin, false);
+  const before = playerAuth.balance;
 
-  host.send({ type: 'create_room', settings: { buyIn: 1000 } });
-  const { code } = await host.wait(byType('joined'));
-  guest.send({ type: 'join_room', code });
-  await guest.wait(byType('joined'));
-  host.send({ type: 'sit', seat: 0 });
-  guest.send({ type: 'sit', seat: 1 });
-  await guest.wait((m) => m.type === 'state' && m.seats.filter((s) => !s.empty).length === 2);
+  admin.send({ type: 'admin_grant', target: 'dev:player1', amount: 2500, mode: 'add' });
+  const update = await player.wait(byType('balance'));
+  assert.strictEqual(update.balance, before + 2500);
 
-  host.send({ type: 'grant_chips', target: 'Боря', amount: 750 });
-  const updated = await guest.wait((m) => m.type === 'state' && m.seats[1].stack === 1750);
-  assert.strictEqual(updated.seats[1].stack, 1750);
+  // Обычный игрок себе ничего не начислит.
+  player.send({ type: 'admin_grant', target: 'dev:player1', amount: 999999, mode: 'add' });
+  const denied = await player.wait(byType('error'));
+  assert.match(denied.message, /только админ/);
+});
 
-  // Гость раздавать фишки не может.
-  guest.send({ type: 'grant_chips', target: 'Аня', amount: 999 });
-  const error = await guest.wait(byType('error'));
-  assert.match(error.message, /только хозяин/);
+test('команда /дать адресуется по ID, а не по имени', { timeout: 10000 }, async (t) => {
+  const port = await startServer(t, { devAdmin: false, adminIds: ['dev:boss'] });
+
+  const admin = connect(port);
+  const first = connect(port);
+  const second = connect(port);
+  await Promise.all([once(admin.socket, 'open'), once(first.socket, 'open'), once(second.socket, 'open')]);
+  t.after(() => {
+    admin.close();
+    first.close();
+    second.close();
+  });
+
+  // Два тёзки: адресация по имени была бы неоднозначной.
+  admin.send({ type: 'auth', name: 'Админ', devId: 'boss' });
+  first.send({ type: 'auth', name: 'Саша', devId: 'sasha-1' });
+  second.send({ type: 'auth', name: 'Саша', devId: 'sasha-2' });
+  const auths = await Promise.all([
+    admin.wait(byType('auth_ok')),
+    first.wait(byType('auth_ok')),
+    second.wait(byType('auth_ok')),
+  ]);
+  const start = auths[1].balance;
+
+  admin.send({ type: 'create_room', settings: {} });
+  await admin.wait(byType('joined'));
+  admin.send({ type: 'chat', text: '/дать dev:sasha-2 700' });
+  const reply = await admin.wait(byType('system'));
+  assert.match(reply.text, /700|баланс/);
+
+  const changed = await second.wait(byType('balance'));
+  assert.strictEqual(changed.balance, start + 700);
+
+  first.send({ type: 'balance' });
+  const untouched = await first.wait(byType('balance'));
+  assert.strictEqual(untouched.balance, start, 'у тёзки баланс не изменился');
+});
+
+test('посадка за стол списывает вход с баланса', { timeout: 10000 }, async (t) => {
+  const port = await startServer(t);
+
+  const client = connect(port);
+  await once(client.socket, 'open');
+  t.after(() => client.close());
+
+  client.send({ type: 'auth', name: 'Аня', devId: 'balance-sit' });
+  const auth = await client.wait(byType('auth_ok'));
+
+  client.send({ type: 'create_room', settings: { buyIn: 1000 } });
+  await client.wait(byType('joined'));
+  client.send({ type: 'sit', seat: 0 });
+
+  const seated = await client.wait((m) => m.type === 'state' && m.you.seatIndex === 0);
+  assert.strictEqual(seated.you.balance, auth.balance - 1000);
+  assert.strictEqual(seated.seats[0].stack, 1000);
+
+  client.send({ type: 'stand' });
+  const stood = await client.wait((m) => m.type === 'state' && m.you.seatIndex === null);
+  assert.strictEqual(stood.you.balance, auth.balance, 'фишки вернулись на баланс');
 });

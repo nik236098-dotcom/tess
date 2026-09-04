@@ -29,6 +29,42 @@
         </div>
 
         <div id="lobby-actions" class="lobby-actions hidden">
+          <div class="card balance-card">
+            <div class="balance-main">
+              <span class="balance-label">Ваш баланс</span>
+              <b id="balance-value">—</b>
+              <span class="balance-unit">фишек</span>
+            </div>
+            <button id="btn-my-id" class="id-row">
+              Ваш Telegram ID: <b id="my-id">—</b> <span class="copy-hint">нажмите, чтобы скопировать</span>
+            </button>
+            <p class="hint">Фишки выдаёт админ — назовите ему этот ID.</p>
+          </div>
+
+          <div id="admin-card" class="card hidden">
+            <div class="card-head">
+              <h2>Админ: фишки</h2>
+              <button id="admin-refresh" class="link-btn">обновить счета</button>
+            </div>
+            <div class="settings-grid">
+              <label class="field">
+                <span>Telegram ID или @ник</span>
+                <input id="admin-target" type="text" placeholder="123456789" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>Сколько фишек</span>
+                <input id="admin-amount" type="number" step="100" placeholder="5000" inputmode="numeric" />
+              </label>
+            </div>
+            <div class="chips-actions">
+              <button id="admin-give" class="btn btn-primary">Выдать</button>
+              <button id="admin-take" class="btn btn-ghost">Забрать</button>
+              <button id="admin-set" class="btn btn-ghost">Выставить</button>
+            </div>
+            <div id="admin-accounts" class="accounts-list"></div>
+            <p class="hint">То же командой в чате стола: <code>/дать 123456789 5000</code>, <code>/помощь</code>.</p>
+          </div>
+
           <div class="card">
             <div class="card-head">
               <h2>Открытые столы</h2>
@@ -146,6 +182,7 @@
       <div id="seat-hint" class="seat-hint hidden">Нажмите на свободное место, чтобы сесть в игру</div>
 
       <footer class="controls">
+        <div id="balance-chip" class="balance-chip hidden"></div>
         <div id="host-controls" class="host-controls hidden">
           <button id="btn-start" class="btn btn-primary">Начать игру</button>
           <button id="btn-pause" class="btn btn-ghost hidden">Пауза</button>
@@ -186,7 +223,7 @@
             <h3 id="chips-title">Фишки</h3>
             <button id="chips-close" class="round-btn">×</button>
           </div>
-          <p id="chips-stack" class="muted small">Стек —</p>
+          <p id="chips-stack" class="muted small">Баланс —</p>
           <div class="chips-presets">
             <button class="chip-btn" data-chips="100">+100</button>
             <button class="chip-btn" data-chips="500">+500</button>
@@ -202,7 +239,7 @@
             <button id="chips-take" class="btn btn-ghost">Забрать</button>
             <button id="chips-set" class="btn btn-ghost">Сделать стеком</button>
           </div>
-          <p class="hint">То же командой в чате: <code>/дать Боря 500</code>, <code>/всем 1000</code>, <code>/помощь</code>.</p>
+          <p class="hint">Начисление идёт на баланс игрока, а не на стек за столом.</p>
         </div>
       </aside>
 

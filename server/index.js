@@ -8,6 +8,10 @@ const crypto = require('crypto');
 const { attachWebSocketServer } = require('./wsserver');
 const { verifyInitData } = require('./telegram');
 const { Room, RoomError, normalizeSettings } = require('./room');
+const { Accounts, AccountError, DEFAULT_START_BALANCE } = require('./accounts');
+const { loadEnv } = require('./env');
+
+loadEnv();
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const ROOM_TTL_MS = 30 * 60 * 1000; // пустую комнату держим полчаса
@@ -31,6 +35,31 @@ function createApp(options = {}) {
   const devLogin = options.devLogin ?? (!botToken || process.env.ALLOW_DEV_LOGIN === '1');
   const botUsername = (options.botUsername ?? process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '');
   const appShortName = options.appShortName ?? process.env.TELEGRAM_APP_SHORT_NAME ?? '';
+
+  const adminIds = options.adminIds
+    ?? String(process.env.TELEGRAM_ADMIN_IDS || '').split(',').map((id) => id.trim()).filter(Boolean);
+  // accountsFile: null означает «не сохранять на диск» (так гоняются тесты),
+  // поэтому здесь именно проверка на undefined, а не ??.
+  const accountsFile = options.accountsFile !== undefined
+    ? options.accountsFile
+    : path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'accounts.json');
+  const accounts = options.accounts ?? new Accounts({
+    file: accountsFile,
+    startingBalance: Number(process.env.START_BALANCE || DEFAULT_START_BALANCE),
+    admins: adminIds,
+  });
+  // Без токена бота приложение работает локально «для себя» — там админ каждый.
+  const devAdmin = options.devAdmin ?? !botToken;
+  const isAdmin = (user) => accounts.isAdmin(user.id) || (devAdmin && String(user.id).startsWith('dev:'));
+
+  // Баланс изменился — сразу показываем это владельцу счёта.
+  accounts.onChange = (account) => {
+    const client = clientsByUser.get(account.id);
+    if (!client) return;
+    client.send({ type: 'balance', balance: account.balance });
+    const room = client.roomCode ? rooms.get(client.roomCode) : null;
+    if (room) client.send(room.stateFor(account.id));
+  };
 
   const rooms = new Map(); // код -> Room
   const clientsByUser = new Map(); // id пользователя -> клиент
@@ -68,6 +97,7 @@ function createApp(options = {}) {
       }
       if (!room.emptyAt) room.emptyAt = now;
       if (now - room.emptyAt > ROOM_TTL_MS) {
+        room.cashOutAll(); // фишки со стола не должны пропасть вместе с комнатой
         room.dispose();
         rooms.delete(code);
       }
@@ -218,25 +248,25 @@ function createApp(options = {}) {
       case 'action':
         withRoom(client, (room) => room.applyAction(client.user.id, message.action, message.amount));
         break;
-      case 'chat':
-        withRoom(client, (room) => {
-          const reply = room.chat(client.user.id, message.text);
+      case 'chat': {
+        const text = String(message.text || '').trim();
+        if (text.startsWith('/')) {
+          const reply = runCommand(client, text);
           if (reply) client.send({ type: 'system', text: reply });
-        });
+        } else {
+          withRoom(client, (room) => room.chat(client.user.id, text));
+        }
         break;
-      case 'grant_chips':
-        withRoom(client, (room) => {
-          const { seat, applied, target } = room.grantChips(
-            client.user.id,
-            message.target,
-            message.amount,
-            message.mode === 'set' ? 'set' : 'add'
-          );
-          client.send({
-            type: 'system',
-            text: applied ? `${seat.name}: стек ${target}` : `${seat.name} получит фишки после раздачи`,
-          });
-        });
+      }
+      case 'admin_grant':
+        grantBalance(client, message.target, message.amount, message.mode);
+        break;
+      case 'admin_accounts':
+        if (!isAdmin(client.user)) throw new RoomError('Команда только для админа');
+        client.send({ type: 'accounts', accounts: accounts.list(60) });
+        break;
+      case 'balance':
+        client.send({ type: 'balance', balance: accounts.balanceOf(client.user.id) });
         break;
       case 'list_rooms':
         client.send({ type: 'rooms', rooms: publicRooms() });
@@ -256,6 +286,112 @@ function createApp(options = {}) {
       .map((room) => room.summary())
       .sort((a, b) => b.players - a.players || a.code.localeCompare(b.code))
       .slice(0, 30);
+  }
+
+  // ——— Баланс и команды админа ———
+
+  function grantBalance(client, target, amount, mode) {
+    if (!isAdmin(client.user)) throw new RoomError('Фишки выдаёт только админ');
+    try {
+      const { account, delta } = accounts.grant(String(target || '').trim(), amount, mode === 'set' ? 'set' : 'add');
+      const changed = delta === 0
+        ? 'без изменений'
+        : `${delta > 0 ? '+' : ''}${delta}`;
+      client.send({
+        type: 'system',
+        text: `${account.name} (${account.id}): ${changed}, баланс ${account.balance}`,
+      });
+      // Получателю говорим отдельно — он мог сидеть в другой комнате.
+      const receiver = clientsByUser.get(account.id);
+      if (receiver && receiver !== client && delta !== 0) {
+        receiver.send({
+          type: 'system',
+          text: delta > 0
+            ? `Админ начислил ${delta} фишек. Баланс: ${account.balance}`
+            : `Админ списал ${Math.abs(delta)} фишек. Баланс: ${account.balance}`,
+        });
+      }
+      return account;
+    } catch (error) {
+      if (error instanceof AccountError) throw new RoomError(error.message);
+      throw error;
+    }
+  }
+
+  const COMMAND_HELP = [
+    'Команды:',
+    '/баланс — свой баланс',
+    '/id — свой Telegram ID',
+    '',
+    'Для админа (адресат — Telegram ID или @ник):',
+    '/дать 123456789 5000 — начислить',
+    '/забрать 123456789 1000 — списать',
+    '/установить 123456789 10000 — выставить баланс',
+    '/баланс 123456789 — посмотреть чужой баланс',
+    '/счета — список счетов',
+  ].join('\n');
+
+  function runCommand(client, line) {
+    const tokens = line.slice(1).split(/\s+/).filter(Boolean);
+    const command = (tokens.shift() || '').toLowerCase();
+
+    const target = () => {
+      if (!tokens.length) throw new RoomError('Укажите Telegram ID или @ник');
+      return tokens[0];
+    };
+    const amount = () => {
+      if (tokens.length < 2) throw new RoomError('Укажите количество фишек');
+      const value = Number(tokens[1]);
+      if (!Number.isFinite(value)) throw new RoomError('Количество должно быть числом');
+      return value;
+    };
+
+    switch (command) {
+      case 'помощь':
+      case 'help':
+      case '?':
+        return COMMAND_HELP;
+
+      case 'id':
+      case 'кто':
+        return `Ваш ID: ${client.user.id}`;
+
+      case 'баланс':
+      case 'balance': {
+        if (!tokens.length) return `Ваш баланс: ${accounts.balanceOf(client.user.id)} фишек`;
+        if (!isAdmin(client.user)) throw new RoomError('Чужой баланс смотрит только админ');
+        const account = accounts.find(target());
+        if (!account) throw new RoomError(`Игрок «${target()}» не найден`);
+        return `${account.name} (${account.id}): ${account.balance} фишек`;
+      }
+
+      case 'дать':
+      case 'выдать':
+      case 'give': {
+        const account = grantBalance(client, target(), Math.abs(amount()), 'add');
+        return `${account.name}: баланс ${account.balance}`;
+      }
+      case 'забрать':
+      case 'take': {
+        const account = grantBalance(client, target(), -Math.abs(amount()), 'add');
+        return `${account.name}: баланс ${account.balance}`;
+      }
+      case 'установить':
+      case 'set': {
+        const account = grantBalance(client, target(), amount(), 'set');
+        return `${account.name}: баланс ${account.balance}`;
+      }
+
+      case 'счета':
+      case 'accounts': {
+        if (!isAdmin(client.user)) throw new RoomError('Команда только для админа');
+        const rows = accounts.list(15).map((a) => `${a.id} · ${a.name} — ${a.balance}`);
+        return rows.length ? ['Счета:', ...rows].join('\n') : 'Счетов пока нет';
+      }
+
+      default:
+        throw new RoomError(`Неизвестная команда «/${command}». Наберите /помощь`);
+    }
   }
 
   function withRoom(client, action) {
@@ -298,7 +434,15 @@ function createApp(options = {}) {
 
     client.user = user;
     clientsByUser.set(user.id, client);
-    client.send({ type: 'auth_ok', user, startParam: client.startParam || null });
+    const account = accounts.ensure(user);
+    client.send({
+      type: 'auth_ok',
+      user,
+      balance: account.balance,
+      isAdmin: isAdmin(user),
+      startingBalance: accounts.startingBalance,
+      startParam: client.startParam || null,
+    });
 
     // Если игрок уже сидел за столом — возвращаем его туда же.
     for (const room of rooms.values()) {
@@ -314,7 +458,7 @@ function createApp(options = {}) {
 
   function createRoom(client, settings) {
     leaveRoom(client, { silent: true });
-    const room = new Room(createRoomCode(), client.user, normalizeSettings(settings));
+    const room = new Room(createRoomCode(), client.user, normalizeSettings(settings), { bank: accounts });
     registerRoom(room);
     client.roomCode = room.code;
     client.send({ type: 'joined', code: room.code });
@@ -357,7 +501,11 @@ function createApp(options = {}) {
   server.on('close', () => {
     clearInterval(sweeper);
     wss.stop();
-    for (const room of rooms.values()) room.dispose();
+    for (const room of rooms.values()) {
+      room.cashOutAll();
+      room.dispose();
+    }
+    accounts.flush();
     rooms.clear();
     clientsByUser.clear();
   });
@@ -392,13 +540,27 @@ if (require.main === module) {
   const port = Number(process.env.PORT || 3000);
   const host = process.env.HOST || '0.0.0.0';
   const server = createApp();
+
   server.listen(port, host, () => {
     console.log(`Покерный стол поднят на http://${host}:${port}`);
     if (!process.env.TELEGRAM_BOT_TOKEN) {
       console.warn('TELEGRAM_BOT_TOKEN не задан: включён режим отладки, вход по имени без проверки подписи.');
       console.warn('Для боевого запуска обязательно задайте TELEGRAM_BOT_TOKEN.');
     }
+    if (!String(process.env.TELEGRAM_ADMIN_IDS || '').trim()) {
+      console.warn('TELEGRAM_ADMIN_IDS не задан: выдавать фишки будет некому.');
+      console.warn('Укажите свой Telegram ID, например TELEGRAM_ADMIN_IDS=123456789');
+    }
   });
+
+  // Балансы и фишки со столов не должны потеряться при перезапуске.
+  const shutdown = (signal) => {
+    console.log(`Получен ${signal}, аккуратно выключаемся…`);
+    server.shutdown().then(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5000).unref();
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 module.exports = { createApp };

@@ -24,6 +24,8 @@ const state = {
   reconnectDelay: 500,
   chat: [],
   rooms: [],
+  balance: 0,
+  isAdmin: false,
   chipsSeat: null, // индекс места, которому выдаём фишки
   unread: 0,
 };
@@ -146,6 +148,10 @@ function handleMessage(message) {
   switch (message.type) {
     case 'auth_ok':
       state.user = message.user;
+      state.balance = message.balance || 0;
+      state.isAdmin = Boolean(message.isAdmin);
+      renderAccount();
+      if (state.isAdmin) send({ type: 'admin_accounts' });
       $('dev-login').classList.add('hidden');
       $('lobby-actions').classList.remove('hidden');
       setStatus(`Вы вошли как ${message.user.name}`);
@@ -166,6 +172,13 @@ function handleMessage(message) {
     case 'state':
       state.room = message;
       renderTable();
+      break;
+    case 'balance':
+      state.balance = message.balance;
+      renderAccount();
+      break;
+    case 'accounts':
+      renderAccounts(message.accounts);
       break;
     case 'rooms':
       state.rooms = message.rooms;
@@ -233,6 +246,56 @@ function startRoomsPolling() {
 function stopRoomsPolling() {
   if (roomsTimer) clearInterval(roomsTimer);
   roomsTimer = null;
+}
+
+// ——— Баланс и админ-панель ———
+
+function renderAccount() {
+  $('balance-value').textContent = String(state.balance);
+  $('my-id').textContent = state.user ? state.user.id : '—';
+  $('admin-card').classList.toggle('hidden', !state.isAdmin);
+}
+
+function renderAccounts(accounts) {
+  const list = $('admin-accounts');
+  if (!accounts || !accounts.length) {
+    list.innerHTML = '<p class="hint">Счетов пока нет.</p>';
+    return;
+  }
+  list.innerHTML = '';
+  for (const account of accounts) {
+    const row = document.createElement('div');
+    row.className = 'account-row';
+    const nick = account.username ? ` @${account.username}` : '';
+    row.innerHTML = `
+      <div class="account-name">
+        ${escapeHtml(account.name)}${escapeHtml(nick)}
+        <div class="account-id">${escapeHtml(account.id)}</div>
+      </div>
+      <div class="account-balance">${account.balance}</div>
+    `;
+    // Тап по строке подставляет игрока в поле выдачи.
+    row.addEventListener('click', () => {
+      $('admin-target').value = account.id;
+      $('admin-amount').focus();
+    });
+    list.appendChild(row);
+  }
+}
+
+function adminGrant(mode, sign = 1) {
+  const target = $('admin-target').value.trim();
+  const amount = Number($('admin-amount').value);
+  if (!target) {
+    toast('Укажите Telegram ID или @ник');
+    return;
+  }
+  if (!Number.isFinite(amount)) {
+    toast('Укажите количество фишек');
+    return;
+  }
+  send({ type: 'admin_grant', target, amount: mode === 'set' ? amount : sign * Math.abs(amount), mode });
+  setTimeout(() => send({ type: 'admin_accounts' }), 200);
 }
 
 function renderRooms() {
@@ -421,7 +484,7 @@ function renderSeats(room) {
       ? '<div class="seat-stack allin">ALL-IN</div>'
       : `<div class="seat-stack">${seat.stack}</div>`;
     plate.innerHTML = `<div class="seat-name">${escapeHtml(seat.name)}</div>${stack}`;
-    if (room.you.isHost) {
+    if (state.isAdmin) {
       node.classList.add('clickable');
       plate.addEventListener('click', () => openChipsSheet(seat));
     }
@@ -541,6 +604,10 @@ function renderResult(room) {
 
 function renderControls(room) {
   const you = room.you;
+  if (typeof you.balance === 'number') {
+    state.balance = you.balance;
+    renderAccount();
+  }
   const seated = you.seatIndex !== null;
   const myTurn = Boolean(you.legal);
 
@@ -564,6 +631,15 @@ function renderControls(room) {
   const seatBox = $('seat-controls');
   const seatButtonsVisible = [sitBtn, rebuyBtn, sitoutBtn].some((b) => !b.classList.contains('hidden'));
   seatBox.classList.toggle('hidden', myTurn || !seatButtonsVisible);
+
+  // Пока игрок не за столом, показываем баланс: хватит ли на вход.
+  const chip = $('balance-chip');
+  const short = !seated && you.balance < room.settings.buyIn;
+  chip.classList.toggle('hidden', seated || myTurn);
+  chip.innerHTML = short
+    ? `На балансе <b>${you.balance}</b> — на вход нужно <b>${room.settings.buyIn}</b>. Попросите админа выдать фишки`
+    : `На балансе <b>${you.balance}</b> фишек · вход <b>${room.settings.buyIn}</b>`;
+  if (short) sitBtn.classList.add('hidden');
 
   // Панель действий появляется только на своём ходу.
   const legal = you.legal;
@@ -693,6 +769,15 @@ function bindUi() {
   });
 
   $('rooms-refresh').addEventListener('click', () => send({ type: 'list_rooms' }));
+  $('admin-refresh').addEventListener('click', () => send({ type: 'admin_accounts' }));
+  $('admin-give').addEventListener('click', () => adminGrant('add', 1));
+  $('admin-take').addEventListener('click', () => adminGrant('add', -1));
+  $('admin-set').addEventListener('click', () => adminGrant('set'));
+  $('btn-my-id').addEventListener('click', () => {
+    if (!state.user) return;
+    if (navigator.clipboard) navigator.clipboard.writeText(state.user.id).catch(() => {});
+    toast(`ID ${state.user.id} скопирован`);
+  });
 
   $('chips-close').addEventListener('click', closeChipsSheet);
   $('chips-sheet').addEventListener('click', (event) => {
@@ -767,28 +852,28 @@ function bindUi() {
 // ——— Выдача фишек ———
 
 function openChipsSheet(seat) {
-  // Адресуем по номеру места: имена могут совпадать.
-  state.chipsSeat = seat.index;
-  $('chips-title').textContent = `Фишки: ${seat.name}`;
-  $('chips-stack').textContent = `Сейчас в стеке ${seat.stack}`;
+  // Адресуем по Telegram ID: имена за столом могут совпадать.
+  state.chipsSeat = seat.userId;
+  $('chips-title').textContent = `Баланс: ${seat.name}`;
+  $('chips-stack').textContent = `ID ${seat.userId} · в стеке за столом ${seat.stack}`;
   $('chips-amount').value = '';
   $('chips-sheet').classList.remove('hidden');
   haptic('light');
 }
 
 function closeChipsSheet() {
-  state.chipsSeat = null; // null — шторка закрыта; ноль это валидный номер места
+  state.chipsSeat = null;
   $('chips-sheet').classList.add('hidden');
 }
 
 function grantChips(amount, mode = 'add') {
-  if (state.chipsSeat === null) return;
+  if (!state.chipsSeat) return;
   const value = Math.floor(Number(amount));
   if (!Number.isFinite(value) || (mode === 'add' && value === 0)) {
     toast('Введите количество фишек');
     return;
   }
-  send({ type: 'grant_chips', target: String(state.chipsSeat + 1), amount: value, mode });
+  send({ type: 'admin_grant', target: state.chipsSeat, amount: value, mode });
   closeChipsSheet();
 }
 
