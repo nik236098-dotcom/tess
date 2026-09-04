@@ -46,9 +46,14 @@ const state = {
     busy: false,
   },
   payout: { provider: null, busy: false, last: null },
+  links: { community: '', support: '' },
 };
 
 const $ = (id) => document.getElementById(id);
+
+// Иконки берутся из общего спрайта в index.html — эмодзи в интерфейсе не
+// используются, чтобы вид не зависел от шрифта конкретной платформы.
+const icon = (name, extra = '') => `<svg class="icon ${extra}"><use href="#i-${name}"></use></svg>`;
 
 // Сервер считает деньги целыми центами (см. server/money.js), а показываем
 // мы доллары. Здесь ровно те же правила округления, что и на сервере.
@@ -186,6 +191,7 @@ function handleMessage(message) {
       state.user = message.user;
       state.balance = message.balance || 0;
       state.isAdmin = Boolean(message.isAdmin);
+      if (message.links) applyLinks(message.links);
       if (message.topup) applyTopUpConfig(message.topup);
       renderAccount();
       if (state.isAdmin) send({ type: 'admin_accounts' });
@@ -254,6 +260,11 @@ function handleMessage(message) {
       break;
     case 'history':
       renderHistory(message.history);
+      break;
+    case 'promo_ok':
+      $('promo-code').value = '';
+      $('promo-note').textContent = message.text;
+      haptic('success');
       break;
     case 'payout_status':
       state.payout.busy = false;
@@ -325,7 +336,7 @@ function showTab(tab) {
 }
 
 // Раскрывающиеся разделы главной: открытый ровно один.
-const PANELS = ['topup-card', 'payout-card', 'leaders-card', 'history-card'];
+const PANELS = ['promo-card', 'topup-card', 'payout-card', 'leaders-card', 'history-card', 'help-card'];
 
 function togglePanel(id) {
   const target = $(id);
@@ -380,14 +391,14 @@ function renderAccounts(accounts) {
   list.innerHTML = '';
   for (const account of accounts) {
     const row = document.createElement('div');
-    row.className = 'account-row';
+    row.className = 'data-row';
     const nick = account.username ? ` @${account.username}` : '';
     row.innerHTML = `
-      <div class="account-name">
-        ${escapeHtml(account.name)}${escapeHtml(nick)}
-        <div class="account-id">${escapeHtml(account.id)}</div>
-      </div>
-      <div class="account-balance">${money(account.balance)}</div>
+      <span class="data-row-main">
+        <b>${escapeHtml(account.name)}${escapeHtml(nick)}</b>
+        <span>${escapeHtml(account.id)}</span>
+      </span>
+      <span class="data-sum">${money(account.balance)}</span>
     `;
     // Тап по строке подставляет игрока в поле выдачи.
     row.addEventListener('click', () => {
@@ -420,7 +431,7 @@ function renderRooms() {
 
   const list = $('rooms-list');
   if (!state.rooms.length) {
-    list.innerHTML = '<p class="hint">Пока никто не создал открытый стол. Создайте свой — друзья увидят его здесь.</p>';
+    list.innerHTML = '<div class="empty-note">Пока никто не создал открытый стол.<br>Создайте свой — друзья увидят его здесь.</div>';
     return;
   }
 
@@ -429,19 +440,21 @@ function renderRooms() {
     const row = document.createElement('div');
     row.className = `room-row${room.hasFreeSeat ? '' : ' full'}`;
     const badge = room.running ? '<span class="room-badge">идёт игра</span>' : '';
+    const blackjack = room.game === 'blackjack';
     row.innerHTML = `
       <div class="room-main">
-        <div class="room-title">${escapeHtml(room.title)} ${badge}</div>
+        <div class="room-title">${icon(blackjack ? 'club' : 'spade', 'icon-sm')}${escapeHtml(room.title)} ${badge}</div>
         <div class="room-meta">
-          ${room.game === 'blackjack' ? 'Блекджек' : 'Холдем'} · ${room.players}/${room.maxPlayers} за столом ·
-          ${room.game === 'blackjack'
-            ? `ставки ${money(room.minBet)}–${money(room.maxBet)}`
-            : `блайнды ${money(room.smallBlind)}/${money(room.bigBlind)}`} · вход ${money(room.buyIn)}
+          ${room.players}/${room.maxPlayers} за столом ·
+          ${blackjack
+            ? `ставки <span class="gold">${money(room.minBet)}–${money(room.maxBet)}</span>`
+            : `блайнды <span class="gold">${money(room.smallBlind)}/${money(room.bigBlind)}</span>`} ·
+          вход <span class="gold">${money(room.buyIn)}</span>
         </div>
       </div>
     `;
     const button = document.createElement('button');
-    button.className = 'btn btn-primary';
+    button.className = room.hasFreeSeat ? 'btn btn-outline' : 'btn btn-ghost';
     button.textContent = room.hasFreeSeat ? 'Играть' : 'Смотреть';
     button.addEventListener('click', () => {
       haptic('light');
@@ -456,21 +469,32 @@ function renderRooms() {
 function renderActiveGames() {
   const list = $('home-rooms');
   if (!state.rooms.length) {
-    list.innerHTML = '<p class="hint">Открытых столов сейчас нет. Создайте свой во вкладке «Игры».</p>';
+    list.innerHTML = '<div class="empty-note">Открытых столов сейчас нет.<br>Создайте свой во вкладке «Игры».</div>';
     return;
   }
 
   list.innerHTML = '';
   for (const room of state.rooms) {
+    const blackjack = room.game === 'blackjack';
+    const stake = blackjack
+      ? `${money(room.minBet)}–${money(room.maxBet)}`
+      : `${money(room.smallBlind)}/${money(room.bigBlind)}`;
     const card = document.createElement('div');
     card.className = 'game-card';
     card.innerHTML = `
+      <div class="game-card-top">
+        ${icon(blackjack ? 'club' : 'spade', 'icon-sm')}
+        <span>${blackjack ? 'Блекджек' : "Texas Hold'em"}</span>
+      </div>
       <div class="game-card-title">${escapeHtml(room.title)}</div>
-      <div class="game-card-line">Игроков: ${room.players}/${room.maxPlayers}</div>
-      <div class="game-card-pot">Банк: ${money(room.pot || 0)}</div>
+      <div class="game-card-rows">
+        <div class="game-card-row"><span>Игроки</span><b>${room.players}/${room.maxPlayers}</b></div>
+        <div class="game-card-row"><span>${blackjack ? 'Ставки' : 'Блайнды'}</span><b class="gold">${stake}</b></div>
+        <div class="game-card-row"><span>Банк</span><b class="gold">${money(room.pot || 0)}</b></div>
+      </div>
     `;
     const button = document.createElement('button');
-    button.className = 'btn';
+    button.className = room.hasFreeSeat ? 'btn btn-outline' : 'btn btn-ghost';
     button.textContent = room.hasFreeSeat ? 'Присоединиться' : 'Смотреть';
     button.addEventListener('click', () => {
       haptic('light');
@@ -503,9 +527,10 @@ function renderLeaders(leaders) {
     return;
   }
   list.innerHTML = leaders.map((account, index) => `
-    <div class="account-row">
-      <div class="account-name">${index + 1}. ${escapeHtml(account.name)}</div>
-      <div class="account-balance">${money(account.balance)}</div>
+    <div class="data-row">
+      <span class="rank">${index + 1}</span>
+      <span class="data-row-main"><b>${escapeHtml(account.name)}</b></span>
+      <span class="data-sum">${money(account.balance)}</span>
     </div>
   `).join('');
 }
@@ -528,16 +553,16 @@ function renderHistory(history) {
     // Неудачный вывод деньги вернул, истёкший счёт ничего не принёс —
     // такие строки не должны выглядеть как движение денег.
     const nothing = (income && item.status !== 'paid') || item.status === 'failed';
-    const tone = nothing ? 'is-bad' : (income ? 'is-in' : 'is-out');
+    const tone = nothing ? 'is-bad' : (income ? 'is-in' : '');
     const sign = nothing ? '' : (income ? '+' : '−');
     const when = new Date(item.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     return `
-      <div class="history-row">
-        <div>
-          <div>${titles[item.status] || item.status}</div>
-          <div class="history-meta">${escapeHtml(item.providerTitle)} · ${when}</div>
-        </div>
-        <div class="history-sum ${tone}">${sign}${money(amount)}</div>
+      <div class="data-row">
+        <span class="data-row-main">
+          <b>${titles[item.status] || item.status}</b>
+          <span>${escapeHtml(item.providerTitle)} · ${when}</span>
+        </span>
+        <span class="data-sum ${tone}">${sign}${money(amount)}</span>
       </div>
     `;
   }).join('');
@@ -593,6 +618,7 @@ function renderTable() {
 
   renderBoard(room);
   renderSeats(room);
+  renderHandBadge(room);
   renderFeed(room);
   renderMessage(room);
   renderControls(room);
@@ -618,15 +644,38 @@ function renderFeed(room) {
 
 function renderBoard(room) {
   const board = $('board');
+  // В блекджеке общих карт нет — пустые слоты там были бы обманом.
+  if (room.game === 'blackjack') {
+    board.innerHTML = '';
+    board.dataset.cards = '';
+    const pot = $('pot');
+    if (room.potTotal > 0) {
+      pot.classList.remove('hidden');
+      $('pot-value').textContent = money(room.potTotal);
+    } else {
+      pot.classList.add('hidden');
+    }
+    return;
+  }
+
   const codes = (room.board || []).join(',');
   // Если борд не изменился, не трогаем DOM: иначе карты каждый раз
   // пересоздаются и заново проигрывают анимацию раздачи.
   if (board.dataset.cards !== codes) {
     const known = board.dataset.cards ? board.dataset.cards.split(',') : [];
+    const cards = room.board || [];
     board.innerHTML = '';
-    (room.board || []).forEach((card, index) => {
-      board.appendChild(cardNode(card, false, known[index] !== card));
-    });
+    // Пять слотов есть всегда: тёрн и ривер занимают уже готовое место,
+    // и стол не дёргается, когда они приходят.
+    for (let index = 0; index < 5; index++) {
+      const slot = document.createElement('div');
+      slot.className = 'card-slot';
+      if (cards[index]) {
+        slot.classList.add('filled');
+        slot.appendChild(cardNode(cards[index], false, known[index] !== cards[index]));
+      }
+      board.appendChild(slot);
+    }
     board.dataset.cards = codes;
   }
 
@@ -658,6 +707,16 @@ function cardNode(code, small = false, animate = true) {
   return node;
 }
 
+// Своя комбинация — отдельной пилюлей над столом. Считается на сервере
+// только по картам, которые игрок и так видит.
+function renderHandBadge(room) {
+  const badge = $('hand-badge');
+  const seat = room.you.seatIndex !== null ? room.seats[room.you.seatIndex] : null;
+  const text = seat && seat.combination;
+  badge.classList.toggle('hidden', !text);
+  if (text) badge.textContent = text;
+}
+
 function renderSeats(room) {
   if (state.shownHand !== room.handNumber) {
     state.shownHand = room.handNumber;
@@ -676,9 +735,11 @@ function renderSeats(room) {
     const position = ((seat.index - offset) + count) % count;
     const angle = (90 + (position * 360) / count) * (Math.PI / 180);
     const node = document.createElement('div');
-    node.className = 'seat';
-    node.style.left = `${50 + 46 * Math.cos(angle)}%`;
-    node.style.top = `${49 + 34 * Math.sin(angle)}%`;
+    // at-bottom / at-top решают, в какую сторону от места ложится ставка,
+    // чтобы чип всегда смотрел к центру стола, а не наружу.
+    node.className = `seat ${Math.sin(angle) >= 0 ? 'at-bottom' : 'at-top'}`;
+    node.style.left = `${50 + 44 * Math.cos(angle)}%`;
+    node.style.top = `${50 + 40 * Math.sin(angle)}%`;
 
     if (seat.empty) {
       node.classList.add('empty');
@@ -741,7 +802,7 @@ function renderSeats(room) {
     if (seat.bet > 0) {
       const bet = document.createElement('div');
       bet.className = 'seat-bet';
-      bet.textContent = seat.bet;
+      bet.textContent = money(seat.bet);
       node.appendChild(bet);
     } else {
       const status = document.createElement('div');
@@ -923,7 +984,7 @@ function renderControls(room) {
   const bar = $('action-bar');
   if (!legal) {
     bar.classList.add('hidden');
-    state.raiseTouched = false;
+    closeRaisePanel();
     stopTurnTimer();
     return;
   }
@@ -936,11 +997,12 @@ function renderControls(room) {
   callBtn.classList.toggle('hidden', !legal.canCall);
   callBtn.textContent = `Колл ${money(legal.callAmount)}`;
 
+  // «Рейз» открывает панель со слайдером, «Олл-ин» ставит всё сразу —
+  // так в одну строку помещаются все четыре действия.
   const raiseBtn = $('btn-raise');
+  const allInBtn = $('btn-allin');
   raiseBtn.classList.toggle('hidden', !legal.canRaise);
-
-  const raiseRow = $('raise-row');
-  raiseRow.classList.toggle('hidden', !legal.canRaise);
+  allInBtn.classList.toggle('hidden', !legal.canRaise);
 
   if (legal.canRaise) {
     const range = $('raise-range');
@@ -950,11 +1012,32 @@ function renderControls(room) {
     if (!state.raiseTouched) state.raiseTo = legal.minRaiseTo;
     state.raiseTo = clamp(state.raiseTo, legal.minRaiseTo, legal.maxRaiseTo);
     range.value = String(state.raiseTo);
-    $('raise-value').textContent = money(state.raiseTo);
-    raiseBtn.textContent = state.raiseTo >= legal.maxRaiseTo ? 'Олл-ин' : `Рейз ${money(state.raiseTo)}`;
+    renderRaiseValue(legal);
+  } else {
+    closeRaisePanel();
   }
 
   startTurnTimer(room);
+}
+
+function renderRaiseValue(legal) {
+  $('raise-value').textContent = money(state.raiseTo);
+  const confirm = $('raise-confirm');
+  const allIn = legal && state.raiseTo >= legal.maxRaiseTo;
+  confirm.classList.toggle('is-allin', Boolean(allIn));
+  confirm.textContent = allIn ? 'Олл-ин' : `Рейз до ${money(state.raiseTo)}`;
+}
+
+function openRaisePanel() {
+  const legal = state.room && state.room.you.legal;
+  if (!legal || !legal.canRaise) return;
+  $('raise-row').classList.remove('hidden');
+  renderRaiseValue(legal);
+}
+
+function closeRaisePanel() {
+  $('raise-row').classList.add('hidden');
+  state.raiseTouched = false;
 }
 
 function renderBlackjackControls(room) {
@@ -1066,6 +1149,21 @@ function applyTopUpConfig(config) {
   renderTopUp();
 }
 
+// Карточки, ведущие наружу, показываем только когда ссылка настроена:
+// кнопка в никуда хуже её отсутствия.
+function applyLinks(links) {
+  state.links = { community: links.community || '', support: links.support || '' };
+  $('other-games').classList.toggle('hidden', !state.links.community);
+  $('help-support').classList.toggle('hidden', !state.links.support);
+}
+
+function openExternal(url) {
+  if (!url) return;
+  if (tg && /^https:\/\/t\.me\//i.test(url) && tg.openTelegramLink) tg.openTelegramLink(url);
+  else if (tg && tg.openLink) tg.openLink(url);
+  else window.open(url, '_blank');
+}
+
 function currentProvider() {
   const { config, provider } = state.topup;
   return config.providers.find((item) => item.id === provider) || config.providers[0] || null;
@@ -1095,8 +1193,8 @@ function renderTopUp() {
     for (const item of config.providers) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = `topup-provider${item.id === state.topup.provider ? ' is-active' : ''}`;
-      button.innerHTML = `<b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.currency)}</span>`;
+      button.className = `game-option${item.id === state.topup.provider ? ' is-active' : ''}`;
+      button.innerHTML = `${icon('wallet')}<b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.currency)}</span>`;
       button.addEventListener('click', () => {
         state.topup.provider = item.id;
         localStorage.setItem('poker:topupProvider', item.id);
@@ -1112,8 +1210,8 @@ function renderTopUp() {
   for (const amount of config.presets) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `topup-preset${amount === current ? ' is-active' : ''}`;
-    button.innerHTML = `<b>${amount}</b><br><span class="hint">${money(amount * config.centsPerUnit)}</span>`;
+    button.className = `chip-btn${amount === current ? ' is-active' : ''}`;
+    button.textContent = money(amount * config.centsPerUnit);
     button.addEventListener('click', () => {
       $('topup-amount').value = String(amount);
       renderTopUp();
@@ -1225,8 +1323,8 @@ function renderPayout() {
       const button = document.createElement('button');
       button.type = 'button';
       const active = provider && item.id === provider.id;
-      button.className = `topup-provider${active ? ' is-active' : ''}`;
-      button.innerHTML = `<b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.currency)}</span>`;
+      button.className = `game-option${active ? ' is-active' : ''}`;
+      button.innerHTML = `${icon('wallet')}<b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.currency)}</span>`;
       button.addEventListener('click', () => {
         state.payout.provider = item.id;
         renderPayout();
@@ -1272,6 +1370,15 @@ function renderPayoutState() {
     failed: `Не вышло: ${last.error || 'сервис отказал'}`,
     unknown: 'В обработке — сервис не ответил, деньги не потеряны',
   }[last.status] || last.status;
+}
+
+function redeemPromo() {
+  const code = $('promo-code').value.trim();
+  if (!code) {
+    toast('Введите промокод');
+    return;
+  }
+  send({ type: 'promo_redeem', code });
 }
 
 function createPayout() {
@@ -1385,12 +1492,34 @@ function bindUi() {
       send({ type: 'leaders' });
     }
   });
-  $('tile-history').addEventListener('click', () => {
-    if (togglePanel('history-card')) {
-      $('tile-history').classList.add('is-active');
-      send({ type: 'history' });
+  $('tile-promo').addEventListener('click', () => {
+    if (togglePanel('promo-card')) {
+      $('tile-promo').classList.add('is-active');
+      $('promo-code').focus();
     }
   });
+  $('promo-send').addEventListener('click', redeemPromo);
+  $('promo-code').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') redeemPromo();
+  });
+
+  // «Помощь» собирает всё справочное: правила, историю операций, поддержку.
+  const openHelp = () => {
+    if (togglePanel('help-card')) $('help-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+  $('help-link').addEventListener('click', openHelp);
+  $('btn-menu').addEventListener('click', openHelp);
+  $('help-support').addEventListener('click', () => openExternal(state.links.support));
+  $('help-history').addEventListener('click', () => {
+    if (togglePanel('history-card')) send({ type: 'history' });
+  });
+  $('help-rules').addEventListener('click', () => {
+    showTab('games');
+    const rules = $('rules-card');
+    rules.open = true;
+    rules.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  $('other-games').addEventListener('click', () => openExternal(state.links.community));
   $('leaders-refresh').addEventListener('click', () => send({ type: 'leaders' }));
   $('history-refresh').addEventListener('click', () => send({ type: 'history' }));
 
@@ -1477,8 +1606,8 @@ function bindUi() {
   $('bj-range').addEventListener('input', (event) => {
     state.bjBetTouched = true;
     state.bjBet = Number(event.target.value);
-    $('bj-bet-value').textContent = String(state.bjBet);
-    $('bj-bet').textContent = `Поставить ${state.bjBet}`;
+    $('bj-bet-value').textContent = money(state.bjBet);
+    $('bj-bet').textContent = `Поставить ${money(state.bjBet)}`;
   });
   document.querySelectorAll('[data-bj-preset]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -1491,8 +1620,8 @@ function bindUi() {
       state.bjBetTouched = true;
       state.bjBet = clamp(value, betTurn.min, betTurn.max);
       $('bj-range').value = String(state.bjBet);
-      $('bj-bet-value').textContent = String(state.bjBet);
-      $('bj-bet').textContent = `Поставить ${state.bjBet}`;
+      $('bj-bet-value').textContent = money(state.bjBet);
+      $('bj-bet').textContent = `Поставить ${money(state.bjBet)}`;
       haptic('light');
     });
   });
@@ -1500,16 +1629,23 @@ function bindUi() {
   $('btn-fold').addEventListener('click', () => act('fold'));
   $('btn-check').addEventListener('click', () => act('check'));
   $('btn-call').addEventListener('click', () => act('call'));
-  $('btn-raise').addEventListener('click', () => act('raise', state.raiseTo));
+  $('btn-raise').addEventListener('click', () => {
+    haptic('light');
+    const row = $('raise-row');
+    if (row.classList.contains('hidden')) openRaisePanel();
+    else closeRaisePanel();
+  });
+  $('raise-cancel').addEventListener('click', closeRaisePanel);
+  $('raise-confirm').addEventListener('click', () => act('raise', state.raiseTo));
+  $('btn-allin').addEventListener('click', () => {
+    const legal = state.room && state.room.you.legal;
+    if (legal && legal.canRaise) act('raise', legal.maxRaiseTo);
+  });
 
   $('raise-range').addEventListener('input', (event) => {
     state.raiseTouched = true;
     state.raiseTo = Number(event.target.value);
-    $('raise-value').textContent = String(state.raiseTo);
-    const legal = state.room && state.room.you.legal;
-    if (legal) {
-      $('btn-raise').textContent = state.raiseTo >= legal.maxRaiseTo ? 'Олл-ин' : `Рейз ${state.raiseTo}`;
-    }
+    renderRaiseValue(state.room && state.room.you.legal);
   });
 
   document.querySelectorAll('[data-preset]').forEach((button) => {
@@ -1539,7 +1675,7 @@ function openChipsSheet(seat) {
   // Адресуем по Telegram ID: имена за столом могут совпадать.
   state.chipsSeat = seat.userId;
   $('chips-title').textContent = `Баланс: ${seat.name}`;
-  $('chips-stack').textContent = `ID ${seat.userId} · в стеке за столом ${seat.stack}`;
+  $('chips-stack').textContent = `ID ${seat.userId} · в стеке за столом ${money(seat.stack)}`;
   $('chips-amount').value = '';
   $('chips-sheet').classList.remove('hidden');
   haptic('light');
@@ -1575,13 +1711,16 @@ function applyPreset(preset) {
   if (preset === 'min') value = legal.minRaiseTo;
   else if (preset === 'max') value = legal.maxRaiseTo;
   else if (preset === 'half') value = myBet + legal.callAmount + Math.floor(potAfterCall / 2);
+  else if (preset === 'double') value = myBet + legal.callAmount + potAfterCall * 2;
   else value = myBet + legal.callAmount + potAfterCall;
 
   state.raiseTouched = true;
   state.raiseTo = clamp(value, legal.minRaiseTo, legal.maxRaiseTo);
   $('raise-range').value = String(state.raiseTo);
-  $('raise-value').textContent = String(state.raiseTo);
-  $('btn-raise').textContent = state.raiseTo >= legal.maxRaiseTo ? 'Олл-ин' : `Рейз ${state.raiseTo}`;
+  renderRaiseValue(legal);
+  for (const button of document.querySelectorAll('[data-preset]')) {
+    button.classList.toggle('is-active', button.dataset.preset === preset);
+  }
   haptic('light');
 }
 

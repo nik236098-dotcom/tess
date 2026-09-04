@@ -3,15 +3,51 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
-  <title>Покер с друзьями</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230e3a2b'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23e8c26a'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
+  <title>Poker ok 👌</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1017'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='%2334d399'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/styles.css" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
+  <!-- Один набор иконок на всё приложение: контурные, 24×24, currentColor.
+       Эмодзи остаются только там, где они часть бренда (Poker ok 👌). -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-arrow-up-right" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></symbol>
+    <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M4 9V7a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a2.5 2.5 0 0 0 0 5v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a2.5 2.5 0 0 0 0-5Z"/><path d="M13 7v10" stroke-dasharray="2 2"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1"/><circle cx="9.5" cy="7" r="3.2"/><path d="M17 11a3 3 0 1 0-1.8-5.4M21 19v-1a4 4 0 0 0-3-3.8"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M7 6H4.5a2.5 2.5 0 0 0 2.5 4M17 6h2.5a2.5 2.5 0 0 1-2.5 4M9.5 20h5M12 14v6"/></symbol>
+    <symbol id="i-gamepad" viewBox="0 0 24 24"><path d="M7 12h4M9 10v4M15.5 11.5h.01M18 13.5h.01"/><rect x="2.5" y="6.5" width="19" height="11" rx="4.5"/></symbol>
+    <symbol id="i-dice" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M8.5 8.5h.01M15.5 8.5h.01M8.5 15.5h.01M15.5 15.5h.01M12 12h.01"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19v-8.5Z"/><path d="M9.5 20.5V14h5v6.5"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.8 9.4a2.3 2.3 0 1 1 3 2.2c-.5.2-.8.7-.8 1.2v.4M12 16.6h.01"/></symbol>
+    <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M5.5 3.5h13v17l-2.2-1.5-2.1 1.5-2.2-1.5-2.2 1.5-2.1-1.5-2.2 1.5v-17Z"/><path d="M9 8.5h6M9 12.5h6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20.5 12.2a7.7 7.7 0 0 1-8.3 7.7c-.9 0-1.8-.2-2.6-.5L4 21l1.6-4.4a7.6 7.6 0 0 1-.9-3.6 7.7 7.7 0 0 1 7.8-7.7h.5a7.7 7.7 0 0 1 7.5 7.4v.5Z"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><path d="M6 12h.01M12 12h.01M18 12h.01"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-13.7-5.1L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 13.7 5.1L20 16"/><path d="M20 20v-4h-4"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M15 9V6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15H9"/></symbol>
+    <symbol id="i-spade" viewBox="0 0 24 24"><path d="M12 3.5c-2.4 2.6-7 5.4-7 9.1a3.6 3.6 0 0 0 6.2 2.5c-.2 2-.9 3.5-2.2 4.4h6c-1.3-.9-2-2.4-2.2-4.4a3.6 3.6 0 0 0 6.2-2.5c0-3.7-4.6-6.5-7-9.1Z"/></symbol>
+    <symbol id="i-club" viewBox="0 0 24 24"><path d="M12 3.6a3.3 3.3 0 0 0-2.6 5.3A3.4 3.4 0 1 0 8.9 15c.9 0 1.7-.3 2.3-.9-.1 2-.8 3.5-2.1 4.4h5.8c-1.3-.9-2-2.4-2.1-4.4.6.6 1.4.9 2.3.9a3.4 3.4 0 1 0-.5-6.1A3.3 3.3 0 0 0 12 3.6Z"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M3.5 8.5A2.5 2.5 0 0 1 6 6h11.5A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20H6a2.5 2.5 0 0 1-2.5-2.5v-9Z"/><path d="M3.5 10h13a2 2 0 0 1 0 4h-13M16.5 12h.01"/></symbol>
+  </svg>
+
   <div id="app">
-    <!-- Экран входа -->
+    <!-- ═══ Лобби: Главная и Игры ═══ -->
     <section id="screen-lobby" class="screen">
+      <header class="appbar">
+        <span></span>
+        <div class="appbar-title">
+          <b>Poker ok 👌</b>
+          <span>мини-приложение</span>
+        </div>
+        <button id="btn-menu" class="round-btn" aria-label="Меню">
+          <svg class="icon icon-sm"><use href="#i-more"></use></svg>
+        </button>
+      </header>
+
       <div class="lobby">
         <div id="dev-login" class="card hidden">
           <label class="field">
@@ -24,34 +60,45 @@
 
         <div id="lobby-actions" class="lobby-actions hidden">
 
-          <!-- ═══ Вкладка «Главная» ═══ -->
+          <!-- ═══ Главная ═══ -->
           <div id="tab-home" class="tab-panel">
-            <div class="account-head">
+            <div class="balance-block">
               <div id="avatar" class="avatar-big">♠</div>
-              <div class="account-sums">
-                <span class="account-label">БАЛАНС</span>
+              <div class="balance-sums">
+                <span class="caption">Баланс</span>
                 <b id="balance-value">$0.00</b>
               </div>
             </div>
 
-            <div class="account-actions">
-              <button id="btn-topup" class="btn btn-primary btn-money">+&nbsp; Пополнить</button>
-              <button id="btn-payout" class="btn btn-dark btn-money">↗&nbsp; Вывести</button>
+            <div class="money-actions">
+              <button id="btn-topup" class="btn btn-primary">
+                <svg class="icon icon-sm"><use href="#i-plus"></use></svg>Пополнить
+              </button>
+              <button id="btn-payout" class="btn btn-surface">
+                <svg class="icon icon-sm"><use href="#i-arrow-up-right"></use></svg>Вывести
+              </button>
             </div>
 
             <div class="tiles">
+              <button id="tile-promo" class="tile">
+                <svg class="icon"><use href="#i-ticket"></use></svg><span>Промокод</span>
+              </button>
               <button id="tile-friends" class="tile">
-                <span class="tile-icon">👥</span>
-                <span>Друзья</span>
+                <svg class="icon"><use href="#i-users"></use></svg><span>Друзья</span>
               </button>
               <button id="tile-leaders" class="tile">
-                <span class="tile-icon">🏆</span>
-                <span>Лидеры</span>
+                <svg class="icon"><use href="#i-trophy"></use></svg><span>Лидеры</span>
               </button>
-              <button id="tile-history" class="tile">
-                <span class="tile-icon">🧾</span>
-                <span>История</span>
-              </button>
+            </div>
+
+            <!-- Промокод -->
+            <div id="promo-card" class="card hidden">
+              <h2>Промокод</h2>
+              <div class="row">
+                <input id="promo-code" type="text" maxlength="32" placeholder="Введите код" autocomplete="off" autocapitalize="characters" />
+                <button id="promo-send" class="btn btn-primary">Активировать</button>
+              </div>
+              <p class="hint" id="promo-note">Код можно активировать один раз.</p>
             </div>
 
             <!-- Пополнение -->
@@ -60,20 +107,22 @@
                 <h2>Пополнить баланс</h2>
                 <span class="hint" id="topup-rate"></span>
               </div>
-              <div id="topup-providers" class="topup-providers"></div>
-              <div id="topup-presets" class="topup-presets"></div>
+              <div id="topup-providers" class="game-picker"></div>
+              <div id="topup-presets" class="chips-presets"></div>
               <div class="row">
-                <input id="topup-amount" class="topup-amount" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Сумма" />
-                <button id="topup-create" class="btn btn-primary">Выставить счёт</button>
+                <input id="topup-amount" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Сумма" />
+                <button id="topup-create" class="btn btn-primary">Счёт</button>
               </div>
               <p class="hint" id="topup-chips">&nbsp;</p>
 
-              <div id="topup-invoice" class="topup-invoice hidden">
-                <div class="topup-invoice-head">
-                  <b id="topup-invoice-sum">—</b>
-                  <span id="topup-invoice-state" class="topup-state">Ждём оплату…</span>
+              <div id="topup-invoice" class="hidden">
+                <div class="data-row">
+                  <div class="data-row-main">
+                    <b id="topup-invoice-sum">—</b>
+                    <span id="topup-invoice-state">Ждём оплату…</span>
+                  </div>
                 </div>
-                <div class="chips-actions">
+                <div class="chips-actions" style="margin-top:8px">
                   <button id="topup-pay" class="btn btn-primary">Оплатить</button>
                   <button id="topup-check" class="btn btn-ghost">Я оплатил</button>
                   <button id="topup-cancel" class="btn btn-ghost">Отмена</button>
@@ -89,19 +138,19 @@
                 <h2>Вывести деньги</h2>
                 <span class="hint" id="payout-rate"></span>
               </div>
-              <div id="payout-providers" class="topup-providers"></div>
+              <div id="payout-providers" class="game-picker"></div>
               <div class="row">
-                <input id="payout-amount" class="topup-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Сумма в $" />
+                <input id="payout-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Сумма в $" />
                 <button id="payout-send" class="btn btn-primary">Вывести</button>
               </div>
               <p class="hint" id="payout-note">&nbsp;</p>
-              <div id="payout-state" class="topup-invoice hidden">
-                <div class="topup-invoice-head">
+              <div id="payout-state" class="data-row hidden">
+                <div class="data-row-main">
                   <b id="payout-state-sum">—</b>
-                  <span id="payout-state-text" class="topup-state">Отправляем…</span>
+                  <span id="payout-state-text">Отправляем…</span>
                 </div>
               </div>
-              <p class="hint">Деньги уходят в Telegram-бот платёжного сервиса на ваш аккаунт.</p>
+              <p class="hint">Деньги уходят на ваш Telegram-аккаунт в платёжном сервисе.</p>
             </div>
 
             <!-- Лидеры -->
@@ -110,7 +159,32 @@
                 <h2>Лидеры</h2>
                 <button id="leaders-refresh" class="link-btn">обновить</button>
               </div>
-              <div id="leaders-list" class="accounts-list"></div>
+              <div id="leaders-list" class="rows"></div>
+            </div>
+
+            <!-- Другие игры -->
+            <button id="other-games" class="wide-link hidden">
+              <span class="wide-icon"><svg class="icon"><use href="#i-gamepad"></use></svg></span>
+              <span class="wide-body">
+                <b>Другие игры</b>
+                <span>Больше игр и розыгрышей в нашем чате</span>
+              </span>
+              <svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg>
+            </button>
+
+            <!-- Активные игры -->
+            <div>
+              <div class="section-head">
+                <h2><svg class="icon icon-sm"><use href="#i-gamepad"></use></svg>Активные игры</h2>
+                <button id="rooms-refresh" class="link-btn">обновить</button>
+              </div>
+              <div id="home-rooms" class="carousel"></div>
+            </div>
+
+            <!-- Последние выигрыши -->
+            <div id="wins-card" class="hidden">
+              <div class="section-head"><h2>Последние выигрыши</h2></div>
+              <div id="wins-list" class="carousel"></div>
             </div>
 
             <!-- История -->
@@ -119,30 +193,41 @@
                 <h2>История операций</h2>
                 <button id="history-refresh" class="link-btn">обновить</button>
               </div>
-              <div id="history-list" class="accounts-list"></div>
+              <div id="history-list" class="rows"></div>
             </div>
 
-            <!-- Активные игры -->
-            <div class="card">
-              <div class="card-head">
-                <h2><span class="head-icon">🎮</span> Активные игры</h2>
-                <button id="rooms-refresh" class="link-btn">обновить</button>
+            <!-- Помощь -->
+            <button id="help-link" class="wide-link">
+              <span class="wide-icon"><svg class="icon"><use href="#i-help"></use></svg></span>
+              <span class="wide-body">
+                <b>Нужна помощь?</b>
+                <span>Правила, история операций и поддержка</span>
+              </span>
+              <svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg>
+            </button>
+
+            <div id="help-card" class="card hidden">
+              <h2>Помощь</h2>
+              <p class="hint">Холдем и блекджек на деньги. Баланс пополняется и выводится криптой один к одному.</p>
+              <div class="chips-actions">
+                <button id="help-history" class="btn btn-surface">История операций</button>
+                <button id="help-rules" class="btn btn-surface">Правила игры</button>
               </div>
-              <div id="home-rooms" class="active-games">
-                <p class="hint">Ищем открытые столы…</p>
-              </div>
+              <button id="help-support" class="btn btn-ghost hidden">Написать в поддержку</button>
+              <button id="btn-my-id" class="data-row" style="width:100%;cursor:pointer;text-align:left">
+                <span class="data-row-main">
+                  <b id="my-id">—</b>
+                  <span>Ваш Telegram ID — нажмите, чтобы скопировать</span>
+                </span>
+                <svg class="icon icon-sm" style="color:var(--text-muted)"><use href="#i-copy"></use></svg>
+              </button>
             </div>
 
-            <!-- Последние выигрыши -->
-            <div id="wins-card" class="card hidden">
-              <h2>Последние выигрыши</h2>
-              <div id="wins-list" class="wins-row"></div>
-            </div>
-
+            <!-- Админ -->
             <div id="admin-card" class="card hidden">
               <div class="card-head">
                 <h2>Админ: балансы</h2>
-                <button id="admin-refresh" class="link-btn">обновить счета</button>
+                <button id="admin-refresh" class="link-btn">обновить</button>
               </div>
               <div class="settings-grid">
                 <label class="field">
@@ -159,25 +244,19 @@
                 <button id="admin-take" class="btn btn-ghost">Забрать</button>
                 <button id="admin-set" class="btn btn-ghost">Выставить</button>
               </div>
-              <div id="admin-accounts" class="accounts-list"></div>
-              <p class="hint">То же командой в чате стола: <code>/дать 123456789 50</code>, <code>/помощь</code>.</p>
+              <div id="admin-accounts" class="rows"></div>
+              <p class="hint">В чате стола: <code>/дать 123456789 50</code>, <code>/промокод ЛЕТО 5 100</code>, <code>/помощь</code>.</p>
             </div>
-
-            <button id="btn-my-id" class="id-row">
-              Ваш Telegram ID: <b id="my-id">—</b> <span class="copy-hint">нажмите, чтобы скопировать</span>
-            </button>
           </div>
 
-          <!-- ═══ Вкладка «Игры» ═══ -->
+          <!-- ═══ Игры ═══ -->
           <div id="tab-games" class="tab-panel hidden">
             <div class="card">
               <div class="card-head">
                 <h2>Открытые столы</h2>
                 <button id="rooms-refresh-games" class="link-btn">обновить</button>
               </div>
-              <div id="rooms-list" class="rooms-list">
-                <p class="hint">Ищем открытые столы…</p>
-              </div>
+              <div id="rooms-list" class="rooms-list"></div>
             </div>
 
             <div class="card">
@@ -193,10 +272,12 @@
               <h2>Создать стол</h2>
               <div class="game-picker">
                 <button type="button" class="game-option is-active" data-game="holdem">
-                  <b>Холдем</b><span>покер, 2–9 игроков</span>
+                  <svg class="icon"><use href="#i-spade"></use></svg>
+                  <b>Холдем</b><span>2–9 игроков</span>
                 </button>
                 <button type="button" class="game-option" data-game="blackjack">
-                  <b>Блекджек</b><span>вдвоём, кто ближе к 21</span>
+                  <svg class="icon"><use href="#i-club"></use></svg>
+                  <b>Блекджек</b><span>вдвоём, до 21</span>
                 </button>
               </div>
               <div class="settings-grid" id="holdem-settings">
@@ -232,22 +313,20 @@
                 </label>
               </div>
 
-              <div class="settings-grid">
-                <label class="field">
-                  <span>Секунд на ход</span>
-                  <select id="set-turn">
-                    <option>20</option><option>30</option><option selected>45</option><option>60</option><option>90</option>
-                  </select>
-                </label>
-              </div>
+              <label class="field">
+                <span>Секунд на ход</span>
+                <select id="set-turn">
+                  <option>20</option><option>30</option><option selected>45</option><option>60</option><option>90</option>
+                </select>
+              </label>
               <label class="switch">
                 <input id="set-public" type="checkbox" checked />
                 <span>Открытый стол — он появится в «Активных играх» у всех</span>
               </label>
-              <button id="create-btn" class="btn btn-primary">Создать стол</button>
+              <button id="create-btn" class="btn btn-primary btn-block">Создать стол</button>
             </div>
 
-            <details class="card rules">
+            <details class="card rules" id="rules-card">
               <summary>Правила и порядок комбинаций</summary>
               <ol class="rules-list">
                 <li>Каждому — две закрытые карты, на стол выкладываются пять общих.</li>
@@ -267,51 +346,59 @@
 
       <nav id="bottom-nav" class="bottom-nav hidden">
         <button class="nav-btn" data-tab="games">
-          <span class="nav-icon">🎲</span><span>Игры</span>
+          <svg class="icon"><use href="#i-dice"></use></svg><span>Игры</span>
         </button>
         <button class="nav-btn is-active" data-tab="home">
-          <span class="nav-icon">🏠</span><span>Главная</span>
+          <svg class="icon"><use href="#i-home"></use></svg><span>Главная</span>
         </button>
       </nav>
     </section>
 
-    <!-- Экран стола -->
+    <!-- ═══ Стол ═══ -->
     <section id="screen-table" class="screen hidden">
       <header class="topbar">
-        <button id="btn-leave" class="pill-btn">‹ Лобби</button>
+        <button id="btn-leave" class="pill-btn">
+          <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>Лобби
+        </button>
         <button id="btn-code" class="title-block">
           <div id="room-title" class="room-title">Стол</div>
           <div id="room-subtitle" class="room-subtitle">Холдем</div>
         </button>
-        <button id="btn-invite" class="round-btn gold" title="Позвать друзей">+</button>
-        <button id="btn-close" class="round-btn danger" title="Выйти">×</button>
+        <button id="btn-invite" class="round-btn gold" title="Позвать друзей">
+          <svg class="icon icon-sm"><use href="#i-plus"></use></svg>
+        </button>
+        <button id="btn-close" class="round-btn danger" title="Выйти">
+          <svg class="icon icon-sm"><use href="#i-close"></use></svg>
+        </button>
       </header>
 
       <div class="table-wrap">
-        <div id="feed" class="feed"></div>
+        <div class="table-brand">Poker ok</div>
+        <div id="hand-badge" class="hand-badge hidden"></div>
 
-        <div class="rail">
-          <span class="rail-badge left">&#9827;</span>
-          <span class="rail-badge right">&#9827;</span>
-          <div class="felt">
-            <div class="felt-line"></div>
-            <div class="watermark">&#9824;</div>
-            <div class="center">
-              <div id="board" class="board"></div>
-              <div id="pot" class="pot hidden">
-                <span class="pot-label">БАНК</span>
-                <b id="pot-value">0</b>
+        <div class="table-stage">
+          <div class="rail">
+            <div class="felt">
+              <div class="watermark">&#9824;</div>
+              <div class="felt-line"></div>
+              <div class="center">
+                <div id="board" class="board"></div>
+                <div id="pot" class="pot hidden">
+                  <span class="pot-label">Банк</span>
+                  <b id="pot-value">$0.00</b>
+                </div>
+                <div id="table-message" class="table-message">Ждём игроков</div>
               </div>
-              <div id="table-message" class="table-message">Ждём игроков</div>
             </div>
           </div>
+          <div id="seats" class="seats"></div>
         </div>
-        <div id="seats" class="seats"></div>
 
+        <div id="feed" class="feed"></div>
         <div id="winner-pop" class="winner-pop hidden"></div>
 
         <button id="btn-log" class="fab" title="История и чат">
-          <span class="fab-icon">&#128172;</span>
+          <svg class="icon"><use href="#i-chat"></use></svg>
           <span id="chat-badge" class="fab-badge hidden">0</span>
         </button>
       </div>
@@ -335,11 +422,15 @@
               <button class="chip-btn" data-preset="min">мин</button>
               <button class="chip-btn" data-preset="half">½ банка</button>
               <button class="chip-btn" data-preset="pot">банк</button>
-              <button class="chip-btn" data-preset="max">олл-ин</button>
+              <button class="chip-btn" data-preset="double">2× банка</button>
             </div>
             <div class="raise-slider">
               <input id="raise-range" type="range" min="0" max="100" value="0" />
-              <output id="raise-value">0</output>
+              <output id="raise-value">$0.00</output>
+            </div>
+            <div class="raise-actions">
+              <button id="raise-cancel" class="btn btn-ghost">Отмена</button>
+              <button id="raise-confirm" class="btn btn-raise confirm">Рейз</button>
             </div>
           </div>
           <div class="action-buttons">
@@ -347,6 +438,7 @@
             <button id="btn-check" class="btn btn-check">Чек</button>
             <button id="btn-call" class="btn btn-call">Колл</button>
             <button id="btn-raise" class="btn btn-raise">Рейз</button>
+            <button id="btn-allin" class="btn btn-raise is-allin">Олл-ин</button>
           </div>
           <div id="turn-timer" class="turn-timer"><i></i></div>
         </div>
@@ -360,13 +452,13 @@
             </div>
             <div class="raise-slider">
               <input id="bj-range" type="range" min="0" max="100" value="0" />
-              <output id="bj-bet-value">0</output>
+              <output id="bj-bet-value">$0.00</output>
             </div>
             <button id="bj-bet" class="btn btn-primary">Поставить</button>
           </div>
           <div class="action-buttons hidden" id="bj-actions">
-            <button id="bj-stand" class="btn btn-fold">Хватит</button>
-            <button id="bj-hit" class="btn btn-call">Ещё карту</button>
+            <button id="bj-stand" class="btn btn-surface">Хватит</button>
+            <button id="bj-hit" class="btn btn-primary">Ещё карту</button>
           </div>
           <div id="bj-timer" class="turn-timer"><i></i></div>
         </div>
@@ -375,10 +467,12 @@
       <aside id="chips-sheet" class="sheet hidden">
         <div class="sheet-body">
           <div class="sheet-head">
-            <h3 id="chips-title">Фишки</h3>
-            <button id="chips-close" class="round-btn">×</button>
+            <h3 id="chips-title">Баланс</h3>
+            <button id="chips-close" class="round-btn">
+              <svg class="icon icon-sm"><use href="#i-close"></use></svg>
+            </button>
           </div>
-          <p id="chips-stack" class="muted small">Баланс —</p>
+          <p id="chips-stack" class="hint">Баланс —</p>
           <div class="chips-presets">
             <button class="chip-btn" data-chips="1">+$1</button>
             <button class="chip-btn" data-chips="5">+$5</button>
@@ -386,13 +480,13 @@
             <button class="chip-btn" data-chips="50">+$50</button>
           </div>
           <label class="field">
-            <span>Своё количество</span>
+            <span>Своя сумма, $</span>
             <input id="chips-amount" type="number" min="0" step="1" inputmode="decimal" placeholder="например 25" />
           </label>
           <div class="chips-actions">
             <button id="chips-give" class="btn btn-primary">Выдать</button>
             <button id="chips-take" class="btn btn-ghost">Забрать</button>
-            <button id="chips-set" class="btn btn-ghost">Сделать стеком</button>
+            <button id="chips-set" class="btn btn-ghost">Выставить</button>
           </div>
           <p class="hint">Начисление идёт на баланс игрока, а не на стек за столом.</p>
         </div>
@@ -401,7 +495,9 @@
       <aside id="log-panel" class="log-panel hidden">
         <div class="log-head">
           <h3>История стола</h3>
-          <button id="btn-log-close" class="round-btn">×</button>
+          <button id="btn-log-close" class="round-btn">
+            <svg class="icon icon-sm"><use href="#i-close"></use></svg>
+          </button>
         </div>
         <div id="log-list" class="log-list"></div>
         <form id="chat-form" class="chat-form">

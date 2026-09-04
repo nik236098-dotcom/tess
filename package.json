@@ -1,7 +1,7 @@
 {
-  "name": "poker-friends-miniapp",
+  "name": "poker-ok",
   "version": "1.0.0",
-  "description": "Telegram Mini App: техасский холдем на игровые фишки для игры с друзьями",
+  "description": "Poker ok 👌 — Telegram Mini App: техасский холдем и блекджек на деньги",
   "private": true,
   "main": "server/index.js",
   "scripts": {

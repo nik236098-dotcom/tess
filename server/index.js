@@ -11,6 +11,7 @@ const { Room, RoomError, normalizeSettings } = require('./room');
 const { Accounts, AccountError, DEFAULT_START_BALANCE } = require('./accounts');
 const { createPayments, PaymentError } = require('./payments');
 const { formatMoney, parseMoney } = require('./money');
+const { PromoCodes, PromoError } = require('./promo');
 const { loadEnv } = require('./env');
 
 loadEnv();
@@ -40,6 +41,10 @@ function createApp(options = {}) {
   const devLogin = options.devLogin ?? (!botToken || process.env.ALLOW_DEV_LOGIN === '1');
   const botUsername = (options.botUsername ?? process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '');
   const appShortName = options.appShortName ?? process.env.TELEGRAM_APP_SHORT_NAME ?? '';
+  // Ссылки на чат сообщества и поддержку. Не задано — карточка не появится,
+  // чтобы на главной не было кнопок, ведущих в никуда.
+  const communityUrl = options.communityUrl ?? process.env.COMMUNITY_URL ?? '';
+  const supportUrl = options.supportUrl ?? process.env.SUPPORT_URL ?? '';
 
   const adminIds = options.adminIds
     ?? String(process.env.TELEGRAM_ADMIN_IDS || '').split(',').map((id) => id.trim()).filter(Boolean);
@@ -59,6 +64,11 @@ function createApp(options = {}) {
     ? options.paymentsFile
     : path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'payments.json');
   const payments = options.payments ?? createPayments({ accounts, file: paymentsFile });
+
+  const promoFile = options.promoFile !== undefined
+    ? options.promoFile
+    : path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'promo.json');
+  const promo = options.promo ?? new PromoCodes({ accounts, file: promoFile });
 
   // Деньги дошли — говорим об этом владельцу счёта. Сам баланс прилетит
   // отдельным сообщением через accounts.onChange.
@@ -176,7 +186,9 @@ function createApp(options = {}) {
 
     if (url.pathname === '/config') {
       res.writeHead(200, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ devLogin, botUsername, appShortName, topup: payments.describe() }));
+      res.end(JSON.stringify({
+        devLogin, botUsername, appShortName, communityUrl, supportUrl, topup: payments.describe(),
+      }));
       return;
     }
 
@@ -376,6 +388,9 @@ function createApp(options = {}) {
       case 'leaders':
         client.send({ type: 'leaders', leaders: accounts.list(20) });
         break;
+      case 'promo_redeem':
+        redeemPromo(client, message.code);
+        break;
       case 'list_rooms':
         client.send({ type: 'rooms', rooms: publicRooms(), wins: recentWins });
         break;
@@ -490,6 +505,22 @@ function createApp(options = {}) {
       });
   }
 
+  // Промокод активирует сам игрок; деньги создаёт только код, выданный админом.
+  function redeemPromo(client, code) {
+    try {
+      const result = promo.redeem(client.user, code);
+      client.send({ type: 'promo_ok', cents: result.cents, code: result.code, text: result.text });
+      client.send({ type: 'system', text: result.text });
+    } catch (error) {
+      if (error instanceof PromoError) {
+        client.fail(error.message);
+        return;
+      }
+      console.error('Ошибка активации промокода:', error);
+      client.fail('Не удалось активировать промокод');
+    }
+  }
+
   const COMMAND_HELP = [
     'Команды:',
     '/баланс — свой баланс',
@@ -502,6 +533,9 @@ function createApp(options = {}) {
     '/баланс 123456789 — посмотреть чужой баланс',
     '/счета — список счетов',
     '/выплаты — зависшие выводы',
+    '/промокод ЛЕТО 5 100 — код на $5.00, 100 активаций',
+    '/промокоды — список кодов',
+    '/удалить-код ЛЕТО — убрать код',
   ].join('\n');
 
   function runCommand(client, line) {
@@ -573,6 +607,42 @@ function createApp(options = {}) {
         const rows = stuck.map((p) => `${p.id} · ${p.userName || p.userId} — ${formatMoney(p.cents)} (${p.status})`);
         return ['Зависшие выплаты:', ...rows, '', 'Повторить: /повторить <id>'].join('\n');
       }
+      // ——— Промокоды ———
+      case 'промокод':
+      case 'promo': {
+        if (!isAdmin(client.user)) throw new RoomError('Промокоды создаёт только админ');
+        if (tokens.length < 2) throw new RoomError('Формат: /промокод КОД СУММА [АКТИВАЦИЙ]');
+        const cents = parseMoney(tokens[1]);
+        if (cents === null) throw new RoomError('Сумма должна быть числом, например 5 или 2.50');
+        const activations = tokens.length > 2 ? Number(tokens[2]) : 1;
+        try {
+          const record = promo.create({
+            code: tokens[0],
+            cents,
+            maxActivations: activations,
+            createdBy: client.user.id,
+          });
+          return `Промокод ${record.code}: ${formatMoney(record.cents)}, активаций ${record.maxActivations}`;
+        } catch (error) {
+          throw new RoomError(error.message);
+        }
+      }
+      case 'промокоды':
+      case 'promos': {
+        if (!isAdmin(client.user)) throw new RoomError('Команда только для админа');
+        const rows = promo.list().map((p) => `${p.code} — ${formatMoney(p.cents)} · ${p.used}/${p.maxActivations}`);
+        return rows.length ? ['Промокоды:', ...rows].join('\n') : 'Промокодов пока нет';
+      }
+      case 'удалить-код':
+      case 'promo-delete': {
+        if (!isAdmin(client.user)) throw new RoomError('Команда только для админа');
+        try {
+          return `Промокод ${promo.remove(target())} удалён`;
+        } catch (error) {
+          throw new RoomError(error.message);
+        }
+      }
+
       case 'повторить':
       case 'retry': {
         if (!isAdmin(client.user)) throw new RoomError('Команда только для админа');
@@ -643,6 +713,7 @@ function createApp(options = {}) {
       startingBalance: accounts.startingBalance,
       startParam: client.startParam || null,
       topup: payments.describe(),
+      links: { community: communityUrl, support: supportUrl },
     });
 
     // Если игрок уже сидел за столом — возвращаем его туда же.
@@ -708,6 +779,7 @@ function createApp(options = {}) {
     }
     accounts.flush();
     payments.flush();
+    promo.flush();
     rooms.clear();
     clientsByUser.clear();
   });
