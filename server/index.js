@@ -230,9 +230,6 @@ function createApp(options = {}) {
       case 'stand':
         withRoom(client, (room) => room.stand(client.user.id));
         break;
-      case 'sit_out':
-        withRoom(client, (room) => room.setSittingOut(client.user.id, message.value !== false));
-        break;
       case 'rebuy':
         withRoom(client, (room) => room.rebuy(client.user.id));
         break;
@@ -241,9 +238,6 @@ function createApp(options = {}) {
         break;
       case 'start':
         withRoom(client, (room) => room.start(client.user.id));
-        break;
-      case 'pause':
-        withRoom(client, (room) => room.pause(client.user.id));
         break;
       case 'action':
         withRoom(client, (room) => room.applyAction(client.user.id, message.action, message.amount));

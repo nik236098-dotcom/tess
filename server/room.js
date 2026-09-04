@@ -44,6 +44,8 @@ const SETTING_LIMITS = {
 };
 
 const SHOWDOWN_PAUSE_MS = 6000;
+// Сколько ходов подряд можно промолчать, прежде чем встать из-за стола.
+const MISSED_TURNS_LIMIT = 2;
 const FOLD_PAUSE_MS = 2500;
 const MAX_LOG = 60;
 
@@ -186,6 +188,7 @@ class Room extends EventEmitter {
       brokeSitOut: false,
       leaveAfterHand: false,
       connected: true,
+      missedTurns: 0,
       joinedHand: this.handNumber,
     };
     this.pushLog(`${member.name} занимает место ${seatIndex + 1}, стек ${buyIn}`);
@@ -244,17 +247,6 @@ class Room extends EventEmitter {
     this.seats.forEach((seat, index) => {
       if (seat) this.releaseSeat(index, { silent: true });
     });
-  }
-
-  setSittingOut(userId, value) {
-    const seat = this.seatOf(userId);
-    if (!seat) throw new RoomError('Вы не за столом');
-    seat.sittingOut = Boolean(value);
-    seat.autoSitOut = false;
-    seat.brokeSitOut = false;
-    this.pushLog(`${seat.name} ${seat.sittingOut ? 'пропускает раздачи' : 'снова в игре'}`);
-    if (!seat.sittingOut) this.maybeStartHand();
-    this.touch();
   }
 
   // Пополнение стека до размера входа — фишки берутся с баланса игрока.
@@ -322,14 +314,6 @@ class Room extends EventEmitter {
     this.autoStart = true;
     this.pushLog('Игра началась. Удачи!');
     this.maybeStartHand();
-    this.touch();
-  }
-
-  pause(userId) {
-    if (userId !== this.hostId) throw new RoomError('Паузу ставит хозяин стола');
-    this.autoStart = false;
-    this.clearNextHandTimer();
-    this.pushLog('Игра на паузе — новые раздачи не начинаются');
     this.touch();
   }
 
@@ -452,6 +436,7 @@ class Room extends EventEmitter {
     }
 
     this.status = 'playing';
+    this.noteAction(userId);
     this.pushLog(`Играют по ${value} с каждого`);
     this.logRoundEvents();
     if (this.round.complete) this.finishRound();
@@ -467,6 +452,7 @@ class Room extends EventEmitter {
       if (error instanceof BlackjackError) throw new RoomError(error.message);
       throw error;
     }
+    this.noteAction(userId);
     this.logRoundEvents();
     if (this.round.complete) this.finishRound();
     else this.armTurnTimer();
@@ -538,6 +524,7 @@ class Room extends EventEmitter {
       try {
         this.placeBet(opener.userId, Math.min(this.settings.minBet, this.maxBet));
         this.pushLog(`${opener.name} не успел выбрать ставку — поставили минимум`);
+        this.noteTimeout(opener.userId);
       } catch {
         this.status = 'waiting';
         this.touch();
@@ -579,6 +566,7 @@ class Room extends EventEmitter {
       if (error instanceof ActionError) throw new RoomError(error.message);
       throw error;
     }
+    this.noteAction(userId);
     this.afterHandProgress();
   }
 
@@ -671,6 +659,7 @@ class Room extends EventEmitter {
       const legal = this.hand.legalActions(playerId);
       this.hand.timeout(playerId);
       this.pushLog(`${this.nameOf(playerId)} не успевает походить — ${legal && legal.canCheck ? 'чек' : 'пас'}`);
+      this.noteTimeout(playerId);
       this.afterHandProgress();
     }, seconds * 1000);
     this.turnTimer.unref?.();
@@ -689,6 +678,7 @@ class Room extends EventEmitter {
       if (!this.round || this.round.complete || this.round.actingId !== playerId) return;
       this.round.timeout(playerId);
       this.pushLog(`${this.nameOf(playerId)} не успел походить — останавливается`);
+      this.noteTimeout(playerId);
       this.logRoundEvents();
       if (this.round.complete) this.finishRound();
       else this.armTurnTimer();
@@ -869,18 +859,30 @@ class Room extends EventEmitter {
     };
   }
 
+  // Игрок ответил — счётчик молчания обнуляем.
+  noteAction(userId) {
+    const seat = this.seatOf(userId);
+    if (seat) seat.missedTurns = 0;
+  }
+
+  // Игрок промолчал. Один раз — бывает, второй подряд — встаёт из-за стола:
+  // иначе стол каждую раздачу ждёт того, кто ушёл.
+  noteTimeout(userId) {
+    const seat = this.seatOf(userId);
+    if (!seat) return;
+    seat.missedTurns = (seat.missedTurns || 0) + 1;
+    if (seat.missedTurns < MISSED_TURNS_LIMIT) return;
+
+    this.pushLog(`${seat.name} не отвечает и выходит из-за стола`);
+    if (this.inActiveHand(userId)) seat.leaveAfterHand = true;
+    else this.releaseSeat(this.seatIndexOf(userId), { silent: true });
+  }
+
   // Кнопки управления столом: показываем их только когда есть что нажимать.
   controlsFor(userId) {
-    const seatIndex = this.seatIndexOf(userId);
-    const seat = seatIndex >= 0 ? this.seats[seatIndex] : null;
     const ready = this.eligibleSeats().length;
     return {
       canStart: userId === this.hostId && !this.autoStart && ready >= 2,
-      canPause: userId === this.hostId && this.autoStart,
-      // Пропускать имеет смысл, только если раздачи идут и есть с кем играть;
-      // тому, кто уже пропускает, кнопка нужна, чтобы вернуться.
-      canSitOut: Boolean(seat) && this.autoStart && (seat.sittingOut || ready >= 2),
-      paused: !this.autoStart && this.handNumber > 0,
     };
   }
 

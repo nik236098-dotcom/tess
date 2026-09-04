@@ -605,16 +605,12 @@ function renderMessage(room) {
       : `Ставку назначает ${opener ? opener.name : 'соперник'}`;
     return;
   }
-  if (room.you.paused) {
-    node.textContent = room.you.isHost
-      ? 'Пауза: новые раздачи не начинаются'
-      : 'Хозяин поставил игру на паузу';
-  } else if (seated < 2) {
+  if (seated < 2) {
     node.textContent = 'Нужно минимум два игрока';
   } else if (!room.running) {
     node.textContent = room.you.isHost ? 'Нажмите «Начать игру»' : 'Ждём, когда хозяин начнёт игру';
   } else if (room.you.sittingOut) {
-    node.textContent = 'Вы пропускаете раздачи';
+    node.textContent = 'Ждём, пока вы пополните стек';
   } else if (room.nextHandAt) {
     node.textContent = 'Следующая раздача…';
   } else {
@@ -685,29 +681,21 @@ function renderControls(room) {
   // Пока идёт свой ход, служебные кнопки убираем — на экране только действия.
   const hostBox = $('host-controls');
   const startBtn = $('btn-start');
-  const pauseBtn = $('btn-pause');
 
-  // Кнопку старта показываем всегда, пока игра не идёт, но гасим,
-  // если начинать ещё не с кем — так видно, чего не хватает.
-  startBtn.classList.toggle('hidden', room.running);
+  // Кнопку старта показываем, пока игра не идёт, но гасим, если начинать
+  // ещё не с кем — так видно, чего не хватает. Игра идёт — кнопки нет.
   startBtn.disabled = !you.canStart;
-  startBtn.textContent = you.paused ? 'Продолжить игру' : 'Начать игру';
-  pauseBtn.classList.toggle('hidden', !you.canPause);
-  hostBox.classList.toggle('hidden', myTurn || (!you.canPause && room.running) || !you.isHost);
+  hostBox.classList.toggle('hidden', myTurn || room.running || !you.isHost);
 
   const sitBtn = $('btn-sit');
   const rebuyBtn = $('btn-rebuy');
-  const sitoutBtn = $('btn-sitout');
   const hasFreeSeat = room.seats.some((s) => s.empty);
 
   sitBtn.classList.toggle('hidden', seated || !hasFreeSeat);
   rebuyBtn.classList.toggle('hidden', !you.canRebuy);
-  // Пропускать нечего, если раздачи не идут или играть не с кем.
-  sitoutBtn.classList.toggle('hidden', !you.canSitOut);
-  sitoutBtn.textContent = you.sittingOut ? 'Вернуться в игру' : 'Пропускать раздачи';
 
   const seatBox = $('seat-controls');
-  const seatButtonsVisible = [sitBtn, rebuyBtn, sitoutBtn].some((b) => !b.classList.contains('hidden'));
+  const seatButtonsVisible = [sitBtn, rebuyBtn].some((b) => !b.classList.contains('hidden'));
   seatBox.classList.toggle('hidden', myTurn || !seatButtonsVisible);
 
   // Пока игрок не за столом, показываем баланс: хватит ли на вход.
@@ -931,16 +919,12 @@ function bindUi() {
   $('btn-log-close').addEventListener('click', () => $('log-panel').classList.add('hidden'));
 
   $('btn-start').addEventListener('click', () => send({ type: 'start' }));
-  $('btn-pause').addEventListener('click', () => send({ type: 'pause' }));
   $('btn-sit').addEventListener('click', () => {
     const free = state.room && state.room.seats.find((s) => s.empty);
     if (free) send({ type: 'sit', seat: free.index });
     else toast('Свободных мест нет');
   });
   $('btn-rebuy').addEventListener('click', () => send({ type: 'rebuy' }));
-  $('btn-sitout').addEventListener('click', () => {
-    send({ type: 'sit_out', value: !state.room.you.sittingOut });
-  });
 
   document.querySelectorAll('[data-game]').forEach((button) => {
     button.addEventListener('click', () => {

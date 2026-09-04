@@ -304,66 +304,54 @@ test('уход посреди раздачи откладывается до е�
 
 // ——— Кнопки управления столом ———
 
-test('кнопки появляются только когда есть что нажимать', (t) => {
-  const bank = new Accounts({ startingBalance: 10000 });
-  ['Аня', 'Боря'].forEach((name, i) => bank.ensure({ id: `u${i}`, name }));
-  const room = new Room('CTRL1', { id: 'u0', name: 'Аня' }, { buyIn: 1000 }, { bank });
-  room.addMember({ id: 'u1', name: 'Боря' });
+test('начать игру можно только когда есть с кем', (t) => {
+  const room = table({ players: ['Аня', 'Боря'] });
   t.after(() => room.dispose());
 
-  const host = () => room.stateFor('u0').you;
+  assert.strictEqual(room.stateFor('u0').you.canStart, true);
+  assert.strictEqual(room.stateFor('u1').you.canStart, false, 'начинает только хозяин');
 
-  assert.deepStrictEqual(
-    { start: host().canStart, pause: host().canPause, sitOut: host().canSitOut },
-    { start: false, pause: false, sitOut: false },
-    'за пустым столом нажимать нечего'
-  );
+  room.stand('u1');
+  assert.strictEqual(room.stateFor('u0').you.canStart, false, 'в одиночку игру не начать');
 
-  room.sit('u0', 0);
-  assert.strictEqual(host().canStart, false, 'в одиночку игру не начать');
-  assert.strictEqual(host().canSitOut, false, 'пропускать тоже нечего');
-
-  room.sit('u1', 1);
-  assert.strictEqual(host().canStart, true);
-  assert.strictEqual(host().canPause, false);
-
-  room.start('u0');
-  assert.strictEqual(host().canStart, false, 'игра уже идёт');
-  assert.strictEqual(host().canPause, true);
-  assert.strictEqual(host().canSitOut, true);
-
-  room.pause('u0');
-  assert.strictEqual(host().paused, true, 'состояние паузы видно клиенту');
-  assert.strictEqual(host().canStart, true, 'и её можно снять');
-  assert.strictEqual(host().canSitOut, false, 'на паузе пропускать нечего');
-});
-
-test('пропускающий может вернуться, даже если играть больше не с кем', (t) => {
-  const bank = new Accounts({ startingBalance: 10000 });
-  ['Аня', 'Боря'].forEach((name, i) => bank.ensure({ id: `u${i}`, name }));
-  const room = new Room('CTRL2', { id: 'u0', name: 'Аня' }, { buyIn: 1000 }, { bank });
-  room.addMember({ id: 'u1', name: 'Боря' });
-  room.sit('u0', 0);
   room.sit('u1', 1);
   room.start('u0');
-  t.after(() => room.dispose());
-
-  room.setSittingOut('u0', true);
-  room.setSittingOut('u1', true);
-  assert.strictEqual(room.stateFor('u0').you.canSitOut, true, 'кнопка нужна, чтобы вернуться');
-  assert.strictEqual(room.stateFor('u0').you.sittingOut, true);
+  assert.strictEqual(room.stateFor('u0').you.canStart, false, 'игра уже идёт');
 });
 
-test('гость за столом видит кнопки хозяина выключенными', (t) => {
-  const bank = new Accounts({ startingBalance: 10000 });
-  ['Аня', 'Боря'].forEach((name, i) => bank.ensure({ id: `u${i}`, name }));
-  const room = new Room('CTRL3', { id: 'u0', name: 'Аня' }, { buyIn: 1000 }, { bank });
-  room.addMember({ id: 'u1', name: 'Боря' });
-  room.sit('u0', 0);
-  room.sit('u1', 1);
+test('кто дважды подряд промолчал, встаёт из-за стола', (t) => {
+  const room = table({ players: ['Аня', 'Боря', 'Вика'], balance: 5000 });
   t.after(() => room.dispose());
+  room.start('u0');
 
-  const guest = room.stateFor('u1').you;
-  assert.strictEqual(guest.canStart, false);
-  assert.strictEqual(guest.canPause, false);
+  const quiet = room.hand.actingPlayer.id;
+  const seatIndex = room.seatIndexOf(quiet);
+
+  room.noteTimeout(quiet);
+  assert.ok(room.seatOf(quiet), 'один пропуск — ещё не повод');
+  assert.strictEqual(room.seatOf(quiet).missedTurns, 1);
+
+  room.noteTimeout(quiet);
+  assert.strictEqual(room.seats[seatIndex].leaveAfterHand, true, 'уйдёт после раздачи');
+
+  // Доигрываем — место освобождается, фишки возвращаются на баланс.
+  let guard = 0;
+  while (room.hand && !room.hand.complete && guard++ < 40) {
+    room.applyAction(room.hand.actingPlayer.id, 'fold');
+  }
+  assert.strictEqual(room.seatIndexOf(quiet), -1, 'выбыл');
+  assert.ok(room.bankRef.balanceOf(quiet) > 4000, 'стек вернулся на баланс');
+});
+
+test('ответ обнуляет счётчик молчания', (t) => {
+  const room = table({ players: ['Аня', 'Боря', 'Вика'] });
+  t.after(() => room.dispose());
+  room.start('u0');
+
+  const actor = room.hand.actingPlayer.id;
+  room.noteTimeout(actor);
+  assert.strictEqual(room.seatOf(actor).missedTurns, 1);
+
+  room.applyAction(actor, 'fold');
+  assert.strictEqual(room.seatOf(actor).missedTurns, 0, 'походил — счётчик сброшен');
 });
