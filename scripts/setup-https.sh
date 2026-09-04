@@ -26,6 +26,14 @@ USAGE
   exit 1
 fi
 
+# Самая обидная осечка: в команду скопировали «ваша@почта» из инструкции.
+if ! [[ "$EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+  echo "«$EMAIL» не похоже на адрес почты."
+  echo "Подставьте свой настоящий — на него Let's Encrypt пришлёт напоминание об истечении сертификата:"
+  echo "  sudo bash scripts/setup-https.sh $DOMAIN me@example.com"
+  exit 1
+fi
+
 if [[ "$EUID" -ne 0 ]]; then
   echo "Запустите через sudo: sudo bash scripts/setup-https.sh $DOMAIN $EMAIL"
   exit 1
@@ -108,7 +116,25 @@ if command -v ufw >/dev/null; then
 fi
 
 echo "→ Выпускаю сертификат"
-certbot --nginx -d "$DOMAIN" --agree-tos -m "$EMAIL" --redirect --non-interactive
+if ! certbot --nginx -d "$DOMAIN" --agree-tos -m "$EMAIL" --redirect --non-interactive; then
+  echo
+  echo "  Certbot не справился. Частые причины:"
+  echo "   • порт 80 закрыт снаружи — проверьте: ufw status"
+  echo "   • домен указывает не на этот сервер"
+  echo "   • у домена есть AAAA-запись, а по IPv6 сервер недоступен"
+  exit 1
+fi
+
+# Certbot умеет завершиться с нулём, не выпустив сертификат, — проверяем результат.
+if [[ ! -s "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
+  echo "  Сертификат не появился в /etc/letsencrypt/live/$DOMAIN — HTTPS не заработает."
+  exit 1
+fi
+if ! ss -tln 2>/dev/null | grep -q ':443 '; then
+  echo "  Nginx не слушает 443. Посмотрите: nginx -T | grep -n 'listen 443'"
+  exit 1
+fi
+echo "  Сертификат на месте, 443 слушается"
 
 echo "→ Проверяю, отвечает ли приложение"
 if curl -fsS --max-time 10 "https://$DOMAIN/health" >/dev/null; then
