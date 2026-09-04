@@ -118,6 +118,18 @@ curl -s localhost:3000/health
 
 ## 6. Nginx и HTTPS
 
+Всё ниже делается одной командой — скрипт сам напишет конфиг, проверит DNS,
+откроет порты и выпустит сертификат:
+
+```bash
+cd /opt/poker/app
+sudo bash scripts/setup-https.sh ВАШ_ДОМЕН ваша@почта
+```
+
+Если хотите сделать руками или разобраться, что происходит, — дальше то же самое по шагам.
+
+### Вручную
+
 ```bash
 cat > /etc/nginx/sites-available/poker <<'CONF'
 server {
