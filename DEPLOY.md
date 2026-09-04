@@ -137,6 +137,15 @@ cd /opt/poker/app
 sudo bash scripts/setup-https.sh ВАШ_ДОМЕН ваша@почта
 ```
 
+Если на сервере уже живёт другой сервис на 443 (VPN, панель управления),
+поднимите покер на свободном порту — третьим аргументом:
+
+```bash
+sudo bash scripts/setup-https.sh ВАШ_ДОМЕН ваша@почта 8443
+```
+
+Тогда Web App URL в BotFather будет `https://ВАШ_ДОМЕН:8443`.
+
 Если хотите сделать руками или разобраться, что происходит, — дальше то же самое по шагам.
 
 ### Вручную
@@ -359,6 +368,9 @@ certbot --nginx -d ВАШ_ДОМЕН --agree-tos -m ваша@почта --redire
 certbot install --cert-name ВАШ_ДОМЕН --nginx --redirect
 systemctl reload nginx
 ```
+- **HTTPS не отвечает, хотя nginx жив и настроен верно** — порт 443 занят другим
+  сервисом. Посмотрите, кем: `ss -tlnp | grep ':443'`. Если это VPN или панель,
+  поднимите покер на другом порту: `sudo bash scripts/setup-https.sh ДОМЕН ПОЧТА 8443`.
 - **`conflicting server name` и `invalid PID number "" in "/run/nginx.pid"`** —
   на один домен заведено два конфига, а сам nginx не запущен (перезагружать нечего).
   Лечится так:
