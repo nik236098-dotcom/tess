@@ -646,3 +646,49 @@ input:focus, select:focus { outline: none; border-color: var(--gold-line); }
 }
 .game-option.is-active b { color: var(--gold-soft); }
 .card-face.no-anim { animation: none; }
+
+/* ——— Пополнение баланса ——— */
+
+.topup-providers { display: flex; gap: 8px; margin-bottom: 10px; }
+.topup-provider {
+  flex: 1; padding: 10px 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 12px;
+  color: var(--muted);
+  font: inherit; text-align: center; cursor: pointer;
+}
+.topup-provider b { display: block; font-size: 14px; color: var(--text); }
+.topup-provider span { font-size: 11px; }
+.topup-provider.is-active {
+  border-color: var(--gold-line);
+  background: rgba(230, 189, 99, 0.1);
+}
+.topup-provider.is-active b { color: var(--gold-soft); }
+
+.topup-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.topup-preset {
+  flex: 1 1 60px; padding: 9px 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit; cursor: pointer;
+}
+.topup-preset.is-active { border-color: var(--gold-line); color: var(--gold-soft); }
+
+.topup-amount { flex: 1; min-width: 0; }
+
+.topup-invoice {
+  margin-top: 10px; padding: 10px;
+  border: 1px solid var(--gold-line);
+  border-radius: 12px;
+  background: rgba(230, 189, 99, 0.06);
+}
+.topup-invoice-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; margin-bottom: 10px;
+}
+.topup-state { font-size: 12px; color: var(--muted); }
+.topup-state.is-paid { color: var(--green); }
+.topup-state.is-expired { color: var(--red); }

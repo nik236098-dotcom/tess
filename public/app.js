@@ -17,7 +17,7 @@ const state = {
   connected: false,
   user: null,
   room: null,
-  config: { devLogin: false, botUsername: '', appShortName: '' },
+  config: { devLogin: false, botUsername: '', appShortName: '', topup: null },
   pendingRoom: null,
   raiseTo: 0,
   raiseTouched: false,
@@ -33,6 +33,12 @@ const state = {
   bjBet: 0,
   bjBetTouched: false,
   unread: 0,
+  topup: {
+    config: { enabled: false, providers: [], presets: [], chipsPerUnit: 0, minAmount: 0, maxAmount: 0 },
+    provider: null, // id выбранного платёжного сервиса
+    invoice: null, // счёт, который сейчас ждёт оплаты
+    busy: false,
+  },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -155,6 +161,7 @@ function handleMessage(message) {
       state.user = message.user;
       state.balance = message.balance || 0;
       state.isAdmin = Boolean(message.isAdmin);
+      if (message.topup) applyTopUpConfig(message.topup);
       renderAccount();
       if (state.isAdmin) send({ type: 'admin_accounts' });
       $('dev-login').classList.add('hidden');
@@ -182,6 +189,30 @@ function handleMessage(message) {
       state.balance = message.balance;
       renderAccount();
       break;
+    case 'topup_invoice':
+      state.topup.busy = false;
+      state.topup.invoice = message.invoice;
+      renderTopUpInvoice();
+      // Сразу открываем оплату: игрок только что нажал «Выставить счёт»,
+      // лишний тап между ним и оплатой никому не нужен.
+      openPayLink(message.invoice.url || message.invoice.fallbackUrl);
+      startTopUpPolling();
+      break;
+    case 'topup_status':
+      if (state.topup.invoice && message.invoice.id === state.topup.invoice.id) {
+        state.topup.invoice = message.invoice;
+        renderTopUpInvoice();
+        if (message.invoice.status !== 'pending') stopTopUpPolling();
+      }
+      break;
+    case 'topup_paid':
+      stopTopUpPolling();
+      if (state.topup.invoice && state.topup.invoice.id === message.id) {
+        state.topup.invoice = { ...state.topup.invoice, status: 'paid', creditedChips: message.chips };
+        renderTopUpInvoice();
+      }
+      haptic('success');
+      break;
     case 'accounts':
       renderAccounts(message.accounts);
       break;
@@ -207,6 +238,8 @@ function handleMessage(message) {
       }
       break;
     case 'error':
+      state.topup.busy = false;
+      renderTopUpControls();
       toast(message.message);
       haptic('error');
       break;
@@ -842,6 +875,169 @@ function renderLog() {
   list.scrollTop = list.scrollHeight;
 }
 
+// ——— Пополнение баланса ———
+
+function applyTopUpConfig(config) {
+  state.topup.config = config;
+  if (!config.enabled) {
+    state.topup.provider = null;
+  } else if (!config.providers.some((provider) => provider.id === state.topup.provider)) {
+    // Запоминаем последний выбор игрока, но только если сервис ещё подключён.
+    const saved = localStorage.getItem('poker:topupProvider');
+    const known = config.providers.some((provider) => provider.id === saved);
+    state.topup.provider = known ? saved : config.providers[0].id;
+  }
+  renderTopUp();
+}
+
+function currentProvider() {
+  const { config, provider } = state.topup;
+  return config.providers.find((item) => item.id === provider) || config.providers[0] || null;
+}
+
+function renderTopUp() {
+  const { config } = state.topup;
+  const card = $('topup-card');
+  card.classList.toggle('hidden', !config.enabled);
+  if (!config.enabled) return;
+
+  const provider = currentProvider();
+  $('topup-rate').textContent = provider
+    ? `1 ${provider.currency} = ${config.chipsPerUnit} фишек`
+    : '';
+
+  // Кнопки сервисов рисуем, только когда их больше одного: с единственным
+  // подключённым сервисом выбирать нечего.
+  const providers = $('topup-providers');
+  providers.classList.toggle('hidden', config.providers.length < 2);
+  providers.innerHTML = '';
+  if (config.providers.length > 1) {
+    for (const item of config.providers) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `topup-provider${item.id === state.topup.provider ? ' is-active' : ''}`;
+      button.innerHTML = `<b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.currency)}</span>`;
+      button.addEventListener('click', () => {
+        state.topup.provider = item.id;
+        localStorage.setItem('poker:topupProvider', item.id);
+        renderTopUp();
+      });
+      providers.appendChild(button);
+    }
+  }
+
+  const presets = $('topup-presets');
+  presets.innerHTML = '';
+  const current = Number($('topup-amount').value);
+  for (const amount of config.presets) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `topup-preset${amount === current ? ' is-active' : ''}`;
+    button.innerHTML = `<b>${amount}</b><br><span class="hint">${amount * config.chipsPerUnit}</span>`;
+    button.addEventListener('click', () => {
+      $('topup-amount').value = String(amount);
+      renderTopUp();
+    });
+    presets.appendChild(button);
+  }
+
+  $('topup-amount').min = String(config.minAmount);
+  $('topup-amount').max = String(config.maxAmount);
+  $('topup-amount').placeholder = `от ${config.minAmount} до ${config.maxAmount}`;
+
+  renderTopUpControls();
+  renderTopUpInvoice();
+}
+
+function renderTopUpControls() {
+  const { config, busy } = state.topup;
+  if (!config.enabled) return;
+  const provider = currentProvider();
+  const amount = Number($('topup-amount').value);
+  const chips = Number.isFinite(amount) && amount > 0 ? Math.floor(amount * config.chipsPerUnit) : 0;
+
+  $('topup-chips').innerHTML = chips > 0 && provider
+    ? `${amount} ${escapeHtml(provider.currency)} → <b>${chips}</b> фишек`
+    : '&nbsp;';
+  $('topup-create').disabled = busy || chips <= 0;
+  $('topup-create').textContent = busy ? 'Создаём счёт…' : 'Выставить счёт';
+}
+
+function renderTopUpInvoice() {
+  const box = $('topup-invoice');
+  const invoice = state.topup.invoice;
+  box.classList.toggle('hidden', !invoice);
+  if (!invoice) return;
+
+  $('topup-invoice-sum').textContent = `${invoice.amount} ${invoice.currency} → ${invoice.chips} фишек`;
+
+  const label = $('topup-invoice-state');
+  label.classList.toggle('is-paid', invoice.status === 'paid');
+  label.classList.toggle('is-expired', invoice.status === 'expired');
+  if (invoice.status === 'paid') {
+    label.textContent = `Оплачено · +${invoice.creditedChips || invoice.chips} фишек`;
+  } else if (invoice.status === 'expired') {
+    label.textContent = 'Счёт истёк';
+  } else {
+    label.textContent = `Ждём оплату в ${invoice.providerTitle}…`;
+  }
+
+  const paid = invoice.status !== 'pending';
+  $('topup-pay').classList.toggle('hidden', paid);
+  $('topup-check').classList.toggle('hidden', paid);
+  $('topup-cancel').textContent = paid ? 'Закрыть' : 'Отмена';
+}
+
+function createTopUp() {
+  const { config } = state.topup;
+  const provider = currentProvider();
+  const amount = Number($('topup-amount').value);
+  if (!provider) return;
+  if (!Number.isFinite(amount) || amount <= 0) {
+    toast('Введите сумму');
+    return;
+  }
+  if (amount < config.minAmount || amount > config.maxAmount) {
+    toast(`Сумма должна быть от ${config.minAmount} до ${config.maxAmount}`);
+    return;
+  }
+  state.topup.busy = true;
+  renderTopUpControls();
+  send({ type: 'topup_create', provider: provider.id, amount });
+}
+
+// Ссылки обоих сервисов ведут в Telegram, поэтому внутри мини-аппа их надо
+// открывать именно openTelegramLink — обычный openLink уводит в браузер.
+function openPayLink(url) {
+  if (!url) return;
+  if (tg && /^https:\/\/t\.me\//i.test(url) && tg.openTelegramLink) tg.openTelegramLink(url);
+  else if (tg && tg.openLink) tg.openLink(url);
+  else window.open(url, '_blank');
+}
+
+let topupTimer = null;
+
+// Вебхук может быть не настроен (или не дойти) — поэтому пока счёт висит,
+// спрашиваем статус сами. Опрос сам себя останавливает, когда счёт закрыт.
+function startTopUpPolling() {
+  stopTopUpPolling();
+  topupTimer = setInterval(() => {
+    const invoice = state.topup.invoice;
+    if (!invoice || invoice.status !== 'pending' || invoice.expiresAt < Date.now()) {
+      stopTopUpPolling();
+      return;
+    }
+    if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+      send({ type: 'topup_status', id: invoice.id });
+    }
+  }, 3000);
+}
+
+function stopTopUpPolling() {
+  if (topupTimer) clearInterval(topupTimer);
+  topupTimer = null;
+}
+
 // ——— Ввод ———
 
 function bindUi() {
@@ -883,6 +1079,22 @@ function bindUi() {
       return;
     }
     send({ type: 'join_room', code });
+  });
+
+  $('topup-amount').addEventListener('input', renderTopUp);
+  $('topup-create').addEventListener('click', createTopUp);
+  $('topup-pay').addEventListener('click', () => {
+    const invoice = state.topup.invoice;
+    if (invoice) openPayLink(invoice.url || invoice.fallbackUrl);
+  });
+  $('topup-check').addEventListener('click', () => {
+    const invoice = state.topup.invoice;
+    if (invoice) send({ type: 'topup_status', id: invoice.id });
+  });
+  $('topup-cancel').addEventListener('click', () => {
+    stopTopUpPolling();
+    state.topup.invoice = null;
+    renderTopUpInvoice();
   });
 
   $('rooms-refresh').addEventListener('click', () => send({ type: 'list_rooms' }));

@@ -9,12 +9,15 @@ const { attachWebSocketServer } = require('./wsserver');
 const { verifyInitData } = require('./telegram');
 const { Room, RoomError, normalizeSettings } = require('./room');
 const { Accounts, AccountError, DEFAULT_START_BALANCE } = require('./accounts');
+const { createPayments, PaymentError } = require('./payments');
 const { loadEnv } = require('./env');
 
 loadEnv();
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const ROOM_TTL_MS = 30 * 60 * 1000; // пустую комнату держим полчаса
+const WEBHOOK_PREFIX = '/pay/'; // /pay/<провайдер>/webhook
+const MAX_WEBHOOK_BYTES = 64 * 1024; // тело вебхука заведомо меньше
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // без похожих символов
 
 const MIME = {
@@ -48,6 +51,28 @@ function createApp(options = {}) {
     startingBalance: Number(process.env.START_BALANCE || DEFAULT_START_BALANCE),
     admins: adminIds,
   });
+  // Пополнение включается само, как только в окружении есть токен Crypto Bot
+  // или xRocket. Нет токенов — раздел просто не показывается в лобби.
+  const paymentsFile = options.paymentsFile !== undefined
+    ? options.paymentsFile
+    : path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'payments.json');
+  const payments = options.payments ?? createPayments({ accounts, file: paymentsFile });
+
+  // Деньги дошли — говорим об этом владельцу счёта. Сам баланс прилетит
+  // отдельным сообщением через accounts.onChange.
+  payments.onCredit = (record) => {
+    const client = clientsByUser.get(record.userId);
+    if (!client) return;
+    client.send({
+      type: 'topup_paid',
+      id: record.id,
+      chips: record.creditedChips,
+      amount: record.paidAmount ?? record.amount,
+      currency: record.currency,
+    });
+    client.send({ type: 'system', text: `Баланс пополнен на ${record.creditedChips} фишек` });
+  };
+
   // Без токена бота приложение работает локально «для себя» — там админ каждый.
   const devAdmin = options.devAdmin ?? !botToken;
   const isAdmin = (user) => accounts.isAdmin(user.id) || (devAdmin && String(user.id).startsWith('dev:'));
@@ -132,12 +157,67 @@ function createApp(options = {}) {
 
     if (url.pathname === '/config') {
       res.writeHead(200, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ devLogin, botUsername, appShortName }));
+      res.end(JSON.stringify({ devLogin, botUsername, appShortName, topup: payments.describe() }));
+      return;
+    }
+
+    if (url.pathname.startsWith(WEBHOOK_PREFIX)) {
+      handleWebhookRequest(req, res, url.pathname);
       return;
     }
 
     serveStatic(url.pathname, res);
   });
+
+  // ——— Вебхуки платёжных сервисов ———
+
+  // Crypto Bot и xRocket стучатся сюда сами, когда счёт оплачен.
+  // Адрес вебхука прописывается в настройках приложения внутри их ботов:
+  //   https://ваш-домен/pay/cryptobot/webhook
+  //   https://ваш-домен/pay/xrocket/webhook
+  function handleWebhookRequest(req, res, pathname) {
+    const match = /^\/pay\/([a-z0-9_-]+)\/webhook\/?$/i.exec(pathname);
+    const providerId = match ? match[1].toLowerCase() : null;
+
+    const reply = (code, text) => {
+      res.writeHead(code, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(text);
+    };
+
+    if (!providerId || !payments.providers.has(providerId)) {
+      reply(404, 'Не найдено');
+      return;
+    }
+    if (req.method !== 'POST') {
+      reply(405, 'Только POST');
+      return;
+    }
+
+    const provider = payments.providers.get(providerId);
+    const signature = req.headers[provider.signatureHeader];
+
+    readRequestBody(req, MAX_WEBHOOK_BYTES)
+      .then((rawBody) => {
+        const result = payments.handleWebhook(providerId, rawBody, signature);
+        if (result.handled && !result.already) {
+          console.log(`Пополнение через ${providerId}: +${result.credited} фишек игроку ${result.record.userId}`);
+        }
+        // Что бы мы ни решили дальше, платёжному сервису отвечаем 200 —
+        // иначе он будет слать этот же вебхук снова и снова.
+        reply(200, 'OK');
+      })
+      .catch((error) => {
+        if (error instanceof PaymentError) {
+          // Не совпавшая подпись — единственный случай, когда отвечаем ошибкой:
+          // так это видно в панели платёжного сервиса.
+          console.warn(`Вебхук ${providerId} отклонён: ${error.message}`);
+          reply(403, 'Подпись не совпала');
+          return;
+        }
+        console.error(`Ошибка обработки вебхука ${providerId}:`, error);
+        reply(500, 'Внутренняя ошибка');
+      });
+  }
 
   // ——— WebSocket ———
 
@@ -262,6 +342,12 @@ function createApp(options = {}) {
       case 'balance':
         client.send({ type: 'balance', balance: accounts.balanceOf(client.user.id) });
         break;
+      case 'topup_create':
+        createTopUp(client, message.provider, message.amount);
+        break;
+      case 'topup_status':
+        checkTopUp(client, message.id);
+        break;
       case 'list_rooms':
         client.send({ type: 'rooms', rooms: publicRooms() });
         break;
@@ -310,6 +396,51 @@ function createApp(options = {}) {
       if (error instanceof AccountError) throw new RoomError(error.message);
       throw error;
     }
+  }
+
+  // ——— Пополнение баланса ———
+
+  // Ответ платёжного сервиса ждём асинхронно, поэтому ошибки ловим здесь сами:
+  // общий try/catch вокруг handleMessage до промиса уже не дотянется.
+  function createTopUp(client, providerId, amount) {
+    if (!payments.enabled) {
+      client.fail('Пополнение сейчас не подключено');
+      return;
+    }
+    payments
+      .createTopUp(client.user, providerId, amount)
+      .then((invoice) => client.send({ type: 'topup_invoice', invoice }))
+      .catch((error) => {
+        if (error instanceof PaymentError) {
+          client.fail(error.message);
+          return;
+        }
+        console.error('Не удалось выставить счёт на пополнение:', error);
+        client.fail('Не удалось создать счёт, попробуйте ещё раз');
+      });
+  }
+
+  // Мини-апп спрашивает статус, пока игрок платит: вебхук могли не настроить,
+  // и тогда опрос — единственный способ узнать про оплату.
+  function checkTopUp(client, recordId) {
+    const record = payments.get(recordId);
+    // Чужой счёт не показываем и не трогаем — иначе по чужому id можно было бы
+    // узнать сумму и заставить сервер ходить в платёжный сервис.
+    if (!record || record.userId !== String(client.user.id)) {
+      client.fail('Счёт не найден');
+      return;
+    }
+    payments
+      .refresh(recordId)
+      .then((invoice) => client.send({ type: 'topup_status', invoice }))
+      .catch((error) => {
+        if (error instanceof PaymentError) {
+          client.fail(error.message);
+          return;
+        }
+        console.error('Не удалось проверить счёт:', error);
+        client.fail('Не удалось проверить оплату, попробуйте позже');
+      });
   }
 
   const COMMAND_HELP = [
@@ -442,6 +573,7 @@ function createApp(options = {}) {
       isAdmin: isAdmin(user),
       startingBalance: accounts.startingBalance,
       startParam: client.startParam || null,
+      topup: payments.describe(),
     });
 
     // Если игрок уже сидел за столом — возвращаем его туда же.
@@ -506,11 +638,32 @@ function createApp(options = {}) {
       room.dispose();
     }
     accounts.flush();
+    payments.flush();
     rooms.clear();
     clientsByUser.clear();
   });
 
   return server;
+}
+
+// Тело запроса читаем сами: у вебхука подпись считается по сырым байтам,
+// поэтому важно не пересобирать JSON и не дать прислать что-то огромное.
+function readRequestBody(req, limit) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error('Тело запроса слишком большое'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
 }
 
 function serveStatic(pathname, res) {
