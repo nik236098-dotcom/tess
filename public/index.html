@@ -7,8 +7,8 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1017'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='%2334d399'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=76" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700;800&display=swap" />
+  <link rel="stylesheet" href="/styles.css?v=83" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -61,141 +61,68 @@
 
         <div id="lobby-actions" class="lobby-actions hidden">
 
-          <!-- ═══ Главная ═══ -->
-          <div id="tab-home" class="tab-panel">
-            <header class="lb-top">
-              <div class="lb-brand">
-                <span class="lb-brand-mark"><svg class="icon"><use href="#i-crown"></use></svg></span>
-                <div class="lb-brand-text">
-                  <b>PokerGena</b>
-                  <span>играй · выигрывай · повторяй</span>
+          <!-- ═══ Главная ═══
+               Верстка 1:1 по макету дизайнера: холст 390×656 css px, все
+               элементы стоят по абсолютным координатам, снятым с макета
+               (масштаб макета 853/390 = 2.187). Баннеры, шапка и арты игр —
+               вырезки из макета, текст — живой. Холст масштабируется под
+               ширину экрана целиком, чтобы пропорции не плыли. ═══ -->
+          <div id="tab-home" class="tab-panel mk">
+            <div class="mk-wrap">
+              <div class="mk-canvas">
+                <div class="mk-header"></div>
+                <div id="avatar" class="mk-avatar">♠</div>
+                <i class="mk-avatar-badge"></i>
+                <span class="mk-balance-label">Баланс</span>
+                <b id="balance-value" class="mk-balance">$0.00</b>
+                <button id="btn-topup" class="mk-hit mk-plus" aria-label="Пополнить"></button>
+                <button id="btn-payout" class="mk-hit mk-vip" aria-label="Вывести"></button>
+
+                <div class="mk-hero"><button id="hero-play" class="mk-hit mk-hero-cta" aria-label="Играть сейчас"></button></div>
+
+                <h2 class="mk-h2 mk-h2-games">Игры</h2>
+                <button id="games-all" class="mk-link mk-link-games">Все игры<i class="mk-arrow"></i></button>
+                <div class="mk-games">
+                  <button class="mk-game" data-open="holdem" style="--i:0">
+                    <span class="mk-game-art" style="background-image:url('/img/lobby/game-0.png')"></span>
+                    <b>Poker</b>
+                    <span class="mk-game-meta"><i class="mk-person"></i><em data-online="holdem">—</em></span>
+                    <span class="mk-game-go"></span>
+                  </button>
+                  <button class="mk-game" data-open="blackjack" style="--i:1">
+                    <span class="mk-game-art" style="background-image:url('/img/lobby/game-1.png')"></span>
+                    <b>Blackjack</b>
+                    <span class="mk-game-meta"><i class="mk-person"></i><em data-online="blackjack">—</em></span>
+                    <span class="mk-game-go"></span>
+                  </button>
+                  <button class="mk-game" data-soon="Рулетка" style="--i:2">
+                    <span class="mk-game-art" style="background-image:url('/img/lobby/game-2.png')"></span>
+                    <b>Roulette</b>
+                    <span class="mk-game-meta"><i class="mk-person"></i><em>—</em></span>
+                    <span class="mk-game-go"></span>
+                  </button>
+                  <button class="mk-game" data-soon="Кости" style="--i:3">
+                    <span class="mk-game-art mk-game-art-cut" style="background-image:url('/img/lobby/game-3.png')"></span>
+                    <b>Dice</b>
+                    <span class="mk-game-meta"><i class="mk-person"></i><em>—</em></span>
+                    <span class="mk-game-go"></span>
+                  </button>
                 </div>
-              </div>
-              <button id="btn-menu" class="round-btn lb-menu" aria-label="Меню">
-                <svg class="icon icon-sm"><use href="#i-more"></use></svg>
-              </button>
-            </header>
 
-            <div class="lb-account">
-              <div id="avatar" class="lb-avatar">♠</div>
-              <div class="lb-balance">
-                <span class="lb-caption">Баланс</span>
-                <b id="balance-value" class="money">$0.00</b>
-              </div>
-              <button id="btn-topup" class="lb-plus" aria-label="Пополнить">
-                <svg class="icon"><use href="#i-plus"></use></svg>
-              </button>
-              <button id="btn-payout" class="lb-out">
-                <svg class="icon icon-sm"><use href="#i-arrow-up-right"></use></svg><span>Вывести</span>
-              </button>
-            </div>
+                <div class="mk-tour"><button id="tour-more" class="mk-hit mk-tour-cta" aria-label="Участвовать"></button></div>
 
-            <!-- Промо-баннер -->
-            <section class="lb-hero" id="hero-banner">
-              <div class="lb-hero-art" aria-hidden="true">
-                <i class="lb-hero-glow"></i>
-                <i class="lb-hero-ring"></i>
-                <div class="lb-hcard lb-hcard-b"><span class="lb-hc-corner">A<i>♦</i></span><span class="lb-hc-pip">♦</span><span class="lb-hc-corner br">A<i>♦</i></span></div>
-                <div class="lb-hcard lb-hcard-a"><span class="lb-hc-corner">A<i>♠</i></span><span class="lb-hc-pip">♠</span><span class="lb-hc-corner br">A<i>♠</i></span></div>
-                <i class="lb-chipart lb-chipart-1"></i>
-                <i class="lb-chipart lb-chipart-2"></i>
-                <i class="lb-chipart lb-chipart-3"></i>
-                <i class="lb-spark lb-spark-1"></i><i class="lb-spark lb-spark-2"></i><i class="lb-spark lb-spark-3"></i>
-              </div>
-              <div class="lb-hero-body">
-                <span class="lb-hero-kicker">Холдем · Блекджек</span>
-                <h1 class="lb-hero-title">Твой стол<br><em>уже ждёт</em></h1>
-                <p class="lb-hero-sub">Живые соперники и настоящие выигрыши — раздача начинается сейчас.</p>
-                <button id="hero-play" class="lb-cta">Играть сейчас<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></button>
-              </div>
-            </section>
+                <h2 class="mk-h2 mk-h2-wins">Последние выигрыши</h2>
+                <button id="wins-all" class="mk-link mk-link-wins">Смотреть все<i class="mk-arrow"></i></button>
+                <div id="wins-list" class="mk-wins"></div>
 
-            <!-- Игры -->
-            <div class="lb-sh">
-              <h2>Игры</h2>
-              <button id="games-all" class="lb-more">Все игры<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></button>
-            </div>
-            <div class="lb-games carousel">
-              <button class="lb-game lb-game-poker" data-open="holdem">
-                <span class="lb-game-art" aria-hidden="true">
-                  <i class="lb-mini lb-mini-1">A<b>♠</b></i>
-                  <i class="lb-mini lb-mini-2 red">A<b>♥</b></i>
-                  <i class="lb-chipart lb-chipart-red"></i>
-                </span>
-                <span class="lb-game-body">
-                  <b>Покер</b>
-                  <span>Texas Hold'em</span>
-                  <span class="lb-game-meta"><svg class="icon icon-sm"><use href="#i-users"></use></svg><em id="online-holdem">—</em></span>
-                </span>
-                <span class="lb-game-go"><svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
-              </button>
-
-              <button class="lb-game lb-game-bj" data-open="blackjack">
-                <span class="lb-game-art" aria-hidden="true">
-                  <i class="lb-mini lb-mini-3">J<b>♣</b></i>
-                  <i class="lb-mini lb-mini-4 red">A<b>♥</b></i>
-                  <i class="lb-21">21</i>
-                </span>
-                <span class="lb-game-body">
-                  <b>Блекджек</b>
-                  <span>Против дилера, до 21</span>
-                  <span class="lb-game-meta"><svg class="icon icon-sm"><use href="#i-users"></use></svg><em id="online-blackjack">—</em></span>
-                </span>
-                <span class="lb-game-go"><svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
-              </button>
-
-              <div class="lb-game lb-game-soon lb-game-roulette">
-                <span class="lb-game-art" aria-hidden="true"><i class="lb-wheel"></i></span>
-                <span class="lb-game-body">
-                  <b>Рулетка</b>
-                  <span>Европейская</span>
-                  <span class="lb-game-meta lb-soon">скоро</span>
-                </span>
-              </div>
-
-              <div class="lb-game lb-game-soon lb-game-dice">
-                <span class="lb-game-art" aria-hidden="true"><i class="lb-die lb-die-1"></i><i class="lb-die lb-die-2"></i></span>
-                <span class="lb-game-body">
-                  <b>Кости</b>
-                  <span>Быстрые раунды</span>
-                  <span class="lb-game-meta lb-soon">скоро</span>
-                </span>
+                <button id="help-link" class="mk-support">
+                  <i class="mk-support-icon"></i>
+                  <b>Нужна помощь?</b>
+                  <span>Напиши в поддержку — мы всегда на связи</span>
+                  <i class="mk-chevron"></i>
+                </button>
               </div>
             </div>
-
-            <!-- Столы онлайн -->
-            <div class="lb-sh">
-              <h2>Столы онлайн</h2>
-              <button id="rooms-refresh" class="lb-more">обновить</button>
-            </div>
-            <div id="home-rooms" class="carousel"></div>
-
-            <!-- Турнир -->
-            <section class="lb-tour" id="tour-card">
-              <span class="lb-tour-art" aria-hidden="true"><svg class="icon"><use href="#i-trophy"></use></svg></span>
-              <span class="lb-tour-body">
-                <span class="lb-caption">Турниры</span>
-                <b>Weekly Cup готовится</b>
-                <span>Первый турнир с призовым фондом объявим здесь и в чате.</span>
-              </span>
-              <button id="tour-more" class="lb-tour-btn">Подробнее</button>
-            </section>
-
-            <!-- Последние выигрыши -->
-            <div id="wins-card" class="hidden">
-              <div class="lb-sh"><h2>Последние выигрыши</h2></div>
-              <div id="wins-list" class="lb-wins"></div>
-            </div>
-
-            <!-- Поддержка -->
-            <button id="help-link" class="lb-support">
-              <span class="lb-support-icon"><svg class="icon"><use href="#i-headset"></use></svg></span>
-              <span class="lb-support-body">
-                <b>Нужна помощь?</b>
-                <span>Правила, история операций и поддержка — мы на связи</span>
-              </span>
-              <svg class="icon icon-sm chevron"><use href="#i-arrow-right"></use></svg>
-            </button>
           </div>
 
           <!-- ═══ Игры ═══ -->
@@ -457,22 +384,14 @@
         <div id="lobby-status" class="status">Подключаемся…</div>
       </div>
 
-      <nav id="bottom-nav" class="bottom-nav hidden">
-        <button class="nav-btn is-active" data-tab="home">
-          <svg class="icon"><use href="#i-home"></use></svg><span>Главная</span>
-        </button>
-        <button class="nav-btn" data-tab="games">
-          <svg class="icon"><use href="#i-gamepad"></use></svg><span>Игры</span>
-        </button>
-        <button class="nav-btn" data-tab="tournaments">
-          <svg class="icon"><use href="#i-trophy"></use></svg><span>Турниры</span>
-        </button>
-        <button class="nav-btn" data-tab="bonuses">
-          <svg class="icon"><use href="#i-gift"></use></svg><span>Бонусы</span>
-        </button>
-        <button class="nav-btn" data-tab="profile">
-          <svg class="icon"><use href="#i-user"></use></svg><span>Профиль</span>
-        </button>
+      <nav id="bottom-nav" class="bottom-nav mk-nav hidden">
+        <div class="mk-nav-inner">
+          <button class="nav-btn is-active" data-tab="home" style="--i:0"><i class="mk-nav-ic" style="--ic:url('/img/lobby/nav-home.png')"></i><span>Главная</span></button>
+          <button class="nav-btn" data-tab="games" style="--i:1"><i class="mk-nav-ic" style="--ic:url('/img/lobby/nav-games.png')"></i><span>Игры</span></button>
+          <button class="nav-btn" data-tab="tournaments" style="--i:2"><i class="mk-nav-ic" style="--ic:url('/img/lobby/nav-tour.png')"></i><span>Турниры</span></button>
+          <button class="nav-btn" data-tab="bonuses" style="--i:3"><i class="mk-nav-ic" style="--ic:url('/img/lobby/nav-gift.png')"></i><span>Бонусы</span></button>
+          <button class="nav-btn" data-tab="profile" style="--i:4"><i class="mk-nav-ic" style="--ic:url('/img/lobby/nav-user.png')"></i><span>Профиль</span></button>
+        </div>
       </nav>
     </section>
 
@@ -629,6 +548,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=47"></script>
+  <script src="/app.js?v=51"></script>
 </body>
 </html>

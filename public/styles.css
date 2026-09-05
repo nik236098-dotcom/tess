@@ -1,3 +1,14 @@
+/* ═══ Inter — локально, чтобы не зависеть от Google Fonts (в Telegram
+   WebView сторонние шрифты грузятся не всегда). Кириллица + латиница. ═══ */
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/Inter-400-cyrillic.woff2') format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/Inter-400-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/Inter-500-cyrillic.woff2') format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/Inter-500-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/Inter-600-cyrillic.woff2') format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/Inter-600-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/Inter-700-cyrillic.woff2') format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/Inter-700-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
 /* ═══════════════════════════════════════════════════════════════════════
    Poker ok 👌 — design system
    ═══════════════════════════════════════════════════════════════════════
@@ -2608,3 +2619,122 @@ input::placeholder { color: var(--text-muted); }
 .lb-profile-actions { display: flex; gap: 10px; margin-top: 10px; }
 .lb-profile-actions .btn { flex: 1; padding: 12px 10px; border-radius: 14px; }
 .lobby .btn-ghost { border-color: var(--lb-line-strong); color: var(--lb-text-2); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ГЛАВНАЯ 1:1 ПО МАКЕТУ
+   ═══════════════════════════════════════════════════════════════════════
+   Все координаты — из макета 853 px шириной, делённые на 2.187 (853/390).
+   Начало координат — верх контента приложения (в макете y=215, сразу под
+   шапкой Telegram). Шрифт: Inter как ближайший веб-аналог системного SF
+   в макете (проверить SF нельзя — его нет в вебе).                      */
+:root { --mk: 1; }
+body[data-tab="home"] .lobby { padding: 0; gap: 0; max-width: none; }
+body[data-tab="home"] .lobby > .status { display: none; }
+.mk-wrap { position: relative; width: 100%; height: calc(656px * var(--mk)); overflow: hidden; }
+.mk-canvas {
+  position: absolute; left: 0; top: 0;
+  width: 390px; height: 656px;
+  transform: scale(var(--mk)); transform-origin: 0 0;
+  background: #050712;
+  font-family: var(--font);
+  color: #fff;
+}
+.mk-canvas > * { position: absolute; margin: 0; }
+.mk-hit { background: none; border: 0; padding: 0; cursor: pointer; }
+.mk-hit:active { opacity: 0.8; }
+
+/* шапка: арт с логотипом, «+» и VIP запечены в вырезке */
+.mk-header { left: 0; top: 0; width: 390px; height: 112px; background: url('/img/lobby/header.png') no-repeat 0 0 / 390px 112px; }
+.mk-avatar {
+  left: 14.2px; top: 57.2px; width: 45.7px; height: 45.7px;
+  border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center;
+  background: #1b1730; color: #d9c8ff; font: 600 20px var(--font);
+  box-shadow: 0 0 0 1.4px #55418a;
+}
+.mk-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mk-avatar-badge { left: 44.4px; top: 86.4px; width: 16.5px; height: 16.5px; background: url('/img/lobby/avatar-badge.png') no-repeat 0 0 / 100% 100%; pointer-events: none; }
+.mk-balance-label { left: 73.2px; top: 62.3px; font: 400 8.2px/1 var(--font); color: #9d9fad; }
+.mk-balance { left: 73.2px; top: 75.8px; font: 600 17.8px/1 var(--font); color: #ffffff; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.mk-plus { left: 135.8px; top: 66.8px; width: 28.4px; height: 28.4px; border-radius: 50%; }
+.mk-vip { left: 295.8px; top: 68.1px; width: 88.7px; height: 27.9px; border-radius: 14px; }
+
+/* баннеры — вырезки целиком, поверх только область нажатия */
+.mk-hero { left: 11.4px; top: 110.2px; width: 368.1px; height: 144.5px; border-radius: 19px; overflow: hidden; background: url('/img/lobby/hero.png') no-repeat 0 0 / 100% 100%; }
+.mk-hero-cta { position: absolute; left: 21.5px; top: 109.7px; width: 114.3px; height: 24.2px; border-radius: 12px; }
+.mk-tour { left: 11.4px; top: 401.5px; width: 368.1px; height: 95.1px; border-radius: 19px; overflow: hidden; background: url('/img/lobby/tour.png') no-repeat 0 0 / 100% 100%; }
+.mk-tour-cta { position: absolute; left: 21.5px; top: 62.6px; width: 98.8px; height: 24.2px; border-radius: 12px; }
+
+/* заголовки секций и ссылки */
+.mk-h2 { left: 13.7px; font: 700 14px/1 var(--font); color: #ffffff; letter-spacing: 0; }
+.mk-h2-games { top: 268.8px; }
+.mk-h2-wins { top: 510.7px; font-size: 11.5px; }
+.mk-link { right: 10.5px; display: inline-flex; align-items: center; gap: 4.5px; background: none; border: 0; padding: 0; font: 500 10px/1 var(--font); color: #a049fa; cursor: pointer; }
+.mk-link-games { top: 271.4px; }
+.mk-link-wins { top: 511.1px; font-size: 9px; color: #a554f8; }
+.mk-arrow { width: 13.7px; height: 10px; background: currentColor; -webkit-mask: url('/img/lobby/arrow-right.png') no-repeat center / contain; mask: url('/img/lobby/arrow-right.png') no-repeat center / contain; }
+
+/* карточки игр: 92×92, шаг 98.8, четвёртая уходит за край как в макете */
+.mk-games { left: 0; top: 292.2px; width: 390px; height: 97px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.mk-games::-webkit-scrollbar { display: none; }
+.mk-game {
+  position: absolute; top: 0; left: calc(12.8px + var(--i) * 98.8px);
+  width: 92.8px; height: 96.5px;
+  padding: 0; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8.5px;
+  overflow: hidden; background: #090918; color: #fff; text-align: left; cursor: pointer;
+}
+.mk-game > * { position: absolute; }
+.mk-game-art { left: -1px; top: -1px; width: 92.8px; height: 64.5px; background-size: 92.8px 64.5px; background-repeat: no-repeat; }
+.mk-game-art-cut { background-size: 80.9px 64.5px; }
+.mk-game > b { left: 7.7px; top: 63.4px; font: 600 9px/1 var(--font); color: #fff; }
+.mk-game-meta { left: 7.7px; top: 78.2px; display: inline-flex; align-items: center; gap: 4.5px; font: 400 8px/1 var(--font); color: #808093; }
+.mk-game-meta em { font-style: normal; }
+.mk-person { width: 7.8px; height: 7.8px; background: #808093; -webkit-mask: url('/img/lobby/person.png') no-repeat center / contain; mask: url('/img/lobby/person.png') no-repeat center / contain; }
+.mk-game-go {
+  left: 62.1px; top: 67.6px; width: 22.9px; height: 22.9px;
+  border-radius: 50%; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.mk-game-go::after { content: ''; position: absolute; left: 4.6px; top: 4.6px; width: 13.7px; height: 13.7px; background: #fff; -webkit-mask: url('/img/lobby/card-arrow.png') no-repeat center / contain; mask: url('/img/lobby/card-arrow.png') no-repeat center / contain; }
+
+/* последние выигрыши: 89×54, шаг 95.6 */
+.mk-wins { left: 0; top: 530.4px; width: 390px; height: 53px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.mk-wins::-webkit-scrollbar { display: none; }
+.mk-win {
+  position: absolute; top: 0; left: calc(12.8px + var(--i) * 95.6px);
+  width: 92.4px; height: 52.6px;
+  border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 9px; background: #080e16;
+}
+.mk-win > * { position: absolute; }
+.mk-win-icon { left: 5.9px; top: 6.4px; width: 24.7px; height: 24.7px; background-size: 100% 100%; background-repeat: no-repeat; }
+.mk-win-sum { left: 37px; top: 8.3px; font: 700 11.3px/1 var(--font); color: #4bf6ba; font-variant-numeric: tabular-nums; }
+.mk-win-game { left: 37px; top: 24.9px; font: 500 7px/1 var(--font); color: #fefefe; }
+.mk-win-time { left: 37px; top: 38.3px; font: 400 6px/1 var(--font); color: #969ba4; white-space: nowrap; }
+
+/* поддержка */
+.mk-support {
+  left: 12.8px; top: 595.3px; width: 365.8px; height: 55.3px;
+  padding: 0; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 15px; background: #0c0e20;
+  text-align: left; color: #fff; cursor: pointer;
+}
+.mk-support > * { position: absolute; }
+.mk-support-icon { left: 15.5px; top: 9.1px; width: 36px; height: 37.5px; background: url('/img/lobby/support-icon.png') no-repeat 0 0 / 100% 100%; }
+.mk-support > b { left: 65.8px; top: 13.8px; font: 600 11px/1 var(--font); color: #fff; }
+.mk-support > span { left: 65.8px; top: 31.2px; font: 400 8.2px/1 var(--font); color: #a0a2b2; white-space: nowrap; }
+.mk-chevron { left: 340.2px; top: 25.1px; width: 13.7px; height: 12.8px; background: #a9a9bc; -webkit-mask: url('/img/lobby/chevron.png') no-repeat center / contain; mask: url('/img/lobby/chevron.png') no-repeat center / contain; }
+
+/* нижняя навигация по макету: полоса 55.3 css px, иконки-маски из макета */
+.bottom-nav.mk-nav { display: block; padding: 0; padding-bottom: var(--safe-bottom); background: #050712; border-top: 1px solid #18192a; }
+.mk-nav-inner { position: relative; width: 390px; height: 55.3px; transform: scale(var(--mk)); transform-origin: 0 0; }
+.bottom-nav.mk-nav { height: calc(55.3px * var(--mk) + var(--safe-bottom) + 1px); }
+.mk-nav .nav-btn {
+  position: absolute; top: 0; left: calc(var(--x) - 34px); width: 68px; height: 55.3px;
+  padding: 0; background: none; border: 0; border-radius: 0;
+  display: block; color: #838694; font: 500 9.2px/1 var(--font); letter-spacing: 0;
+}
+.mk-nav .nav-btn[style*="--i:0"] { --x: 39.8px; } .mk-nav .nav-btn[style*="--i:1"] { --x: 117.1px; }
+.mk-nav .nav-btn[style*="--i:2"] { --x: 195.7px; } .mk-nav .nav-btn[style*="--i:3"] { --x: 274.3px; } .mk-nav .nav-btn[style*="--i:4"] { --x: 348.4px; }
+.mk-nav-ic { position: absolute; left: 21.2px; top: 5.5px; width: 25.6px; height: 25.6px; background: #8c8e9c; -webkit-mask: var(--ic) no-repeat center / contain; mask: var(--ic) no-repeat center / contain; }
+.mk-nav .nav-btn span { position: absolute; left: 0; right: 0; top: 35.5px; text-align: center; }
+.mk-nav .nav-btn.is-active { color: #ad59fa; font-weight: 500; }
+.mk-nav .nav-btn.is-active .mk-nav-ic { background: #bc60fa; transform: none; filter: drop-shadow(0 0 6px rgba(188, 96, 250, 0.55)); }
+.mk-nav .nav-btn.is-active::before { content: ''; position: absolute; left: 22.6px; top: -1px; width: 22.9px; height: 1.5px; border-radius: 0 0 2px 2px; background: #a049fa; box-shadow: 0 0 6px rgba(160, 73, 250, 0.7); transform: none; }

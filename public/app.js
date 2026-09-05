@@ -74,18 +74,19 @@ const TABLE = {
 //   плашка банка  — x 155.1..244.9, y 281.6..328.9
 // Ассет — источник истины: ничего из этого в CSS не перерисовывается.
 const SEAT_CIRCLES = [
-  // d — внешний диаметр декора, inner — зелёное нутро кружка (замер
-  // радиальным профилем ассета). Аватар заполняет ИМЕННО нутро: кружок это
-  // рамка-контейнер, фото вставляется внутрь, а пунктир и золото остаются
-  // видимыми вокруг него.
-  { at: [0.4961, 0.7800], d: 58, inner: 51 },  // 0 низ по центру (герой)
-  { at: [0.1950, 0.6887], d: 50, inner: 43 },  // 1 низ слева
-  { at: [0.1194, 0.4687], d: 50, inner: 43 },  // 2 середина слева
-  { at: [0.1911, 0.2200], d: 50, inner: 44 },  // 3 верх слева
-  { at: [0.4980, 0.1213], d: 49, inner: 43 },  // 4 верх по центру
-  { at: [0.8050, 0.2200], d: 52, inner: 44 },  // 5 верх справа
-  { at: [0.8767, 0.4687], d: 49, inner: 42 },  // 6 середина справа
-  { at: [0.8050, 0.6900], d: 50, inner: 44 },  // 7 низ справа
+  // at — центр золотого кольца, d — «рабочий» диаметр кружка: внешний
+  // радиус золота ×2 минус 3. Оба числа получены подгонкой окружности к
+  // золотому кольцу ассета по 70–80 точкам на кружок (fitrings.py):
+  // прежние центры, снятые по зелёному нутру, уезжали от кольца до 2.5 px,
+  // и наша оправа съезжала с нарисованной. inner — зелёное нутро.
+  { at: [0.49948, 0.77577], d: 59.7, inner: 51 },  // 0 низ по центру (герой)
+  { at: [0.18980, 0.68728], d: 49.9, inner: 43 },  // 1 низ слева
+  { at: [0.11570, 0.46758], d: 49.3, inner: 43 },  // 2 середина слева
+  { at: [0.19198, 0.21780], d: 49.8, inner: 44 },  // 3 верх слева
+  { at: [0.49845, 0.12003], d: 47.5, inner: 43 },  // 4 верх по центру
+  { at: [0.80510, 0.21788], d: 49.8, inner: 44 },  // 5 верх справа
+  { at: [0.88275, 0.46823], d: 49.5, inner: 42 },  // 6 середина справа
+  { at: [0.80728, 0.68753], d: 50.0, inner: 44 },  // 7 низ справа
 ];
 
 // Смещения в логических пикселях от центра кружка. Карты — на внутренней
@@ -528,6 +529,7 @@ function watchTableSize() {
     new ResizeObserver(fitTable).observe(viewport);
   }
   window.addEventListener('resize', fitTable);
+  window.addEventListener('resize', fitLobby);
   window.addEventListener('orientationchange', fitTable);
 }
 
@@ -553,8 +555,16 @@ function showTable() {
 // выигрышей приходят одним и тем же сообщением, переключение ничего не грузит.
 const TABS = ['home', 'games', 'tournaments', 'bonuses', 'profile'];
 
+function fitLobby() {
+  // Холст главной свёрстан на 390 css px по макету; масштабируем под ширину.
+  const width = document.querySelector('.lobby')?.clientWidth || window.innerWidth;
+  document.documentElement.style.setProperty('--mk', (Math.min(width, 480) / 390).toFixed(4));
+}
+
 function showTab(tab) {
   state.tab = TABS.includes(tab) ? tab : 'home';
+  document.body.dataset.tab = state.tab;
+  fitLobby();
   for (const name of TABS) $(`tab-${name}`).classList.toggle('hidden', state.tab !== name);
   for (const button of document.querySelectorAll('.nav-btn')) {
     button.classList.toggle('is-active', button.dataset.tab === state.tab);
@@ -716,10 +726,10 @@ function renderOnline() {
   const count = { holdem: 0, blackjack: 0 };
   for (const room of state.rooms) count[room.game === 'blackjack' ? 'blackjack' : 'holdem'] += room.players || 0;
   for (const game of Object.keys(count)) {
-    const text = count[game] ? `${count[game]} онлайн` : 'ждёт игроков';
+    const text = count[game] >= 1000 ? `${(count[game] / 1000).toFixed(1)}K` : String(count[game]);
     for (const node of document.querySelectorAll(`[data-online="${game}"]`)) node.textContent = text;
     const node = $(`online-${game}`);
-    if (node) node.textContent = text;
+    if (node) node.textContent = count[game] ? `${count[game]} онлайн` : 'ждёт игроков';
   }
 }
 
@@ -727,6 +737,7 @@ function renderOnline() {
 function renderActiveGames() {
   renderOnline();
   const list = $('home-rooms');
+  if (!list) return; // на главной по макету списка столов нет
   if (!state.rooms.length) {
     list.innerHTML = '<div class="empty-note">Открытых столов сейчас нет.<br>Создайте свой во вкладке «Игры».</div>';
     return;
@@ -767,16 +778,20 @@ function renderActiveGames() {
 function renderWins() {
   const card = $('wins-card');
   const list = $('wins-list');
-  card.classList.toggle('hidden', !state.wins.length);
-  if (!state.wins.length) return;
+  if (card) card.classList.toggle('hidden', !state.wins.length);
+  if (!list) return;
+  if (!state.wins.length) { list.innerHTML = ''; return; }
 
-  list.innerHTML = state.wins.slice(0, 6).map((win) => {
+  const icons = { holdem: 0, blackjack: 1 };
+  list.innerHTML = state.wins.slice(0, 8).map((win, index) => {
     const blackjack = win.game === 'blackjack';
+    const icon = icons[blackjack ? 'blackjack' : 'holdem'];
     return `
-    <div class="lb-win">
-      <span class="lb-win-icon${blackjack ? ' bj' : ''}">${blackjack ? '♣' : '♠'}</span>
-      <span class="lb-win-sum">+${money(win.amount)}</span>
-      <span class="lb-win-meta" title="${blackjack ? 'Блекджек' : 'Покер'}"><b>${escapeHtml(win.name)}</b>${win.at ? ` · ${timeAgo(win.at)}` : ` · ${blackjack ? 'блекджек' : 'покер'}`}</span>
+    <div class="mk-win" style="--i:${index}">
+      <span class="mk-win-icon" style="background-image:url('/img/lobby/win-${icon}.png')"></span>
+      <span class="mk-win-sum">${money(win.amount)}</span>
+      <span class="mk-win-game">${blackjack ? 'Blackjack' : 'Poker'}</span>
+      <span class="mk-win-time">${win.at ? timeAgo(win.at) : escapeHtml(win.name)}</span>
     </div>`;
   }).join('');
 }
@@ -2186,7 +2201,11 @@ function bindUi() {
   on('profile-payout', 'click', () => $('btn-payout').click());
   on('hero-play', 'click', () => { haptic('light'); openGame('holdem'); });
   on('games-all', 'click', () => showTab('games'));
-  for (const card of document.querySelectorAll('.lb-game[data-open]')) {
+  for (const card of document.querySelectorAll('.mk-game[data-soon]')) {
+    card.addEventListener('click', () => toast(`${card.dataset.soon} — скоро`));
+  }
+  on('wins-all', 'click', () => toast('Полная лента выигрышей — скоро'));
+  for (const card of document.querySelectorAll('.lb-game[data-open], .mk-game[data-open]')) {
     card.addEventListener('click', () => { haptic('light'); openGame(card.dataset.open); });
   }
   on('tour-more', 'click', () => showTab('tournaments'));
