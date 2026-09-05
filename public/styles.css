@@ -760,6 +760,9 @@ input::placeholder { color: var(--text-muted); }
 
 .pot {
   position: absolute;
+  /* На ассете под банком нарисована плашка с надписью «БАНК»; сдвинешь
+     банк — она вылезет второй надписью. Поэтому координата привязана к
+     рисунку и не двигается. */
   left: 49.86%; top: 65.37%;
   transform: translate(-50%, -50%);
   width: 89px; height: 41px;
@@ -909,6 +912,11 @@ input::placeholder { color: var(--text-muted); }
 }
 
 /* Карманные карты — нижняя часть блока игрока, сразу под стеком */
+/* Карты героя: над аватаром, крупнее чужих. Свои карты — главное, что
+   игрок читает за столом, поэтому у них свой размер и своя сторона отступа. */
+.seat.me .seat-cards { margin-top: 0; margin-bottom: 4px; gap: 3px; }
+.seat.me .card-face { --card-w: 40px; border-radius: 5px; }
+
 .seat-cards {
   margin-top: 3px;
   display: flex; gap: 2px;

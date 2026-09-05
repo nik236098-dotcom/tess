@@ -79,8 +79,15 @@ const TABLE = {
 // shift — небольшая доводка блока в пикселях холста. Нужна там, где
 // кружок ассета стоит вплотную к краю сукна: у боковых мест блок сдвигается
 // внутрь, у нижнего — чуть вверх, чтобы карты не сползали на борт.
+// Вертикальный сдвиг блока героя от его якоря. Подобран так, чтобы карты
+// целиком лежали на сукне (сукно кончается на y=518 из 600) и не задевали
+// банк снизу, а аватар остался на нарисованном кружке.
+const HERO_SHIFT_Y = -56;
+
 const SEAT_ANCHORS = [
-  { seat: [0.4972, 0.8273], bet: [0.4975, 0.7156], shift: [0, -14] }, // низ по центру
+  // Ставка героя стоит НАД банком: под банком теперь лежат карты героя,
+  // а сам банк сдвинуть нельзя — на ассете под ним нарисована плашка.
+  { seat: [0.4972, 0.8273], bet: [0.4975, 0.5750], shift: [0, -14] }, // низ по центру
   { seat: [0.2597, 0.7486], bet: [0.3225, 0.6382], shift: [0, 0] },   // низ слева
   { seat: [0.1989, 0.4834], bet: [0.3428, 0.3745], shift: [12, 0] },  // середина слева
   { seat: [0.2652, 0.2348], bet: [0.3509, 0.3940], shift: [0, 0] },   // верх слева
@@ -940,7 +947,12 @@ function renderSeats(room) {
     node.style.setProperty('--bet-x', betShift(0, TABLE.width));
     node.style.setProperty('--bet-y', betShift(1, TABLE.height));
     node.style.setProperty('--body-x', `${anchor.shift[0]}px`);
-    node.style.setProperty('--body-y', `${anchor.shift[1]}px`);
+    // У героя карты лежат НАД аватаром, поэтому блок растёт вверх и ему
+    // нужна своя привязка: HERO_SHIFT_Y поднимает его так, чтобы карты
+    // целиком легли на сукно и не задели банк, а аватар остался на своём
+    // кружке. У остальных мест — общий сдвиг якоря.
+    const isHero = !seat.empty && seat.userId === room.you.userId;
+    node.style.setProperty('--body-y', `${isHero ? HERO_SHIFT_Y : anchor.shift[1]}px`);
     // Те же доли, но в пикселях холста: откуда и куда лететь фишке.
     state.fx.points.set(seat.index, {
       seat: { x: anchor.seat[0] * TABLE.width, y: anchor.seat[1] * TABLE.height },
@@ -971,7 +983,7 @@ function renderSeats(room) {
       return;
     }
 
-    if (seat.userId === room.you.userId) node.classList.add('me');
+    if (isHero) node.classList.add('me');
     if (seat.folded) node.classList.add('folded');
     if (seat.isActing) node.classList.add('acting');
     if (!seat.connected || seat.sittingOut) node.classList.add('away');
@@ -983,6 +995,11 @@ function renderSeats(room) {
     if (seat.inHand && !seat.folded && !seat.isActing && seat.lastAction) node.classList.add('acted');
     if (winnerIds.has(seat.userId)) node.classList.add('winner');
 
+    // Иерархия героя перевёрнута: КАРТЫ -> АВАТАР -> ИМЯ -> СТЕК. Свои
+    // карты важнее всего, поэтому они уходят к центру стола, целиком на
+    // сукно, и рисуются крупнее чужих. У соперников порядок прежний:
+    // АВАТАР -> ИМЯ -> СТЕК -> КАРТЫ.
+    if (isHero && seat.cards) body.appendChild(buildSeatCards(seat, position, count));
     body.appendChild(avatarNode(seat, room));
 
     const plate = document.createElement('div');
@@ -1013,7 +1030,7 @@ function renderSeats(room) {
 
     // Карты — часть блока игрока и идут сразу под табличкой со стеком:
     // аватар → имя → стек → карты. Своих координат у них нет.
-    if (seat.cards) body.appendChild(buildSeatCards(seat, position, count));
+    if (!isHero && seat.cards) body.appendChild(buildSeatCards(seat, position, count));
     if (seat.bet > 0) {
       const bet = document.createElement('div');
       bet.className = 'seat-bet';
