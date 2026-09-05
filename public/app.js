@@ -1068,7 +1068,15 @@ function renderSeats(room) {
 
     // ЭТАЛОННЫЙ БЛОК: собираем заново только среднее левое место (кружок 2)
     // по замерам с эталонного макета. Остальные семь пока живут по-старому.
-    if (anchor.at === 2) node.classList.add('proto');
+    if (anchor.at === 2) {
+      node.classList.add('proto');
+      // Значок масти нарисован на ассете и потому лежит ПОД аватаром.
+      // Рисуем его копию поверх: тот же файл, тот же масштаб фона, сдвиг
+      // background-position на координаты значка — пиксель в пиксель.
+      const badge = document.createElement('i');
+      badge.className = 'seat-badge';
+      node.appendChild(badge);
+    }
 
     if (isHero) node.classList.add('me');
     if (seat.folded) node.classList.add('folded');

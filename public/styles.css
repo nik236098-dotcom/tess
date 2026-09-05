@@ -1677,78 +1677,128 @@ input::placeholder { color: var(--text-muted); }
 /* ═══════════════════════════════════════════════════════════════════════
    ЭТАЛОННЫЙ БЛОК МЕСТА — пока только среднее левое (кружок 2)
    ═══════════════════════════════════════════════════════════════════════
-   Числа сняты с эталонного макета: он нарисован на том же ассете, поэтому
-   координаты переводятся в наш холст 400×600 напрямую.
-     аватар  центр [0, 0], Ø40, обрезан кружком
-     карты   центр [+30, +2], пара 21×30 с нахлёстом 8 и лёгким наклоном
-     плашка  центр [0, +27], ширина 72, имя сверху, стек золотом снизу
-     фишки   центр [+46, +33], стопка + сумма справа
-   Главное отличие от того, что я делал раньше: ставка стоит ВПЛОТНУЮ к
-   месту, а не отодвинута к банку на 70+ px. */
+   Все числа сняты с эталонного макета. Он нарисован на том же ассете, что и
+   стол, поэтому его координаты переводятся в наш холст 400×600 напрямую и
+   подбирать ничего не нужно. Центр кружка 2 — (47.8, 281.2); ниже указаны
+   смещения от него.
 
+     аватар  [0, 0]        Ø51, обрезан кружком, упирается в золотое кольцо
+     карты   [+27, +4]     пара 21×31 с нахлёстом, наклон −9°, уходит за аватар
+     плашка  [−1, +28]     ширина 56, высота ≈38: имя сверху, стек золотом
+     фишка   [+40, +32]    стопка Ø20
+     сумма   от +52        белым по сукну, без подложки — как в эталоне
+
+   Порядок слоёв: карты (1) → аватар (2) → плашка (3) → ставка (4) →
+   значок масти (6). Поэтому карты прячутся и за аватаром, и за плашкой,
+   а нарисованный на ассете значок остаётся поверх всего.                */
+
+/* ── Аватар ──────────────────────────────────────────────────────────
+   Оправа — САМ нарисованный кружок, своей рамки у аватара нет. Профиль
+   ассета: сукно кончается на Ø42.7, пунктир пустого места на Ø48.0,
+   золото начинается на Ø52.1. Ø51 перекрывает пунктир и упирается в
+   золото: ни зазора, ни «круга в круге». */
 .seat.proto .seat-avatar {
-  /* Оправа — САМ нарисованный кружок. Диаметр 48 равен пунктирному кольцу
-     (замер ассета: пунктир 48.0, внешний золотой декор 53.5), поэтому фото
-     перекрывает пунктир пустого места и упирается в золото. Своих колец,
-     подложек и теней нет: любое из них читается вторым кругом поверх
-     нарисованного. Центр — ровно центр кружка. */
-  width: 48px; height: 48px;
+  width: 51px; height: 51px;
   background: #16202b;
   box-shadow: none;
 }
-.seat.proto .seat-cards {
-  transform: translate(calc(-50% + 33px), calc(-50% + 1px)) rotate(7deg);
-  gap: 0;
-}
-.seat.proto .seat-cards .card-face {
-  --card-w: 21px;
-  --card-h: 32px;
-  border-radius: 3px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
-}
-/* Рубашка как в эталоне: ровный синий, светлый кант, без ряби. */
-.seat.proto .card-face.back {
-  background: linear-gradient(158deg, #3a63b4 0%, #2a4d92 55%, #1d3a72 100%);
-  box-shadow:
-    0 2px 5px rgba(0, 0, 0, 0.6),
-    inset 0 0 0 1.4px rgba(255, 255, 255, 0.85);
-}
-.seat.proto .seat-cards .card-face + .card-face { margin-left: -5px; }
-
-.seat.proto .seat-plate {
-  transform: translate(-50%, 16px);
-  /* В эталоне плашка узкая: 49 px по замеру, а не 72 — из-за широкой
-     плашки фишка налезала на неё. */
-  width: 50px; max-width: 50px; min-width: 50px;
-  padding: 2px 4px 3px;
-  border-radius: 7px;
-  border: 1px solid rgba(214, 174, 102, 0.75);
-  background: linear-gradient(180deg, #10151c, #070a0e);
-}
-.seat.proto .seat-name {
-  font: 600 9px/1.2 var(--font);
-  color: rgba(255, 255, 255, 0.9);
-}
-.seat.proto .seat-stack {
-  font: 700 11px/1.15 var(--font);
-  color: #f0c86f;
-}
-.seat.proto .chips { width: 16px; height: 16px; }
-.seat.proto .chip { width: 16px; height: 16px; bottom: calc(var(--i, 0) * 4px); }
-.seat.proto .chip::before { width: 16px; height: 16px; top: 2px; }
 .seat.proto.acting .seat-avatar {
   box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.9), 0 0 12px rgba(52, 211, 153, 0.4);
 }
 
+/* ── Карманные карты ─────────────────────────────────────────────────
+   Не две плашки сбоку, а пара карт, заткнутая за аватар: левый край
+   уходит под фото, нижний угол — под плашку с именем. */
+.seat.proto .seat-cards {
+  transform: translate(calc(-50% + 35px), calc(-50% + 4px)) rotate(-9deg);
+  gap: 0;
+  z-index: 1;
+}
+.seat.proto .seat-cards .card-face {
+  --card-w: 23px;
+  --card-h: 34px;
+  border-radius: 3px;
+}
+/* Веер: задняя карта завалена сильнее передней, иначе пара читается одной
+   картой — на прошлом снимке нахлёста не было видно вовсе. */
+.seat.proto .seat-cards .card-face:first-child { transform: rotate(-7deg); transform-origin: 50% 100%; }
+.seat.proto .seat-cards .card-face + .card-face { margin-left: -10px; }
+/* Рубашка как в эталоне: ровный синий, светлый кант, масть по центру. */
+.seat.proto .card-face.back {
+  background: linear-gradient(158deg, #4472c4 0%, #2f57a4 55%, #21407e 100%);
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1.4px rgba(255, 255, 255, 0.9);
+}
+.seat.proto .card-face.back::after {
+  content: '♠';
+  position: absolute;
+  inset: 0;
+  display: grid; place-items: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Плашка имени и стека ────────────────────────────────────────────
+   Замер эталона: рамка x 18.4..75.0 (ширина 56.6), y 289.1..330.5. */
+.seat.proto .seat-plate {
+  transform: translate(calc(-50% - 1px), 9px);
+  width: 56px; max-width: 56px; min-width: 56px;
+  padding: 2px 4px 3px;
+  border-radius: 7px;
+  border: 1px solid rgba(214, 174, 102, 0.8);
+  background: linear-gradient(180deg, #11161d, #06090d);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.65);
+}
+.seat.proto .seat-name {
+  font: 600 9px/1.25 var(--font);
+  color: rgba(255, 255, 255, 0.92);
+}
+.seat.proto .seat-stack {
+  font: 700 13px/1.2 var(--font);
+  color: #f3cd7a;
+}
+
+/* ── Ставка ──────────────────────────────────────────────────────────
+   В эталоне у суммы нет подложки: фишка лежит на сукне, рядом белая
+   сумма с тенью. Тёмная пилюля вокруг делала из ставки ещё одну плашку
+   и спорила с плашкой имени. */
 .seat.proto .seat-bet {
-  /* Эталон: стопка на +40, сумма на +58 от центра кружка. Ставка стоит
-     вплотную к месту, а не отодвинута к банку. */
-  transform: translate(calc(-50% + 56px), calc(-50% + 33px));
-  padding: 2px 7px 2px 3px;
-  gap: 4px;
-  font: 700 10px/1.3 var(--font);
-  border-radius: 11px;
-  background: rgba(4, 8, 12, 0.72);
-  border: 1px solid rgba(214, 174, 102, 0.22);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  /* Считаем от ЛЕВОГО края, а не от центра: ширина ставки зависит от суммы,
+     и при центрировании стопка наезжала на плашку с именем. Левый край на
+     +32 — сразу за правой кромкой плашки (+27). */
+  transform: translate(32px, calc(-50% + 32px));
+  padding: 0;
+  gap: 6px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: #ffffff;
+  font: 700 13px/1.2 var(--font);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 6px rgba(0, 0, 0, 0.6);
+}
+.seat.proto .chips { width: 20px; height: 20px; }
+.seat.proto .chip { width: 20px; height: 20px; bottom: calc(var(--i, 0) * 4px); }
+.seat.proto .chip::before { width: 20px; height: 20px; top: 2px; }
+
+/* ── Значок масти ────────────────────────────────────────────────────
+   Значок нарисован на ассете, то есть лежит ПОД аватаром. Возвращаем его
+   наверх копией из того же файла: фон растянут ровно как холст, поэтому
+   сдвиг background-position даёт пиксель в пиксель. Замер для кружка 2:
+   x 27.7..67.2, y 235.9..267.6. Маска мягкая: жёсткая обрезка
+   (прямоугольник или эллипс) оставляла на аватаре ровный срез с сукном и
+   золотом по углам. */
+.seat.proto .seat-badge {
+  position: absolute;
+  left: 0; top: 0;
+  transform: translate(calc(-50% - 0.3px), calc(-50% - 29.5px));
+  width: 39.5px; height: 31.7px;
+  background-image: url('/img/table-v2.webp');
+  background-size: var(--table-w) var(--table-h);
+  background-position: -27.7px -235.9px;
+  -webkit-mask-image: radial-gradient(circle at 50% 44%, #000 0 50%, rgba(0, 0, 0, 0) 66%);
+  mask-image: radial-gradient(circle at 50% 44%, #000 0 50%, rgba(0, 0, 0, 0) 66%);
+  pointer-events: none;
+  z-index: 6;
 }
