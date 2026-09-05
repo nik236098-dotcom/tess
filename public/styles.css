@@ -677,7 +677,7 @@ input::placeholder { color: var(--text-muted); }
 }
 /* Карты на борде повторяют нарисованную рамку один в один. */
 .board .card-face { --card-w: 35.9px; --card-h: 52.7px; }
-.card-face.small { --card-w: 22px; border-radius: 3px; }
+.card-face.small { --card-w: 24px; border-radius: 3px; }
 .card-face.no-anim { animation: none; }
 .card-face.red { color: #ce2f27; }
 .card-face .corner {
@@ -789,9 +789,9 @@ input::placeholder { color: var(--text-muted); }
   transform: translate(-50%, calc(var(--av, 50px) / 2 + 3px));
   z-index: 3;
   text-align: center;
-  max-width: 92px; min-width: 58px;
+  max-width: 78px; min-width: 52px;
   display: flex; flex-direction: column; gap: 0;
-  padding: 3px 9px 4px;
+  padding: 2px 7px 3px;
   border-radius: 8px;
   background: linear-gradient(180deg, rgba(16, 21, 28, 0.96), rgba(8, 11, 16, 0.97));
   border: 1px solid rgba(214, 174, 102, 0.45);
