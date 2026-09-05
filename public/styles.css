@@ -779,13 +779,15 @@ input::placeholder { color: var(--text-muted); }
 .seat > * { position: absolute; left: 0; top: 0; }
 .seat.folded { opacity: 0.4; }
 .seat.away { opacity: 0.58; }
-.seat.clickable .seat.acting .seat-plate { border-color: rgba(52, 211, 153, 0.55); }
+.seat.clickable .seat-plate { cursor: pointer; }
+.seat.acting .seat-plate { border-color: rgba(52, 211, 153, 0.55); }
 
 .seat-plate {
   /* Строго под аватаром, по центру кружка. Компактная, тёмная, с золотой
      кромкой — как в эталонных макетах. */
+  position: absolute;
   transform: translate(-50%, calc(var(--av, 50px) / 2 - 6px));
-  z-index: 2;
+  z-index: 3;
   text-align: center;
   max-width: 92px; min-width: 58px;
   display: flex; flex-direction: column; gap: 0;
@@ -837,19 +839,7 @@ input::placeholder { color: var(--text-muted); }
 .pos-badge.sb { left: -5px; top: -2px; background: linear-gradient(180deg, #6db4ff, #3579d0); color: #04121f; }
 .pos-badge.bb { left: -5px; top: -2px; background: linear-gradient(180deg, #efc478, #b8862f); color: #2b1d05; }
 
-.seat-plate {
-  position: relative;
-  z-index: 1;
-  text-align: center;
-  max-width: 80px; min-width: 56px;
-  display: flex; flex-direction: column; gap: 0;
-  padding: 2px 7px 3px;
-  border-radius: 7px;
-  background: linear-gradient(180deg, rgba(20, 26, 34, 0.94), rgba(10, 14, 20, 0.96));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.55);
-  margin-top: -8px;
-}
+
 .seat-name {
   font: 600 10px/1.2 var(--font);
   color: rgba(255, 255, 255, 0.72);
