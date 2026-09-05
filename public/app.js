@@ -55,17 +55,50 @@ const $ = (id) => document.getElementById(id);
 // Эти числа обязаны совпадать с --table-w/--table-h и рамкой .rail в CSS:
 // от них считаются места, поэтому держим их в одном месте.
 const TABLE = {
-  width: 440,
-  height: 700,
-  // Центр и радиусы эллипса, по которому садятся места. Совпадают с рамкой
-  // .rail в CSS, только чуть уже: места слегка заходят на борт, как за
-  // настоящим столом, а не висят снаружи.
-  centerX: 220,
-  centerY: 350,
-  radiusX: 168,
-  radiusY: 270,
+  // Логический размер холста. Пропорции те же, что у ассета (1086×1448),
+  // поэтому картинка ложится в него без искажений.
+  width: 450,
+  height: 600,
+  // Куда «смотрит» место: центр игровой зоны, там же лежат общие карты.
+  focusX: 0.4982,
+  focusY: 0.4941,
   maxScale: 2.4,
 };
+
+// Точки посадки сняты по пунктирным кружкам самого ассета (в долях от
+// картинки), по часовой стрелке начиная снизу. Своё место всегда первое,
+// поэтому игрок сидит внизу по центру, как в любом покерном клиенте.
+// Раскладка мест снята с самого ассета: точка посадки — пунктирный кружок,
+// а позиции карт и ставки подобраны так, чтобы ни на одном месте они не
+// пересекали ни аватар с табличкой, ни общие карты, ни банк, и не вылезали
+// за сукно. Всё в долях от картинки, поэтому масштабируется вместе с ней.
+const SEAT_ANCHORS = [
+  { seat: [0.4972, 0.8273], card: [0.4974, 0.7573], bet: [0.4975, 0.7156] }, // низ по центру
+  { seat: [0.2597, 0.7486], card: [0.2989, 0.6796], bet: [0.3225, 0.6382] }, // низ слева
+  { seat: [0.1989, 0.4834], card: [0.2896, 0.4147], bet: [0.3428, 0.3745] }, // середина слева
+  { seat: [0.2652, 0.2348], card: [0.3292, 0.3538], bet: [0.3509, 0.3940] }, // верх слева
+  { seat: [0.4972, 0.1561], card: [0.4976, 0.2761], bet: [0.4977, 0.3178] }, // верх по центру
+  { seat: [0.7348, 0.2348], card: [0.6696, 0.3535], bet: [0.6476, 0.3935] }, // верх справа
+  { seat: [0.7956, 0.4834], card: [0.7049, 0.4147], bet: [0.6517, 0.3745] }, // середина справа
+  { seat: [0.7348, 0.7486], card: [0.6959, 0.6795], bet: [0.6726, 0.6380] }, // низ справа
+];
+
+// Место номер index из count. Пока мест не больше восьми, они садятся ровно
+// на кружки ассета; девятое доводится интерполяцией по тому же контуру.
+function seatAnchor(index, count) {
+  const total = SEAT_ANCHORS.length;
+  if (count <= total) return SEAT_ANCHORS[Math.round((index * total) / count) % total];
+
+  const exact = (index * total) / count;
+  const from = SEAT_ANCHORS[Math.floor(exact) % total];
+  const to = SEAT_ANCHORS[(Math.floor(exact) + 1) % total];
+  const t = exact - Math.floor(exact);
+  const mix = (key) => [
+    from[key][0] + (to[key][0] - from[key][0]) * t,
+    from[key][1] + (to[key][1] - from[key][1]) * t,
+  ];
+  return { seat: mix('seat'), card: mix('card'), bet: mix('bet') };
+}
 
 // Иконки берутся из общего спрайта в index.html — эмодзи в интерфейсе не
 // используются, чтобы вид не зависел от шрифта конкретной платформы.
@@ -362,7 +395,7 @@ function fitTable() {
 
   // Поля по краям: иначе крайние места упираются в границы области и
   // верхнее срезается шапкой.
-  const pad = 12;
+  const pad = 4;
   const scale = Math.min(
     Math.max(box.width - pad * 2, 1) / TABLE.width,
     Math.max(box.height - pad * 2, 1) / TABLE.height,
@@ -738,16 +771,20 @@ function renderBoard(room) {
     const known = board.dataset.cards ? board.dataset.cards.split(',') : [];
     const cards = room.board || [];
     board.innerHTML = '';
-    // Пять слотов есть всегда: тёрн и ривер занимают уже готовое место,
-    // и стол не дёргается, когда они приходят.
-    for (let index = 0; index < 5; index++) {
-      const slot = document.createElement('div');
-      slot.className = 'card-slot';
-      if (cards[index]) {
-        slot.classList.add('filled');
-        slot.appendChild(cardNode(cards[index], false, known[index] !== cards[index]));
+    // До флопа общих карт нет — и пустых рамок тоже: центр стола должен
+    // выглядеть законченным, а не размеченным под будущие карты.
+    // Как только приходит флоп, ставим сразу пять слотов: тёрн и ривер
+    // занимают готовое место, и стол не дёргается.
+    if (cards.length) {
+      for (let index = 0; index < 5; index++) {
+        const slot = document.createElement('div');
+        slot.className = 'card-slot';
+        if (cards[index]) {
+          slot.classList.add('filled');
+          slot.appendChild(cardNode(cards[index], false, known[index] !== cards[index]));
+        }
+        board.appendChild(slot);
       }
-      board.appendChild(slot);
     }
     board.dataset.cards = codes;
   }
@@ -790,6 +827,20 @@ function renderHandBadge(room) {
   if (text) badge.textContent = text;
 }
 
+// Карты игрока. Ключ помнит, что уже лежало на этом месте: новая карта
+// прилетает с анимацией, а прежние просто перерисовываются.
+function buildSeatCards(seat) {
+  const cards = document.createElement('div');
+  cards.className = 'seat-cards';
+  seat.cards.forEach((card, index) => {
+    const key = `${seat.index}:${index}:${card}`;
+    const fresh = !state.shownCards.has(key);
+    state.shownCards.add(key);
+    cards.appendChild(cardNode(card, true, fresh));
+  });
+  return cards;
+}
+
 function renderSeats(room) {
   if (state.shownHand !== room.handNumber) {
     state.shownHand = room.handNumber;
@@ -806,14 +857,25 @@ function renderSeats(room) {
 
   room.seats.forEach((seat) => {
     const position = ((seat.index - offset) + count) % count;
-    const angle = (90 + (position * 360) / count) * (Math.PI / 180);
+
+    // Единственная точка привязки места — кружок, нарисованный на ассете.
+    // Карты и ставка живут внутри того же места и смещены от якоря на
+    // заранее подобранные величины, а не собственными координатами.
+    const anchor = seatAnchor(position, count);
     const node = document.createElement('div');
-    // Нижние места растут вниз, верхние — вверх: ставка и карты у всех
-    // оказываются со стороны стола, а имя со стеком — снаружи.
-    node.className = `seat ${Math.sin(angle) >= 0 ? 'at-bottom' : 'at-top'}`;
-    // Координаты в логических пикселях холста — тех же, в которых задан борт.
-    node.style.left = `${TABLE.centerX + TABLE.radiusX * Math.cos(angle)}px`;
-    node.style.top = `${TABLE.centerY + TABLE.radiusY * Math.sin(angle)}px`;
+    node.className = 'seat';
+    node.style.left = `${(anchor.seat[0] * 100).toFixed(3)}%`;
+    node.style.top = `${(anchor.seat[1] * 100).toFixed(3)}%`;
+    // Смещение части места от якоря, в пикселях холста.
+    const shift = (part, axis, size) => `${((anchor[part][axis] - anchor.seat[axis]) * size).toFixed(1)}px`;
+    node.style.setProperty('--card-x', shift('card', 0, TABLE.width));
+    node.style.setProperty('--card-y', shift('card', 1, TABLE.height));
+    node.style.setProperty('--bet-x', shift('bet', 0, TABLE.width));
+    node.style.setProperty('--bet-y', shift('bet', 1, TABLE.height));
+
+    const body = document.createElement('div');
+    body.className = 'seat-body';
+    node.appendChild(body);
 
     if (seat.empty) {
       node.classList.add('empty');
@@ -828,7 +890,7 @@ function renderSeats(room) {
           send({ type: 'sit', seat: seat.index });
         });
       }
-      node.appendChild(slot);
+      body.appendChild(slot);
       container.appendChild(node);
       return;
     }
@@ -838,29 +900,7 @@ function renderSeats(room) {
     if (seat.isActing) node.classList.add('acting');
     if (!seat.connected || seat.sittingOut) node.classList.add('away');
 
-    // Порядок в разметке один для всех мест, направление задаёт CSS.
-    if (seat.bet > 0) {
-      const bet = document.createElement('div');
-      bet.className = 'seat-bet';
-      bet.textContent = money(seat.bet);
-      node.appendChild(bet);
-    }
-
-    if (seat.cards) {
-      const cards = document.createElement('div');
-      cards.className = 'seat-cards';
-      seat.cards.forEach((card, position) => {
-        // Ключ помнит, что уже лежало на этом месте: новая карта прилетает
-        // с анимацией, а прежние просто перерисовываются.
-        const key = `${seat.index}:${position}:${card}`;
-        const fresh = !state.shownCards.has(key);
-        state.shownCards.add(key);
-        cards.appendChild(cardNode(card, true, fresh));
-      });
-      node.appendChild(cards);
-    }
-
-    node.appendChild(avatarNode(seat));
+    body.appendChild(avatarNode(seat));
 
     const plate = document.createElement('div');
     plate.className = 'seat-plate';
@@ -872,13 +912,30 @@ function renderSeats(room) {
       node.classList.add('clickable');
       plate.addEventListener('click', () => openChipsSheet(seat));
     }
-    node.appendChild(plate);
+    body.appendChild(plate);
+
+    if (seat.combination) {
+      const combo = document.createElement('div');
+      combo.className = 'seat-combo';
+      combo.textContent = seat.combination;
+      body.appendChild(combo);
+    }
 
     if (seat.bet <= 0) {
       const status = document.createElement('div');
       status.className = 'seat-status';
       status.textContent = seatStatus(seat);
-      node.appendChild(status);
+      body.appendChild(status);
+    }
+
+    // Карты и ставка — части того же места, а не отдельные узлы на сукне.
+    // Смещение по --dx/--dy задаёт CSS, здесь координат больше нет.
+    if (seat.cards) node.appendChild(buildSeatCards(seat));
+    if (seat.bet > 0) {
+      const bet = document.createElement('div');
+      bet.className = 'seat-bet';
+      bet.textContent = money(seat.bet);
+      node.appendChild(bet);
     }
 
     container.appendChild(node);

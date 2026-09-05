@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=3" />
+  <link rel="stylesheet" href="/styles.css?v=4" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -378,26 +378,19 @@
       <div class="table-wrap">
         <!-- Холст стола: постоянный размер 440×660, масштаб задаёт JS.
              Всё, что должно расти вместе со столом, лежит внутри него. -->
+        <!-- Стол — готовый ассет. Он же задаёт систему координат: все
+             игровые элементы лежат внутри этого холста и позиционируются
+             в долях от него, поэтому масштабируются вместе с картинкой. -->
         <div id="table-viewport" class="table-viewport">
           <div id="table-canvas" class="table-canvas">
-            <div class="rail">
-              <div class="felt">
-                <div class="watermark">&#9824;</div>
-                <div class="felt-line"></div>
-                <div class="table-brand">Poker ok</div>
-                <div class="center">
-                  <div id="hand-badge" class="hand-badge hidden"></div>
-                  <div id="board" class="board"></div>
-                  <div id="pot" class="pot hidden">
-                    <span class="pot-label">Банк</span>
-                    <b id="pot-value">$0.00</b>
-                  </div>
-                  <div id="table-message" class="table-message">Ждём игроков</div>
-                </div>
-              </div>
-            </div>
-
             <div id="seats" class="seats"></div>
+            <div id="board" class="board"></div>
+            <div id="pot" class="pot hidden">
+              <span class="pot-label">Банк</span>
+              <b id="pot-value">$0.00</b>
+            </div>
+            <div id="hand-badge" class="hand-badge hidden"></div>
+            <div id="table-message" class="table-message">Ждём игроков</div>
             <div id="feed" class="feed"></div>
             <div id="winner-pop" class="winner-pop hidden"></div>
           </div>
@@ -516,6 +509,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=3"></script>
+  <script src="/app.js?v=4"></script>
 </body>
 </html>
