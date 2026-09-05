@@ -602,9 +602,9 @@ input::placeholder { color: var(--text-muted); }
    ═══════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --table-w: 450px;   /* логическая ширина холста, 3:4 как у ассета */
+  --table-w: 400px;   /* логическая ширина холста, 2:3 как у ассета */
   --table-h: 600px;
-  --table-px: 450px;  /* фактическая ширина стола на экране — считает JS */
+  --table-px: 400px;  /* фактическая ширина стола на экране — считает JS */
 }
 
 .table-wrap {
@@ -641,66 +641,7 @@ input::placeholder { color: var(--text-muted); }
      любом масштабе; fitTable() дописывает scale() к этой же строке. */
   transform: translate(-50%, -50%) scale(1);
   will-change: transform;
-  background: url('/img/table.webp') center / 100% 100% no-repeat;
-}
-
-/* ═══ Фирменный знак на сукне ═══
-   Ассет пришёл с чужим логотипом на сукне; логотип снят, площадка под него
-   осталась: в долях картинки это x 0.389…0.605, y 0.238…0.347, центр
-   0.4972 / 0.2925. Свой знак лежит отдельным слоем поверх холста, поэтому
-   масштабируется вместе со столом и меняется без перерисовки картинки.
-   Знак декоративный: кликов не ловит и стоит первым в холсте, то есть
-   всегда под местами, картами и банком.
-   Второй вариант — знак, запечённый прямо в картинку: тогда фоном холста
-   ставится img/table-branded.webp, а этот блок и div.table-logo убираются. */
-
-.table-logo {
-  position: absolute;
-  left: 49.72%; top: 28.9%;
-  width: 21.5%;
-  transform: translate(-50%, -50%);
-  display: flex; flex-direction: column; align-items: center;
-  pointer-events: none;
-  user-select: none;
-  opacity: 0.92;
-}
-
-.table-logo-mark {
-  font-size: 24px;
-  line-height: 1;
-  /* Эмодзи рисует система, поэтому в золото его переводит фильтр:
-     так знак не спорит с золотом борта и надписи, а остаётся её частью. */
-  filter: grayscale(1) sepia(1) saturate(1.75) hue-rotate(-4deg) brightness(1.16)
-          drop-shadow(0 1px 1.5px rgba(4, 16, 10, 0.6));
-}
-
-.table-logo-word {
-  margin-top: 3px;
-  font: 700 12.5px/1 var(--font-brand);
-  letter-spacing: 0.2em;
-  text-indent: 0.2em;   /* трекинг после последней буквы — обратно в центр */
-  background: linear-gradient(180deg, #f8e4aa 0%, #e4c278 40%, #c6a058 62%, #94753c 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 1px 1px rgba(4, 16, 10, 0.55));
-}
-
-.table-logo-rule {
-  margin-top: 5px;
-  width: 84%; height: 5px;
-  background:
-    linear-gradient(90deg, rgba(176, 142, 78, 0.8), rgba(176, 142, 78, 0.8)) 0 50% / calc(50% - 7px) 1px no-repeat,
-    linear-gradient(90deg, rgba(176, 142, 78, 0.8), rgba(176, 142, 78, 0.8)) 100% 50% / calc(50% - 7px) 1px no-repeat;
-  position: relative;
-}
-.table-logo-rule::after {
-  content: '';
-  position: absolute;
-  left: 50%; top: 50%;
-  width: 4px; height: 4px;
-  transform: translate(-50%, -50%) rotate(45deg);
-  background: rgba(216, 182, 110, 0.92);
+  background: url('/img/table-v2.webp') center / 100% 100% no-repeat;
 }
 
 /* ═══ Карты ═══
@@ -709,14 +650,17 @@ input::placeholder { color: var(--text-muted); }
 /* Размеры сняты с нарисованных на ассете рамок: рамка 34.6x53, шаг 42.05,
    значит зазор 7.45; центр ряда (224.2, 296.3) из 450x600. Карта обязана
    заполнять свою рамку — иначе видно, что она меньше места под неё. */
+/* Слоты общих карт нарисованы на ассете: 5 × 35.9×52.7, шаг 39.3 (зазор 3.4),
+   ряд с центром (199.8, 247.5) из 400×600. Карта заполняет свой слот. */
 .board {
   position: absolute;
-  left: 49.82%; top: 49.38%;
+  left: 49.95%; top: 41.25%;
   transform: translate(-50%, -50%);
-  display: flex; gap: 7.45px;
+  display: flex; gap: 3.4px;
 }
 
-.card-slot { width: 34.6px; height: 53px; flex: none; }
+/* Рамки слотов нарисованы на ассете — свои не рисуем, только держим место. */
+.card-slot { width: 35.9px; height: 52.7px; flex: none; }
 
 .card-face {
   --card-w: 34.6px;
@@ -732,8 +676,8 @@ input::placeholder { color: var(--text-muted); }
   animation: deal 0.3s var(--ease) both;
 }
 /* Карты на борде повторяют нарисованную рамку один в один. */
-.board .card-face { --card-w: 34.6px; --card-h: 53px; }
-.card-face.small { --card-w: 23px; border-radius: 3px; }
+.board .card-face { --card-w: 35.9px; --card-h: 52.7px; }
+.card-face.small { --card-w: 26px; border-radius: 3px; }
 .card-face.no-anim { animation: none; }
 .card-face.red { color: #ce2f27; }
 .card-face .corner {
@@ -765,17 +709,17 @@ input::placeholder { color: var(--text-muted); }
    Ложится ровно на золотую плашку ассета: 215×99 из 1086×1448. */
 
 .pot {
+  /* Плашка НАРИСОВАНА на ассете (x 155.1..244.9, y 281.6..328.9 из 400×600).
+     Своей рамки не рисуем; внутрь кладём подложку в цвет нутра плашки,
+     иначе сквозь наш текст просвечивает запечённое «$0.00». */
   position: absolute;
-  /* На ассете под банком нарисована плашка с надписью «БАНК»; сдвинешь
-     банк — она вылезет второй надписью. Поэтому координата привязана к
-     рисунку и не двигается. */
-  left: 49.86%; top: 65.37%;
+  left: 50%; top: 50.87%;
   transform: translate(-50%, -50%);
-  width: 89px; height: 41px;
+  width: 78px; height: 36px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
-  border-radius: 7px;
-  background: linear-gradient(180deg, #12130d, #080906);
-  box-shadow: inset 0 0 0 1px rgba(214, 174, 102, 0.55);
+  background: #0b0e0b;
+  border-radius: 4px;
+  box-shadow: none;
 }
 .pot-label {
   font: var(--t-label);
@@ -829,39 +773,53 @@ input::placeholder { color: var(--text-muted); }
 }
 .seat > * { pointer-events: auto; }
 
-.seat-body {
-  position: absolute;
-  left: 0; top: 0;
-  transform: translate(calc(-50% + var(--body-x, 0px)), calc(-22px + var(--body-y, 0px)));
-  display: flex; flex-direction: column; align-items: center;
-  /* Ширину задаёт место: у героя 84, у боковых 48 — между краем сукна и
-     рядом общих карт там всего ~49 px. Аватар везде 44, ровно как
-     нарисованный кружок, поэтому места не выглядят разнокалиберными. */
-  width: var(--seat-w, 64px);
-}
-.seat.me .seat-body { width: 84px; }
+/* Место — точка привязки к нарисованному кружку. Части висят на своих
+   смещениях (--cx/--cy карты, --bx/--by ставка), у каждой своя зона:
+   они не выстраиваются в колонку и не толкают друг друга. */
+.seat > * { position: absolute; left: 0; top: 0; }
 .seat.folded { opacity: 0.4; }
 .seat.away { opacity: 0.58; }
-.seat.clickable .seat-plate { cursor: pointer; }
+.seat.clickable .seat.acting .seat-plate { border-color: rgba(52, 211, 153, 0.55); }
+
+.seat-plate {
+  /* Строго под аватаром, по центру кружка. Компактная, тёмная, с золотой
+     кромкой — как в эталонных макетах. */
+  transform: translate(-50%, calc(var(--av, 50px) / 2 - 6px));
+  z-index: 2;
+  text-align: center;
+  max-width: 92px; min-width: 58px;
+  display: flex; flex-direction: column; gap: 0;
+  padding: 2px 8px 3px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(16, 21, 28, 0.96), rgba(8, 11, 16, 0.97));
+  border: 1px solid rgba(214, 174, 102, 0.45);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
+}
 
 .seat-avatar {
-  position: relative;
-  width: 44px; height: 44px;
+  /* Диаметр приходит из ассета (--av): аватар обязан заполнять кружок,
+     а не болтаться внутри него. Кружок уже нарисован — своего не рисуем. */
+  width: var(--av, 50px); height: var(--av, 50px);
+  transform: translate(-50%, -50%);
   border-radius: 50%;
   display: grid; place-items: center;
+  overflow: hidden;
   background: linear-gradient(158deg, #303c4b, #1a212b);
-  border: 2px solid rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.78);
-  font: 600 15px var(--font);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  color: rgba(255, 255, 255, 0.82);
+  font: 600 17px var(--font);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.55);
+  transition: box-shadow 0.2s;
 }
-.seat-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.seat.me .seat-avatar { border-color: rgba(214, 174, 102, 0.6); }
+.seat-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+
+/* Ход игрока (пункт 22): тонкое зелёное кольцо вокруг аватара и мягкий
+   ореол. Не заливаем блок, не перекрашиваем аватар, не трогаем масть на
+   ассете. Подсветка следует за активным игроком, у героя её нет постоянно. */
 .seat.acting .seat-avatar {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.24), 0 4px 10px rgba(0, 0, 0, 0.6);
-  animation: breathe 2s ease-in-out infinite;
+  box-shadow:
+    0 0 0 2.5px rgba(52, 211, 153, 0.95),
+    0 0 14px rgba(52, 211, 153, 0.45),
+    0 4px 10px rgba(0, 0, 0, 0.55);
 }
 
 .pos-badge {
@@ -921,75 +879,81 @@ input::placeholder { color: var(--text-muted); }
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
-/* Карманные карты — нижняя часть блока игрока, сразу под стеком */
-/* Карты героя: над аватаром, крупнее чужих. Свои карты — главное, что
-   игрок читает за столом, поэтому у них свой размер и своя сторона отступа. */
-.seat.me .seat-cards { margin-top: 0; margin-bottom: 4px; gap: 3px; }
-.seat.me .card-face { --card-w: 40px; border-radius: 5px; }
-
-/* Карты над блоком (нижнее место): порядок КАРТЫ → АВАТАР → ИМЯ → СТЕК. */
-.seat.above .seat-cards { margin-top: 0; margin-bottom: 3px; }
-
+/* Карманные карты сидят на собственном якоре (--cx/--cy) — на внутренней
+   стороне места, к сукну. Ни колонки, ни отступов: своя зона. */
 .seat-cards {
-  margin-top: 3px;
+  transform: translate(calc(-50% + var(--cx, 0px)), calc(-50% + var(--cy, 0px)));
   display: flex; gap: 2px;
-  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.55));
+  filter: drop-shadow(0 3px 7px rgba(0, 0, 0, 0.6));
+}
+/* Свои карты крупнее чужих и лежат над аватаром — главный элемент экрана. */
+.seat.me .seat-cards { gap: 4px; z-index: 3; }
+.seat.me .card-face { --card-w: 44px; border-radius: 5px; }
+
+/* Ярлык силы руки: один на весь экран, между своими картами и аватаром. */
+.hand-label {
+  transform: translate(-50%, calc(var(--cy, 0px) + 40px));
+  padding: 2px 9px 3px;
+  border-radius: var(--r-pill);
+  background: rgba(8, 14, 10, 0.82);
+  border: 1px solid rgba(82, 190, 140, 0.4);
+  color: #9fe3c0;
+  font: 600 10px/1.2 var(--font);
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  animation: hand-label-in 0.16s var(--ease) both;
+}
+@keyframes hand-label-in {
+  from { opacity: 0; transform: translate(-50%, calc(var(--cy, 0px) + 40px)) scale(0.94); }
+  to   { opacity: 1; transform: translate(-50%, calc(var(--cy, 0px) + 40px)) scale(1); }
 }
 
-/* Ставка — ещё ближе к банку */
+/* Ставка: свой якорь на стороне банка (--bx/--by). Фишки — компактное
+   представление суммы, точное значение всегда написано рядом. */
 .seat-bet {
-  /* Ширина ограничена: восемь фишек шире 46 px на это сукно не помещаются
-     без наложения на блоки игроков, поэтому крупные суммы показываем
-     сокращённо (money → shortMoney). */
-  max-width: 46px;
-  overflow: hidden;
-  position: absolute;
-  left: 0; top: 0;
-  transform: translate(var(--bet-x), var(--bet-y)) translate(-50%, -50%);
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 1px 8px 2px 5px;
-  border-radius: 7px;
-  background: linear-gradient(180deg, rgba(20, 26, 34, 0.94), rgba(9, 13, 18, 0.96));
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  color: #f0c977;
+  transform: translate(calc(-50% + var(--bx, 0px)), calc(-50% + var(--by, 0px)));
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 7px 2px 4px;
+  border-radius: 9px;
+  background: rgba(6, 10, 14, 0.72);
+  color: #f2d59a;
   font: 700 10px/1.4 var(--font);
-  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.55);
-  animation: pop-in 0.2s var(--ease);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  z-index: 2;
 }
-.seat-bet::before {
-  content: '';
-  width: 8px; height: 8px; border-radius: 50%;
-  background: radial-gradient(circle at 34% 28%, #f6dca8, #c08f34 60%, #7a5518);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+.chips { display: inline-flex; align-items: center; }
+.chip {
+  width: 11px; height: 11px; border-radius: 50%;
+  margin-left: -4px;
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transform: translateY(calc(var(--i, 0) * -1.5px));
 }
+.chip:first-child { margin-left: 0; }
+/* Цвет фишки — строго по номиналу, не случайный (пункт 9 задания). */
+.chip-red   { background: radial-gradient(circle at 35% 30%, #d4636a, #9c2630 65%, #6d161e); }
+.chip-blue  { background: radial-gradient(circle at 35% 30%, #6fa8e8, #2b5fa8 65%, #16386a); }
+.chip-green { background: radial-gradient(circle at 35% 30%, #6fd6a2, #219163 65%, #0d5b3c); }
+.chip-black { background: radial-gradient(circle at 35% 30%, #6a7078, #24282e 65%, #101317); }
+.chip-plum  { background: radial-gradient(circle at 35% 30%, #b490dd, #6a3f9c 65%, #3d2160); }
+.chip-gold  { background: radial-gradient(circle at 35% 30%, #f6dca8, #c08f34 65%, #7a5518); }
 
-/* Свободное место: на ассете уже нарисован пунктирный кружок, поэтому
-   здесь только область нажатия и мягкая подсветка, когда сесть можно. */
+/* Свободное место: кружок с плюсом уже нарисован на ассете. Своего не
+   рисуем — только прозрачная область нажатия ровно по нему и мягкий ореол,
+   когда сесть можно. */
 .seat.empty .seat-empty-slot {
-  /* Кружок нарисован на ассете в точке якоря, поэтому слот привязан прямо
-     к якорю, а не к .seat-body: тот сдвинут (--body-x/--body-y) и утаскивал
-     подсветку с нарисованного кружка — было видно два круга и два плюса. */
-  position: absolute;
-  left: 0; top: 0;
   transform: translate(-50%, -50%);
-  width: 46px; height: 46px;
+  width: var(--av, 50px); height: var(--av, 50px);
   border-radius: 50%;
-  display: grid; place-items: center;
-  color: transparent;
-  font-size: 18px;
-  transition: background-color 0.2s, color 0.2s, transform 0.15s var(--ease);
+  transition: box-shadow 0.2s, transform 0.15s var(--ease);
 }
 .seat.joinable .seat-empty-slot {
-  color: rgba(52, 211, 153, 0.9);
-  background: rgba(52, 211, 153, 0.1);
-  box-shadow: inset 0 0 0 1.5px rgba(52, 211, 153, 0.45);
   cursor: pointer;
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.35), 0 0 12px rgba(52, 211, 153, 0.28);
 }
-.seat.joinable .seat-empty-slot:active { transform: translate(-50%, -50%) scale(0.92); }
-
+.seat.joinable .seat-empty-slot:active { transform: translate(-50%, -50%) scale(0.93); }
 
 /* ═══ Лента действий ═══ */
 
@@ -1474,13 +1438,18 @@ input::placeholder { color: var(--text-muted); }
   to { opacity: 0; transform: translate(var(--fx-x1), var(--fx-y1)) translate(-50%, -50%) scale(0.85); }
 }
 
-/* Ставка на сукне: кейфрейм пересобран, чтобы не терять --bet-x/--bet-y
-   (штатный pop-in обнулял transform, и плашка на 200 мс улетала к аватару). */
-.seat-bet { animation: none; }
-.seat-bet.is-new { animation: bet-pop var(--anim-fast) var(--ease-out) both; }
+/* Появление ставки (пункт 17): фишки чуть «подъезжают» от игрока к банку,
+   180-260 мс, без вращения и подпрыгиваний. */
 @keyframes bet-pop {
-  from { opacity: 0; transform: translate(var(--bet-x), var(--bet-y)) translate(-50%, -50%) scale(0.72); }
-  to { opacity: 1; transform: translate(var(--bet-x), var(--bet-y)) translate(-50%, -50%) scale(1); }
+  from {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--bx, 0px) * 0.88), calc(-50% + var(--by, 0px) * 0.88)) scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--bx, 0px)), calc(-50% + var(--by, 0px))) scale(1);
+  }
+}
 }
 
 /* Банк «принимает» фишки коротким толчком. */
