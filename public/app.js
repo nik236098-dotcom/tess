@@ -36,7 +36,7 @@ const state = {
   bjBet: 0,
   bjBetTouched: false,
   unread: 0,
-  tab: 'home', // главная | игры
+  tab: 'home', // главная | игры | турниры | бонусы | профиль
   wins: [], // лента последних выигрышей
   topup: {
     config: {
@@ -551,10 +551,11 @@ function showTable() {
 
 // Главная и Игры — это две панели одного экрана лобби: столы и лента
 // выигрышей приходят одним и тем же сообщением, переключение ничего не грузит.
+const TABS = ['home', 'games', 'tournaments', 'bonuses', 'profile'];
+
 function showTab(tab) {
-  state.tab = tab === 'games' ? 'games' : 'home';
-  $('tab-home').classList.toggle('hidden', state.tab !== 'home');
-  $('tab-games').classList.toggle('hidden', state.tab !== 'games');
+  state.tab = TABS.includes(tab) ? tab : 'home';
+  for (const name of TABS) $(`tab-${name}`).classList.toggle('hidden', state.tab !== name);
   for (const button of document.querySelectorAll('.nav-btn')) {
     button.classList.toggle('is-active', button.dataset.tab === state.tab);
   }
@@ -563,14 +564,18 @@ function showTab(tab) {
 }
 
 // Раскрывающиеся разделы главной: открытый ровно один.
-const PANELS = ['promo-card', 'topup-card', 'payout-card', 'leaders-card', 'history-card', 'help-card'];
+const PANELS = ['topup-card', 'payout-card', 'leaders-card', 'history-card', 'help-card'];
 
 function togglePanel(id) {
   const target = $(id);
   const opening = target.classList.contains('hidden');
   for (const panel of PANELS) $(panel).classList.add('hidden');
-  if (opening) target.classList.remove('hidden');
-  for (const tile of document.querySelectorAll('.tile')) tile.classList.remove('is-active');
+  if (opening) {
+    target.classList.remove('hidden');
+    // Панели лежат под всеми вкладками; пусть открытая будет на виду.
+    requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+  }
+  for (const tile of document.querySelectorAll('.tile, .lb-row')) tile.classList.remove('is-active');
   return opening;
 }
 
@@ -597,15 +602,25 @@ function stopRoomsPolling() {
 function renderAccount() {
   $('balance-value').textContent = money(state.balance);
   $('my-id').textContent = state.user ? state.user.id : '—';
+  $('profile-id').textContent = `Telegram ID: ${state.user ? state.user.id : '—'}`;
+  $('profile-name').textContent = state.user ? (state.user.name || 'Игрок') : '—';
   $('admin-card').classList.toggle('hidden', !state.isAdmin);
 
   renderPayoutControls();
 
-  const avatar = $('avatar');
   const photo = state.user && state.user.photoUrl;
-  if (photo && avatar.dataset.photo !== photo) {
-    avatar.dataset.photo = photo;
-    avatar.innerHTML = `<img src="${escapeHtml(photo)}" alt="" />`;
+  const initial = state.user && state.user.name ? state.user.name.trim()[0].toUpperCase() : '♠';
+  for (const id of ['avatar', 'profile-avatar']) {
+    const avatar = $(id);
+    if (!avatar) continue;
+    if (photo) {
+      if (avatar.dataset.photo !== photo) {
+        avatar.dataset.photo = photo;
+        avatar.innerHTML = `<img src="${escapeHtml(photo)}" alt="" />`;
+      }
+    } else if (!avatar.dataset.photo) {
+      avatar.textContent = initial;
+    }
   }
 }
 
@@ -692,8 +707,19 @@ function renderRooms() {
   }
 }
 
-// «Активные игры» на главной: те же открытые столы, но плиткой и с банком.
+// Сколько людей сейчас за столами каждой игры — для карточек игр.
+function renderOnline() {
+  const count = { holdem: 0, blackjack: 0 };
+  for (const room of state.rooms) count[room.game === 'blackjack' ? 'blackjack' : 'holdem'] += room.players || 0;
+  for (const game of Object.keys(count)) {
+    const node = $(`online-${game}`);
+    if (node) node.textContent = count[game] ? `${count[game]} онлайн` : 'ждёт игроков';
+  }
+}
+
+// «Столы онлайн» на главной: те же открытые столы, но плиткой и с банком.
 function renderActiveGames() {
+  renderOnline();
   const list = $('home-rooms');
   if (!state.rooms.length) {
     list.innerHTML = '<div class="empty-note">Открытых столов сейчас нет.<br>Создайте свой во вкладке «Игры».</div>';
@@ -738,13 +764,26 @@ function renderWins() {
   card.classList.toggle('hidden', !state.wins.length);
   if (!state.wins.length) return;
 
-  list.innerHTML = state.wins.map((win) => `
-    <div class="win-card">
-      <span class="win-sum">+${money(win.amount)}</span>
-      <span class="win-game">${win.game === 'blackjack' ? 'Блекджек' : 'Покер'}</span>
-      <span class="win-name">${escapeHtml(win.name)}</span>
-    </div>
-  `).join('');
+  list.innerHTML = state.wins.slice(0, 6).map((win) => {
+    const blackjack = win.game === 'blackjack';
+    return `
+    <div class="lb-win">
+      <span class="lb-win-icon${blackjack ? ' bj' : ''}">${blackjack ? '♣' : '♠'}</span>
+      <span class="lb-win-sum">+${money(win.amount)}</span>
+      <span class="lb-win-meta" title="${blackjack ? 'Блекджек' : 'Покер'}"><b>${escapeHtml(win.name)}</b>${win.at ? ` · ${timeAgo(win.at)}` : ` · ${blackjack ? 'блекджек' : 'покер'}`}</span>
+    </div>`;
+  }).join('');
+}
+
+// «2 мин назад» для ленты выигрышей.
+function timeAgo(at) {
+  const sec = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (sec < 60) return 'только что';
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} мин назад`;
+  const hours = Math.round(min / 60);
+  if (hours < 24) return `${hours} ч назад`;
+  return `${Math.round(hours / 24)} д назад`;
 }
 
 function renderLeaders(leaders) {
@@ -2104,12 +2143,25 @@ function bindUi() {
       send({ type: 'leaders' });
     }
   });
-  on('tile-promo', 'click', () => {
-    if (togglePanel('promo-card')) {
-      $('tile-promo').classList.add('is-active');
-      $('promo-code').focus();
-    }
+
+  // Главная: баннер и карточки игр ведут во вкладку «Игры» с нужной игрой.
+  const openGame = (game) => {
+    showTab('games');
+    const option = document.querySelector(`.game-option[data-game="${game}"]`);
+    if (option && !option.classList.contains('is-active')) option.click();
+  };
+  on('hero-play', 'click', () => { haptic('light'); openGame('holdem'); });
+  on('games-all', 'click', () => showTab('games'));
+  for (const card of document.querySelectorAll('.lb-game[data-open]')) {
+    card.addEventListener('click', () => { haptic('light'); openGame(card.dataset.open); });
+  }
+  on('tour-more', 'click', () => showTab('tournaments'));
+  on('tour-to-games', 'click', () => showTab('games'));
+  on('profile-history', 'click', () => {
+    if (togglePanel('history-card')) send({ type: 'history' });
   });
+  on('profile-help', 'click', () => togglePanel('help-card'));
+  on('profile-copy', 'click', () => $('btn-my-id').click());
   on('promo-send', 'click', redeemPromo);
   on('promo-code', 'keydown', (event) => {
     if (event.key === 'Enter') redeemPromo();

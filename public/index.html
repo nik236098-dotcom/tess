@@ -7,8 +7,8 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1017'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='%2334d399'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=68" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Unbounded:wght@600;700;800&display=swap" />
+  <link rel="stylesheet" href="/styles.css?v=70" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -34,22 +34,20 @@
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M15 9V6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15H9"/></symbol>
     <symbol id="i-spade" viewBox="0 0 24 24"><path d="M12 3.5c-2.4 2.6-7 5.4-7 9.1a3.6 3.6 0 0 0 6.2 2.5c-.2 2-.9 3.5-2.2 4.4h6c-1.3-.9-2-2.4-2.2-4.4a3.6 3.6 0 0 0 6.2-2.5c0-3.7-4.6-6.5-7-9.1Z"/></symbol>
     <symbol id="i-club" viewBox="0 0 24 24"><path d="M12 3.6a3.3 3.3 0 0 0-2.6 5.3A3.4 3.4 0 1 0 8.9 15c.9 0 1.7-.3 2.3-.9-.1 2-.8 3.5-2.1 4.4h5.8c-1.3-.9-2-2.4-2.1-4.4.6.6 1.4.9 2.3.9a3.4 3.4 0 1 0-.5-6.1A3.3 3.3 0 0 0 12 3.6Z"/></symbol>
+    <symbol id="i-gift" viewBox="0 0 24 24"><path d="M4 11.5h16v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8Z"/><path d="M3.5 7.5h17v4h-17zM12 7.5v13M12 7.5c-1.5-3.5-5.5-4-5.5-1.5S10 7.5 12 7.5Zm0 0c1.5-3.5 5.5-4 5.5-1.5S14 7.5 12 7.5Z"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.8"/><path d="M4.5 20.5v-.8a5.5 5.5 0 0 1 5.5-5.5h4a5.5 5.5 0 0 1 5.5 5.5v.8"/></symbol>
+    <symbol id="i-headset" viewBox="0 0 24 24"><path d="M4 13.5V12a8 8 0 0 1 16 0v1.5"/><rect x="3" y="12.5" width="4.5" height="6.5" rx="2"/><rect x="16.5" y="12.5" width="4.5" height="6.5" rx="2"/><path d="M18.5 19v.5a2.5 2.5 0 0 1-2.5 2.5h-2.5"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-crown" viewBox="0 0 24 24"><path d="M4 8.5 8.2 12 12 6l3.8 6L20 8.5 18.5 18h-13L4 8.5Z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-diamond" viewBox="0 0 24 24"><path d="M12 3.5 20.5 12 12 20.5 3.5 12 12 3.5Z"/></symbol>
+    <symbol id="i-cards" viewBox="0 0 24 24"><rect x="7.5" y="4.5" width="11" height="15" rx="2"/><path d="M5.5 8.2 3.9 9a1.8 1.8 0 0 0-.9 2.4l3.4 7.4"/><path d="M12 9.2c-.9 1-2.4 1.9-2.4 3.1a1.2 1.2 0 0 0 2.1.9c-.1.7-.3 1.2-.8 1.6h2.2c-.5-.4-.7-.9-.8-1.6a1.2 1.2 0 0 0 2.1-.9c0-1.2-1.5-2.1-2.4-3.1Z"/></symbol>
     <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M3.5 8.5A2.5 2.5 0 0 1 6 6h11.5A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20H6a2.5 2.5 0 0 1-2.5-2.5v-9Z"/><path d="M3.5 10h13a2 2 0 0 1 0 4h-13M16.5 12h.01"/></symbol>
   </svg>
 
   <div id="app">
     <!-- ═══ Лобби: Главная и Игры ═══ -->
     <section id="screen-lobby" class="screen">
-      <header class="appbar">
-        <span></span>
-        <div class="appbar-title">
-          <b>Poker ok 👌</b>
-          <span>мини-приложение</span>
-        </div>
-        <button id="btn-menu" class="round-btn" aria-label="Меню">
-          <svg class="icon icon-sm"><use href="#i-more"></use></svg>
-        </button>
-      </header>
 
       <div class="lobby">
         <div id="dev-login" class="card hidden">
@@ -65,191 +63,139 @@
 
           <!-- ═══ Главная ═══ -->
           <div id="tab-home" class="tab-panel">
-            <div class="balance-block">
-              <div id="avatar" class="avatar-big">♠</div>
-              <div class="balance-sums">
-                <span class="caption">Баланс</span>
-                <b id="balance-value">$0.00</b>
-              </div>
-            </div>
-
-            <div class="money-actions">
-              <button id="btn-topup" class="btn btn-primary">
-                <svg class="icon icon-sm"><use href="#i-plus"></use></svg>Пополнить
-              </button>
-              <button id="btn-payout" class="btn btn-surface">
-                <svg class="icon icon-sm"><use href="#i-arrow-up-right"></use></svg>Вывести
-              </button>
-            </div>
-
-            <div class="tiles">
-              <button id="tile-promo" class="tile">
-                <svg class="icon"><use href="#i-ticket"></use></svg><span>Промокод</span>
-              </button>
-              <button id="tile-friends" class="tile">
-                <svg class="icon"><use href="#i-users"></use></svg><span>Друзья</span>
-              </button>
-              <button id="tile-leaders" class="tile">
-                <svg class="icon"><use href="#i-trophy"></use></svg><span>Лидеры</span>
-              </button>
-            </div>
-
-            <!-- Промокод -->
-            <div id="promo-card" class="card hidden">
-              <h2>Промокод</h2>
-              <div class="row">
-                <input id="promo-code" type="text" maxlength="32" placeholder="Введите код" autocomplete="off" autocapitalize="characters" />
-                <button id="promo-send" class="btn btn-primary">Активировать</button>
-              </div>
-              <p class="hint" id="promo-note">Код можно активировать один раз.</p>
-            </div>
-
-            <!-- Пополнение -->
-            <div id="topup-card" class="card hidden">
-              <div class="card-head">
-                <h2>Пополнить баланс</h2>
-                <span class="hint" id="topup-rate"></span>
-              </div>
-              <div id="topup-providers" class="game-picker"></div>
-              <div id="topup-presets" class="chips-presets"></div>
-              <div class="row">
-                <input id="topup-amount" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Сумма" />
-                <button id="topup-create" class="btn btn-primary">Счёт</button>
-              </div>
-              <p class="hint" id="topup-chips">&nbsp;</p>
-
-              <div id="topup-invoice" class="hidden">
-                <div class="data-row">
-                  <div class="data-row-main">
-                    <b id="topup-invoice-sum">—</b>
-                    <span id="topup-invoice-state">Ждём оплату…</span>
-                  </div>
-                </div>
-                <div class="chips-actions" style="margin-top:8px">
-                  <button id="topup-pay" class="btn btn-primary">Оплатить</button>
-                  <button id="topup-check" class="btn btn-ghost">Я оплатил</button>
-                  <button id="topup-cancel" class="btn btn-ghost">Отмена</button>
+            <header class="lb-top">
+              <div class="lb-brand">
+                <span class="lb-brand-mark"><svg class="icon"><use href="#i-crown"></use></svg></span>
+                <div class="lb-brand-text">
+                  <b>PokerGena</b>
+                  <span>играй · выигрывай · повторяй</span>
                 </div>
               </div>
+              <button id="btn-menu" class="round-btn lb-menu" aria-label="Меню">
+                <svg class="icon icon-sm"><use href="#i-more"></use></svg>
+              </button>
+            </header>
 
-              <p class="hint">Оплата проходит в боте платёжного сервиса. Деньги придут на баланс сразу после оплаты.</p>
+            <div class="lb-account">
+              <div id="avatar" class="lb-avatar">♠</div>
+              <div class="lb-balance">
+                <span class="lb-caption">Баланс</span>
+                <b id="balance-value" class="money">$0.00</b>
+              </div>
+              <button id="btn-topup" class="lb-plus" aria-label="Пополнить">
+                <svg class="icon"><use href="#i-plus"></use></svg>
+              </button>
+              <button id="btn-payout" class="lb-out">
+                <svg class="icon icon-sm"><use href="#i-arrow-up-right"></use></svg><span>Вывести</span>
+              </button>
             </div>
 
-            <!-- Вывод -->
-            <div id="payout-card" class="card hidden">
-              <div class="card-head">
-                <h2>Вывести деньги</h2>
-                <span class="hint" id="payout-rate"></span>
+            <!-- Промо-баннер -->
+            <section class="lb-hero" id="hero-banner">
+              <div class="lb-hero-art" aria-hidden="true">
+                <i class="lb-hero-glow"></i>
+                <i class="lb-hero-ring"></i>
+                <div class="lb-hcard lb-hcard-b"><span class="lb-hc-corner">A<i>♦</i></span><span class="lb-hc-pip">♦</span><span class="lb-hc-corner br">A<i>♦</i></span></div>
+                <div class="lb-hcard lb-hcard-a"><span class="lb-hc-corner">A<i>♠</i></span><span class="lb-hc-pip">♠</span><span class="lb-hc-corner br">A<i>♠</i></span></div>
+                <i class="lb-chipart lb-chipart-1"></i>
+                <i class="lb-chipart lb-chipart-2"></i>
+                <i class="lb-chipart lb-chipart-3"></i>
+                <i class="lb-spark lb-spark-1"></i><i class="lb-spark lb-spark-2"></i><i class="lb-spark lb-spark-3"></i>
               </div>
-              <div id="payout-providers" class="game-picker"></div>
-              <div class="row">
-                <input id="payout-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Сумма в $" />
-                <button id="payout-send" class="btn btn-primary">Вывести</button>
+              <div class="lb-hero-body">
+                <span class="lb-hero-kicker">Холдем · Блекджек</span>
+                <h1 class="lb-hero-title">Твой стол<br><em>уже ждёт</em></h1>
+                <p class="lb-hero-sub">Живые соперники и настоящие выигрыши — раздача начинается сейчас.</p>
+                <button id="hero-play" class="lb-cta">Играть сейчас<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></button>
               </div>
-              <p class="hint" id="payout-note">&nbsp;</p>
-              <div id="payout-state" class="data-row hidden">
-                <div class="data-row-main">
-                  <b id="payout-state-sum">—</b>
-                  <span id="payout-state-text">Отправляем…</span>
-                </div>
+            </section>
+
+            <!-- Игры -->
+            <div class="lb-sh">
+              <h2>Игры</h2>
+              <button id="games-all" class="lb-more">Все игры<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></button>
+            </div>
+            <div class="lb-games carousel">
+              <button class="lb-game lb-game-poker" data-open="holdem">
+                <span class="lb-game-art" aria-hidden="true">
+                  <i class="lb-mini lb-mini-1">A<b>♠</b></i>
+                  <i class="lb-mini lb-mini-2 red">A<b>♥</b></i>
+                  <i class="lb-chipart lb-chipart-red"></i>
+                </span>
+                <span class="lb-game-body">
+                  <b>Покер</b>
+                  <span>Texas Hold'em</span>
+                  <span class="lb-game-meta"><svg class="icon icon-sm"><use href="#i-users"></use></svg><em id="online-holdem">—</em></span>
+                </span>
+                <span class="lb-game-go"><svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
+              </button>
+
+              <button class="lb-game lb-game-bj" data-open="blackjack">
+                <span class="lb-game-art" aria-hidden="true">
+                  <i class="lb-mini lb-mini-3">J<b>♣</b></i>
+                  <i class="lb-mini lb-mini-4 red">A<b>♥</b></i>
+                  <i class="lb-21">21</i>
+                </span>
+                <span class="lb-game-body">
+                  <b>Блекджек</b>
+                  <span>Против дилера, до 21</span>
+                  <span class="lb-game-meta"><svg class="icon icon-sm"><use href="#i-users"></use></svg><em id="online-blackjack">—</em></span>
+                </span>
+                <span class="lb-game-go"><svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
+              </button>
+
+              <div class="lb-game lb-game-soon lb-game-roulette">
+                <span class="lb-game-art" aria-hidden="true"><i class="lb-wheel"></i></span>
+                <span class="lb-game-body">
+                  <b>Рулетка</b>
+                  <span>Европейская</span>
+                  <span class="lb-game-meta lb-soon">скоро</span>
+                </span>
               </div>
-              <p class="hint">Деньги уходят на ваш Telegram-аккаунт в платёжном сервисе.</p>
+
+              <div class="lb-game lb-game-soon lb-game-dice">
+                <span class="lb-game-art" aria-hidden="true"><i class="lb-die lb-die-1"></i><i class="lb-die lb-die-2"></i></span>
+                <span class="lb-game-body">
+                  <b>Кости</b>
+                  <span>Быстрые раунды</span>
+                  <span class="lb-game-meta lb-soon">скоро</span>
+                </span>
+              </div>
             </div>
 
-            <!-- Лидеры -->
-            <div id="leaders-card" class="card hidden">
-              <div class="card-head">
-                <h2>Лидеры</h2>
-                <button id="leaders-refresh" class="link-btn">обновить</button>
-              </div>
-              <div id="leaders-list" class="rows"></div>
+            <!-- Столы онлайн -->
+            <div class="lb-sh">
+              <h2>Столы онлайн</h2>
+              <button id="rooms-refresh" class="lb-more">обновить</button>
             </div>
+            <div id="home-rooms" class="carousel"></div>
 
-            <!-- Другие игры -->
-            <button id="other-games" class="wide-link hidden">
-              <span class="wide-icon"><svg class="icon"><use href="#i-gamepad"></use></svg></span>
-              <span class="wide-body">
-                <b>Другие игры</b>
-                <span>Больше игр и розыгрышей в нашем чате</span>
+            <!-- Турнир -->
+            <section class="lb-tour" id="tour-card">
+              <span class="lb-tour-art" aria-hidden="true"><svg class="icon"><use href="#i-trophy"></use></svg></span>
+              <span class="lb-tour-body">
+                <span class="lb-caption">Турниры</span>
+                <b>Weekly Cup готовится</b>
+                <span>Первый турнир с призовым фондом объявим здесь и в чате.</span>
               </span>
-              <svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg>
-            </button>
-
-            <!-- Активные игры -->
-            <div>
-              <div class="section-head">
-                <h2><svg class="icon icon-sm"><use href="#i-gamepad"></use></svg>Активные игры</h2>
-                <button id="rooms-refresh" class="link-btn">обновить</button>
-              </div>
-              <div id="home-rooms" class="carousel"></div>
-            </div>
+              <button id="tour-more" class="lb-tour-btn">Подробнее</button>
+            </section>
 
             <!-- Последние выигрыши -->
             <div id="wins-card" class="hidden">
-              <div class="section-head"><h2>Последние выигрыши</h2></div>
-              <div id="wins-list" class="carousel"></div>
+              <div class="lb-sh"><h2>Последние выигрыши</h2></div>
+              <div id="wins-list" class="lb-wins"></div>
             </div>
 
-            <!-- История -->
-            <div id="history-card" class="card hidden">
-              <div class="card-head">
-                <h2>История операций</h2>
-                <button id="history-refresh" class="link-btn">обновить</button>
-              </div>
-              <div id="history-list" class="rows"></div>
-            </div>
-
-            <!-- Помощь -->
-            <button id="help-link" class="wide-link">
-              <span class="wide-icon"><svg class="icon"><use href="#i-help"></use></svg></span>
-              <span class="wide-body">
+            <!-- Поддержка -->
+            <button id="help-link" class="lb-support">
+              <span class="lb-support-icon"><svg class="icon"><use href="#i-headset"></use></svg></span>
+              <span class="lb-support-body">
                 <b>Нужна помощь?</b>
-                <span>Правила, история операций и поддержка</span>
+                <span>Правила, история операций и поддержка — мы на связи</span>
               </span>
-              <svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg>
+              <svg class="icon icon-sm chevron"><use href="#i-arrow-right"></use></svg>
             </button>
-
-            <div id="help-card" class="card hidden">
-              <h2>Помощь</h2>
-              <p class="hint">Холдем и блекджек на деньги. Баланс пополняется и выводится криптой один к одному.</p>
-              <div class="chips-actions">
-                <button id="help-history" class="btn btn-surface">История операций</button>
-                <button id="help-rules" class="btn btn-surface">Правила игры</button>
-              </div>
-              <button id="help-support" class="btn btn-ghost hidden">Написать в поддержку</button>
-              <button id="btn-my-id" class="data-row" style="width:100%;cursor:pointer;text-align:left">
-                <span class="data-row-main">
-                  <b id="my-id">—</b>
-                  <span>Ваш Telegram ID — нажмите, чтобы скопировать</span>
-                </span>
-                <svg class="icon icon-sm" style="color:var(--text-muted)"><use href="#i-copy"></use></svg>
-              </button>
-            </div>
-
-            <!-- Админ -->
-            <div id="admin-card" class="card hidden">
-              <div class="card-head">
-                <h2>Админ: балансы</h2>
-                <button id="admin-refresh" class="link-btn">обновить</button>
-              </div>
-              <div class="settings-grid">
-                <label class="field">
-                  <span>Telegram ID или @ник</span>
-                  <input id="admin-target" type="text" placeholder="123456789" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span>Сколько, $</span>
-                  <input id="admin-amount" type="number" step="1" placeholder="50" inputmode="decimal" />
-                </label>
-              </div>
-              <div class="chips-actions">
-                <button id="admin-give" class="btn btn-primary">Выдать</button>
-                <button id="admin-take" class="btn btn-ghost">Забрать</button>
-                <button id="admin-set" class="btn btn-ghost">Выставить</button>
-              </div>
-              <div id="admin-accounts" class="rows"></div>
-              <p class="hint">В чате стола: <code>/дать 123456789 50</code>, <code>/промокод ЛЕТО 5 100</code>, <code>/помощь</code>.</p>
-            </div>
           </div>
 
           <!-- ═══ Игры ═══ -->
@@ -342,17 +288,211 @@
               </div>
             </details>
           </div>
+          <!-- ═══ Турниры ═══ -->
+          <div id="tab-tournaments" class="tab-panel hidden">
+            <div class="lb-sh"><h2>Турниры</h2></div>
+            <section class="lb-empty">
+              <span class="lb-empty-art" aria-hidden="true"><svg class="icon"><use href="#i-trophy"></use></svg></span>
+              <b>Турниров пока нет</b>
+              <span>Первый Weekly Cup с призовым фондом объявим здесь и в нашем чате. Пока — кэш-столы во вкладке «Игры».</span>
+              <button id="tour-to-games" class="btn btn-primary">Открыть столы</button>
+            </section>
+          </div>
+
+          <!-- ═══ Бонусы ═══ -->
+          <div id="tab-bonuses" class="tab-panel hidden">
+            <div class="lb-sh"><h2>Бонусы</h2></div>
+            <!-- Промокод -->
+            <div id="promo-card" class="card">
+              <h2>Промокод</h2>
+              <div class="row">
+                <input id="promo-code" type="text" maxlength="32" placeholder="Введите код" autocomplete="off" autocapitalize="characters" />
+                <button id="promo-send" class="btn btn-primary">Активировать</button>
+              </div>
+              <p class="hint" id="promo-note">Код можно активировать один раз.</p>
+            </div>
+
+            
+            <button id="tile-friends" class="lb-support">
+              <span class="lb-support-icon"><svg class="icon"><use href="#i-users"></use></svg></span>
+              <span class="lb-support-body">
+                <b>Позвать друзей</b>
+                <span>Поделитесь ссылкой — играйте за одним столом</span>
+              </span>
+              <svg class="icon icon-sm chevron"><use href="#i-arrow-right"></use></svg>
+            </button>
+            <!-- Другие игры -->
+            <button id="other-games" class="wide-link hidden">
+              <span class="wide-icon"><svg class="icon"><use href="#i-gamepad"></use></svg></span>
+              <span class="wide-body">
+                <b>Другие игры</b>
+                <span>Больше игр и розыгрышей в нашем чате</span>
+              </span>
+              <svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg>
+            </button>
+
+            
+          </div>
+
+          <!-- ═══ Профиль ═══ -->
+          <div id="tab-profile" class="tab-panel hidden">
+            <div class="lb-sh"><h2>Профиль</h2></div>
+            <div class="lb-profile">
+              <div id="profile-avatar" class="lb-avatar">♠</div>
+              <div class="lb-profile-body">
+                <b id="profile-name">—</b>
+                <span id="profile-id">Telegram ID: —</span>
+              </div>
+              <button id="profile-copy" class="round-btn" aria-label="Скопировать ID"><svg class="icon icon-sm"><use href="#i-copy"></use></svg></button>
+            </div>
+            <div class="lb-list">
+              <button id="tile-leaders" class="lb-row"><svg class="icon"><use href="#i-trophy"></use></svg><span>Лидеры</span><svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg></button>
+              <button id="profile-history" class="lb-row"><svg class="icon"><use href="#i-receipt"></use></svg><span>История операций</span><svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg></button>
+              <button id="profile-help" class="lb-row"><svg class="icon"><use href="#i-help"></use></svg><span>Помощь и правила</span><svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg></button>
+            </div>
+            <!-- Админ -->
+            <div id="admin-card" class="card hidden">
+              <div class="card-head">
+                <h2>Админ: балансы</h2>
+                <button id="admin-refresh" class="link-btn">обновить</button>
+              </div>
+              <div class="settings-grid">
+                <label class="field">
+                  <span>Telegram ID или @ник</span>
+                  <input id="admin-target" type="text" placeholder="123456789" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>Сколько, $</span>
+                  <input id="admin-amount" type="number" step="1" placeholder="50" inputmode="decimal" />
+                </label>
+              </div>
+              <div class="chips-actions">
+                <button id="admin-give" class="btn btn-primary">Выдать</button>
+                <button id="admin-take" class="btn btn-ghost">Забрать</button>
+                <button id="admin-set" class="btn btn-ghost">Выставить</button>
+              </div>
+              <div id="admin-accounts" class="rows"></div>
+              <p class="hint">В чате стола: <code>/дать 123456789 50</code>, <code>/промокод ЛЕТО 5 100</code>, <code>/помощь</code>.</p>
+            </div>
+          
+          </div>
+
+          <!-- ═══ Раскрывающиеся панели: одна открыта, показываются на любой вкладке ═══ -->
+          <div id="panels" class="tab-panel">
+            <!-- Пополнение -->
+            <div id="topup-card" class="card hidden">
+              <div class="card-head">
+                <h2>Пополнить баланс</h2>
+                <span class="hint" id="topup-rate"></span>
+              </div>
+              <div id="topup-providers" class="game-picker"></div>
+              <div id="topup-presets" class="chips-presets"></div>
+              <div class="row">
+                <input id="topup-amount" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Сумма" />
+                <button id="topup-create" class="btn btn-primary">Счёт</button>
+              </div>
+              <p class="hint" id="topup-chips">&nbsp;</p>
+
+              <div id="topup-invoice" class="hidden">
+                <div class="data-row">
+                  <div class="data-row-main">
+                    <b id="topup-invoice-sum">—</b>
+                    <span id="topup-invoice-state">Ждём оплату…</span>
+                  </div>
+                </div>
+                <div class="chips-actions" style="margin-top:8px">
+                  <button id="topup-pay" class="btn btn-primary">Оплатить</button>
+                  <button id="topup-check" class="btn btn-ghost">Я оплатил</button>
+                  <button id="topup-cancel" class="btn btn-ghost">Отмена</button>
+                </div>
+              </div>
+
+              <p class="hint">Оплата проходит в боте платёжного сервиса. Деньги придут на баланс сразу после оплаты.</p>
+            </div>
+
+            
+            <!-- Вывод -->
+            <div id="payout-card" class="card hidden">
+              <div class="card-head">
+                <h2>Вывести деньги</h2>
+                <span class="hint" id="payout-rate"></span>
+              </div>
+              <div id="payout-providers" class="game-picker"></div>
+              <div class="row">
+                <input id="payout-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Сумма в $" />
+                <button id="payout-send" class="btn btn-primary">Вывести</button>
+              </div>
+              <p class="hint" id="payout-note">&nbsp;</p>
+              <div id="payout-state" class="data-row hidden">
+                <div class="data-row-main">
+                  <b id="payout-state-sum">—</b>
+                  <span id="payout-state-text">Отправляем…</span>
+                </div>
+              </div>
+              <p class="hint">Деньги уходят на ваш Telegram-аккаунт в платёжном сервисе.</p>
+            </div>
+
+            
+            <!-- Лидеры -->
+            <div id="leaders-card" class="card hidden">
+              <div class="card-head">
+                <h2>Лидеры</h2>
+                <button id="leaders-refresh" class="link-btn">обновить</button>
+              </div>
+              <div id="leaders-list" class="rows"></div>
+            </div>
+
+            
+            <!-- История -->
+            <div id="history-card" class="card hidden">
+              <div class="card-head">
+                <h2>История операций</h2>
+                <button id="history-refresh" class="link-btn">обновить</button>
+              </div>
+              <div id="history-list" class="rows"></div>
+            </div>
+
+            
+            <!-- Помощь -->
+            <div id="help-card" class="card hidden">
+              <h2>Помощь</h2>
+              <p class="hint">Холдем и блекджек на деньги. Баланс пополняется и выводится криптой один к одному.</p>
+              <div class="chips-actions">
+                <button id="help-history" class="btn btn-surface">История операций</button>
+                <button id="help-rules" class="btn btn-surface">Правила игры</button>
+              </div>
+              <button id="help-support" class="btn btn-ghost hidden">Написать в поддержку</button>
+              <button id="btn-my-id" class="data-row" style="width:100%;cursor:pointer;text-align:left">
+                <span class="data-row-main">
+                  <b id="my-id">—</b>
+                  <span>Ваш Telegram ID — нажмите, чтобы скопировать</span>
+                </span>
+                <svg class="icon icon-sm" style="color:var(--text-muted)"><use href="#i-copy"></use></svg>
+              </button>
+            </div>
+
+            
+          </div>
         </div>
 
         <div id="lobby-status" class="status">Подключаемся…</div>
       </div>
 
       <nav id="bottom-nav" class="bottom-nav hidden">
-        <button class="nav-btn" data-tab="games">
-          <svg class="icon"><use href="#i-dice"></use></svg><span>Игры</span>
-        </button>
         <button class="nav-btn is-active" data-tab="home">
           <svg class="icon"><use href="#i-home"></use></svg><span>Главная</span>
+        </button>
+        <button class="nav-btn" data-tab="games">
+          <svg class="icon"><use href="#i-gamepad"></use></svg><span>Игры</span>
+        </button>
+        <button class="nav-btn" data-tab="tournaments">
+          <svg class="icon"><use href="#i-trophy"></use></svg><span>Турниры</span>
+        </button>
+        <button class="nav-btn" data-tab="bonuses">
+          <svg class="icon"><use href="#i-gift"></use></svg><span>Бонусы</span>
+        </button>
+        <button class="nav-btn" data-tab="profile">
+          <svg class="icon"><use href="#i-user"></use></svg><span>Профиль</span>
         </button>
       </nav>
     </section>
@@ -510,6 +650,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=39"></script>
+  <script src="/app.js?v=41"></script>
 </body>
 </html>
