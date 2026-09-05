@@ -74,19 +74,19 @@ const TABLE = {
 //   плашка банка  — x 155.1..244.9, y 281.6..328.9
 // Ассет — источник истины: ничего из этого в CSS не перерисовывается.
 const SEAT_CIRCLES = [
-  // at — центр золотого кольца, d — «рабочий» диаметр кружка: внешний
-  // радиус золота ×2 минус 3. Оба числа получены подгонкой окружности к
-  // золотому кольцу ассета по 70–80 точкам на кружок (fitrings.py):
-  // прежние центры, снятые по зелёному нутру, уезжали от кольца до 2.5 px,
-  // и наша оправа съезжала с нарисованной. inner — зелёное нутро.
-  { at: [0.49948, 0.77577], d: 59.7, inner: 51 },  // 0 низ по центру (герой)
-  { at: [0.18980, 0.68728], d: 49.9, inner: 43 },  // 1 низ слева
-  { at: [0.11570, 0.46758], d: 49.3, inner: 43 },  // 2 середина слева
-  { at: [0.19198, 0.21780], d: 49.8, inner: 44 },  // 3 верх слева
-  { at: [0.49845, 0.12003], d: 47.5, inner: 43 },  // 4 верх по центру
-  { at: [0.80510, 0.21788], d: 49.8, inner: 44 },  // 5 верх справа
-  { at: [0.88275, 0.46823], d: 49.5, inner: 42 },  // 6 середина справа
-  { at: [0.80728, 0.68753], d: 50.0, inner: 44 },  // 7 низ справа
+  // at — центр золотого кольца, rin/rout — внутренний и внешний радиус его
+  // золотой полосы (подгонка окружности по 100 точкам на кружок, только
+  // по полосе, пунктир исключён), badge — вырезка медальона масти: размер и
+  // смещение центра от центра кольца (позиция найдена корреляцией с
+  // шаблоном медальона кружка 2). Всё в логических px холста 400×600.
+  { at: [0.49950, 0.77632], rin: 30.05, rout: 31.32, badge: { w: 29.69, h: 27.73, dx: 0.59, dy: -26.14 } },  // 0
+  { at: [0.18942, 0.68692], rin: 25.44, rout: 26.57, badge: { w: 25.0, h: 23.44, dx: -0.38, dy: -26.6 } },  // 1
+  { at: [0.11580, 0.46828], rin: 24.91, rout: 25.99, badge: { w: 25.0, h: 23.44, dx: -0.62, dy: -27.06 } },  // 2
+  { at: [0.19177, 0.21723], rin: 25.43, rout: 26.61, badge: { w: 25.0, h: 23.44, dx: -0.93, dy: -28.78 } },  // 3
+  { at: [0.49855, 0.11860], rin: 24.65, rout: 25.81, badge: { w: 25.0, h: 23.44, dx: -0.59, dy: -27.8 } },  // 4
+  { at: [0.80550, 0.21737], rin: 25.45, rout: 26.7, badge: { w: 25.0, h: 23.44, dx: 0.85, dy: -28.86 } },  // 5
+  { at: [0.88300, 0.46862], rin: 25.01, rout: 26.18, badge: { w: 25.0, h: 23.44, dx: 0.71, dy: -27.26 } },  // 6
+  { at: [0.80725, 0.68713], rin: 25.39, rout: 26.59, badge: { w: 25.0, h: 23.44, dx: 0.93, dy: -26.73 } },  // 7
 ];
 
 // Смещения в логических пикселях от центра кружка. Карты — на внутренней
@@ -135,7 +135,7 @@ function seatAnchor(index, count) {
   return {
     at,
     seat: circle.at,
-    avatar: circle.inner,
+    avatar: circle.rin * 2,
     cards: layout.cards,
     bet: layout.bet,
     side: layout.side,
@@ -1152,27 +1152,20 @@ function renderSeats(room) {
     // зеркалятся по стороне стола (data-side).
     {
       const circle = SEAT_CIRCLES[anchor.at];
-      const d = circle.d;
-      node.style.setProperty('--d', `${d}px`);
+      const d = circle.rout * 2 - 3;
+      node.style.setProperty('--d', `${d.toFixed(2)}px`);
+      node.style.setProperty('--rin', `${circle.rin}px`);
+      node.style.setProperty('--rout', `${circle.rout}px`);
       node.dataset.side = anchor.at === 0 ? 'hero' : anchor.at === 4 ? 'top' : anchor.at <= 3 ? 'left' : 'right';
-      // Значок масти нарисован на ассете и потому лежит ПОД аватаром. Рисуем
-      // копию поверх из того же файла. Медальон промерен на кружке 2:
-      // 23×21.1 с центром [-2.1, -27.45] от центра кружка при Ø50; для других
-      // кружков масштабируем пропорционально диаметру. Копия крупнее на 20 %,
-      // поэтому закрывает оригинал с запасом даже при небольшом разбросе.
-      // У героя медальон свой: замер по ассету — 23×21 с центром [+1.8, -30.5]
-      // (нижняя кромка уходит под золотое кольцо кружка).
-      const hero = anchor.at === 0;
-      const k = hero ? 1 : d / 50;
-      const bw = 23 * k;
-      const bh = 21.1 * k;
-      const bx = hero ? 1.8 : -2.1 * k;
-      const by = hero ? -30.5 : -27.45 * k;
-      node.style.setProperty('--bw', `${bw.toFixed(2)}px`);
-      node.style.setProperty('--bh', `${bh.toFixed(2)}px`);
-      node.style.setProperty('--bdy', `${by.toFixed(2)}px`);
-      node.style.setProperty('--bgx', `${(circle.at[0] * TABLE.width + bx - bw / 2).toFixed(2)}px`);
-      node.style.setProperty('--bgy', `${(circle.at[1] * TABLE.height + by - bh / 2).toFixed(2)}px`);
+      // Значок масти нарисован на ассете и потому лежит ПОД аватаром. Кладём
+      // поверх его копию с альфой (img/badge-N.png): вырезана из ассета по
+      // положению, найденному корреляцией с шаблоном, поэтому ложится
+      // пиксель в пиксель на нарисованный.
+      node.style.setProperty('--bw', `${circle.badge.w}px`);
+      node.style.setProperty('--bh', `${circle.badge.h}px`);
+      node.style.setProperty('--bdx', `${circle.badge.dx}px`);
+      node.style.setProperty('--bdy', `${circle.badge.dy}px`);
+      node.style.setProperty('--badge-img', `url('/img/badge-${anchor.at}.png')`);
       const badge = document.createElement('i');
       badge.className = 'seat-badge';
       node.appendChild(badge);
