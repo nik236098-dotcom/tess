@@ -1791,42 +1791,49 @@ input::placeholder { color: var(--text-muted); }
    (+8° по часовой), задняя карта завалена чуть сильнее передней.
    Низ карт (~+17) выше плашки (+19) — не пересекаются. */
 .seat.proto .seat-cards {
-  transform: translate(calc(-50% + 27px), calc(-50% + 3px)) rotate(8deg);
+  transform: translate(calc(-50% + 27px), calc(-50% + 2px)) rotate(8deg);
   gap: 0;
   z-index: 4;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.65));
+  filter: drop-shadow(0 2.5px 3.5px rgba(0, 0, 0, 0.75));
 }
+/* Размер по макету (16.3×25 у каждой карты) с запасом на «солидность»:
+   17×25.5, пара почти без нахлёста — в макете карты лежат рядом, а не
+   одна на другой. Мелкие 15×23 с нахлёстом 4 читались обрубками. */
 .seat.proto .seat-cards .card-face {
-  --card-w: 15px;
-  --card-h: 23px;
-  border-radius: 2.4px;
+  --card-w: 17px;
+  --card-h: 25.5px;
+  border-radius: 2.6px;
   box-shadow: none;
   transform-origin: 50% 100%;
 }
-.seat.proto .seat-cards .card-face:first-child { transform: rotate(-7deg); }
-.seat.proto .seat-cards .card-face + .card-face { margin-left: -4px; }
+.seat.proto .seat-cards .card-face:first-child { transform: rotate(-3deg); }
+.seat.proto .seat-cards .card-face + .card-face { margin-left: -1.5px; }
 /* Кант — сама карта, рубашка внутри с отступом: белая кромка идёт снаружи
    синего, как в макете, а не врезается в него внутренней тенью. */
 .seat.proto .card-face.back {
-  background: #f2f5f8;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  background: #f4f6f8;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.55), 0 1.5px 2.5px rgba(0, 0, 0, 0.55);
 }
 .seat.proto .card-face.back::before {
   content: '';
   position: absolute;
-  inset: 1.3px;
+  inset: 1.9px;
   border-radius: 1.5px;
-  background: linear-gradient(158deg, #2f7cf3 0%, #1a63dd 46%, #0f4bc0 100%);
-  box-shadow: inset 0 0 3px rgba(255, 255, 255, 0.32);
+  /* Глубокий насыщенный синий, как в макете, с мягким светом сверху. */
+  background:
+    radial-gradient(ellipse at 50% 18%, rgba(255, 255, 255, 0.16) 0 20%, rgba(255, 255, 255, 0) 60%),
+    linear-gradient(160deg, #2d7af5 0%, #1a5fe0 45%, #1049c2 100%);
+  box-shadow: inset 0 0 0 0.6px rgba(0, 30, 110, 0.45);
 }
 .seat.proto .card-face.back::after {
   content: '♠';
   position: absolute;
   inset: 0;
   display: grid; place-items: center;
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1;
-  color: rgba(255, 255, 255, 0.2);
+  padding-top: 3px;
+  color: rgba(0, 30, 110, 0.35);
 }
 
 /* ── Плашка имени и стека ────────────────────────────────────────────
