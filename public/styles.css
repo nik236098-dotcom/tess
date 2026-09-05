@@ -1771,38 +1771,16 @@ input::placeholder { color: var(--text-muted); }
    наклон общий на всю пару. */
 .seat.proto .seat-cards .card-face:first-child { transform: none; }
 .seat.proto .seat-cards .card-face + .card-face { margin-left: -3.5px; }
-/* Кант — сама карта, рубашка внутри с отступом: белая кромка идёт снаружи
-   синего, как в макете, а не врезается в него внутренней тенью. */
+/* Рубашка — векторная картинка, срисованная с увеличенного фрагмента
+   макета: белый кант с тёмной волосяной обводкой, глубокий синий с
+   бликом от верхнего левого угла, тонкая светлая рамка внутри и контур
+   пики чуть ниже середины. Шрифтовой знак масти смотрелся дёшево. */
 .seat.proto .card-face.back {
-  background: #f4f6f8;
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.55), 0 1.5px 2.5px rgba(0, 0, 0, 0.55);
+  background: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 36 58%22%3E%3Cdefs%3E%3ClinearGradient id=%22g%22 x1=%220%22 y1=%220%22 x2=%221%22 y2=%221%22%3E%3Cstop offset=%220%22 stop-color=%22%232b7cff%22/%3E%3Cstop offset=%220.45%22 stop-color=%22%231155e4%22/%3E%3Cstop offset=%221%22 stop-color=%22%230a3fb8%22/%3E%3C/linearGradient%3E%3CradialGradient id=%22s%22 cx=%220.3%22 cy=%220.15%22 r=%220.75%22%3E%3Cstop offset=%220%22 stop-color=%22%23ffffff%22 stop-opacity=%220.28%22/%3E%3Cstop offset=%220.65%22 stop-color=%22%23ffffff%22 stop-opacity=%220%22/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect x=%220.5%22 y=%220.5%22 width=%2235%22 height=%2257%22 rx=%224.2%22 fill=%22%23f5f7fa%22 stroke=%22%231a1f2a%22 stroke-opacity=%220.55%22 stroke-width=%221%22/%3E%3Crect x=%223.6%22 y=%223.6%22 width=%2228.8%22 height=%2250.8%22 rx=%222.6%22 fill=%22url(%23g)%22/%3E%3Crect x=%223.6%22 y=%223.6%22 width=%2228.8%22 height=%2250.8%22 rx=%222.6%22 fill=%22url(%23s)%22/%3E%3Crect x=%225.8%22 y=%225.8%22 width=%2224.4%22 height=%2246.4%22 rx=%221.8%22 fill=%22none%22 stroke=%22%237fb2ff%22 stroke-opacity=%220.32%22 stroke-width=%220.8%22/%3E%3Cpath d=%22M18 15 C18 15 6.8 24.6 6.8 30.6 C6.8 35.4 12.8 37.2 17 33 C15.8 37.2 14 39.6 11 41.4 L25 41.4 C22 39.6 20.2 37.2 19 33 C23.2 37.2 29.2 35.4 29.2 30.6 C29.2 24.6 18 15 18 15 Z%22 fill=%22none%22 stroke=%22%238ec0ff%22 stroke-opacity=%220.62%22 stroke-width=%221.15%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E") no-repeat center / 100% 100%;
+  box-shadow: none;
 }
-.seat.proto .card-face.back::before {
-  content: '';
-  position: absolute;
-  inset: 2.1px;
-  border-radius: 1.5px;
-  /* Как в макете: тонкая тёмно-синяя линия по краю, внутри чуть более
-     светлая панель со свечением в верхней трети. */
-  background:
-    radial-gradient(ellipse 60% 45% at 50% 30%, rgba(255, 255, 255, 0.14) 0 30%, rgba(255, 255, 255, 0) 100%),
-    linear-gradient(165deg, #1a62f0 0%, #0a4ede 50%, #0640b8 100%);
-  box-shadow:
-    inset 0 0 0 0.7px rgba(0, 20, 90, 0.6),
-    inset 0 0 0 1.4px rgba(60, 130, 255, 0.35);
-}
-.seat.proto .card-face.back::after {
-  content: '♠';
-  position: absolute;
-  inset: 0;
-  display: grid; place-items: center;
-  font-size: 12px;
-  line-height: 1;
-  padding-top: 2px;
-  /* В макете масть — тонкий контур чуть светлее рубашки, не залитый знак. */
-  color: transparent;
-  -webkit-text-stroke: 0.55px rgba(120, 175, 255, 0.5);
-}
+.seat.proto .card-face.back::before,
+.seat.proto .card-face.back::after { content: none; }
 
 /* ── Плашка имени и стека ────────────────────────────────────────────
    По макету, а не «примерно»: восьмиугольник со срезанными углами, чуть
