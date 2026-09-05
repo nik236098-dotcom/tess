@@ -846,9 +846,13 @@ input::placeholder { color: var(--text-muted); }
   animation: seat-halo 1.9s ease-in-out infinite;
 }
 
+/* Фишки D / SB / BB стоят на золотой оправе в верхних углах (45°), поверх
+   и не режутся кружком аватара. */
 .pos-badge {
   position: absolute;
+  left: 0; top: 0;
   width: 16px; height: 16px;
+  z-index: 5;
   border-radius: 50%;
   display: grid; place-items: center;
   font: 700 8px/1 var(--font);
@@ -856,9 +860,9 @@ input::placeholder { color: var(--text-muted); }
   border: 1.5px solid rgba(0, 0, 0, 0.55);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.55);
 }
-.pos-badge.d { right: -4px; top: -2px; background: linear-gradient(180deg, #ffffff, #d9dee6); color: #16202e; }
-.pos-badge.sb { left: -5px; top: -2px; background: linear-gradient(180deg, #6db4ff, #3579d0); color: #04121f; }
-.pos-badge.bb { left: -5px; top: -2px; background: linear-gradient(180deg, #efc478, #b8862f); color: #2b1d05; }
+.pos-badge.d { transform: translate(calc(-50% + var(--rout, 26px) * 0.76), calc(-50% - var(--rout, 26px) * 0.76)); background: linear-gradient(180deg, #ffffff, #d9dee6); color: #16202e; }
+.pos-badge.sb { transform: translate(calc(-50% - var(--rout, 26px) * 0.76), calc(-50% - var(--rout, 26px) * 0.76)); background: linear-gradient(180deg, #6db4ff, #3579d0); color: #04121f; }
+.pos-badge.bb { transform: translate(calc(-50% - var(--rout, 26px) * 0.76), calc(-50% - var(--rout, 26px) * 0.76)); background: linear-gradient(180deg, #efc478, #b8862f); color: #2b1d05; }
 
 
 .seat-name {

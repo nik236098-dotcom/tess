@@ -79,14 +79,14 @@ const SEAT_CIRCLES = [
   // по полосе, пунктир исключён), badge — вырезка медальона масти: размер и
   // смещение центра от центра кольца (позиция найдена корреляцией с
   // шаблоном медальона кружка 2). Всё в логических px холста 400×600.
-  { at: [0.49950, 0.77632], rin: 30.05, rout: 31.32, badge: { w: 29.69, h: 27.73, dx: 0.59, dy: -26.14 } },  // 0
-  { at: [0.18942, 0.68692], rin: 25.44, rout: 26.57, badge: { w: 25.0, h: 23.44, dx: -0.38, dy: -26.6 } },  // 1
-  { at: [0.11580, 0.46828], rin: 24.91, rout: 25.99, badge: { w: 25.0, h: 23.44, dx: -0.62, dy: -27.06 } },  // 2
-  { at: [0.19177, 0.21723], rin: 25.43, rout: 26.61, badge: { w: 25.0, h: 23.44, dx: -0.93, dy: -28.78 } },  // 3
-  { at: [0.49855, 0.11860], rin: 24.65, rout: 25.81, badge: { w: 25.0, h: 23.44, dx: -0.59, dy: -27.8 } },  // 4
-  { at: [0.80550, 0.21737], rin: 25.45, rout: 26.7, badge: { w: 25.0, h: 23.44, dx: 0.85, dy: -28.86 } },  // 5
-  { at: [0.88300, 0.46862], rin: 25.01, rout: 26.18, badge: { w: 25.0, h: 23.44, dx: 0.71, dy: -27.26 } },  // 6
-  { at: [0.80725, 0.68713], rin: 25.39, rout: 26.59, badge: { w: 25.0, h: 23.44, dx: 0.93, dy: -26.73 } },  // 7
+  { at: [0.49950, 0.77632], rin: 30.05, rout: 31.32, badge: { w: 32.03, h: 23.83, dx: 0.59, dy: -27.7 } },  // 0
+  { at: [0.18942, 0.68692], rin: 25.44, rout: 26.57, badge: { w: 27.34, h: 22.27, dx: -0.38, dy: -26.41 } },  // 1
+  { at: [0.11580, 0.46828], rin: 24.91, rout: 25.99, badge: { w: 27.34, h: 24.22, dx: -0.62, dy: -27.85 } },  // 2
+  { at: [0.19177, 0.21723], rin: 25.43, rout: 26.61, badge: { w: 26.56, h: 24.61, dx: -1.32, dy: -29.36 } },  // 3
+  { at: [0.49855, 0.11860], rin: 24.65, rout: 25.81, badge: { w: 27.34, h: 24.22, dx: -0.59, dy: -28.58 } },  // 4
+  { at: [0.80550, 0.21737], rin: 25.45, rout: 26.7, badge: { w: 27.34, h: 24.61, dx: 0.85, dy: -29.44 } },  // 5
+  { at: [0.88300, 0.46862], rin: 25.01, rout: 26.18, badge: { w: 27.34, h: 24.22, dx: 0.71, dy: -28.05 } },  // 6
+  { at: [0.80725, 0.68713], rin: 25.39, rout: 26.59, badge: { w: 25.78, h: 22.27, dx: 0.15, dy: -26.54 } },  // 7
 ];
 
 // Смещения в логических пикселях от центра кружка. Карты — на внутренней
@@ -1190,6 +1190,7 @@ function renderSeats(room) {
     const avatarEl = avatarNode(seat, room);
     node.appendChild(avatarEl);
     if (avatarEl.__turnRing) node.appendChild(avatarEl.__turnRing);
+    for (const mark of avatarEl.__marks || []) node.appendChild(mark);
 
     const plate = document.createElement('div');
     plate.className = 'seat-plate';
@@ -1233,6 +1234,10 @@ function avatarNode(seat, room) {
   avatar.className = 'seat-avatar';
   if (seat.photoUrl) {
     const img = document.createElement('img');
+    img.addEventListener('error', () => {
+      img.remove();
+      avatar.textContent = (seat.name || '?').trim()[0].toUpperCase();
+    }, { once: true });
     img.src = seat.photoUrl;
     img.alt = '';
     avatar.appendChild(img);
@@ -1248,9 +1253,13 @@ function avatarNode(seat, room) {
   }
 
   // Блайнды и баттон — бейджами на аватаре, как за живым столом.
-  if (seat.isBigBlind) avatar.appendChild(badge('bb', 'BB'));
-  else if (seat.isSmallBlind) avatar.appendChild(badge('sb', 'SB'));
-  if (seat.isDealer) avatar.appendChild(badge('d', 'D'));
+  // Фишки дилера и блайндов вешаем на узел места, а не внутрь аватара:
+  // у аватара overflow:hidden, и они резались кружком в золотые «обмылки».
+  const marks = [];
+  if (seat.isBigBlind) marks.push(badge('bb', 'BB'));
+  else if (seat.isSmallBlind) marks.push(badge('sb', 'SB'));
+  if (seat.isDealer) marks.push(badge('d', 'D'));
+  avatar.__marks = marks;
   return avatar;
 }
 
