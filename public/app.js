@@ -1076,6 +1076,12 @@ function renderSeats(room) {
       const badge = document.createElement('i');
       badge.className = 'seat-badge';
       node.appendChild(badge);
+      // Золотая оправа рисуется ПОВЕРХ аватара: у нарисованного кольца
+      // правая половина тёмная, и фото её закрывало — обводки справа не
+      // было видно. Порядок: аватар → оправа → карты.
+      const ring = document.createElement('i');
+      ring.className = 'seat-ring';
+      node.appendChild(ring);
     }
 
     if (isHero) node.classList.add('me');
