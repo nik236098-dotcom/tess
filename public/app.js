@@ -32,7 +32,7 @@ const state = {
   shownHand: null,
   winCards: new Set(), // карты выигравшей комбинации — для подсветки
   // Что стол показывал в прошлый раз: по разнице считаем, чему лететь.
-  fx: { hand: null, bets: new Map(), points: new Map(), potPoint: null, winKey: null },
+  fx: { hand: null, bets: new Map(), points: new Map(), potPoint: null, winKey: null, seated: new Set() },
   bjBet: 0,
   bjBetTouched: false,
   unread: 0,
@@ -58,14 +58,13 @@ const $ = (id) => document.getElementById(id);
 // Эти числа обязаны совпадать с --table-w/--table-h и рамкой .rail в CSS:
 // от них считаются места, поэтому держим их в одном месте.
 const TABLE = {
-  // Логический холст. Пропорция 2:3 — та же, что у ассета (1024×1536),
-  // поэтому картинка ложится без искажений.
+  // Логический холст. Пропорция 4:5 — та же, что у вырезки ассета
+  // img/table-purple.webp (1088×1360), поэтому картинка ложится без искажений.
   width: 400,
-  height: 600,
-  // Центр игровой зоны: сюда «смотрят» карты и ставки всех мест.
-  focusX: 0.4995,
-  focusY: 0.4125,
-  maxScale: 3.0,
+  height: 500,
+  // Центр игровой зоны (ряд общих карт): сюда «смотрят» карты и ставки.
+  focusX: 0.49955,
+  focusY: 0.4801,
 };
 
 // ВСЯ геометрия ниже снята с ассета измерением, а не подобрана:
@@ -74,19 +73,22 @@ const TABLE = {
 //   плашка банка  — x 155.1..244.9, y 281.6..328.9
 // Ассет — источник истины: ничего из этого в CSS не перерисовывается.
 const SEAT_CIRCLES = [
-  // at — центр золотого кольца, rin/rout — внутренний и внешний радиус его
-  // золотой полосы (подгонка окружности по 100 точкам на кружок, только
-  // по полосе, пунктир исключён), badge — вырезка медальона масти: размер и
-  // смещение центра от центра кольца (позиция найдена корреляцией с
-  // шаблоном медальона кружка 2). Всё в логических px холста 400×600.
-  { at: [0.49950, 0.77632], rin: 30.05, rout: 31.32, badge: { w: 32.03, h: 23.83, dx: 0.59, dy: -27.7 } },  // 0
-  { at: [0.18942, 0.68692], rin: 25.44, rout: 26.57, badge: { w: 27.34, h: 22.27, dx: -0.38, dy: -26.41 } },  // 1
-  { at: [0.11580, 0.46828], rin: 24.91, rout: 25.99, badge: { w: 27.34, h: 24.22, dx: -0.62, dy: -27.85 } },  // 2
-  { at: [0.19177, 0.21723], rin: 25.43, rout: 26.61, badge: { w: 26.56, h: 24.61, dx: -1.32, dy: -29.36 } },  // 3
-  { at: [0.49855, 0.11860], rin: 24.65, rout: 25.81, badge: { w: 27.34, h: 24.22, dx: -0.59, dy: -28.58 } },  // 4
-  { at: [0.80550, 0.21737], rin: 25.45, rout: 26.7, badge: { w: 27.34, h: 24.61, dx: 0.85, dy: -29.44 } },  // 5
-  { at: [0.88300, 0.46862], rin: 25.01, rout: 26.18, badge: { w: 27.34, h: 24.22, dx: 0.71, dy: -28.05 } },  // 6
-  { at: [0.80725, 0.68713], rin: 25.39, rout: 26.59, badge: { w: 25.78, h: 22.27, dx: 0.15, dy: -26.54 } },  // 7
+  // at — центр неонового кольца места, rin/rout — внутренний и внешний
+  // радиус его светящейся линии (подбор окружности по пикселям ассета
+  // table-purple.webp, полуширина по полувысоте профиля яркости).
+  // ring — квадратная вырезка кольца с альфой (img/ring-N.png): размер и
+  // сдвиг её центра от центра кольца. badge — вырезка медальона масти
+  // (img/badge-N.png): размер и смещение центра от центра кольца (кромка
+  // медальона найдена по контрасту, r ≈ 33.75 px ассета, у верхнего 37.25).
+  // Всё в логических px холста 400×500 (k = 400/1088).
+  { at: [0.49961, 0.87965], rin: 24.63, rout: 25.92, ring: { size: 58.82, dx: 0.15, dy: -0.12 }, badge: { w: 27.94, h: 27.94, dx: 0.52, dy: -25.12 } },  // 0
+  { at: [0.21737, 0.76519], rin: 23.99, rout: 25.37, ring: { size: 57.35, dx: -0.18, dy: 0.12 }, badge: { w: 27.94, h: 27.94, dx: -3.12, dy: -26.71 } },  // 1
+  { at: [0.11010, 0.52077], rin: 23.9, rout: 25.37, ring: { size: 57.35, dx: 0.08, dy: -0.09 }, badge: { w: 27.94, h: 27.94, dx: 0.08, dy: -26.56 } },  // 2
+  { at: [0.21801, 0.25527], rin: 23.35, rout: 25.0, ring: { size: 56.62, dx: -0.07, dy: -0.06 }, badge: { w: 27.94, h: 27.94, dx: -3.38, dy: -29.47 } },  // 3
+  { at: [0.49961, 0.14624], rin: 23.62, rout: 24.91, ring: { size: 56.62, dx: 0.15, dy: 0.04 }, badge: { w: 30.88, h: 30.88, dx: 0.15, dy: -34.52 } },  // 4
+  { at: [0.78086, 0.25526], rin: 23.62, rout: 24.82, ring: { size: 56.62, dx: 0.15, dy: -0.06 }, badge: { w: 27.94, h: 27.94, dx: 3.83, dy: -29.47 } },  // 5
+  { at: [0.88876, 0.52099], rin: 23.9, rout: 25.18, ring: { size: 57.35, dx: 0.01, dy: 0.17 }, badge: { w: 27.94, h: 27.94, dx: 0.38, dy: -26.67 } },  // 6
+  { at: [0.78176, 0.76394], rin: 24.91, rout: 25.74, ring: { size: 58.09, dx: 0.16, dy: 0.01 }, badge: { w: 27.94, h: 27.94, dx: 3.1, dy: -26.09 } },  // 7
 ];
 
 // Смещения в логических пикселях от центра кружка. Карты — на внутренней
@@ -102,7 +104,7 @@ const SEAT_LAYOUT = [
   // блока стоит на якоре: у левых мест левый (стопка ближе к игроку, сумма
   // дальше к банку), у правых — правый и блок зеркален, у верхних/героя —
   // центр. Ставка всегда между игроком и банком, вплотную к своему месту.
-  { cards: [0, -70], bet: [0, -118], side: 'center' },  // 0 герой: над картами, к банку (слева и справа стоят ставки соседей)
+  { cards: [0, -62], bet: [0, -104], side: 'center' },  // 0 герой: над картами, к банку (слева и справа стоят ставки соседей)
   { cards: [35, -6], bet: [12, -44], side: 'left' },    // 1 низ слева: выше-правее, не доходя до карт героя
   { cards: [35, -4], bet: [31, 32], side: 'left' },     // 2 середина слева: правее, внутрь
   { cards: [34, 0], bet: [42, 42], side: 'left' },      // 3 верх слева: ниже, внутрь
@@ -497,9 +499,17 @@ function showLobby() {
   startRoomsPolling();
 }
 
-// Один общий коэффициент по обеим осям: форма стола не может измениться,
-// как бы ни менялось окно. Меняется только размер — вместе со всем, что
-// лежит на холсте: местами, картами, фишками, аватарами и шрифтами.
+// Стол ЗАФИКСИРОВАН: один масштаб и одно положение на все состояния —
+// пустой стол, посадка, раздача, вскрытие, победитель. Масштаб считается
+// только от размеров окна (ширина, высота), а не от того, что сейчас
+// показано под столом: панель действий и шапка лежат ПОВЕРХ фона и на
+// область стола не влияют. Ни посадка, ни начало раздачи стол не двигают.
+const STAGE = {
+  sidePad: 10,      // поля слева и справа от холста
+  panelReserve: 150, // место под панель действий, учитывается всегда
+  topGap: 6,
+};
+
 function fitTable() {
   const viewport = $('table-viewport');
   const canvas = $('table-canvas');
@@ -508,18 +518,19 @@ function fitTable() {
   const box = viewport.getBoundingClientRect();
   if (box.width < 2 || box.height < 2) return; // экран стола ещё скрыт
 
-  // Поля по краям: иначе крайние места упираются в границы области и
-  // верхнее срезается шапкой.
-  const pad = 2;
   const scale = Math.min(
-    Math.max(box.width - pad * 2, 1) / TABLE.width,
-    Math.max(box.height - pad * 2, 1) / TABLE.height,
-    TABLE.maxScale,
+    Math.max(box.width - STAGE.sidePad * 2, 1) / TABLE.width,
+    Math.max(box.height - STAGE.topGap - STAGE.panelReserve, 1) / TABLE.height,
   );
-  canvas.style.transform = `translate(-50%, -50%) scale(${scale})`;
-  // Ширину стола на экране забирает нижняя панель, чтобы кнопки шли ровно
-  // по краям стола, а не расползались на всю ширину монитора.
+  const tableH = TABLE.height * scale;
+  // Стол стоит в верхней части свободной зоны между шапкой и резервом
+  // панели; зона не зависит от состояния, поэтому и стол не двигается.
+  const free = box.height - STAGE.panelReserve - tableH;
+  const top = STAGE.topGap + Math.max(0, Math.min(free - STAGE.topGap, free * 0.42));
+  canvas.style.transform = `translate(-50%, 0) scale(${scale})`;
+  canvas.style.top = `${top.toFixed(1)}px`;
   document.documentElement.style.setProperty('--table-px', `${Math.round(TABLE.width * scale)}px`);
+  document.documentElement.style.setProperty('--table-scale', String(scale));
 }
 
 function watchTableSize() {
@@ -542,6 +553,7 @@ function showTable() {
   state.fx.winKey = null;
   state.fx.potPoint = null;
   state.fx.bets.clear();
+  state.fx.seated.clear();
   state.shownCards.clear();
   if (tg && tg.BackButton) tg.BackButton.show();
   stopRoomsPolling();
@@ -945,12 +957,8 @@ function renderBoard(room) {
     board.innerHTML = '';
     board.dataset.cards = '';
     const pot = $('pot');
-    if (room.potTotal > 0) {
-      pot.classList.remove('hidden');
-      $('pot-value').textContent = money(room.potTotal);
-    } else {
-      pot.classList.add('hidden');
-    }
+    pot.classList.remove('hidden');
+    $('pot-value').textContent = money(room.potTotal);
     return;
   }
 
@@ -1000,14 +1008,11 @@ function renderBoard(room) {
     if (slot) slot.classList.toggle('is-win', wins.has(card));
   });
 
+  // Плашка «БАНК» нарисована на ассете, сумма в ней — наша: показываем
+  // всегда, как в ассете ($0.00 на пустом столе).
   const pot = $('pot');
-  if (room.potTotal > 0) {
-    pot.classList.remove('hidden');
-    pot.querySelector('.pot-label').textContent = 'БАНК';
-    $('pot-value').textContent = money(room.potTotal);
-  } else {
-    pot.classList.add('hidden');
-  }
+  pot.classList.remove('hidden');
+  $('pot-value').textContent = money(room.potTotal);
 }
 
 function cardNode(code, small = false, animate = true) {
@@ -1088,6 +1093,8 @@ function renderSeats(room) {
   const count = room.seats.length;
   const winnerIds = winnerIdSet(room);
   const mySeat = room.you.seatIndex;
+  // Кто сидит сейчас: новых анимируем, ушедших забываем.
+  const seatedNow = new Set(room.seats.filter((s) => !s.empty).map((s) => s.userId));
   // Своё место всегда внизу — так привычнее смотреть на стол.
   const offset = mySeat === null ? 0 : mySeat;
 
@@ -1166,6 +1173,12 @@ function renderSeats(room) {
       node.style.setProperty('--bdx', `${circle.badge.dx}px`);
       node.style.setProperty('--bdy', `${circle.badge.dy}px`);
       node.style.setProperty('--badge-img', `url('/img/badge-${anchor.at}.png')`);
+      // Оправа — вырезка неонового кольца из того же ассета (img/ring-N.png),
+      // ложится пиксель в пиксель на нарисованное, но ПОВЕРХ аватара.
+      node.style.setProperty('--ring-img', `url('/img/ring-${anchor.at}.png')`);
+      node.style.setProperty('--ring-size', `${circle.ring.size}px`);
+      node.style.setProperty('--rdx', `${circle.ring.dx}px`);
+      node.style.setProperty('--rdy', `${circle.ring.dy}px`);
       const badge = document.createElement('i');
       badge.className = 'seat-badge';
       node.appendChild(badge);
@@ -1177,6 +1190,8 @@ function renderSeats(room) {
     }
 
     if (isHero) node.classList.add('me');
+    // Только что сел — анимируем появление содержимого места, один раз.
+    if (!state.fx.seated.has(seat.userId)) node.classList.add('is-new');
     if (seat.folded) node.classList.add('folded');
     if (seat.isActing) node.classList.add('acting');
     if (!seat.connected || seat.sittingOut) node.classList.add('away');
@@ -1227,6 +1242,7 @@ function renderSeats(room) {
 
     container.appendChild(node);
   });
+  state.fx.seated = seatedNow;
 }
 
 function avatarNode(seat, room) {
@@ -1688,6 +1704,7 @@ function renderControls(room) {
     bar.classList.add('hidden');
     closeRaisePanel();
     stopTurnTimer();
+    syncControls();
     return;
   }
 
@@ -1697,14 +1714,13 @@ function renderControls(room) {
 
   const callBtn = $('btn-call');
   callBtn.classList.toggle('hidden', !legal.canCall);
-  callBtn.textContent = `Колл ${money(legal.callAmount)}`;
+  $('call-amount').textContent = money(legal.callAmount);
 
-  // «Рейз» открывает панель со слайдером, «Олл-ин» ставит всё сразу —
-  // так в одну строку помещаются все четыре действия.
+  // Слайдер размера ставки живёт над кнопками: «Рейз» сразу ставит то,
+  // что на слайдере, крайнее правое положение — олл-ин.
   const raiseBtn = $('btn-raise');
-  const allInBtn = $('btn-allin');
   raiseBtn.classList.toggle('hidden', !legal.canRaise);
-  allInBtn.classList.toggle('hidden', !legal.canRaise);
+  $('bet-row').classList.toggle('hidden', !legal.canRaise);
 
   if (legal.canRaise) {
     const range = $('raise-range');
@@ -1720,26 +1736,56 @@ function renderControls(room) {
   }
 
   startTurnTimer(room);
+  syncControls();
+}
+
+// Подвал прячем целиком, когда в нём нечего показывать: иначе под столом
+// висит пустая полоса, а фон казино должен продолжаться до низа экрана.
+function syncControls() {
+  const box = document.querySelector('#screen-table .controls');
+  if (!box) return;
+  const visible = Array.from(box.children).some((el) => !el.classList.contains('hidden'));
+  box.classList.toggle('is-empty', !visible);
 }
 
 function renderRaiseValue(legal) {
-  $('raise-value').textContent = money(state.raiseTo);
-  const confirm = $('raise-confirm');
+  const value = money(state.raiseTo);
+  $('raise-value').textContent = value;
+  $('raise-amount').textContent = value;
   const allIn = legal && state.raiseTo >= legal.maxRaiseTo;
-  confirm.classList.toggle('is-allin', Boolean(allIn));
-  confirm.textContent = allIn ? 'Олл-ин' : `Рейз до ${money(state.raiseTo)}`;
-}
-
-function openRaisePanel() {
-  const legal = state.room && state.room.you.legal;
-  if (!legal || !legal.canRaise) return;
-  $('raise-row').classList.remove('hidden');
-  renderRaiseValue(legal);
+  // Нечего уравнивать — это бет, а не рейз.
+  const opening = legal && legal.canCheck;
+  $('btn-raise').classList.toggle('is-allin', Boolean(allIn));
+  $('raise-label').textContent = allIn ? 'ОЛЛ-ИН' : opening ? 'БЕТ' : 'РЕЙЗ';
+  $('raise-sub').textContent = allIn ? 'All-in' : opening ? 'Bet' : 'Raise';
+  // Пузырь с суммой едет над ползунком.
+  const range = $('raise-range');
+  const lo = Number(range.min);
+  const hi = Number(range.max);
+  const t = hi > lo ? (state.raiseTo - lo) / (hi - lo) : 0;
+  $('bet-slider').style.setProperty('--t', t.toFixed(4));
+  if (!state.raisePreset) {
+    for (const button of document.querySelectorAll('[data-preset]')) button.classList.remove('is-active');
+  }
 }
 
 function closeRaisePanel() {
-  $('raise-row').classList.add('hidden');
   state.raiseTouched = false;
+  state.raisePreset = null;
+}
+
+// Шаг кнопок −/+ — большой блайнд.
+function stepRaise(direction) {
+  const room = state.room;
+  const legal = room && room.you.legal;
+  if (!legal || !legal.canRaise) return;
+  const step = Math.max(1, room.settings.bigBlind || 1);
+  state.raiseTouched = true;
+  state.raisePreset = null;
+  state.raiseTo = clamp(state.raiseTo + direction * step, legal.minRaiseTo, legal.maxRaiseTo);
+  $('raise-range').value = String(state.raiseTo);
+  renderRaiseValue(legal);
+  haptic('light');
 }
 
 function renderBlackjackControls(room) {
@@ -1773,6 +1819,7 @@ function renderBlackjackControls(room) {
     range.value = String(state.bjBet);
     $('bj-bet-value').textContent = money(state.bjBet);
     $('bj-bet').textContent = `Поставить ${money(state.bjBet)}`;
+    bjBubble(betTurn);
   }
 
   if (legal) {
@@ -1781,6 +1828,12 @@ function renderBlackjackControls(room) {
   }
 
   startTurnTimer(room, $('bj-timer').firstElementChild);
+  syncControls();
+}
+
+function bjBubble(betTurn) {
+  const t = betTurn.max > betTurn.min ? (state.bjBet - betTurn.min) / (betTurn.max - betTurn.min) : 0;
+  $('bj-slider').style.setProperty('--t', t.toFixed(4));
 }
 
 // ——— Таймер хода ———
@@ -2344,6 +2397,8 @@ function bindUi() {
     state.bjBet = Number(event.target.value);
     $('bj-bet-value').textContent = money(state.bjBet);
     $('bj-bet').textContent = `Поставить ${money(state.bjBet)}`;
+    const betTurn = state.room && state.room.you.betTurn;
+    if (betTurn) bjBubble(betTurn);
   });
   document.querySelectorAll('[data-bj-preset]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -2358,6 +2413,7 @@ function bindUi() {
       $('bj-range').value = String(state.bjBet);
       $('bj-bet-value').textContent = money(state.bjBet);
       $('bj-bet').textContent = `Поставить ${money(state.bjBet)}`;
+      if (betTurn) bjBubble(betTurn);
       haptic('light');
     });
   });
@@ -2365,21 +2421,21 @@ function bindUi() {
   on('btn-fold', 'click', (event) => act('fold', undefined, event.currentTarget));
   on('btn-check', 'click', (event) => act('check', undefined, event.currentTarget));
   on('btn-call', 'click', (event) => act('call', undefined, event.currentTarget));
-  on('btn-raise', 'click', () => {
-    haptic('light');
-    const row = $('raise-row');
-    if (row.classList.contains('hidden')) openRaisePanel();
-    else closeRaisePanel();
-  });
-  on('raise-cancel', 'click', closeRaisePanel);
-  on('raise-confirm', 'click', (event) => act('raise', state.raiseTo, event.currentTarget));
-  on('btn-allin', 'click', (event) => {
+  on('btn-raise', 'click', (event) => {
     const legal = state.room && state.room.you.legal;
-    if (legal && legal.canRaise) act('raise', legal.maxRaiseTo, event.currentTarget);
+    if (legal && legal.canRaise) act('raise', state.raiseTo, event.currentTarget);
+  });
+  on('raise-minus', 'click', () => stepRaise(-1));
+  on('raise-plus', 'click', () => stepRaise(1));
+  on('btn-more', 'click', () => {
+    $('log-panel').classList.remove('hidden');
+    state.unread = 0;
+    renderUnread();
   });
 
   on('raise-range', 'input', (event) => {
     state.raiseTouched = true;
+    state.raisePreset = null;
     state.raiseTo = Number(event.target.value);
     renderRaiseValue(state.room && state.room.you.legal);
   });
@@ -2447,10 +2503,12 @@ function applyPreset(preset) {
   if (preset === 'min') value = legal.minRaiseTo;
   else if (preset === 'max') value = legal.maxRaiseTo;
   else if (preset === 'half') value = myBet + legal.callAmount + Math.floor(potAfterCall / 2);
+  else if (preset === 'twothirds') value = myBet + legal.callAmount + Math.floor(potAfterCall * 2 / 3);
   else if (preset === 'double') value = myBet + legal.callAmount + potAfterCall * 2;
   else value = myBet + legal.callAmount + potAfterCall;
 
   state.raiseTouched = true;
+  state.raisePreset = preset;
   state.raiseTo = clamp(value, legal.minRaiseTo, legal.maxRaiseTo);
   $('raise-range').value = String(state.raiseTo);
   renderRaiseValue(legal);

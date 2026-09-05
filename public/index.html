@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=89" />
+  <link rel="stylesheet" href="/styles.css?v=90" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -397,33 +397,40 @@
 
     <!-- ═══ Стол ═══ -->
     <section id="screen-table" class="screen hidden">
+      <!-- Игровой экран: один общий фон казино на весь экран, поверх него
+           шапка, стол на фиксированном месте и панель управления снизу. -->
       <header class="topbar">
-        <button id="btn-leave" class="pill-btn">
-          <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>Лобби
+        <button id="btn-leave" class="tb-btn" title="В лобби">
+          <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
         </button>
         <button id="btn-code" class="title-block">
           <div id="room-title" class="room-title">Стол</div>
           <div id="room-subtitle" class="room-subtitle">Холдем</div>
         </button>
-        <button id="btn-invite" class="round-btn gold" title="Позвать друзей">
-          <svg class="icon icon-sm"><use href="#i-plus"></use></svg>
-        </button>
-        <button id="btn-close" class="round-btn danger" title="Выйти">
-          <svg class="icon icon-sm"><use href="#i-close"></use></svg>
-        </button>
+        <div class="tb-actions">
+          <button id="btn-log" class="tb-btn" title="История и чат">
+            <svg class="icon icon-sm"><use href="#i-chat"></use></svg>
+            <span id="chat-badge" class="tb-badge hidden">0</span>
+          </button>
+          <button id="btn-invite" class="tb-btn gold" title="Позвать друзей">
+            <svg class="icon icon-sm"><use href="#i-plus"></use></svg>
+          </button>
+          <button id="btn-close" class="tb-btn danger" title="Выйти">
+            <svg class="icon icon-sm"><use href="#i-close"></use></svg>
+          </button>
+        </div>
       </header>
 
       <div class="table-wrap">
-        <!-- Холст стола: постоянный размер 440×660, масштаб задаёт JS.
-             Всё, что должно расти вместе со столом, лежит внутри него. -->
-        <!-- Стол — готовый ассет. Он же задаёт систему координат: все
-             игровые элементы лежат внутри этого холста и позиционируются
-             в долях от него, поэтому масштабируются вместе с картинкой. -->
+        <!-- Сцена стола. Холст 400×500 масштабируется целиком одним
+             коэффициентом, который зависит только от размеров окна — не от
+             состояния игры. Всё игровое лежит внутри холста и
+             позиционируется в долях от него. -->
         <div id="table-viewport" class="table-viewport">
           <div id="table-canvas" class="table-canvas">
             <div id="seats" class="seats"></div>
             <div id="board" class="board"></div>
-            <div id="pot" class="pot hidden">
+            <div id="pot" class="pot">
               <span class="pot-label">Банк</span>
               <b id="pot-value">$0.00</b>
             </div>
@@ -433,70 +440,79 @@
             <div id="winner-pop" class="winner-pop hidden"></div>
           </div>
         </div>
-
-        <button id="btn-log" class="fab" title="История и чат">
-          <svg class="icon"><use href="#i-chat"></use></svg>
-          <span id="chat-badge" class="fab-badge hidden">0</span>
-        </button>
       </div>
 
-      <footer class="controls">
-        <!-- Подсказка живёт внутри подвала: снаружи она забирала высоту
-             у области стола и зритель видел стол на 17% мельче игрока. -->
+      <footer class="controls is-empty">
         <div id="seat-hint" class="seat-hint hidden">Нажмите на свободное место, чтобы сесть в игру</div>
         <div id="balance-chip" class="balance-chip hidden"></div>
         <div id="host-controls" class="host-controls hidden">
-          <button id="btn-start" class="btn btn-primary">Начать игру</button>
+          <button id="btn-start" class="act act-raise solo">Начать игру</button>
         </div>
 
         <div id="seat-controls" class="seat-controls hidden">
-          <button id="btn-sit" class="btn btn-outline hidden">Сесть за стол</button>
-          <button id="btn-rebuy" class="btn btn-ghost hidden">Пополнить стек</button>
+          <button id="btn-sit" class="act act-raise solo hidden">Сесть за стол</button>
+          <button id="btn-rebuy" class="act act-call solo hidden">Пополнить стек</button>
         </div>
 
         <div id="action-bar" class="action-bar hidden">
-          <div class="raise-row hidden" id="raise-row">
-            <div class="raise-presets">
-              <button class="chip-btn" data-preset="min">мин</button>
-              <button class="chip-btn" data-preset="half">½ банка</button>
-              <button class="chip-btn" data-preset="pot">банк</button>
-              <button class="chip-btn" data-preset="double">2× банка</button>
-            </div>
-            <div class="raise-slider">
+          <div id="bet-row" class="bet-row hidden">
+            <button id="btn-more" class="ab-more" title="История и чат"><i></i><i></i><i></i></button>
+            <div id="bet-slider" class="bet-slider">
+              <output id="raise-value" class="bet-bubble">$0.00</output>
+              <button id="raise-minus" class="ab-step" aria-label="Меньше">−</button>
               <input id="raise-range" type="range" min="0" max="100" value="0" />
-              <output id="raise-value">$0.00</output>
+              <button id="raise-plus" class="ab-step" aria-label="Больше">+</button>
             </div>
-            <div class="raise-actions">
-              <button id="raise-cancel" class="btn btn-ghost">Отмена</button>
-              <button id="raise-confirm" class="btn btn-raise confirm">Рейз</button>
+            <div class="bet-presets">
+              <button class="ab-preset" data-preset="half">1/2</button>
+              <button class="ab-preset" data-preset="twothirds">2/3</button>
+              <button class="ab-preset" data-preset="pot">POT</button>
+              <button class="ab-preset" data-preset="max">MAX</button>
             </div>
           </div>
           <div class="action-buttons">
-            <button id="btn-fold" class="btn btn-fold">Фолд</button>
-            <button id="btn-check" class="btn btn-check">Чек</button>
-            <button id="btn-call" class="btn btn-call">Колл</button>
-            <button id="btn-raise" class="btn btn-raise">Рейз</button>
-            <button id="btn-allin" class="btn btn-raise is-allin">Олл-ин</button>
+            <button id="btn-fold" class="act act-fold">
+              <i class="act-icon"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></i>
+              <span class="act-text"><b>ФОЛД</b><small>Fold</small></span>
+            </button>
+            <button id="btn-check" class="act act-call">
+              <i class="act-icon"><svg viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5"/></svg></i>
+              <span class="act-text"><b>ЧЕК</b><small>Check</small></span>
+            </button>
+            <button id="btn-call" class="act act-call">
+              <i class="act-icon"><svg viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5"/></svg></i>
+              <span class="act-text"><b>КОЛЛ</b><small>Call</small><em id="call-amount">$0.00</em></span>
+            </button>
+            <button id="btn-raise" class="act act-raise">
+              <i class="act-icon"><svg viewBox="0 0 16 16"><path d="M8 13V3.5M3.5 8L8 3.5 12.5 8"/></svg></i>
+              <span class="act-text"><b id="raise-label">РЕЙЗ</b><small id="raise-sub">Raise</small><em id="raise-amount">$0.00</em></span>
+            </button>
           </div>
           <div id="turn-timer" class="turn-timer"><i></i></div>
         </div>
 
         <div id="bj-bar" class="action-bar hidden">
-          <div class="raise-row hidden" id="bj-bet-row">
-            <div class="raise-presets">
-              <button class="chip-btn" data-bj-preset="min">мин</button>
-              <button class="chip-btn" data-bj-preset="half">половина</button>
-              <button class="chip-btn" data-bj-preset="max">макс</button>
-            </div>
-            <div class="raise-slider">
+          <div class="bet-row hidden" id="bj-bet-row">
+            <div id="bj-slider" class="bet-slider">
+              <output id="bj-bet-value" class="bet-bubble">$0.00</output>
               <input id="bj-range" type="range" min="0" max="100" value="0" />
-              <output id="bj-bet-value">$0.00</output>
             </div>
-            <button id="bj-bet" class="btn btn-primary">Поставить</button>
+            <div class="bet-presets">
+              <button class="ab-preset" data-bj-preset="min">МИН</button>
+              <button class="ab-preset" data-bj-preset="half">1/2</button>
+              <button class="ab-preset" data-bj-preset="max">MAX</button>
+            </div>
+            <button id="bj-bet" class="act act-raise solo">Поставить</button>
           </div>
           <div class="action-buttons hidden" id="bj-actions">
-            <button id="bj-stand" class="btn btn-surface">Хватит</button>
-            <button id="bj-hit" class="btn btn-primary">Ещё карту</button>
+            <button id="bj-stand" class="act act-fold">
+              <i class="act-icon"><svg viewBox="0 0 16 16"><path d="M4 8h8"/></svg></i>
+              <span class="act-text"><b>ХВАТИТ</b><small>Stand</small></span>
+            </button>
+            <button id="bj-hit" class="act act-call">
+              <i class="act-icon"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></i>
+              <span class="act-text"><b>ЕЩЁ КАРТУ</b><small>Hit</small></span>
+            </button>
           </div>
           <div id="bj-timer" class="turn-timer"><i></i></div>
         </div>
@@ -548,6 +564,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=55"></script>
+  <script src="/app.js?v=56"></script>
 </body>
 </html>
