@@ -223,7 +223,7 @@ function chipStack(cents) {
 }
 
 // Открываем сборку стопки для отладочных замеров раскладки.
-if (typeof window !== 'undefined') window.__chipStack = chipStack;
+if (typeof window !== 'undefined') { window.__chipStack = chipStack; window.__state = state; }
 
 // Короткая запись для фишки на сукне: восемь фишек с полными суммами на
 // сукно не помещаются, поэтому от сотни долларов показываем «$1.2k».
@@ -601,6 +601,7 @@ function stopRoomsPolling() {
 
 function renderAccount() {
   $('balance-value').textContent = money(state.balance);
+  $('profile-balance').textContent = money(state.balance);
   $('my-id').textContent = state.user ? state.user.id : '—';
   $('profile-id').textContent = `Telegram ID: ${state.user ? state.user.id : '—'}`;
   $('profile-name').textContent = state.user ? (state.user.name || 'Игрок') : '—';
@@ -671,7 +672,10 @@ function adminGrant(mode, sign = 1) {
 function renderRooms() {
   renderActiveGames();
 
+  // Списка столов во вкладке «Игры» больше нет: там две кнопки постоянных
+  // столов заведения. Оставляем отрисовку только если элемент существует.
   const list = $('rooms-list');
+  if (!list) return;
   if (!state.rooms.length) {
     list.innerHTML = '<div class="empty-note">Пока никто не создал открытый стол.<br>Создайте свой — друзья увидят его здесь.</div>';
     return;
@@ -712,8 +716,10 @@ function renderOnline() {
   const count = { holdem: 0, blackjack: 0 };
   for (const room of state.rooms) count[room.game === 'blackjack' ? 'blackjack' : 'holdem'] += room.players || 0;
   for (const game of Object.keys(count)) {
+    const text = count[game] ? `${count[game]} онлайн` : 'ждёт игроков';
+    for (const node of document.querySelectorAll(`[data-online="${game}"]`)) node.textContent = text;
     const node = $(`online-${game}`);
-    if (node) node.textContent = count[game] ? `${count[game]} онлайн` : 'ждёт игроков';
+    if (node) node.textContent = text;
   }
 }
 
@@ -1126,17 +1132,37 @@ function renderSeats(room) {
 
     // ЭТАЛОННЫЙ БЛОК: собираем заново только среднее левое место (кружок 2)
     // по замерам с эталонного макета. Остальные семь пока живут по-старому.
-    if (anchor.at === 2) {
-      node.classList.add('proto');
-      // Значок масти нарисован на ассете и потому лежит ПОД аватаром.
-      // Рисуем его копию поверх: тот же файл, тот же масштаб фона, сдвиг
-      // background-position на координаты значка — пиксель в пиксель.
+    // Один блок на все места. Геометрия — от диаметра нарисованного кружка:
+    // аватар, оправа, плашка и значок считаются от --d, а карты и ставка
+    // зеркалятся по стороне стола (data-side).
+    {
+      const circle = SEAT_CIRCLES[anchor.at];
+      const d = circle.d;
+      node.style.setProperty('--d', `${d}px`);
+      node.dataset.side = anchor.at === 0 ? 'hero' : anchor.at === 4 ? 'top' : anchor.at <= 3 ? 'left' : 'right';
+      // Значок масти нарисован на ассете и потому лежит ПОД аватаром. Рисуем
+      // копию поверх из того же файла. Медальон промерен на кружке 2:
+      // 23×21.1 с центром [-2.1, -27.45] от центра кружка при Ø50; для других
+      // кружков масштабируем пропорционально диаметру. Копия крупнее на 20 %,
+      // поэтому закрывает оригинал с запасом даже при небольшом разбросе.
+      // У героя медальон свой: замер по ассету — 23×21 с центром [+1.8, -30.5]
+      // (нижняя кромка уходит под золотое кольцо кружка).
+      const hero = anchor.at === 0;
+      const k = hero ? 1 : d / 50;
+      const bw = 23 * k;
+      const bh = 21.1 * k;
+      const bx = hero ? 1.8 : -2.1 * k;
+      const by = hero ? -30.5 : -27.45 * k;
+      node.style.setProperty('--bw', `${bw.toFixed(2)}px`);
+      node.style.setProperty('--bh', `${bh.toFixed(2)}px`);
+      node.style.setProperty('--bdy', `${by.toFixed(2)}px`);
+      node.style.setProperty('--bgx', `${(circle.at[0] * TABLE.width + bx - bw / 2).toFixed(2)}px`);
+      node.style.setProperty('--bgy', `${(circle.at[1] * TABLE.height + by - bh / 2).toFixed(2)}px`);
       const badge = document.createElement('i');
       badge.className = 'seat-badge';
       node.appendChild(badge);
-      // Золотая оправа рисуется ПОВЕРХ аватара: у нарисованного кольца
-      // правая половина тёмная, и фото её закрывало — обводки справа не
-      // было видно. Порядок: аватар → оправа → карты.
+      // Золотая оправа поверх аватара: у нарисованного кольца правая половина
+      // тёмная, и фото её закрывало. Порядок: аватар → оправа → карты.
       const ring = document.createElement('i');
       ring.className = 'seat-ring';
       node.appendChild(ring);
@@ -2144,12 +2170,20 @@ function bindUi() {
     }
   });
 
-  // Главная: баннер и карточки игр ведут во вкладку «Игры» с нужной игрой.
+  // Главная и «Игры»: столы заведения всегда открыты — садимся сразу.
   const openGame = (game) => {
-    showTab('games');
-    const option = document.querySelector(`.game-option[data-game="${game}"]`);
-    if (option && !option.classList.contains('is-active')) option.click();
+    const room = state.rooms.find((r) => r.house && r.game === game);
+    if (room) {
+      send({ type: 'join_room', code: room.code });
+      return;
+    }
+    send({ type: 'list_rooms' });
+    toast('Стол открывается — секунду');
   };
+  on('play-holdem', 'click', () => { haptic('light'); openGame('holdem'); });
+  on('play-blackjack', 'click', () => { haptic('light'); openGame('blackjack'); });
+  on('profile-topup', 'click', () => $('btn-topup').click());
+  on('profile-payout', 'click', () => $('btn-payout').click());
   on('hero-play', 'click', () => { haptic('light'); openGame('holdem'); });
   on('games-all', 'click', () => showTab('games'));
   for (const card of document.querySelectorAll('.lb-game[data-open]')) {

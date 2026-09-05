@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=70" />
+  <link rel="stylesheet" href="/styles.css?v=76" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -200,79 +200,45 @@
 
           <!-- ═══ Игры ═══ -->
           <div id="tab-games" class="tab-panel hidden">
-            <div class="card">
-              <div class="card-head">
-                <h2>Открытые столы</h2>
-                <button id="rooms-refresh-games" class="link-btn">обновить</button>
-              </div>
-              <div id="rooms-list" class="rooms-list"></div>
-            </div>
+            <div class="lb-sh"><h2>Игры</h2></div>
 
-            <div class="card">
-              <h2>Зайти по коду</h2>
-              <div class="row">
-                <input id="join-code" class="code-input" type="text" maxlength="5" placeholder="КОД" autocomplete="off" autocapitalize="characters" />
-                <button id="join-btn" class="btn btn-primary">Войти</button>
-              </div>
-              <p class="hint">Попросите у друга код стола из пяти символов.</p>
-            </div>
+            <button id="play-holdem" class="lb-play lb-play-poker">
+              <span class="lb-play-art" aria-hidden="true">
+                <i class="lb-mini lb-mini-1">A<b>♠</b></i>
+                <i class="lb-mini lb-mini-2 red">A<b>♥</b></i>
+                <i class="lb-chipart lb-chipart-red"></i>
+              </span>
+              <span class="lb-play-body">
+                <span class="lb-hero-kicker">Texas Hold'em</span>
+                <b>Покер</b>
+                <span>Блайнды $0.05 / $0.10 · вход $10 · до 8 игроков</span>
+                <span class="lb-play-foot">
+                  <span class="lb-game-meta"><svg class="icon icon-sm"><use href="#i-users"></use></svg><em data-online="holdem">—</em></span>
+                  <span class="lb-play-cta">Сесть за стол<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
+                </span>
+              </span>
+            </button>
 
-            <div class="card">
-              <h2>Создать стол</h2>
-              <div class="game-picker">
-                <button type="button" class="game-option is-active" data-game="holdem">
-                  <svg class="icon"><use href="#i-spade"></use></svg>
-                  <b>Холдем</b><span>2–9 игроков</span>
-                </button>
-                <button type="button" class="game-option" data-game="blackjack">
-                  <svg class="icon"><use href="#i-club"></use></svg>
-                  <b>Блекджек</b><span>вдвоём, до 21</span>
-                </button>
-              </div>
-              <div class="settings-grid" id="holdem-settings">
-                <label class="field">
-                  <span>Малый блайнд, $</span>
-                  <input id="set-sb" type="number" min="0.01" step="0.01" value="0.05" inputmode="decimal" />
-                </label>
-                <label class="field">
-                  <span>Большой блайнд, $</span>
-                  <input id="set-bb" type="number" min="0.02" step="0.01" value="0.10" inputmode="decimal" />
-                </label>
-                <label class="field">
-                  <span>Вход за стол, $</span>
-                  <input id="set-buyin" type="number" min="0.2" step="1" value="10" inputmode="decimal" />
-                </label>
-                <label class="field">
-                  <span>Мест за столом</span>
-                  <select id="set-seats">
-                    <option>2</option><option>3</option><option>4</option><option>5</option>
-                    <option selected>6</option><option>7</option><option>8</option><option>9</option>
-                  </select>
-                </label>
-              </div>
+            <button id="play-blackjack" class="lb-play lb-play-bj">
+              <span class="lb-play-art" aria-hidden="true">
+                <i class="lb-mini lb-mini-3">J<b>♣</b></i>
+                <i class="lb-mini lb-mini-4 red">A<b>♥</b></i>
+                <i class="lb-21">21</i>
+              </span>
+              <span class="lb-play-body">
+                <span class="lb-hero-kicker">Blackjack</span>
+                <b>Блекджек</b>
+                <span>Ставки $0.10 – $2.00 · вдвоём, до 21</span>
+                <span class="lb-play-foot">
+                  <span class="lb-game-meta"><svg class="icon icon-sm"><use href="#i-users"></use></svg><em data-online="blackjack">—</em></span>
+                  <span class="lb-play-cta">Сесть за стол<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
+                </span>
+              </span>
+            </button>
 
-              <div class="settings-grid hidden" id="blackjack-settings">
-                <label class="field">
-                  <span>Минимальная ставка, $</span>
-                  <input id="set-minbet" type="number" min="0.01" step="0.01" value="0.10" inputmode="decimal" />
-                </label>
-                <label class="field">
-                  <span>Максимальная ставка, $</span>
-                  <input id="set-maxbet" type="number" min="0.01" step="0.1" value="2" inputmode="decimal" />
-                </label>
-              </div>
-
-              <label class="field">
-                <span>Секунд на ход</span>
-                <select id="set-turn">
-                  <option>20</option><option>30</option><option selected>45</option><option>60</option><option>90</option>
-                </select>
-              </label>
-              <label class="switch">
-                <input id="set-public" type="checkbox" checked />
-                <span>Открытый стол — он появится в «Активных играх» у всех</span>
-              </label>
-              <button id="create-btn" class="btn btn-primary btn-block">Создать стол</button>
+            <div class="lb-game lb-game-soon lb-game-roulette lb-play-soon">
+              <span class="lb-game-art" aria-hidden="true"><i class="lb-wheel"></i></span>
+              <span class="lb-game-body"><b>Рулетка</b><span>Европейская</span><span class="lb-game-meta lb-soon">скоро</span></span>
             </div>
 
             <details class="card rules" id="rules-card">
@@ -288,6 +254,7 @@
               </div>
             </details>
           </div>
+
           <!-- ═══ Турниры ═══ -->
           <div id="tab-tournaments" class="tab-panel hidden">
             <div class="lb-sh"><h2>Турниры</h2></div>
@@ -302,7 +269,11 @@
           <!-- ═══ Бонусы ═══ -->
           <div id="tab-bonuses" class="tab-panel hidden">
             <div class="lb-sh"><h2>Бонусы</h2></div>
-            <!-- Промокод -->
+            <section class="lb-empty">
+              <span class="lb-empty-art" aria-hidden="true"><svg class="icon"><use href="#i-gift"></use></svg></span>
+              <b>Бонусов пока нет</b>
+              <span>Первые акции и подарки за игру появятся здесь. Промокод, если он у вас есть, можно активировать ниже.</span>
+            </section>
             <div id="promo-card" class="card">
               <h2>Промокод</h2>
               <div class="row">
@@ -344,6 +315,14 @@
                 <span id="profile-id">Telegram ID: —</span>
               </div>
               <button id="profile-copy" class="round-btn" aria-label="Скопировать ID"><svg class="icon icon-sm"><use href="#i-copy"></use></svg></button>
+            </div>
+            <div class="lb-profile-balance">
+              <span class="lb-caption">Баланс</span>
+              <b id="profile-balance" class="money">$0.00</b>
+              <span class="lb-profile-actions">
+                <button id="profile-topup" class="btn btn-primary"><svg class="icon icon-sm"><use href="#i-plus"></use></svg>Пополнить</button>
+                <button id="profile-payout" class="btn btn-ghost"><svg class="icon icon-sm"><use href="#i-arrow-up-right"></use></svg>Вывести</button>
+              </span>
             </div>
             <div class="lb-list">
               <button id="tile-leaders" class="lb-row"><svg class="icon"><use href="#i-trophy"></use></svg><span>Лидеры</span><svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg></button>
@@ -650,6 +629,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=41"></script>
+  <script src="/app.js?v=47"></script>
 </body>
 </html>

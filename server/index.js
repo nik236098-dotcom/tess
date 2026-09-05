@@ -18,6 +18,7 @@ loadEnv();
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const ROOM_TTL_MS = 30 * 60 * 1000; // пустую комнату держим полчаса
+const HOUSE_SEAT_GRACE_MS = 90 * 1000; // отвалившийся игрок держит место за столом заведения полторы минуты
 const WEBHOOK_PREFIX = '/pay/'; // /pay/<провайдер>/webhook
 const MAX_WEBHOOK_BYTES = 64 * 1024; // тело вебхука заведомо меньше
 const RECENT_WINS_LIMIT = 12; // лента «Последние выигрыши» на главной
@@ -136,6 +137,26 @@ function createApp(options = {}) {
     });
   }
 
+  // ——— Постоянные столы ———
+  // По одному открытому столу на игру: холдем и блекджек. Хозяин — само
+  // заведение, поэтому раздачи стартуют сами, как только сели двое, а
+  // уборщик такие столы не трогает: «участник» PokerGena всегда на связи.
+  const HOUSE = { id: 'house', name: 'PokerGena', photoUrl: null };
+
+  function createHouseTables() {
+    const presets = [
+      { game: 'holdem', smallBlind: 5, bigBlind: 10, buyIn: 1000, maxPlayers: 8, turnSeconds: 30, isPublic: true },
+      { game: 'blackjack', minBet: 10, maxBet: 200, buyIn: 1000, turnSeconds: 30, isPublic: true },
+    ];
+    for (const preset of presets) {
+      const room = new Room(createRoomCode(), HOUSE, preset, { bank: accounts });
+      room.house = true;
+      room.autoStart = true;
+      room.title = preset.game === 'blackjack' ? 'Блекджек PokerGena' : 'Стол PokerGena';
+      registerRoom(room);
+    }
+  }
+
   function markEmpty(room) {
     if (room.isEmpty) room.emptyAt = Date.now();
   }
@@ -145,6 +166,17 @@ function createApp(options = {}) {
   const sweeper = setInterval(() => {
     const now = Date.now();
     for (const [code, room] of rooms) {
+      if (room.house) {
+        // Постоянный стол не удаляется, но отвалившихся игроков с него
+        // снимаем: иначе места забьются «призраками», и сесть будет некуда.
+        for (const seat of room.seats) {
+          if (!seat || seat.connected || !seat.offlineAt) continue;
+          if (now - seat.offlineAt < HOUSE_SEAT_GRACE_MS) continue;
+          if (room.inActiveHand(seat.userId)) continue;
+          room.removeMember(seat.userId);
+        }
+        continue;
+      }
       const someoneOnline = [...room.members.values()].some((member) => member.connected);
       if (someoneOnline) {
         room.emptyAt = null;
@@ -159,6 +191,8 @@ function createApp(options = {}) {
     }
   }, 60 * 1000);
   sweeper.unref?.();
+
+  createHouseTables();
 
   // ——— Рассылка ———
 
@@ -406,7 +440,7 @@ function createApp(options = {}) {
   // Открытые столы: их видно всем, чтобы друзья заходили без кода.
   function publicRooms() {
     return [...rooms.values()]
-      .filter((room) => room.settings.isPublic && [...room.members.values()].some((m) => m.connected))
+      .filter((room) => room.house || (room.settings.isPublic && [...room.members.values()].some((m) => m.connected)))
       .map((room) => room.summary())
       .sort((a, b) => b.players - a.players || a.code.localeCompare(b.code))
       .slice(0, 30);

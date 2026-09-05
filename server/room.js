@@ -100,6 +100,7 @@ class Room extends EventEmitter {
     const seat = this.seatOf(user.id);
     if (seat) {
       seat.connected = true;
+      seat.offlineAt = null;
       // Вернулся в игру — снимаем автоматический «сижу мимо».
       if (seat.autoSitOut) {
         seat.sittingOut = false;
@@ -115,6 +116,7 @@ class Room extends EventEmitter {
     const seat = this.seatOf(userId);
     if (seat) {
       seat.connected = false;
+      seat.offlineAt = Date.now();
       // Пока игрока нет, пропускаем его раздачи, чтобы стол не стоял.
       if (!seat.sittingOut) {
         seat.sittingOut = true;
@@ -931,6 +933,8 @@ class Room extends EventEmitter {
       hasFreeSeat: this.seats.some((seat) => !seat),
       watchers: this.members.size,
       isPublic: this.settings.isPublic,
+      // Постоянный стол заведения: всегда открыт, никогда не удаляется.
+      house: Boolean(this.house),
     };
   }
 

@@ -721,16 +721,20 @@ input::placeholder { color: var(--text-muted); }
   border-radius: 4px;
   box-shadow: none;
 }
+/* Подпись как в макете: мелкий разреженный капс золотом сверху, сумма
+   крупно светлым золотом под ней. Замер по макету: прописные подписи ≈5,
+   суммы ≈10.5 логических px. */
 .pot-label {
-  font: var(--t-label);
-  letter-spacing: 0.16em;
+  font: 500 7.5px/1 var(--font);
+  letter-spacing: 0.24em;
   text-transform: uppercase;
-  color: rgba(224, 183, 112, 0.8);
+  color: #dcb464;
+  margin-bottom: 3px;
 }
 .pot b {
-  font: 700 17px/1.1 var(--font);
-  letter-spacing: -0.015em;
-  color: #f2dcae;
+  font: 700 14.5px/1 var(--font);
+  letter-spacing: -0.01em;
+  color: #f6e4b6;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1588,7 +1592,9 @@ input::placeholder { color: var(--text-muted); }
 
 /* Ждёт хода — базовое состояние, без эффектов. Отдельно помечаем только
    того, кто уже сходил на этой улице: слегка приглушаем. */
-.seat.acted:not(.acting) .seat-avatar { opacity: 0.86; }
+/* Уже сходил — чуть притушен. Именно яркостью, а не прозрачностью: сквозь
+   полупрозрачный аватар просвечивал нарисованный на ассете «плюс». */
+.seat.acted:not(.acting) .seat-avatar { filter: brightness(0.82); }
 
 /* Пустое место: спокойный пульс, когда сесть можно.
    position тут НЕ переопределяем: слот привязан к якорю места через
@@ -1688,7 +1694,7 @@ input::placeholder { color: var(--text-muted); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   ЭТАЛОННЫЙ БЛОК МЕСТА — пока только среднее левое (кружок 2)
+   БЛОК МЕСТА — все восемь мест по одному эталону (собран на кружке 2)
    ═══════════════════════════════════════════════════════════════════════
    Центр кружка 2 — (47.8, 281.2); ниже смещения от него. Геометрия рамки
    снята с ассета: пунктир пустого места Ø48, золото Ø52.1..53.5.
@@ -1711,12 +1717,12 @@ input::placeholder { color: var(--text-muted); }
    рамкой не остаётся. Никаких своих колец, подложек и линий по краю —
    каждая из них читалась вторым кругом. Только мягкая виньетка, чтобы
    светлое фото не висело отдельным диском. */
-.seat.proto .seat-avatar {
-  width: 52.6px; height: 52.6px;
+.seat .seat-avatar {
+  width: calc(var(--d, 50px) + 2.6px); height: calc(var(--d, 50px) + 2.6px);
   background: #0d1319;
   box-shadow: none;
 }
-.seat.proto .seat-avatar::after {
+.seat .seat-avatar::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -1724,25 +1730,25 @@ input::placeholder { color: var(--text-muted); }
   box-shadow: inset 0 0 5px 1px rgba(0, 0, 0, 0.42);
   pointer-events: none;
 }
-.seat.proto .seat-ring {
+.seat .seat-ring {
   position: absolute;
   left: 0; top: 0;
-  width: 54.4px; height: 54.4px;
+  width: calc(var(--d, 50px) + 4.4px); height: calc(var(--d, 50px) + 4.4px);
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background:
     /* тёмная линия по внешнему краю, как у нарисованного кольца */
-    radial-gradient(circle, rgba(0, 0, 0, 0) 0 26.6px, rgba(0, 0, 0, 0.55) 26.9px 27.4px),
+    radial-gradient(circle, rgba(0, 0, 0, 0) 0 calc(var(--d, 50px) / 2 + 1.6px), rgba(0, 0, 0, 0.55) calc(var(--d, 50px) / 2 + 1.9px) calc(var(--d, 50px) / 2 + 2.4px)),
     linear-gradient(140deg,
       #fff0b8 0%, #e6bd5e 30%, #b9882e 62%, #f0cf7c 100%);
   -webkit-mask-image: radial-gradient(circle,
-    rgba(0, 0, 0, 0) 0 24.8px, #000 25.1px 27.2px, rgba(0, 0, 0, 0) 27.5px);
+    rgba(0, 0, 0, 0) 0 calc(var(--d, 50px) / 2 - 0.2px), #000 calc(var(--d, 50px) / 2 + 0.1px) calc(var(--d, 50px) / 2 + 2.2px), rgba(0, 0, 0, 0) calc(var(--d, 50px) / 2 + 2.5px));
   mask-image: radial-gradient(circle,
-    rgba(0, 0, 0, 0) 0 24.8px, #000 25.1px 27.2px, rgba(0, 0, 0, 0) 27.5px);
+    rgba(0, 0, 0, 0) 0 calc(var(--d, 50px) / 2 - 0.2px), #000 calc(var(--d, 50px) / 2 + 0.1px) calc(var(--d, 50px) / 2 + 2.2px), rgba(0, 0, 0, 0) calc(var(--d, 50px) / 2 + 2.5px));
   pointer-events: none;
   z-index: 3;
 }
-.seat.proto.acting .seat-avatar {
+.seat.acting .seat-avatar {
   box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.9), 0 0 12px rgba(52, 211, 153, 0.4);
 }
 
@@ -1751,16 +1757,33 @@ input::placeholder { color: var(--text-muted); }
    сукне. Левое место — веер внутрь стола: верх карт наклонён к банку
    (+8° по часовой), задняя карта завалена чуть сильнее передней.
    Низ карт (~+17) выше плашки (+19) — не пересекаются. */
-.seat.proto .seat-cards {
+.seat:not(.me) .seat-cards {
   transform: translate(calc(-50% + 27px), calc(-50% + 5px)) rotate(8deg);
   gap: 0;
   z-index: 4;
+}
+/* Правые места — зеркало: пара слева от аватара, наклон внутрь стола,
+   верхней лежит левая карта (row-reverse). Верхнее место — пара под
+   аватаром широким веером, плашка ложится поверх. */
+.seat[data-side="right"] .seat-cards {
+  transform: translate(calc(-50% - 27px), calc(-50% + 5px)) rotate(-8deg);
+  flex-direction: row-reverse;
+}
+.seat[data-side="right"] .seat-cards .card-face + .card-face { margin-left: 0; margin-right: -3.5px; }
+.seat[data-side="top"] .seat-cards {
+  transform: translate(-50%, calc(-50% + 21px));
+  z-index: 4;
+}
+.seat[data-side="top"] .seat-cards .card-face:first-child { transform: translate(-13px, 0) rotate(-18deg); }
+.seat[data-side="top"] .seat-cards .card-face:last-child { transform: translate(13px, 0) rotate(18deg); }
+.seat[data-side="top"] .seat-cards .card-face + .card-face { margin-left: -4px; }
+
   filter: drop-shadow(0 2.5px 3.5px rgba(0, 0, 0, 0.75));
 }
 /* Размер по макету (16.3×25 у каждой карты) с запасом на «солидность»:
    17×25.5, пара почти без нахлёста — в макете карты лежат рядом, а не
    одна на другой. Мелкие 15×23 с нахлёстом 4 читались обрубками. */
-.seat.proto .seat-cards .card-face {
+.seat:not(.me) .seat-cards .card-face {
   --card-w: 18px;
   --card-h: 29px;
   border-radius: 2.9px;
@@ -1769,18 +1792,18 @@ input::placeholder { color: var(--text-muted); }
 }
 /* В макете карты ПАРАЛЛЕЛЬНЫ и касаются длинными рёбрами — веера нет,
    наклон общий на всю пару. */
-.seat.proto .seat-cards .card-face:first-child { transform: none; }
-.seat.proto .seat-cards .card-face + .card-face { margin-left: -3.5px; }
+.seat:not(.me) .seat-cards .card-face:first-child { transform: none; }
+.seat:not(.me) .seat-cards .card-face + .card-face { margin-left: -3.5px; }
 /* Рубашка — векторная картинка, срисованная с увеличенного фрагмента
    макета: белый кант с тёмной волосяной обводкой, глубокий синий с
    бликом от верхнего левого угла, тонкая светлая рамка внутри и контур
    пики чуть ниже середины. Шрифтовой знак масти смотрелся дёшево. */
-.seat.proto .card-face.back {
+.seat:not(.me) .card-face.back {
   background: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 36 58%22%3E%3Cdefs%3E%3ClinearGradient id=%22g%22 x1=%220%22 y1=%220%22 x2=%220%22 y2=%221%22%3E%3Cstop offset=%220%22 stop-color=%22%230660ee%22/%3E%3Cstop offset=%220.5%22 stop-color=%22%23003fcf%22/%3E%3Cstop offset=%221%22 stop-color=%22%230036ac%22/%3E%3C/linearGradient%3E%3CradialGradient id=%22s%22 cx=%220.3%22 cy=%220.1%22 r=%220.9%22%3E%3Cstop offset=%220%22 stop-color=%22%239fd0ff%22 stop-opacity=%220.1%22/%3E%3Cstop offset=%220.7%22 stop-color=%22%239fd0ff%22 stop-opacity=%220%22/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect x=%220.5%22 y=%220.5%22 width=%2235%22 height=%2257%22 rx=%224.4%22 fill=%22%23f6f8fa%22 stroke=%22%23161b25%22 stroke-opacity=%220.5%22 stroke-width=%221%22/%3E%3Crect x=%223.5%22 y=%223.5%22 width=%2229%22 height=%2251%22 rx=%222.8%22 fill=%22url(%23g)%22/%3E%3Crect x=%223.5%22 y=%223.5%22 width=%2229%22 height=%2251%22 rx=%222.8%22 fill=%22url(%23s)%22/%3E%3Crect x=%224.4%22 y=%224.4%22 width=%2227.2%22 height=%2249.2%22 rx=%222.2%22 fill=%22none%22 stroke=%22%233b7ff5%22 stroke-opacity=%220.6%22 stroke-width=%221.1%22/%3E%3Cg fill=%22none%22 stroke=%22%234d8dff%22 stroke-opacity=%220.6%22 stroke-width=%221.3%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M18 22.4 C15.2 26.6 9.8 29.4 9.8 34.6 C9.8 38.6 15.2 40 18 37.2 C20.8 40 26.2 38.6 26.2 34.6 C26.2 29.4 20.8 26.6 18 22.4 Z%22/%3E%3Cpath d=%22M16.8 38 L19.2 38 L21.2 42.2 L14.8 42.2 Z%22/%3E%3C/g%3E%3C/svg%3E") no-repeat center / 100% 100%;
   box-shadow: none;
 }
-.seat.proto .card-face.back::before,
-.seat.proto .card-face.back::after { content: none; }
+.seat:not(.me) .card-face.back::before,
+.seat:not(.me) .card-face.back::after { content: none; }
 
 /* ── Плашка имени и стека ────────────────────────────────────────────
    По макету, а не «примерно»: восьмиугольник со срезанными углами, чуть
@@ -1788,10 +1811,10 @@ input::placeholder { color: var(--text-muted); }
    яркая золотая линия. Текст крупный и НЕ жирный — имя обычным белым,
    стек чуть крупнее золотом; плашка обтягивает текст, а не сидит с
    воздухом. Верх на +19 — чуть заходит под низ оправы. */
-.seat.proto .seat-plate {
+.seat .seat-plate {
   /* В макете углы не срезаны, а чуть скруглены. */
   --oct: inset(0 round 6px);
-  transform: translate(-50%, 14.5px);
+  transform: translate(-50%, calc(var(--d, 50px) / 2 - 10.5px));
   z-index: 5;
   width: auto; min-width: 57px; max-width: 70px;
   padding: 1.5px 7px 2px;
@@ -1803,15 +1826,15 @@ input::placeholder { color: var(--text-muted); }
   box-shadow: none;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.7));
 }
-.seat.proto .seat-plate::after {
+.seat .seat-plate::after {
   content: '';
   position: absolute;
   inset: 0.7px;
   clip-path: inset(0 round 5.3px);
   background: linear-gradient(180deg, #0c0e12 0%, #050608 60%, #08090c 100%);
 }
-.seat.proto .seat-name,
-.seat.proto .seat-stack {
+.seat .seat-name,
+.seat .seat-stack {
   position: relative;
   z-index: 1;
   background: none;
@@ -1819,12 +1842,12 @@ input::placeholder { color: var(--text-muted); }
   background-clip: initial;
   filter: none;
 }
-.seat.proto .seat-name {
+.seat .seat-name {
   font: 500 9px/1.15 var(--font);
   color: #ffffff;
   letter-spacing: 0.005em;
 }
-.seat.proto .seat-stack {
+.seat .seat-stack {
   font: 500 9.8px/1.1 var(--font);
   color: #efc86e;
   letter-spacing: 0;
@@ -1839,17 +1862,17 @@ input::placeholder { color: var(--text-muted); }
    форма — скруглённый квадрат. Сдвиг на 0.8 px вправо компенсирует
    перекос нарисованного медальона относительно кружка; запас от
    увеличения (1.4 px на сторону) его перекрывает. */
-.seat.proto .seat-badge {
-  --badge-k: 1.10;
+.seat .seat-badge {
+  --badge-k: 1.2;
   position: absolute;
   left: 0; top: 0;
-  transform: translate(calc(-50% - 1.3px), calc(-50% - 27.45px));
-  width: calc(23px * var(--badge-k));
-  height: calc(21.1px * var(--badge-k));
+  transform: translate(-50%, calc(-50% + var(--bdy, -27.45px)));
+  width: calc(var(--bw, 23px) * var(--badge-k));
+  height: calc(var(--bh, 21.1px) * var(--badge-k));
   border-radius: 29%;
   background-image: url('/img/table-v2.webp');
   background-size: calc(var(--table-w) * var(--badge-k)) calc(var(--table-h) * var(--badge-k));
-  background-position: calc(-34.2px * var(--badge-k)) calc(-243.2px * var(--badge-k));
+  background-position: calc(var(--bgx, 34.2px) * -1 * var(--badge-k)) calc(var(--bgy, 243.2px) * -1 * var(--badge-k));
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.7),
     0 1px 1px rgba(0, 0, 0, 0.5);
@@ -2507,3 +2530,81 @@ input::placeholder { color: var(--text-muted); }
   .lb-game { width: 156px; }
   .lb-balance b { font-size: 23px; }
 }
+
+/* ── Вкладка «Игры»: две большие игровые кнопки ──────────────────── */
+.lb-play {
+  position: relative;
+  display: grid;
+  grid-template-columns: 124px 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 150px;
+  padding: 0 14px 0 0;
+  border-radius: 22px;
+  border: 1px solid var(--lb-line);
+  overflow: hidden;
+  color: var(--lb-text);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transition: transform 0.14s var(--ease);
+}
+.lb-play:active { transform: scale(0.98); }
+.lb-play-art { position: relative; height: 150px; overflow: hidden; }
+.lb-play-art .lb-mini-1 { left: 18px; top: 40px; }
+.lb-play-art .lb-mini-2 { left: 58px; top: 34px; }
+.lb-play-art .lb-mini-3 { left: 18px; top: 40px; }
+.lb-play-art .lb-mini-4 { left: 58px; top: 34px; }
+.lb-play-art .lb-chipart-red { left: 84px; top: 92px; }
+.lb-play-art .lb-21 { right: 8px; top: 14px; }
+.lb-play-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 14px 0; }
+.lb-play-body > b { font: 800 22px/1.1 var(--font-display); letter-spacing: -0.01em; }
+.lb-play-body > span:not(.lb-game-meta):not(.lb-hero-kicker) { font-size: 12px; line-height: 1.35; color: var(--lb-text-2); }
+.lb-play-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.lb-play-foot .lb-game-meta { margin-top: 0; white-space: nowrap; }
+.lb-play-cta {
+  display: inline-flex; align-items: center; gap: 6px;
+  flex: none;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font: 700 12.5px var(--font);
+  color: #fff;
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent-deep));
+  box-shadow: 0 8px 18px rgba(139, 92, 246, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.lb-play-poker {
+  background:
+    radial-gradient(70% 90% at 0% 50%, rgba(139, 92, 246, 0.5), rgba(139, 92, 246, 0) 60%),
+    radial-gradient(60% 60% at 100% 100%, rgba(60, 20, 140, 0.5), rgba(60, 20, 140, 0) 60%),
+    linear-gradient(170deg, #1a1030 0%, #0d0916 100%);
+}
+.lb-play-bj {
+  border-color: rgba(52, 211, 153, 0.22);
+  background:
+    radial-gradient(70% 90% at 0% 50%, rgba(52, 211, 153, 0.4), rgba(52, 211, 153, 0) 60%),
+    radial-gradient(60% 60% at 100% 100%, rgba(11, 90, 60, 0.6), rgba(11, 90, 60, 0) 60%),
+    linear-gradient(170deg, #0f2a22 0%, #0a1712 100%);
+}
+.lb-play-bj .lb-hero-kicker { color: #4ade9f; }
+.lb-play-bj .lb-play-cta { background: linear-gradient(180deg, #4ade9f, #1fa97a); box-shadow: 0 8px 18px rgba(52, 211, 153, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3); }
+.lb-play .lb-game-meta { margin-top: 6px; }
+.lb-play-soon { width: 100%; min-height: 0; flex-direction: row; align-items: center; }
+.lb-play-soon .lb-game-art { width: 124px; height: 110px; flex: none; }
+.lb-play-soon .lb-game-body { margin-top: 0; padding: 14px; background: none; }
+.lobby .rules { border-radius: 20px; }
+
+/* ── Профиль: баланс ──────────────────────────────────────────────── */
+.lb-profile-balance {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid var(--lb-line);
+  background:
+    radial-gradient(80% 100% at 100% 0%, rgba(139, 92, 246, 0.22), rgba(139, 92, 246, 0) 60%),
+    var(--lb-card);
+}
+.lb-profile-balance > b { font: 700 30px/1.1 var(--font); letter-spacing: -0.02em; color: #fff; font-variant-numeric: tabular-nums; }
+.lb-profile-actions { display: flex; gap: 10px; margin-top: 10px; }
+.lb-profile-actions .btn { flex: 1; padding: 12px 10px; border-radius: 14px; }
+.lobby .btn-ghost { border-color: var(--lb-line-strong); color: var(--lb-text-2); }
