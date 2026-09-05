@@ -1598,10 +1598,10 @@ input::placeholder { color: var(--text-muted); }
 
 /* Отключился: обесцвеченный аватар и пунктирная рамка — видно, что игрока
    нет, а не что он просто пропускает раздачу. */
+/* Пунктирная рамка убрана: она рисовалась поверх аватара своей толщиной и
+   вылезала за золотое кольцо. Отключившийся — просто обесцвечен. */
 .seat.offline .seat-avatar {
-  filter: grayscale(1) brightness(0.8);
-  border-style: dashed;
-  border-color: rgba(255, 255, 255, 0.28);
+  filter: grayscale(1) brightness(0.7);
 }
 .seat.sitting-out .seat-avatar { filter: grayscale(0.65); }
 
