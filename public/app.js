@@ -82,107 +82,64 @@ const TABLE = {
 // Вертикальный сдвиг блока героя от его якоря. Подобран так, чтобы карты
 // целиком лежали на сукне (сукно кончается на y=518 из 600) и не задевали
 // банк снизу, а аватар остался на нарисованном кружке.
-const HERO_SHIFT_Y = -56;
+const HERO_SHIFT_Y = -60;   // карты стали выше (пропорция 1.4), блок поднят следом
 
-// Раскладки по числу игроков. Одной геометрией на все случаи стол не
-// живёт: при восьми игроках свободного сукна объективно меньше, поэтому
-// каждому числу — свой набор якорей и свои размеры блока.
-//
-// Ключевая мысль: боковые якоря (2 и 6, на 3 и 9 часах) лежат на одной
-// высоте с бордом, и между краем сукна и бордом там всего 47.7 px слева
-// и 41.9 px справа. Поэтому пока мест хватает, эти якоря просто НЕ
-// занимаются — до шести игроков включительно. Тогда блоки остаются
-// крупными. С семи игроков без них не обойтись, и блок ужимается.
-//
-// Координаты подобраны оптимизатором по границе сукна, снятой с ассета,
-// с одновременной проверкой: блок внутри сукна, блок ↔ борд, блок ↔ банк,
-// блок ↔ блок, ставка внутри сукна, ставка ↔ борд/банк/блок/ставка, и
-// ставка не дальше 110–125 px от своего места, иначе она перестаёт
-// читаться как его. Место героя и его карты в поиске зафиксированы.
-const LAYOUTS = {
-  2: {
-    seats: [0, 4],
-    bodyW: 84, avatar: 44, cardW: 23,
-    shift: { 4: [0, 0] },
-    bet: { 0: [0.4976, 0.575], 4: [0.4962, 0.3461] },
-  },
-  3: {
-    seats: [0, 3, 5],
-    bodyW: 84, avatar: 44, cardW: 23,
-    shift: { 3: [32, 0], 5: [-32, 0] },
-    bet: { 0: [0.4976, 0.575], 3: [0.4151, 0.4256], 5: [0.5849, 0.4256] },
-  },
-  4: {
-    seats: [0, 3, 4, 5],
-    bodyW: 68, avatar: 44, cardW: 23,
-    shift: { 3: [25, 0], 4: [0, 0], 5: [-25, 0] },
-    bet: { 0: [0.4976, 0.575], 3: [0.2978, 0.4031], 4: [0.4972, 0.3244], 5: [0.7022, 0.4031] },
-  },
-  5: {
-    seats: [0, 1, 3, 5, 7],
-    bodyW: 60, avatar: 40, cardW: 21,
-    shift: { 1: [26, -36], 3: [4, 18], 5: [-4, 18], 7: [-26, -36] },
-    bet: { 0: [0.4976, 0.575], 1: [0.3158, 0.6303], 3: [0.4014, 0.4217], 5: [0.5986, 0.4217], 7: [0.6842, 0.6303] },
-  },
-  6: {
-    seats: [0, 1, 3, 4, 5, 7],
-    bodyW: 60, avatar: 40, cardW: 21,
-    shift: { 1: [26, -36], 3: [4, 18], 4: [0, 0], 5: [-4, 18], 7: [-26, -36] },
-    bet: { 0: [0.4976, 0.575], 1: [0.3158, 0.6303], 3: [0.4014, 0.4217], 4: [0.496, 0.3128], 5: [0.5986, 0.4217], 7: [0.6842, 0.6303] },
-  },
-  7: {
-    seats: [0, 1, 2, 3, 5, 6, 7],
-    bodyW: 42, avatar: 40, cardW: 19,
-    shift: { 1: [22, -24], 2: [6, 0], 3: [10, 0], 5: [-10, 0], 6: [-6, 0], 7: [-22, -24] },
-    bet: { 0: [0.4976, 0.575], 1: [0.2354, 0.6306], 2: [0.2298, 0.4241], 3: [0.3847, 0.3834], 5: [0.6153, 0.3834], 6: [0.7702, 0.4241], 7: [0.7646, 0.6306] },
-  },
-  8: {
-    seats: [0, 1, 2, 3, 4, 5, 6, 7],
-    bodyW: 42, avatar: 40, cardW: 19,
-    shift: { 1: [22, -24], 2: [6, 0], 3: [10, 0], 4: [0, 0], 5: [-10, 0], 6: [-6, 0], 7: [-22, -24] },
-    bet: { 0: [0.4976, 0.575], 1: [0.2354, 0.6306], 2: [0.2298, 0.4241], 3: [0.3847, 0.3834], 4: [0.5004, 0.3044], 5: [0.6153, 0.3834], 6: [0.7702, 0.4241], 7: [0.7646, 0.6306] },
-  },
+// Какие кружки занимать при каком числе игроков. Боковые (2 и 6, на 3 и
+// 9 часах) стоят на одной высоте с рядом общих карт, поэтому занимаются
+// последними — только с семи игроков.
+const SEAT_SETS = {
+  2: [0, 4],
+  3: [0, 3, 5],
+  4: [0, 3, 4, 5],
+  5: [0, 1, 3, 5, 7],
+  6: [0, 1, 3, 4, 5, 7],
+  7: [0, 1, 2, 3, 5, 6, 7],
+  8: [0, 1, 2, 3, 4, 5, 6, 7],
 };
 
-// Кружки мест, нарисованные на ассете. Это единственная точка привязки:
-// раскладка выбирает, какие из них занять, и на сколько сместить блок.
-const SEAT_CIRCLES = [
-  [0.4972, 0.8273], [0.2597, 0.7486], [0.1989, 0.4834], [0.2652, 0.2348],
-  [0.4972, 0.1561], [0.7348, 0.2348], [0.7956, 0.4834], [0.7348, 0.7486],
+// Места в нижней половине стола растят блок ВВЕРХ: иначе имя, стек и карты
+// уползают на золотое кольцо и борт. Верхние и боковые — вниз, как обычно.
+const CARDS_ABOVE = new Set([0]);
+
+// Ширина плашки с именем и стеком. У героя своя, у боковых мест узкая:
+// между краем сукна и рядом общих карт там всего ~49 px.
+const PLATE_W = { 0: 84, 1: 64, 2: 48, 3: 64, 4: 64, 5: 64, 6: 48, 7: 64 };
+
+const SEAT_ANCHORS = [
+  // Кружки сняты с ассета подбором кольца (покрытие 89-97%): все Ø44, что
+  // ровно равно размеру аватара. Сдвиги подобраны по РЕАЛЬНЫМ частям блока
+  // (аватар 44, плашка, карты), а не по габаритной коробке: коробка упирается
+  // в сукно там, где стоит только узкий аватар, и заставляет всё сжимать.
+  { seat: [0.4972, 0.8273], bet: [0.4976, 0.5750], shift: [0, -60] },  // низ по центру (герой)
+  { seat: [0.2597, 0.7486], bet: [0.3508, 0.5969], shift: [32, -30] }, // низ слева
+  { seat: [0.1989, 0.4834], bet: [0.2278, 0.4251], shift: [7, 14] },   // 9 часов
+  { seat: [0.2652, 0.2348], bet: [0.4143, 0.4045], shift: [11, 0] },   // верх слева
+  { seat: [0.4972, 0.1561], bet: [0.4977, 0.3280], shift: [0, 0] },    // верх по центру
+  { seat: [0.7348, 0.2348], bet: [0.5857, 0.4045], shift: [-11, 0] },  // верх справа
+  { seat: [0.7956, 0.4834], bet: [0.7722, 0.4251], shift: [-7, 14] },  // 3 часа
+  { seat: [0.7348, 0.7486], bet: [0.6492, 0.5969], shift: [-32, -30] },// низ справа
 ];
 
-// Раскладка для стола на count мест. Для 2..8 — готовый пресет, для
-// девяти мест берём метрики восьмиместного и доводим позиции интерполяцией
-// по тому же контуру: девятого кружка на ассете просто нет.
-function layoutFor(count) {
-  return LAYOUTS[count] || LAYOUTS[8];
-}
-
-// Место номер index из count: кружок ассета, сдвиг блока и точка ставки.
+// Место номер index из count. Пока мест не больше восьми, они садятся ровно
+// на кружки ассета; девятое доводится интерполяцией по тому же контуру.
 function seatAnchor(index, count) {
-  const layout = layoutFor(count);
-  const total = SEAT_CIRCLES.length;
-
-  if (LAYOUTS[count]) {
-    const anchor = layout.seats[index % layout.seats.length];
-    return {
-      seat: SEAT_CIRCLES[anchor],
-      bet: layout.bet[anchor] || layout.bet[0],
-      shift: layout.shift[anchor] || [0, 0],
-    };
+  const total = SEAT_ANCHORS.length;
+  const set = SEAT_SETS[count];
+  if (set) {
+    const at = set[index % set.length];
+    return { ...SEAT_ANCHORS[at], at };
   }
 
+  // Больше восьми мест: девятого кружка на ассете нет, доводим интерполяцией.
   const exact = (index * total) / count;
-  const lo = Math.floor(exact) % total;
-  const hi = (Math.floor(exact) + 1) % total;
+  const from = SEAT_ANCHORS[Math.floor(exact) % total];
+  const to = SEAT_ANCHORS[(Math.floor(exact) + 1) % total];
   const t = exact - Math.floor(exact);
-  const mix = (a, b) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-  const betOf = (i) => layout.bet[i] || layout.bet[0];
-  return {
-    seat: mix(SEAT_CIRCLES[lo], SEAT_CIRCLES[hi]),
-    bet: mix(betOf(lo), betOf(hi)),
-    shift: [0, 0],
-  };
+  const mix = (key) => [
+    from[key][0] + (to[key][0] - from[key][0]) * t,
+    from[key][1] + (to[key][1] - from[key][1]) * t,
+  ];
+  return { seat: mix('seat'), bet: mix('bet'), shift: [0, 0], at: Math.floor(exact) % total };
 }
 
 // Иконки берутся из общего спрайта в index.html — эмодзи в интерфейсе не
@@ -207,6 +164,19 @@ function money(cents) {
   const sign = value < 0 ? '-' : '';
   const absolute = Math.abs(value);
   return `${sign}$${Math.floor(absolute / 100)}.${String(absolute % 100).padStart(2, '0')}`;
+}
+
+// Короткая запись для фишки на сукне: восемь фишек с полными суммами на
+// сукно не помещаются, поэтому от сотни долларов показываем «$1.2k».
+// Везде, где место есть (баланс, банк, кнопки), остаётся полная запись.
+function shortMoney(cents) {
+  const value = Math.abs(Math.round(Number(cents) || 0));
+  if (value < 10000) return money(cents);          // до $100.00 — как есть
+  const sign = cents < 0 ? '-' : '';
+  const dollars = value / 100;
+  if (dollars < 1000) return `${sign}$${Math.round(dollars)}`;
+  const k = dollars / 1000;
+  return `${sign}$${k < 10 ? k.toFixed(1) : Math.round(k)}k`;
 }
 
 // "12.34", "$12,34", -5 -> центы. null, если это не сумма.
@@ -997,16 +967,6 @@ function renderSeats(room) {
   state.fx.points.clear();
 
   const count = room.seats.length;
-  // Размеры блока соперника зависят от раскладки: чем больше игроков, тем
-  // меньше свободного сукна. Отдаём их в CSS переменными, чтобы вёрстка
-  // не знала про пресеты.
-  const layout = layoutFor(count);
-  const canvas = $('table-canvas');
-  if (canvas) {
-    canvas.style.setProperty('--seat-w', `${layout.bodyW}px`);
-    canvas.style.setProperty('--seat-avatar', `${layout.avatar}px`);
-    canvas.style.setProperty('--opp-card-w', `${layout.cardW}px`);
-  }
   const winnerIds = winnerIdSet(room);
   const mySeat = room.you.seatIndex;
   // Своё место всегда внизу — так привычнее смотреть на стол.
@@ -1033,7 +993,12 @@ function renderSeats(room) {
     // целиком легли на сукно и не задели банк, а аватар остался на своём
     // кружке. У остальных мест — общий сдвиг якоря.
     const isHero = !seat.empty && seat.userId === room.you.userId;
-    node.style.setProperty('--body-y', `${isHero ? HERO_SHIFT_Y : anchor.shift[1]}px`);
+    // Нижнее по центру место всегда показывает карты НАД аватаром: под ним
+    // до борта места нет. Сдвиг уже учтён в самом якоре.
+    const above = CARDS_ABOVE.has(anchor.at);
+    if (above) node.classList.add('above');
+    node.style.setProperty('--body-y', `${anchor.shift[1]}px`);
+    node.style.setProperty('--seat-w', `${PLATE_W[anchor.at] ?? 64}px`);
     // Те же доли, но в пикселях холста: откуда и куда лететь фишке.
     state.fx.points.set(seat.index, {
       seat: { x: anchor.seat[0] * TABLE.width, y: anchor.seat[1] * TABLE.height },
@@ -1080,7 +1045,7 @@ function renderSeats(room) {
     // карты важнее всего, поэтому они уходят к центру стола, целиком на
     // сукно, и рисуются крупнее чужих. У соперников порядок прежний:
     // АВАТАР -> ИМЯ -> СТЕК -> КАРТЫ.
-    if (isHero && seat.cards) body.appendChild(buildSeatCards(seat, position, count));
+    if (above && seat.cards) body.appendChild(buildSeatCards(seat, position, count));
     body.appendChild(avatarNode(seat, room));
 
     const plate = document.createElement('div');
@@ -1111,7 +1076,7 @@ function renderSeats(room) {
 
     // Карты — часть блока игрока и идут сразу под табличкой со стеком:
     // аватар → имя → стек → карты. Своих координат у них нет.
-    if (!isHero && seat.cards) body.appendChild(buildSeatCards(seat, position, count));
+    if (!above && seat.cards) body.appendChild(buildSeatCards(seat, position, count));
     if (seat.bet > 0) {
       const bet = document.createElement('div');
       bet.className = 'seat-bet';
@@ -1119,7 +1084,7 @@ function renderSeats(room) {
       // только когда сумма действительно изменилась, иначе она мигала бы
       // на каждый чужой ход. state.fx.bets тут ещё хранит прошлые ставки.
       if (state.fx.bets.get(seat.index) !== seat.bet) bet.classList.add('is-new');
-      bet.textContent = money(seat.bet);
+      bet.textContent = shortMoney(seat.bet);
       node.appendChild(bet);
     }
 
