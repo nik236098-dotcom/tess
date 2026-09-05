@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=4" />
+  <link rel="stylesheet" href="/styles.css?v=5" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -383,6 +383,14 @@
              в долях от него, поэтому масштабируются вместе с картинкой. -->
         <div id="table-viewport" class="table-viewport">
           <div id="table-canvas" class="table-canvas">
+            <!-- Фирменный знак на сукне. Стоит первым, поэтому всегда под
+                 местами, картами и банком; кликов не ловит. Эмодзи здесь
+                 часть бренда — «Poker ok 👌». -->
+            <div class="table-logo" aria-hidden="true">
+              <span class="table-logo-mark">👌</span>
+              <span class="table-logo-word">POKER OK</span>
+              <span class="table-logo-rule"></span>
+            </div>
             <div id="seats" class="seats"></div>
             <div id="board" class="board"></div>
             <div id="pot" class="pot hidden">
