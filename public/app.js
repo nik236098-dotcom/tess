@@ -88,17 +88,16 @@ const SEAT_CIRCLES = [
 // стороне места (к сукну), ставка — дальше, на стороне банка. Значения
 // заданы явно, по эталонным макетам, без перебора координат.
 const SEAT_LAYOUT = [
-  // Карты соперника — часть композиции места: вплотную к аватару, слегка
-  // ЗА ним (z-index ниже), на внутренней стороне, к сукну. Аватар, карты и
-  // плашка читаются как один компактный блок. К банку уходит только ставка.
-  { cards: [0, -76], bet: [66, -26] },    // 0 герой: карты сверху, ставка справа-сверху
-  { cards: [36, -26], bet: [22, -64] },   // 1 низ слева
-  { cards: [38, -12], bet: [62, 22] },    // 2 середина слева
-  { cards: [34, -4], bet: [58, 38] },     // 3 верх слева
-  { cards: [0, 34], bet: [0, 78] },       // 4 верх по центру
-  { cards: [-34, -4], bet: [-58, 38] },   // 5 верх справа
-  { cards: [-38, -12], bet: [-62, 22] },  // 6 середина справа
-  { cards: [-36, -26], bet: [-22, -64] }, // 7 низ справа
+  // Карты подоткнуты под аватар (z-index ниже) и читаются как часть места.
+  // К банку уходит только ставка. У нижних мест ставка идёт ВВЕРХ и внутрь.
+  { cards: [0, -70], bet: [64, -34] },    // 0 герой: карты сверху, фишки справа-сверху
+  { cards: [30, -14], bet: [28, -56] },   // 1 низ слева: фишки выше и внутрь
+  { cards: [32, -6], bet: [56, 18] },     // 2 середина слева
+  { cards: [30, -2], bet: [50, 34] },     // 3 верх слева
+  { cards: [0, 20], bet: [0, 64] },       // 4 верх по центру
+  { cards: [-30, -2], bet: [-50, 34] },   // 5 верх справа
+  { cards: [-32, -6], bet: [-56, 18] },   // 6 середина справа
+  { cards: [-30, -14], bet: [-28, -56] }, // 7 низ справа: фишки выше и внутрь
 ];
 
 // Какие кружки заняты при каком числе игроков. Новых координат не выдумываем:
@@ -154,6 +153,21 @@ function money(cents) {
   const sign = value < 0 ? '-' : '';
   const absolute = Math.abs(value);
   return `${sign}$${Math.floor(absolute / 100)}.${String(absolute % 100).padStart(2, '0')}`;
+}
+
+// Компактная запись комбинации для ярлыка героя: «Пара K», «Тройка 7»,
+// «Стрит», «Флеш». Сервер уже даёт короткие ранги, надо убрать хвосты
+// «до X» и показать десятку как 10, а не буквой T.
+function shortHand(text) {
+  if (!text) return '';
+  let t = String(text)
+    .replace(/\bT\b/g, '10')
+    .replace(/^Стрит-флеш до .+$/, 'Стрит-флеш')
+    .replace(/^Стрит до .+$/, 'Стрит')
+    .replace(/^Флеш до .+$/, 'Флеш')
+    .replace(/^Старшая .+$/, 'Старшая карта')
+    .replace(/^Фулл-хаус (\S+) на (\S+)$/, 'Фулл-хаус $1/$2');
+  return t;
 }
 
 // Фишки по номиналу (пункт 9 задания). Цвет определяется номиналом, а не
@@ -1012,7 +1026,7 @@ function renderSeats(room) {
     node.dataset.anchor = String(anchor.at);
     node.style.left = `${(anchor.seat[0] * 100).toFixed(3)}%`;
     node.style.top = `${(anchor.seat[1] * 100).toFixed(3)}%`;
-    node.style.setProperty('--av', `${anchor.avatar}px`);
+    node.style.setProperty('--av', `${Math.round(anchor.avatar * 0.8)}px`);
     node.style.setProperty('--cx', `${anchor.cards[0]}px`);
     node.style.setProperty('--cy', `${anchor.cards[1]}px`);
     node.style.setProperty('--bx', `${anchor.bet[0]}px`);
@@ -1072,7 +1086,7 @@ function renderSeats(room) {
     if (isHero && seat.combination) {
       const label = document.createElement('div');
       label.className = 'hand-label';
-      label.textContent = seat.combination;
+      label.textContent = shortHand(seat.combination);
       node.appendChild(label);
     }
 

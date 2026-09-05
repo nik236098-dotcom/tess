@@ -677,7 +677,7 @@ input::placeholder { color: var(--text-muted); }
 }
 /* Карты на борде повторяют нарисованную рамку один в один. */
 .board .card-face { --card-w: 35.9px; --card-h: 52.7px; }
-.card-face.small { --card-w: 26px; border-radius: 3px; }
+.card-face.small { --card-w: 22px; border-radius: 3px; }
 .card-face.no-anim { animation: none; }
 .card-face.red { color: #ce2f27; }
 .card-face .corner {
@@ -786,12 +786,12 @@ input::placeholder { color: var(--text-muted); }
   /* Строго под аватаром, по центру кружка. Компактная, тёмная, с золотой
      кромкой — как в эталонных макетах. */
   position: absolute;
-  transform: translate(-50%, calc(var(--av, 50px) / 2 - 6px));
+  transform: translate(-50%, calc(var(--av, 50px) / 2 + 3px));
   z-index: 3;
   text-align: center;
   max-width: 92px; min-width: 58px;
   display: flex; flex-direction: column; gap: 0;
-  padding: 2px 8px 3px;
+  padding: 3px 9px 4px;
   border-radius: 8px;
   background: linear-gradient(180deg, rgba(16, 21, 28, 0.96), rgba(8, 11, 16, 0.97));
   border: 1px solid rgba(214, 174, 102, 0.45);
@@ -880,7 +880,7 @@ input::placeholder { color: var(--text-muted); }
   z-index: 1;
   filter: drop-shadow(0 3px 7px rgba(0, 0, 0, 0.6));
 }
-.seat-cards .card-face + .card-face { margin-left: -9px; }
+.seat-cards .card-face + .card-face { margin-left: -10px; }
 .seat.me .seat-cards .card-face + .card-face { margin-left: 4px; }
 
 /* Свои карты крупнее чужих и лежат над аватаром — главный элемент экрана. */
@@ -910,32 +910,48 @@ input::placeholder { color: var(--text-muted); }
 .seat-bet {
   transform: translate(calc(-50% + var(--bx, 0px)), calc(-50% + var(--by, 0px)));
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 2px 7px 2px 4px;
-  border-radius: 9px;
-  background: rgba(6, 10, 14, 0.72);
-  color: #f2d59a;
-  font: 700 10px/1.4 var(--font);
+  padding: 2px 8px 2px 5px;
+  border-radius: 10px;
+  background: rgba(6, 10, 14, 0.78);
+  border: 1px solid rgba(214, 174, 102, 0.28);
+  color: #f4dca8;
+  font: 700 10.5px/1.4 var(--font);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-  z-index: 2;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.55);
+  z-index: 4;
 }
-.chips { display: inline-flex; align-items: center; }
+/* Настоящие фишки, а не точки: тело с рифлёным ободом, светлая кромка,
+   стопка со смещением вверх. Цвет — строго по номиналу. */
+.chips {
+  position: relative;
+  width: 19px;
+  height: 19px;
+  flex: none;
+}
 .chip {
-  width: 11px; height: 11px; border-radius: 50%;
-  margin-left: -4px;
-  border: 1px solid rgba(0, 0, 0, 0.55);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  transform: translateY(calc(var(--i, 0) * -1.5px));
+  position: absolute;
+  left: 0;
+  bottom: calc(var(--i, 0) * 4px);
+  width: 19px; height: 19px;
+  border-radius: 50%;
+  background:
+    /* светлая сердцевина */
+    radial-gradient(circle at 50% 42%, var(--face) 0 30%, transparent 31%),
+    /* насечки по ободу */
+    repeating-conic-gradient(from 12deg, var(--edge) 0deg 16deg, var(--body) 16deg 45deg);
+  box-shadow:
+    inset 0 0 0 2.5px var(--body),
+    inset 0 0 0 3.5px rgba(0, 0, 0, 0.35),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.6);
 }
-.chip:first-child { margin-left: 0; }
-/* Цвет фишки — строго по номиналу, не случайный (пункт 9 задания). */
-.chip-red   { background: radial-gradient(circle at 35% 30%, #d4636a, #9c2630 65%, #6d161e); }
-.chip-blue  { background: radial-gradient(circle at 35% 30%, #6fa8e8, #2b5fa8 65%, #16386a); }
-.chip-green { background: radial-gradient(circle at 35% 30%, #6fd6a2, #219163 65%, #0d5b3c); }
-.chip-black { background: radial-gradient(circle at 35% 30%, #6a7078, #24282e 65%, #101317); }
-.chip-plum  { background: radial-gradient(circle at 35% 30%, #b490dd, #6a3f9c 65%, #3d2160); }
-.chip-gold  { background: radial-gradient(circle at 35% 30%, #f6dca8, #c08f34 65%, #7a5518); }
+.chip-red   { --body: #a52833; --edge: #f0e6e6; --face: #d2545c; }
+.chip-blue  { --body: #23528f; --edge: #e6ecf5; --face: #5a92d8; }
+.chip-green { --body: #1c7d55; --edge: #e4f2ea; --face: #4fc191; }
+.chip-black { --body: #22262c; --edge: #dfe3e8; --face: #5d646d; }
+.chip-plum  { --body: #5b3489; --edge: #ece4f5; --face: #9c78cf; }
+.chip-gold  { --body: #a97a26; --edge: #f7efd9; --face: #e8c470; }
 
 /* Свободное место: кружок с плюсом уже нарисован на ассете. Своего не
    рисуем — только прозрачная область нажатия ровно по нему и мягкий ореол,
