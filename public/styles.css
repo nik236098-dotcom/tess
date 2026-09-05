@@ -1687,22 +1687,36 @@ input::placeholder { color: var(--text-muted); }
    месту, а не отодвинута к банку на 70+ px. */
 
 .seat.proto .seat-avatar {
-  width: 40px; height: 40px;
+  /* Зелёное нутро кружка 43.3 — фото заполняет его почти целиком и
+     подхватывает золото кольца тонкой кромкой, поэтому читается вставленным
+     в рамку, а не отдельным диском поверх неё. */
+  width: 42px; height: 42px;
+  background: linear-gradient(160deg, #24303d, #131a23);
+  box-shadow:
+    inset 0 0 0 1px rgba(214, 174, 102, 0.55),
+    inset 0 3px 8px rgba(0, 0, 0, 0.5);
 }
 .seat.proto .seat-cards {
-  transform: translate(calc(-50% + 30px), calc(-50% + 2px)) rotate(6deg);
+  transform: translate(calc(-50% + 33px), calc(-50% + 1px)) rotate(7deg);
   gap: 0;
 }
 .seat.proto .seat-cards .card-face {
   --card-w: 21px;
-  --card-h: 30px;
+  --card-h: 32px;
   border-radius: 3px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
 }
-.seat.proto .seat-cards .card-face + .card-face { margin-left: -8px; }
+/* Рубашка как в эталоне: ровный синий, светлый кант, без ряби. */
+.seat.proto .card-face.back {
+  background: linear-gradient(158deg, #3a63b4 0%, #2a4d92 55%, #1d3a72 100%);
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1.4px rgba(255, 255, 255, 0.85);
+}
+.seat.proto .seat-cards .card-face + .card-face { margin-left: -5px; }
 
 .seat.proto .seat-plate {
-  transform: translate(-50%, 12px);
+  transform: translate(-50%, 16px);
   /* В эталоне плашка узкая: 49 px по замеру, а не 72 — из-за широкой
      плашки фишка налезала на неё. */
   width: 50px; max-width: 50px; min-width: 50px;
@@ -1725,11 +1739,12 @@ input::placeholder { color: var(--text-muted); }
 .seat.proto .seat-bet {
   /* Эталон: стопка на +40, сумма на +58 от центра кружка. Ставка стоит
      вплотную к месту, а не отодвинута к банку. */
-  transform: translate(calc(-50% + 54px), calc(-50% + 31px));
-  padding: 1px 5px 1px 2px;
-  gap: 3px;
+  transform: translate(calc(-50% + 56px), calc(-50% + 33px));
+  padding: 2px 7px 2px 3px;
+  gap: 4px;
   font: 700 10px/1.3 var(--font);
-  background: rgba(4, 8, 12, 0.55);
-  border: none;
-  box-shadow: none;
+  border-radius: 11px;
+  background: rgba(4, 8, 12, 0.72);
+  border: 1px solid rgba(214, 174, 102, 0.22);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
