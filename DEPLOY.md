@@ -315,7 +315,7 @@ sudo -u poker git fetch origin
 sudo -u poker git checkout claude/crypto-bot-xrocket-integration-it584m
 sudo -u poker git pull
 
-# 3. Тесты — 110 штук, зависимостей по-прежнему нет
+# 3. Тесты — 119 штук, зависимостей по-прежнему нет
 sudo -u poker npm test
 
 # 4. Балансы (см. выше)
