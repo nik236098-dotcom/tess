@@ -920,7 +920,7 @@ input::placeholder { color: var(--text-muted); }
   display: inline-flex; align-items: flex-end; gap: 2px;
   padding: 0;
   color: #ffffff;
-  font: 500 10px/1.2 var(--font);
+  font: 500 7.8px/1.2 var(--font);
   letter-spacing: 0.005em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -931,10 +931,10 @@ input::placeholder { color: var(--text-muted); }
 .seat-bet b {
   font-weight: 500;
   padding: 0.5px 4px 1px;
-  margin-bottom: 2px;
+  margin-bottom: 1.5px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.34);
-  box-shadow: 0 0 4px 3px rgba(0, 0, 0, 0.34);
+  background: rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 4px 3.5px rgba(0, 0, 0, 0.4);
 }
 .seat-bet.is-new { animation: bet-pop 220ms cubic-bezier(0.22, 0.9, 0.32, 1.12) both; }
 
@@ -943,17 +943,17 @@ input::placeholder { color: var(--text-muted); }
    на сукне. Один диаметр и один ракурс для всех номиналов. */
 .chips {
   position: relative;
-  width: 18px;
+  width: 14px;
   /* Высота одной фишки; стопка растёт вверх за пределы бокса, поэтому
      низ стопки стоит на месте независимо от числа фишек. */
-  height: 21px;
+  height: 19px;
   flex: none;
 }
 .chips::before {
   content: '';
   position: absolute;
-  left: -1.5px; right: -1.5px; bottom: -1.8px;
-  height: 5px;
+  left: -1.5px; right: -1.5px; bottom: -1.6px;
+  height: 4.2px;
   border-radius: 50%;
   background: radial-gradient(ellipse at 50% 50%,
     rgba(0, 0, 0, 0.62) 0 35%, rgba(0, 0, 0, 0) 72%);
@@ -961,23 +961,23 @@ input::placeholder { color: var(--text-muted); }
 .chip {
   position: absolute;
   left: 0;
-  bottom: calc(var(--i, 0) * 3.5px);
-  width: 18px; height: 21px;
+  bottom: calc(var(--i, 0) * 3px);
+  width: 14px; height: 17.5px;
 }
 /* ребро: высокий цилиндр, две широкие белые метки, свет слева */
 .chip::before {
   content: '';
   position: absolute;
-  left: 0; top: 3.5px;
-  width: 18px; height: 17.5px;
-  border-radius: 0 0 9px 9px / 0 0 3.6px 3.6px;
+  left: 0; top: 3.2px;
+  width: 14px; height: 14.3px;
+  border-radius: 0 0 7px 7px / 0 0 3.2px 3.2px;
   background:
     linear-gradient(90deg,
-      rgba(255, 255, 255, 0) 0 3.4px,
-      rgba(240, 242, 244, 0.92) 3.4px 6px,
-      rgba(255, 255, 255, 0) 6px 12.4px,
-      rgba(240, 242, 244, 0.92) 12.4px 15px,
-      rgba(255, 255, 255, 0) 15px 18px),
+      rgba(255, 255, 255, 0) 0 2.6px,
+      rgba(240, 242, 244, 0.92) 2.6px 4.8px,
+      rgba(255, 255, 255, 0) 4.8px 9.4px,
+      rgba(240, 242, 244, 0.92) 9.4px 11.6px,
+      rgba(255, 255, 255, 0) 11.6px 14px),
     linear-gradient(180deg,
       rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 25%,
       rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.42) 100%),
@@ -992,17 +992,16 @@ input::placeholder { color: var(--text-muted); }
   content: '';
   position: absolute;
   left: 0; top: 0;
-  width: 18px; height: 7px;
+  width: 14px; height: 6.4px;
   border-radius: 50%;
   background:
-    radial-gradient(ellipse 16% 16% at 42% 32%,
-      rgba(255, 255, 255, 0.95) 0 40%, rgba(255, 255, 255, 0) 100%),
-    radial-gradient(ellipse 30% 32% at 50% 48%,
-      #eeeff0 0 55%, #c9ccd0 96%, rgba(0, 0, 0, 0) 100%),
-    radial-gradient(ellipse 35% 37% at 50% 48%,
+    /* сердцевина — серый купол: светлый центр, темнее к краю */
+    radial-gradient(ellipse 34% 36% at 46% 40%,
+      #f7f8f9 0 22%, #d8dbde 58%, #b4b9bf 96%, rgba(0, 0, 0, 0) 100%),
+    radial-gradient(ellipse 38% 40% at 50% 48%,
       rgba(0, 0, 0, 0) 0 90%, rgba(0, 0, 0, 0.45) 93%, rgba(0, 0, 0, 0) 100%),
     repeating-conic-gradient(from 30deg,
-      #f1f3f4 0deg 10deg, var(--body) 10deg 90deg);
+      #f4f5f6 0deg 12deg, var(--body) 12deg 90deg);
   box-shadow:
     inset 0 -0.9px 1px rgba(0, 0, 0, 0.5),
     inset 0 0.7px 0.7px rgba(255, 255, 255, 0.55),
@@ -1010,7 +1009,7 @@ input::placeholder { color: var(--text-muted); }
 }
 /* Номиналы: $0.10 бордовый, $0.50 сапфир, $1 изумруд, $5 матовый чёрный,
    $10 сливовый, $25 золото. --body — цвет корпуса. */
-.chip-red   { --body: #9d1f2e; }
+.chip-red   { --body: #c4232e; }
 .chip-blue  { --body: #1f4f9c; }
 .chip-green { --body: #1b7a4f; }
 .chip-black { --body: #24272c; }
@@ -1772,12 +1771,15 @@ input::placeholder { color: var(--text-muted); }
   width: 54.4px; height: 54.4px;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: linear-gradient(140deg,
-    #fbe7a6 0%, #dcb256 30%, #b4842c 62%, #e9c876 100%);
+  background:
+    /* тёмная линия по внешнему краю, как у нарисованного кольца */
+    radial-gradient(circle, rgba(0, 0, 0, 0) 0 26.6px, rgba(0, 0, 0, 0.55) 26.9px 27.4px),
+    linear-gradient(140deg,
+      #fff0b8 0%, #e6bd5e 30%, #b9882e 62%, #f0cf7c 100%);
   -webkit-mask-image: radial-gradient(circle,
-    rgba(0, 0, 0, 0) 0 25.0px, #000 25.4px 26.9px, rgba(0, 0, 0, 0) 27.3px);
+    rgba(0, 0, 0, 0) 0 24.8px, #000 25.1px 27.2px, rgba(0, 0, 0, 0) 27.5px);
   mask-image: radial-gradient(circle,
-    rgba(0, 0, 0, 0) 0 25.0px, #000 25.4px 26.9px, rgba(0, 0, 0, 0) 27.3px);
+    rgba(0, 0, 0, 0) 0 24.8px, #000 25.1px 27.2px, rgba(0, 0, 0, 0) 27.5px);
   pointer-events: none;
   z-index: 3;
 }
@@ -1791,7 +1793,7 @@ input::placeholder { color: var(--text-muted); }
    (+8° по часовой), задняя карта завалена чуть сильнее передней.
    Низ карт (~+17) выше плашки (+19) — не пересекаются. */
 .seat.proto .seat-cards {
-  transform: translate(calc(-50% + 27px), calc(-50% + 2px)) rotate(8deg);
+  transform: translate(calc(-50% + 27px), calc(-50% + 5px)) rotate(8deg);
   gap: 0;
   z-index: 4;
   filter: drop-shadow(0 2.5px 3.5px rgba(0, 0, 0, 0.75));
@@ -1801,15 +1803,15 @@ input::placeholder { color: var(--text-muted); }
    одна на другой. Мелкие 15×23 с нахлёстом 4 читались обрубками. */
 .seat.proto .seat-cards .card-face {
   --card-w: 17px;
-  --card-h: 25.5px;
-  border-radius: 2.6px;
+  --card-h: 28px;
+  border-radius: 2.8px;
   box-shadow: none;
   transform-origin: 50% 100%;
 }
 /* В макете карты ПАРАЛЛЕЛЬНЫ и касаются длинными рёбрами — веера нет,
    наклон общий на всю пару. */
 .seat.proto .seat-cards .card-face:first-child { transform: none; }
-.seat.proto .seat-cards .card-face + .card-face { margin-left: -1px; }
+.seat.proto .seat-cards .card-face + .card-face { margin-left: -3.5px; }
 /* Кант — сама карта, рубашка внутри с отступом: белая кромка идёт снаружи
    синего, как в макете, а не врезается в него внутренней тенью. */
 .seat.proto .card-face.back {
@@ -1819,13 +1821,13 @@ input::placeholder { color: var(--text-muted); }
 .seat.proto .card-face.back::before {
   content: '';
   position: absolute;
-  inset: 1.7px;
-  border-radius: 1.6px;
+  inset: 2.1px;
+  border-radius: 1.5px;
   /* Как в макете: тонкая тёмно-синяя линия по краю, внутри чуть более
      светлая панель со свечением в верхней трети. */
   background:
     radial-gradient(ellipse 60% 45% at 50% 30%, rgba(255, 255, 255, 0.2) 0 30%, rgba(255, 255, 255, 0) 100%),
-    linear-gradient(165deg, #2f7ef8 0%, #1d63e6 50%, #1350cc 100%);
+    linear-gradient(165deg, #2c80ff 0%, #1c66ef 50%, #1553d6 100%);
   box-shadow:
     inset 0 0 0 0.7px rgba(0, 25, 100, 0.55),
     inset 0 0 0 1.4px rgba(90, 150, 255, 0.35);
@@ -1853,7 +1855,7 @@ input::placeholder { color: var(--text-muted); }
   --oct: polygon(
     4.5px 0, calc(100% - 4.5px) 0, 100% 4.5px, 100% calc(100% - 4.5px),
     calc(100% - 4.5px) 100%, 4.5px 100%, 0 calc(100% - 4.5px), 0 4.5px);
-  transform: translate(-50%, 19px);
+  transform: translate(-50%, 14.5px);
   z-index: 5;
   width: auto; min-width: 57px; max-width: 70px;
   padding: 1.5px 7px 2px;
@@ -1887,8 +1889,8 @@ input::placeholder { color: var(--text-muted); }
   letter-spacing: 0.005em;
 }
 .seat.proto .seat-stack {
-  font: 500 10.5px/1.1 var(--font);
-  color: #f3cd7a;
+  font: 500 9.8px/1.1 var(--font);
+  color: #efc86e;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
@@ -1902,7 +1904,7 @@ input::placeholder { color: var(--text-muted); }
    перекос нарисованного медальона относительно кружка; запас от
    увеличения (1.4 px на сторону) его перекрывает. */
 .seat.proto .seat-badge {
-  --badge-k: 1.12;
+  --badge-k: 1.10;
   position: absolute;
   left: 0; top: 0;
   transform: translate(calc(-50% - 1.3px), calc(-50% - 27.45px));
