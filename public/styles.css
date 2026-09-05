@@ -1673,3 +1673,63 @@ input::placeholder { color: var(--text-muted); }
   /* Колечко загрузки без вращения — иначе оно неотличимо от статичной точки. */
   .btn.is-loading::after { opacity: 0.8; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ЭТАЛОННЫЙ БЛОК МЕСТА — пока только среднее левое (кружок 2)
+   ═══════════════════════════════════════════════════════════════════════
+   Числа сняты с эталонного макета: он нарисован на том же ассете, поэтому
+   координаты переводятся в наш холст 400×600 напрямую.
+     аватар  центр [0, 0], Ø40, обрезан кружком
+     карты   центр [+30, +2], пара 21×30 с нахлёстом 8 и лёгким наклоном
+     плашка  центр [0, +27], ширина 72, имя сверху, стек золотом снизу
+     фишки   центр [+46, +33], стопка + сумма справа
+   Главное отличие от того, что я делал раньше: ставка стоит ВПЛОТНУЮ к
+   месту, а не отодвинута к банку на 70+ px. */
+
+.seat.proto .seat-avatar {
+  width: 40px; height: 40px;
+}
+.seat.proto .seat-cards {
+  transform: translate(calc(-50% + 30px), calc(-50% + 2px)) rotate(6deg);
+  gap: 0;
+}
+.seat.proto .seat-cards .card-face {
+  --card-w: 21px;
+  --card-h: 30px;
+  border-radius: 3px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.55);
+}
+.seat.proto .seat-cards .card-face + .card-face { margin-left: -8px; }
+
+.seat.proto .seat-plate {
+  transform: translate(-50%, 12px);
+  /* В эталоне плашка узкая: 49 px по замеру, а не 72 — из-за широкой
+     плашки фишка налезала на неё. */
+  width: 50px; max-width: 50px; min-width: 50px;
+  padding: 2px 4px 3px;
+  border-radius: 7px;
+  border: 1px solid rgba(214, 174, 102, 0.75);
+  background: linear-gradient(180deg, #10151c, #070a0e);
+}
+.seat.proto .seat-name {
+  font: 600 9px/1.2 var(--font);
+  color: rgba(255, 255, 255, 0.9);
+}
+.seat.proto .seat-stack {
+  font: 700 11px/1.15 var(--font);
+  color: #f0c86f;
+}
+.seat.proto .chips { width: 16px; height: 16px; }
+.seat.proto .chip { width: 16px; height: 16px; bottom: calc(var(--i, 0) * 4px); }
+.seat.proto .chip::before { width: 16px; height: 16px; top: 2px; }
+.seat.proto .seat-bet {
+  /* Эталон: стопка на +40, сумма на +58 от центра кружка. Ставка стоит
+     вплотную к месту, а не отодвинута к банку. */
+  transform: translate(calc(-50% + 54px), calc(-50% + 31px));
+  padding: 1px 5px 1px 2px;
+  gap: 3px;
+  font: 700 10px/1.3 var(--font);
+  background: rgba(4, 8, 12, 0.55);
+  border: none;
+  box-shadow: none;
+}

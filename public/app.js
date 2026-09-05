@@ -1066,6 +1066,10 @@ function renderSeats(room) {
       return;
     }
 
+    // ЭТАЛОННЫЙ БЛОК: собираем заново только среднее левое место (кружок 2)
+    // по замерам с эталонного макета. Остальные семь пока живут по-старому.
+    if (anchor.at === 2) node.classList.add('proto');
+
     if (isHero) node.classList.add('me');
     if (seat.folded) node.classList.add('folded');
     if (seat.isActing) node.classList.add('acting');
