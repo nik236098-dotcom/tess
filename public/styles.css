@@ -1311,3 +1311,339 @@ input::placeholder { color: var(--text-muted); }
   align-items: flex-start;
   width: 190px;
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   АНИМАЦИИ И ВИЗУАЛЬНЫЕ СОСТОЯНИЯ
+   ═══════════════════════════════════════════════════════════════════════
+   Отдельная секция: раздача карт, ход игрока, полёт фишек к банку,
+   подсветка выигрыша, состояния места и кнопок.
+
+   Правила секции:
+   • анимируем только transform и opacity — layout не трогаем, иначе
+     дёргается масштаб холста (.table-canvas живёт на transform: scale);
+   • у элементов с собственным transform (translate(-50%,-50%), --bet-x)
+     свои кейфреймы: базовый сдвиг обязан сохраняться на каждом кадре,
+     иначе элемент «прыгает» на время анимации;
+   • всё выключается в prefers-reduced-motion (блок в конце секции).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --anim-fast: 140ms;
+  --anim-mid: 220ms;
+  --anim-slow: 300ms;
+  --ease-out: cubic-bezier(0.16, 0.84, 0.44, 1);
+}
+
+/* ─── 1. Раздача карт ───────────────────────────────────────────────────
+   Карта прилетает из центра стола: JS меряет вектор от центра до её
+   места и кладёт его в --deal-x/--deal-y, очередь — в --deal-delay. */
+
+/* Пока вектор не посчитан, анимацию придерживаем: иначе первый кадр
+   сдвинет карту и getBoundingClientRect вернёт уже неверный прямоугольник. */
+.card-face.is-priming { animation: none !important; opacity: 0; }
+
+.card-face.deal-in {
+  animation: deal-fly var(--anim-mid) var(--ease-out) var(--deal-delay, 0ms) both;
+}
+@keyframes deal-fly {
+  from {
+    opacity: 0;
+    transform: translate(var(--deal-x, 0px), var(--deal-y, 0px)) scale(0.62) rotate(-8deg);
+  }
+  60% { opacity: 1; }
+  to { opacity: 1; transform: none; }
+}
+
+/* Общие карты уже лежат в центре — им нужен переворот, а не перелёт. */
+.card-face.flip-in {
+  animation: deal-flip var(--anim-mid) var(--ease-out) var(--deal-delay, 0ms) both;
+}
+@keyframes deal-flip {
+  from { opacity: 0; transform: translateY(-6px) rotateY(84deg) scale(0.9); }
+  55% { opacity: 1; }
+  to { opacity: 1; transform: none; }
+}
+
+/* ─── 2. Ход игрока ─────────────────────────────────────────────────────
+   Мягкий ореол вокруг аватара + кольцо-прогресс по таймеру хода
+   (сервер присылает turnDeadline и settings.turnSeconds). */
+
+/* Базовую подсветку оставляем, а пульс box-shadow заменяем на
+   псевдоэлемент: он анимируется transform/opacity и не гоняет перерисовку тени. */
+.seat.acting .seat-avatar { animation: none; }
+/* Ореол — только мягкое свечение, без чёткого ободка: чёткий круг здесь
+   один, и это кольцо-таймер, иначе они сливаются. */
+.seat.acting .seat-avatar::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  box-shadow: 0 0 16px 4px rgba(52, 211, 153, 0.4);
+  animation: seat-halo 1.9s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes seat-halo {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.07); }
+}
+
+.turn-ring {
+  position: absolute;
+  inset: -6px;
+  transform: rotate(-90deg);
+  pointer-events: none;
+  overflow: visible;
+}
+.turn-ring circle { fill: none; }
+.turn-ring .track { stroke: rgba(0, 0, 0, 0.45); stroke-width: 2.6; }
+.turn-ring .bar {
+  stroke: var(--primary);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px rgba(52, 211, 153, 0.7));
+}
+/* Осталось меньше четверти времени — кольцо краснеет. */
+.turn-ring.is-low .bar { stroke: var(--danger); filter: drop-shadow(0 0 3px rgba(229, 89, 79, 0.7)); }
+
+/* ─── 3. Ставки и банк ──────────────────────────────────────────────────
+   Летящая фишка живёт в отдельном слое поверх сукна. У слоя нет своего
+   transform, поэтому системе координат холста ничего не грозит. */
+
+.fx-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  overflow: hidden;
+}
+.fx-chip {
+  position: absolute;
+  left: 0; top: 0;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 7px 2px 4px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, rgba(22, 28, 36, 0.96), rgba(9, 13, 18, 0.98));
+  border: 1px solid rgba(214, 174, 102, 0.35);
+  color: #f0c977;
+  font: 700 10px/1.4 var(--font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
+  will-change: transform, opacity;
+  animation: fx-fly var(--fx-dur, 260ms) var(--ease-out) var(--fx-delay, 0ms) both;
+}
+.fx-chip::before {
+  content: '';
+  width: 8px; height: 8px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #f6dca8, #c08f34 60%, #7a5518);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+.fx-chip.win { border-color: rgba(74, 222, 159, 0.45); color: #7ff0bd; }
+.fx-chip.win::before { background: radial-gradient(circle at 34% 28%, #b8ffe0, #34d399 60%, #14724f); }
+@keyframes fx-fly {
+  from { opacity: 0; transform: translate(var(--fx-x0), var(--fx-y0)) translate(-50%, -50%) scale(0.7); }
+  18% { opacity: 1; }
+  78% { opacity: 1; }
+  to { opacity: 0; transform: translate(var(--fx-x1), var(--fx-y1)) translate(-50%, -50%) scale(0.85); }
+}
+
+/* Ставка на сукне: кейфрейм пересобран, чтобы не терять --bet-x/--bet-y
+   (штатный pop-in обнулял transform, и плашка на 200 мс улетала к аватару). */
+.seat-bet { animation: none; }
+.seat-bet.is-new { animation: bet-pop var(--anim-fast) var(--ease-out) both; }
+@keyframes bet-pop {
+  from { opacity: 0; transform: translate(var(--bet-x), var(--bet-y)) translate(-50%, -50%) scale(0.72); }
+  to { opacity: 1; transform: translate(var(--bet-x), var(--bet-y)) translate(-50%, -50%) scale(1); }
+}
+
+/* Банк «принимает» фишки коротким толчком. */
+.pot.is-bump { animation: pot-bump var(--anim-slow) var(--ease-out); }
+@keyframes pot-bump {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  40% { transform: translate(-50%, -50%) scale(1.11); }
+}
+
+/* Та же беда, что и у ставки: своя центровка + pop-in. */
+.hand-badge { animation: badge-pop var(--anim-mid) var(--ease-out) both; }
+@keyframes badge-pop {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.88); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* ─── 4. Победа ─────────────────────────────────────────────────────────
+   Плашка стоит на absolute-координатах, поэтому вёрстка не двигается —
+   важно только сохранить её собственный translate(-50%, -50%). */
+
+/* Пауза перед появлением: плашка накрывает борд, и без неё подсветку
+   выигравшей комбинации никто не успевает увидеть. */
+.winner-pop { animation: win-pop var(--anim-slow) var(--ease-out) 420ms both; }
+@keyframes win-pop {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Карты выигравшей комбинации. Своя анимация вместо deal/deal-in:
+   у .card-face стоит animation-fill-mode: both, и обычный transform
+   в статике был бы перекрыт последним кадром раздачи. */
+.card-slot.is-win .card-face,
+.card-face.is-win {
+  animation: card-win var(--anim-slow) var(--ease-out) both;
+  z-index: 1;
+}
+@keyframes card-win {
+  0% { transform: none; }
+  55% { transform: translateY(-6px) scale(1.09); }
+  100% {
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(240, 201, 119, 0.95), 0 0 16px rgba(240, 201, 119, 0.55);
+  }
+}
+/* Остальные общие карты уходят на второй план. Гасим слот, а не карту:
+   у карты залитая анимация, она перебила бы opacity. */
+.board.has-win .card-slot:not(.is-win) { opacity: 0.42; transition: opacity var(--anim-mid) var(--ease-out); }
+
+/* Стек победителя коротко вспыхивает. Надпись ALL-IN перекрашивать не
+   надо — она и так означает другое состояние. */
+.seat.winner .seat-stack { animation: stack-flash 340ms var(--ease-out) 2; }
+.seat.winner .seat-stack:not(.allin) { color: #7ff0bd; }
+@keyframes stack-flash {
+  0%, 100% { transform: scale(1); }
+  40% { transform: scale(1.16); }
+}
+
+/* ─── 5. Состояния места ────────────────────────────────────────────────
+   ждёт хода · думает · сфолдил · all-in · отключился · пустое место */
+
+.seat-avatar { transition: border-color var(--anim-mid), box-shadow var(--anim-mid), filter var(--anim-mid), opacity var(--anim-mid); }
+
+/* Сфолдил: карты глушим отдельно — .seat.folded уже приглушает весь блок,
+   второй раз опускать прозрачность нельзя, иначе места не видно вовсе. */
+.seat.folded .seat-cards {
+  filter: grayscale(0.85) brightness(0.75) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  transform: scale(0.9) rotate(-5deg);
+  transform-origin: 50% 0;
+  transition: transform var(--anim-mid) var(--ease-out), filter var(--anim-mid);
+}
+.seat.folded .seat-avatar { filter: grayscale(0.7); }
+
+/* All-in: фиолетовое кольцо — тот же цвет, что и у надписи ALL-IN. */
+.seat.allin .seat-avatar {
+  border-color: rgba(139, 123, 240, 0.8);
+  box-shadow: 0 0 0 2px rgba(139, 123, 240, 0.3), 0 4px 10px rgba(0, 0, 0, 0.6);
+}
+.seat.allin .seat-stack.allin { animation: allin-glow 2.2s ease-in-out infinite; }
+@keyframes allin-glow {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
+/* Отключился: обесцвеченный аватар и пунктирная рамка — видно, что игрока
+   нет, а не что он просто пропускает раздачу. */
+.seat.offline .seat-avatar {
+  filter: grayscale(1) brightness(0.8);
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.seat.sitting-out .seat-avatar { filter: grayscale(0.65); }
+
+/* Ждёт хода — базовое состояние, без эффектов. Отдельно помечаем только
+   того, кто уже сходил на этой улице: слегка приглушаем. */
+.seat.acted:not(.acting) .seat-avatar { opacity: 0.86; }
+
+/* Пустое место: спокойный пульс, когда сесть можно.
+   position тут НЕ переопределяем: слот привязан к якорю места через
+   position:absolute + translate(-50%,-50%), и position:relative сбил бы
+   подсветку с нарисованного на ассете кружка. Для ::after absolute
+   работает содержащим блоком ровно так же. */
+.seat.joinable .seat-empty-slot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(52, 211, 153, 0.5);
+  animation: seat-invite 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes seat-invite {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0; transform: scale(1.22); }
+}
+
+/* ─── 6. Состояния кнопок ───────────────────────────────────────────────
+   hover · active · disabled · загрузка */
+
+@media (hover: hover) and (pointer: fine) {
+  .btn:not(:disabled):not(.is-loading):hover { filter: brightness(1.1); }
+  .btn-surface:not(:disabled):hover, .btn-ghost:not(:disabled):hover { background: var(--surface-hover); }
+  .btn-fold:not(:disabled):hover { background: rgba(229, 89, 79, 0.22); }
+  #btn-allin:not(:disabled):hover { background: rgba(139, 123, 240, 0.26); }
+  .chip-btn:hover, .pill-btn:hover, .round-btn:hover { border-color: var(--border-strong); color: var(--text); }
+  .fab:hover { background: rgba(22, 30, 42, 0.95); }
+  .seat.joinable .seat-empty-slot:hover { background: rgba(52, 211, 153, 0.2); }
+}
+/* Нажатие должно перебивать hover, поэтому правило идёт следом. */
+.btn:not(:disabled):not(.is-loading):active { transform: scale(0.97); }
+
+/* Недоступная кнопка: и выглядит недоступной, и не ловит нажатия.
+   disabled сам по себе клики не пропускает — pointer-events убирает ещё и
+   курсор с hover-подсветкой. */
+.btn:disabled, .btn[aria-disabled="true"] {
+  opacity: 0.4;
+  filter: saturate(0.3);
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Загрузка: подпись прячем, вместо неё крутится колечко. */
+.btn.is-loading {
+  color: transparent !important;
+  pointer-events: none;
+  position: relative;
+}
+.btn.is-loading::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 16px; height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  animation: btn-spin 620ms linear infinite;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+
+/* Ход отправлен — панель ждёт ответа сервера и не принимает нажатий. */
+.action-bar.is-sending { pointer-events: none; }
+.action-bar.is-sending .btn:not(.is-loading) { opacity: 0.45; }
+
+/* ─── 7. Уважение к prefers-reduced-motion ──────────────────────────────
+   Глобальное правило выше уже обнуляет длительности, но бесконечные
+   анимации и летящие фишки надо выключать целиком. */
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-layer { display: none !important; }
+  .card-face.deal-in,
+  .card-face.flip-in,
+  .seat.acting .seat-avatar::after,
+  .seat.joinable .seat-empty-slot::after,
+  .seat.allin .seat-stack.allin,
+  .seat.winner .seat-stack,
+  .btn.is-loading::after,
+  .pot.is-bump {
+    animation: none !important;
+  }
+  .turn-ring .bar { transition: none !important; }
+  /* Подсветку выигрыша оставляем, но без движения. */
+  .card-slot.is-win .card-face,
+  .card-face.is-win {
+    animation: none !important;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(240, 201, 119, 0.95);
+  }
+  .seat.folded .seat-cards { transform: none; }
+  /* Колечко загрузки без вращения — иначе оно неотличимо от статичной точки. */
+  .btn.is-loading::after { opacity: 0.8; }
+}
