@@ -809,6 +809,7 @@ input::placeholder { color: var(--text-muted); }
   font: 600 17px var(--font);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.55);
   transition: box-shadow 0.2s;
+  z-index: 2;
 }
 .seat-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
 
@@ -883,9 +884,15 @@ input::placeholder { color: var(--text-muted); }
    стороне места, к сукну. Ни колонки, ни отступов: своя зона. */
 .seat-cards {
   transform: translate(calc(-50% + var(--cx, 0px)), calc(-50% + var(--cy, 0px)));
-  display: flex; gap: 2px;
+  /* Карты слегка перекрывают друг друга и уходят ЗА аватар: место читается
+     одним блоком, а не аватаром и отдельно лежащими картами. */
+  display: flex;
+  z-index: 1;
   filter: drop-shadow(0 3px 7px rgba(0, 0, 0, 0.6));
 }
+.seat-cards .card-face + .card-face { margin-left: -9px; }
+.seat.me .seat-cards .card-face + .card-face { margin-left: 4px; }
+
 /* Свои карты крупнее чужих и лежат над аватаром — главный элемент экрана. */
 .seat.me .seat-cards { gap: 4px; z-index: 3; }
 .seat.me .card-face { --card-w: 44px; border-radius: 5px; }
@@ -1060,7 +1067,7 @@ input::placeholder { color: var(--text-muted); }
      области стола, поэтому любое изменение высоты подвала (появилась
      панель действий, сменился набор кнопок) дёргало стол посреди
      раздачи на 5-7%. Резерв держит высоту постоянной. */
-  min-height: var(--controls-h, 104px);
+  min-height: var(--controls-h, 84px);
   box-sizing: content-box;
   justify-content: flex-end;
   padding-block: 10px calc(10px + var(--safe-bottom));
