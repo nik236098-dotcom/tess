@@ -28,8 +28,11 @@ const state = {
   isAdmin: false,
   chipsSeat: null, // индекс места, которому выдаём фишки
   game: 'holdem', // выбранная в лобби игра
-  shownCards: new Set(), // какие карты уже «прилетели» — чтобы не анимировать их снова
+  shownCards: new Map(), // карта -> когда её начали раздавать (см. dealDelay)
   shownHand: null,
+  winCards: new Set(), // карты выигравшей комбинации — для подсветки
+  // Что стол показывал в прошлый раз: по разнице считаем, чему лететь.
+  fx: { hand: null, bets: new Map(), points: new Map(), potPoint: null, winKey: null },
   bjBet: 0,
   bjBetTouched: false,
   unread: 0,
@@ -424,6 +427,13 @@ function watchTableSize() {
 function showTable() {
   $('screen-lobby').classList.add('hidden');
   $('screen-table').classList.remove('hidden');
+  // Новый стол — новая история анимаций: иначе чужие ставки прилетят
+  // фишками в первый же кадр.
+  state.fx.hand = null;
+  state.fx.winKey = null;
+  state.fx.potPoint = null;
+  state.fx.bets.clear();
+  state.shownCards.clear();
   if (tg && tg.BackButton) tg.BackButton.show();
   stopRoomsPolling();
   closeChipsSheet();
@@ -726,6 +736,10 @@ function renderTable() {
     ? `Блекджек · ${money(room.settings.minBet)}–${money(room.settings.maxBet)} · ${tail}`
     : `Холдем · ${money(room.settings.smallBlind)}/${money(room.settings.bigBlind)} · ${tail}`;
 
+  // Комбинацию победителя считаем до отрисовки: её подсвечивают и борд,
+  // и карманные карты.
+  state.winCards = computeWinCards(room);
+
   renderBoard(room);
   renderSeats(room);
   renderHandBadge(room);
@@ -734,6 +748,11 @@ function renderTable() {
   renderControls(room);
   renderResult(room);
   renderLog();
+
+  // Векторы прилёта меряем сразу после сборки DOM, до первой отрисовки:
+  // так карта не успевает мигнуть на своём месте.
+  primeDealAnimations();
+  runTableFx(room);
 }
 
 function renderFeed(room) {
@@ -780,18 +799,39 @@ function renderBoard(room) {
     // Как только приходит флоп, ставим сразу пять слотов: тёрн и ривер
     // занимают готовое место, и стол не дёргается.
     if (cards.length) {
+      // Флоп, тёрн и ривер выкладываются по очереди: каждая новая карта
+      // переворачивается со своей задержкой, старые лежат как лежали.
+      let fresh = 0;
       for (let index = 0; index < 5; index++) {
         const slot = document.createElement('div');
         slot.className = 'card-slot';
         if (cards[index]) {
           slot.classList.add('filled');
-          slot.appendChild(cardNode(cards[index], false, known[index] !== cards[index]));
+          const isNew = known[index] !== cards[index];
+          const face = cardNode(cards[index], false, isNew);
+          if (isNew) {
+            // Общие карты уже лежат в центре — им нужен переворот, а не перелёт.
+            face.classList.remove('deal-in', 'is-priming');
+            face.classList.add('flip-in');
+            face.style.setProperty('--deal-delay', `${fresh * 90}ms`);
+            fresh += 1;
+          }
+          slot.appendChild(face);
         }
         board.appendChild(slot);
       }
     }
     board.dataset.cards = codes;
   }
+
+  // Подсветка выигравшей комбинации живёт отдельно от сборки борда:
+  // карты те же самые, меняется только выделение.
+  const wins = state.winCards;
+  board.classList.toggle('has-win', wins.size > 0);
+  (room.board || []).forEach((card, index) => {
+    const slot = board.children[index];
+    if (slot) slot.classList.toggle('is-win', wins.has(card));
+  });
 
   const pot = $('pot');
   if (room.potTotal > 0) {
@@ -805,7 +845,9 @@ function renderBoard(room) {
 
 function cardNode(code, small = false, animate = true) {
   const node = document.createElement('div');
-  node.className = `card-face${small ? ' small' : ''}${animate ? '' : ' no-anim'}`;
+  // deal-in — карта прилетает из центра стола; вектор и очередь проставит
+  // primeDealAnimations() после того, как всё окажется в DOM.
+  node.className = `card-face${small ? ' small' : ''}${animate ? ' deal-in is-priming' : ' no-anim'}`;
   if (code === '??') {
     node.classList.add('back');
     return node;
@@ -831,16 +873,36 @@ function renderHandBadge(room) {
   if (text) badge.textContent = text;
 }
 
-// Карты игрока. Ключ помнит, что уже лежало на этом месте: новая карта
-// прилетает с анимацией, а прежние просто перерисовываются.
-function buildSeatCards(seat) {
+// Карты игрока. Раздаём как за живым столом: круг за кругом, по одной
+// карте каждому.
+// Место собирается заново на каждом состоянии, а состояний в начале
+// раздачи приходит несколько подряд — поэтому помним не «показывали или
+// нет», а момент начала. Пересобранная на лету карта получает
+// отрицательную задержку и продолжает полёт с того же кадра.
+const DEAL_STEP = 26;   // шаг очереди между картами
+const DEAL_LIFE = 700;  // сколько миллисекунд карта считается «ещё в полёте»
+
+function dealDelay(key, order) {
+  const now = performance.now();
+  let start = state.shownCards.get(key);
+  if (start === undefined) {
+    start = now;
+    state.shownCards.set(key, now);
+  }
+  if (now - start > DEAL_LIFE) return null; // давно лежит — без анимации
+  return start + Math.min(order * DEAL_STEP, 300) - now;
+}
+
+function buildSeatCards(seat, position, count) {
   const cards = document.createElement('div');
   cards.className = 'seat-cards';
   seat.cards.forEach((card, index) => {
     const key = `${seat.index}:${index}:${card}`;
-    const fresh = !state.shownCards.has(key);
-    state.shownCards.add(key);
-    cards.appendChild(cardNode(card, true, fresh));
+    const delay = dealDelay(key, index * count + position);
+    const face = cardNode(card, true, delay !== null);
+    if (delay !== null) face.style.setProperty('--deal-delay', `${Math.round(delay)}ms`);
+    if (state.winCards.has(card)) face.classList.add('is-win');
+    cards.appendChild(face);
   });
   return cards;
 }
@@ -853,8 +915,11 @@ function renderSeats(room) {
 
   const container = $('seats');
   container.innerHTML = '';
+  // Точки мест в координатах холста — по ним потом летят фишки.
+  state.fx.points.clear();
 
   const count = room.seats.length;
+  const winnerIds = winnerIdSet(room);
   const mySeat = room.you.seatIndex;
   // Своё место всегда внизу — так привычнее смотреть на стол.
   const offset = mySeat === null ? 0 : mySeat;
@@ -876,6 +941,11 @@ function renderSeats(room) {
     node.style.setProperty('--bet-y', betShift(1, TABLE.height));
     node.style.setProperty('--body-x', `${anchor.shift[0]}px`);
     node.style.setProperty('--body-y', `${anchor.shift[1]}px`);
+    // Те же доли, но в пикселях холста: откуда и куда лететь фишке.
+    state.fx.points.set(seat.index, {
+      seat: { x: anchor.seat[0] * TABLE.width, y: anchor.seat[1] * TABLE.height },
+      bet: { x: anchor.bet[0] * TABLE.width, y: anchor.bet[1] * TABLE.height },
+    });
 
     const body = document.createElement('div');
     body.className = 'seat-body';
@@ -903,8 +973,15 @@ function renderSeats(room) {
     if (seat.folded) node.classList.add('folded');
     if (seat.isActing) node.classList.add('acting');
     if (!seat.connected || seat.sittingOut) node.classList.add('away');
+    // Состояния места различаем по отдельности: «отключился» и «пропускает»
+    // выглядят по-разному, олл-ин и победитель — тоже.
+    if (!seat.connected) node.classList.add('offline');
+    else if (seat.sittingOut) node.classList.add('sitting-out');
+    if (seat.allIn) node.classList.add('allin');
+    if (seat.inHand && !seat.folded && !seat.isActing && seat.lastAction) node.classList.add('acted');
+    if (winnerIds.has(seat.userId)) node.classList.add('winner');
 
-    body.appendChild(avatarNode(seat));
+    body.appendChild(avatarNode(seat, room));
 
     const plate = document.createElement('div');
     plate.className = 'seat-plate';
@@ -934,10 +1011,14 @@ function renderSeats(room) {
 
     // Карты — часть блока игрока и идут сразу под табличкой со стеком:
     // аватар → имя → стек → карты. Своих координат у них нет.
-    if (seat.cards) body.appendChild(buildSeatCards(seat));
+    if (seat.cards) body.appendChild(buildSeatCards(seat, position, count));
     if (seat.bet > 0) {
       const bet = document.createElement('div');
       bet.className = 'seat-bet';
+      // Плашка ставки собирается заново на каждом состоянии — «попает»
+      // только когда сумма действительно изменилась, иначе она мигала бы
+      // на каждый чужой ход. state.fx.bets тут ещё хранит прошлые ставки.
+      if (state.fx.bets.get(seat.index) !== seat.bet) bet.classList.add('is-new');
       bet.textContent = money(seat.bet);
       node.appendChild(bet);
     }
@@ -946,7 +1027,7 @@ function renderSeats(room) {
   });
 }
 
-function avatarNode(seat) {
+function avatarNode(seat, room) {
   const avatar = document.createElement('div');
   avatar.className = 'seat-avatar';
   if (seat.photoUrl) {
@@ -956,6 +1037,13 @@ function avatarNode(seat) {
     avatar.appendChild(img);
   } else {
     avatar.textContent = (seat.name || '?').trim()[0].toUpperCase();
+  }
+
+  // Кольцо-прогресс — после буквы: textContent затирает всех детей,
+  // поэтому раньше него класть нельзя. Бейджи идут следом и остаются сверху.
+  if (seat.isActing && room && room.turnDeadline) {
+    const ring = turnRing(room);
+    if (ring) avatar.appendChild(ring);
   }
 
   // Блайнды и баттон — бейджами на аватаре, как за живым столом.
@@ -981,6 +1069,268 @@ function seatStatus(seat) {
 
 function actionWord(action) {
   return { fold: 'фолд', check: 'чек', call: 'колл', bet: 'ставка', raise: 'рейз' }[action] || '';
+}
+
+// ——— Анимации стола ———
+// Всё, что двигается на сукне: прилёт карт, фишки к банку и обратно,
+// кольцо-таймер на аватаре. Держится на transform/opacity и на разнице
+// между прошлым и новым состоянием, которое прислал сервер.
+
+function reducedMotion() {
+  return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+// Слой для летящих фишек. Создаём из скрипта, чтобы не трогать разметку;
+// собственного transform у слоя нет — координаты холста остаются прежними.
+function fxLayer() {
+  const canvas = $('table-canvas');
+  if (!canvas) return null;
+  let layer = canvas.querySelector('.fx-layer');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.className = 'fx-layer';
+    canvas.appendChild(layer);
+  }
+  return layer;
+}
+
+// Масштаб холста: getBoundingClientRect отдаёт экранные пиксели, а внутри
+// холста мы считаем в его собственных, до scale().
+function canvasScale(rect) {
+  return rect && rect.width ? rect.width / TABLE.width : 0;
+}
+
+// Точка банка в координатах холста. Пока банк не показан, помним прошлую.
+function potPoint() {
+  const canvas = $('table-canvas');
+  const pot = $('pot');
+  const fallback = state.fx.potPoint
+    || { x: TABLE.width * TABLE.focusX, y: TABLE.height * TABLE.focusY };
+  if (!canvas || !pot || pot.classList.contains('hidden')) return fallback;
+  const box = canvas.getBoundingClientRect();
+  const scale = canvasScale(box);
+  if (!scale) return fallback;
+  const rect = pot.getBoundingClientRect();
+  const point = {
+    x: (rect.left + rect.width / 2 - box.left) / scale,
+    y: (rect.top + rect.height / 2 - box.top) / scale,
+  };
+  state.fx.potPoint = point;
+  return point;
+}
+
+// Летящая фишка: живёт ровно столько, сколько идёт анимация.
+function flyChip(from, to, options = {}) {
+  if (!from || !to || reducedMotion()) return;
+  const layer = fxLayer();
+  if (!layer) return;
+  const duration = options.duration || 260;
+  const delay = options.delay || 0;
+  const chip = document.createElement('div');
+  chip.className = `fx-chip${options.kind ? ` ${options.kind}` : ''}`;
+  if (options.text) chip.textContent = options.text;
+  chip.style.setProperty('--fx-x0', `${from.x.toFixed(1)}px`);
+  chip.style.setProperty('--fx-y0', `${from.y.toFixed(1)}px`);
+  chip.style.setProperty('--fx-x1', `${to.x.toFixed(1)}px`);
+  chip.style.setProperty('--fx-y1', `${to.y.toFixed(1)}px`);
+  chip.style.setProperty('--fx-dur', `${duration}ms`);
+  chip.style.setProperty('--fx-delay', `${delay}ms`);
+  layer.appendChild(chip);
+  const remove = () => chip.remove();
+  chip.addEventListener('animationend', remove);
+  // Во вкладке в фоне animationend может не прийти — подстраховываемся.
+  setTimeout(remove, duration + delay + 500);
+}
+
+// Короткий толчок банка, когда фишки долетели.
+function bumpPot(delay = 0) {
+  const pot = $('pot');
+  if (!pot || reducedMotion()) return;
+  setTimeout(() => {
+    if (pot.classList.contains('hidden')) return;
+    pot.classList.remove('is-bump');
+    void pot.offsetWidth; // перезапуск анимации
+    pot.classList.add('is-bump');
+  }, delay);
+}
+
+// Кольцо-прогресс вокруг аватара того, чей ход. Сервер присылает
+// turnDeadline и settings.turnSeconds, поэтому таймер настоящий:
+// один переход stroke-dashoffset на весь остаток времени, без таймеров в JS.
+const RING_RADIUS = 24;
+const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
+
+function turnRing(room) {
+  const total = (room.settings && room.settings.turnSeconds) * 1000;
+  const left = room.turnDeadline - Date.now();
+  if (!total || left <= 0) return null;
+  const ratio = clamp(left / total, 0, 1);
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', `turn-ring${ratio < 0.25 ? ' is-low' : ''}`);
+  svg.setAttribute('viewBox', '0 0 52 52');
+  for (const kind of ['track', 'bar']) {
+    const circle = document.createElementNS(ns, 'circle');
+    circle.setAttribute('class', kind);
+    circle.setAttribute('cx', '26');
+    circle.setAttribute('cy', '26');
+    circle.setAttribute('r', String(RING_RADIUS));
+    if (kind === 'bar') {
+      circle.style.strokeDasharray = String(RING_LENGTH);
+      circle.style.strokeDashoffset = String(RING_LENGTH * (1 - ratio));
+      if (!reducedMotion()) {
+        requestAnimationFrame(() => {
+          circle.style.transition = `stroke-dashoffset ${Math.round(left)}ms linear`;
+          circle.style.strokeDashoffset = String(RING_LENGTH);
+        });
+      }
+    }
+    svg.appendChild(circle);
+  }
+  return svg;
+}
+
+// Карты выигравшей комбинации — только после вскрытия, когда сервер их
+// действительно показал.
+function computeWinCards(room) {
+  const cards = new Set();
+  const result = room.lastResult;
+  if (!result || !result.showdown || room.status === 'playing' || room.status === 'betting') return cards;
+  for (const winner of result.winners || []) {
+    for (const card of (winner.hand && winner.hand.cards) || []) cards.add(card);
+  }
+  return cards;
+}
+
+function winnerIdSet(room) {
+  const ids = new Set();
+  const result = room.lastResult;
+  if (!result || room.status === 'playing' || room.status === 'betting') return ids;
+  for (const winner of result.winners || []) ids.add(winner.userId);
+  return ids;
+}
+
+// Кто победил, в местах: для холдема по userId, для блекджека — по имени
+// (в его результате id победителя не приходит).
+function winnerSeats(room) {
+  const result = room.lastResult;
+  if (!result || room.status === 'playing' || room.status === 'betting') return [];
+  if (result.game === 'blackjack') {
+    if (!result.winnerName) return [];
+    const seat = room.seats.find((s) => !s.empty && s.name === result.winnerName);
+    return seat ? [{ index: seat.index, amount: result.amount }] : [];
+  }
+  return (result.winners || [])
+    .map((winner) => {
+      const seat = room.seats.find((s) => !s.empty && s.userId === winner.userId);
+      return seat ? { index: seat.index, amount: winner.amount } : null;
+    })
+    .filter(Boolean);
+}
+
+// Главная точка входа: сравниваем новое состояние с прошлым и запускаем то,
+// что произошло между ними.
+function runTableFx(room) {
+  const fx = state.fx;
+  const firstSight = fx.hand === null;
+  if (fx.hand !== room.handNumber) {
+    fx.hand = room.handNumber;
+    fx.winKey = null;
+    fx.bets.clear();
+  }
+
+  const bets = new Map();
+  for (const seat of room.seats) {
+    if (!seat.empty) bets.set(seat.index, seat.bet || 0);
+  }
+
+  // Пришли в комнату посреди раздачи — просто запоминаем, что видим.
+  if (firstSight || reducedMotion()) {
+    fx.bets = bets;
+    return;
+  }
+
+  const pot = potPoint();
+  let wasBet = 0;
+  let nowBet = 0;
+  for (const value of fx.bets.values()) wasBet += value;
+  for (const value of bets.values()) nowBet += value;
+
+  // 1. Игрок поставил — фишка летит от места на его точку ставки.
+  for (const [index, value] of bets) {
+    const before = fx.bets.has(index) ? fx.bets.get(index) : 0;
+    const point = fx.points.get(index);
+    if (point && value > before) {
+      flyChip(point.seat, point.bet, { text: money(value - before), duration: 240 });
+    }
+  }
+
+  // 2. Улица закрылась — все ставки уехали в банк.
+  if (wasBet > 0 && nowBet === 0) {
+    let order = 0;
+    for (const [index, value] of fx.bets) {
+      const point = fx.points.get(index);
+      if (!point || value <= 0) continue;
+      flyChip(point.bet, pot, { text: money(value), duration: 280, delay: order * 40 });
+      order += 1;
+    }
+    if (order) bumpPot(200 + order * 40);
+  }
+
+  fx.bets = bets;
+
+  // 3. Раздача закончилась — банк уезжает к победителям.
+  const winners = winnerSeats(room);
+  const winKey = winners.length ? `${room.handNumber}:${winners.map((w) => `${w.index}/${w.amount}`).join(',')}` : null;
+  if (winKey && winKey !== fx.winKey) {
+    fx.winKey = winKey;
+    winners.forEach((winner, index) => {
+      const point = fx.points.get(winner.index);
+      if (!point) return;
+      flyChip(pot, point.seat, {
+        text: `+${money(winner.amount)}`,
+        kind: 'win',
+        duration: 320,
+        delay: 260 + index * 70,
+      });
+    });
+  }
+}
+
+// Вектор прилёта карты: от центра стола до её места. Меряем до того, как
+// анимация стартует (класс is-priming её придерживает), иначе прочитаем
+// уже сдвинутый прямоугольник.
+function primeDealAnimations() {
+  const canvas = $('table-canvas');
+  if (!canvas) return;
+  const nodes = canvas.querySelectorAll('.card-face.is-priming');
+  if (!nodes.length) return;
+
+  const box = canvas.getBoundingClientRect();
+  const scale = canvasScale(box);
+  if (!scale) {
+    for (const node of nodes) node.classList.remove('is-priming');
+    return;
+  }
+
+  const fromX = box.left + box.width * TABLE.focusX;
+  const fromY = box.top + box.height * TABLE.focusY;
+  // Сначала все замеры, потом все записи: так layout считается один раз.
+  const measured = [];
+  for (const node of nodes) {
+    const rect = node.getBoundingClientRect();
+    measured.push([
+      node,
+      (fromX - rect.left - rect.width / 2) / scale,
+      (fromY - rect.top - rect.height / 2) / scale,
+    ]);
+  }
+  for (const [node, dx, dy] of measured) {
+    node.style.setProperty('--deal-x', `${dx.toFixed(1)}px`);
+    node.style.setProperty('--deal-y', `${dy.toFixed(1)}px`);
+    node.classList.remove('is-priming');
+  }
 }
 
 function renderMessage(room) {
@@ -1066,6 +1416,8 @@ function renderResult(room) {
 }
 
 function renderControls(room) {
+  // Пришло новое состояние — значит, сервер ответил: колечки гасим.
+  clearBusy();
   const you = room.you;
   if (typeof you.balance === 'number') {
     state.balance = you.balance;
@@ -1707,13 +2059,21 @@ function bindUi() {
   on('btn-close', 'click', leaveRoom);
   on('btn-log-close', 'click', () => $('log-panel').classList.add('hidden'));
 
-  on('btn-start', 'click', () => send({ type: 'start' }));
-  on('btn-sit', 'click', () => {
-    const free = state.room && state.room.seats.find((s) => s.empty);
-    if (free) send({ type: 'sit', seat: free.index });
-    else toast('Свободных мест нет');
+  on('btn-start', 'click', (event) => {
+    markBusy(event.currentTarget);
+    send({ type: 'start' });
   });
-  on('btn-rebuy', 'click', () => send({ type: 'rebuy' }));
+  on('btn-sit', 'click', (event) => {
+    const free = state.room && state.room.seats.find((s) => s.empty);
+    if (free) {
+      markBusy(event.currentTarget);
+      send({ type: 'sit', seat: free.index });
+    } else toast('Свободных мест нет');
+  });
+  on('btn-rebuy', 'click', (event) => {
+    markBusy(event.currentTarget);
+    send({ type: 'rebuy' });
+  });
 
   document.querySelectorAll('[data-game]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -1726,11 +2086,12 @@ function bindUi() {
     });
   });
 
-  on('bj-hit', 'click', () => act('hit'));
-  on('bj-stand', 'click', () => act('stand'));
-  on('bj-bet', 'click', () => {
+  on('bj-hit', 'click', (event) => act('hit', undefined, event.currentTarget));
+  on('bj-stand', 'click', (event) => act('stand', undefined, event.currentTarget));
+  on('bj-bet', 'click', (event) => {
     haptic('success');
     state.bjBetTouched = false;
+    markBusy(event.currentTarget);
     send({ type: 'action', action: 'bet', amount: state.bjBet });
     $('bj-bar').classList.add('hidden');
   });
@@ -1757,9 +2118,9 @@ function bindUi() {
     });
   });
 
-  on('btn-fold', 'click', () => act('fold'));
-  on('btn-check', 'click', () => act('check'));
-  on('btn-call', 'click', () => act('call'));
+  on('btn-fold', 'click', (event) => act('fold', undefined, event.currentTarget));
+  on('btn-check', 'click', (event) => act('check', undefined, event.currentTarget));
+  on('btn-call', 'click', (event) => act('call', undefined, event.currentTarget));
   on('btn-raise', 'click', () => {
     haptic('light');
     const row = $('raise-row');
@@ -1767,10 +2128,10 @@ function bindUi() {
     else closeRaisePanel();
   });
   on('raise-cancel', 'click', closeRaisePanel);
-  on('raise-confirm', 'click', () => act('raise', state.raiseTo));
-  on('btn-allin', 'click', () => {
+  on('raise-confirm', 'click', (event) => act('raise', state.raiseTo, event.currentTarget));
+  on('btn-allin', 'click', (event) => {
     const legal = state.room && state.room.you.legal;
-    if (legal && legal.canRaise) act('raise', legal.maxRaiseTo);
+    if (legal && legal.canRaise) act('raise', legal.maxRaiseTo, event.currentTarget);
   });
 
   on('raise-range', 'input', (event) => {
@@ -1855,11 +2216,36 @@ function applyPreset(preset) {
   haptic('light');
 }
 
-function act(action, amount) {
+// button — кнопка, которую нажали: на время ожидания ответа она крутит
+// колечко, а вся панель перестаёт принимать нажатия. Панель прячем не
+// мгновенно, а после короткой паузы, иначе состояние «отправляем» никто
+// не успевает увидеть.
+function act(action, amount, button) {
   haptic(action === 'fold' ? 'light' : 'success');
   state.raiseTouched = false;
+  const bar = (button && button.closest('.action-bar')) || $('action-bar');
+  bar.classList.add('is-sending');
+  if (button) button.classList.add('is-loading');
   send({ type: 'action', action, amount });
-  $('action-bar').classList.add('hidden');
+  setTimeout(() => {
+    bar.classList.remove('is-sending');
+    if (button) button.classList.remove('is-loading');
+    // Если сервер уже прислал состояние и ход снова наш — панель нужна.
+    const you = state.room && state.room.you;
+    if (!you || (!you.legal && !you.betTurn)) bar.classList.add('hidden');
+  }, 180);
+}
+
+// Кнопка ждёт ответа сервера. Снимается на следующем состоянии стола.
+function markBusy(button) {
+  if (!button) return;
+  button.classList.add('is-loading');
+}
+
+function clearBusy() {
+  for (const button of document.querySelectorAll('.btn.is-loading')) {
+    button.classList.remove('is-loading');
+  }
 }
 
 function leaveRoom() {
