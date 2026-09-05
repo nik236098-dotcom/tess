@@ -1687,14 +1687,14 @@ input::placeholder { color: var(--text-muted); }
    месту, а не отодвинута к банку на 70+ px. */
 
 .seat.proto .seat-avatar {
-  /* Зелёное нутро кружка 43.3 — фото заполняет его почти целиком и
-     подхватывает золото кольца тонкой кромкой, поэтому читается вставленным
-     в рамку, а не отдельным диском поверх неё. */
-  width: 42px; height: 42px;
-  background: linear-gradient(160deg, #24303d, #131a23);
-  box-shadow:
-    inset 0 0 0 1px rgba(214, 174, 102, 0.55),
-    inset 0 3px 8px rgba(0, 0, 0, 0.5);
+  /* Оправа — САМ нарисованный кружок. Диаметр 48 равен пунктирному кольцу
+     (замер ассета: пунктир 48.0, внешний золотой декор 53.5), поэтому фото
+     перекрывает пунктир пустого места и упирается в золото. Своих колец,
+     подложек и теней нет: любое из них читается вторым кругом поверх
+     нарисованного. Центр — ровно центр кружка. */
+  width: 48px; height: 48px;
+  background: #16202b;
+  box-shadow: none;
 }
 .seat.proto .seat-cards {
   transform: translate(calc(-50% + 33px), calc(-50% + 1px)) rotate(7deg);
@@ -1736,6 +1736,10 @@ input::placeholder { color: var(--text-muted); }
 .seat.proto .chips { width: 16px; height: 16px; }
 .seat.proto .chip { width: 16px; height: 16px; bottom: calc(var(--i, 0) * 4px); }
 .seat.proto .chip::before { width: 16px; height: 16px; top: 2px; }
+.seat.proto.acting .seat-avatar {
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.9), 0 0 12px rgba(52, 211, 153, 0.4);
+}
+
 .seat.proto .seat-bet {
   /* Эталон: стопка на +40, сумма на +58 от центра кружка. Ставка стоит
      вплотную к месту, а не отодвинута к банку. */
