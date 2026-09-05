@@ -938,9 +938,11 @@ input::placeholder { color: var(--text-muted); }
 
 /* Ставка — ещё ближе к банку */
 .seat-bet {
-  /* Ширина ограничена: восемь фишек по 68 px на это сукно не помещаются,
-     поэтому крупные суммы показываем сокращённо (money → shortMoney). */
-  max-width: 56px;
+  /* Ширина ограничена: восемь фишек шире 46 px на это сукно не помещаются
+     без наложения на блоки игроков, поэтому крупные суммы показываем
+     сокращённо (money → shortMoney). */
+  max-width: 46px;
+  overflow: hidden;
   position: absolute;
   left: 0; top: 0;
   transform: translate(var(--bet-x), var(--bet-y)) translate(-50%, -50%);
