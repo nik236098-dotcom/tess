@@ -97,15 +97,22 @@ const SEAT_LAYOUT = [
   // ставки не задевала ни свои карты, ни плашки соседей.
   // У героя своего места сбоку нет: снизу справа и слева сидят соперники,
   // поэтому его фишки идут строго вверх по его оси, между картами и банком.
-  { cards: [0, -70], bet: [0, -116] },    // 0 герой
-  { cards: [35, -6], bet: [58, -70] },    // 1 низ слева
-  { cards: [35, -4], bet: [69, 11] },     // 2 середина слева
-  { cards: [34, 0], bet: [48, 67] },      // 3 верх слева
-  { cards: [0, 16], bet: [0, 82] },       // 4 верх по центру
-  { cards: [-34, 0], bet: [-48, 67] },    // 5 верх справа
-  { cards: [-35, -4], bet: [-69, 11] },   // 6 середина справа
-  { cards: [-35, -6], bet: [-58, -70] },  // 7 низ справа
+  // bet — якорь блока ставки от центра кружка; side говорит, какой край
+  // блока стоит на якоре: у левых мест левый (стопка ближе к игроку, сумма
+  // дальше к банку), у правых — правый и блок зеркален, у верхних/героя —
+  // центр. Ставка всегда между игроком и банком, вплотную к своему месту.
+  { cards: [0, -70], bet: [0, -118], side: 'center' },  // 0 герой: над картами, к банку (слева и справа стоят ставки соседей)
+  { cards: [35, -6], bet: [12, -44], side: 'left' },    // 1 низ слева: выше-правее, не доходя до карт героя
+  { cards: [35, -4], bet: [31, 35], side: 'left' },     // 2 середина слева: правее, внутрь
+  { cards: [34, 0], bet: [42, 42], side: 'left' },      // 3 верх слева: ниже, внутрь
+  { cards: [0, 16], bet: [0, 72], side: 'center' },     // 4 верх: ниже плашки, к центру
+  { cards: [-34, 0], bet: [-42, 42], side: 'right' },   // 5 верх справа: ниже, внутрь
+  { cards: [-35, -4], bet: [-40, 35], side: 'right' },  // 6 середина справа: левее, внутрь
+  { cards: [-35, -6], bet: [-12, -44], side: 'right' }, // 7 низ справа: выше-левее, не доходя до карт героя
 ];
+
+// Полный размер фишки: диаметр и высота цилиндра (см. .chip в styles.css).
+const CHIP_W = 18;
 
 // Какие кружки заняты при каком числе игроков. Новых координат не выдумываем:
 // берём подмножество тех же восьми (см. пункт 34 задания).
@@ -130,9 +137,11 @@ function seatAnchor(index, count) {
     avatar: circle.inner,
     cards: layout.cards,
     bet: layout.bet,
-    // Ставка в долях холста — для полёта фишек в банк.
+    side: layout.side,
+    // Центр стопки в долях холста — откуда фишки уезжают в банк. Стопка
+    // стоит у якорного края блока, поэтому сдвиг на полфишки от якоря.
     betFrac: [
-      circle.at[0] + layout.bet[0] / TABLE.width,
+      circle.at[0] + (layout.bet[0] + (layout.side === 'left' ? CHIP_W / 2 : layout.side === 'right' ? -CHIP_W / 2 : -CHIP_W * 0.7)) / TABLE.width,
       circle.at[1] + layout.bet[1] / TABLE.height,
     ],
   };
@@ -189,8 +198,8 @@ const CHIP_DENOMS = [
   { value: 10, cls: 'red' },
 ];
 
-// Не рисуем по фишке на каждую единицу: максимум четыре, от старшего
-// номинала к младшему.
+// Стопка — компактное представление, точная сумма всегда написана рядом.
+// Обычно 1–3 фишки, максимум четыре, от старшего номинала к младшему.
 function chipStack(cents) {
   const box = document.createElement('span');
   box.className = 'chips';
@@ -1041,6 +1050,16 @@ function renderSeats(room) {
     node.style.setProperty('--cy', `${anchor.cards[1]}px`);
     node.style.setProperty('--bx', `${anchor.bet[0]}px`);
     node.style.setProperty('--by', `${anchor.bet[1]}px`);
+    node.style.setProperty('--ax', anchor.side === 'left' ? '0%' : anchor.side === 'right' ? '-100%' : '-50%');
+    node.dataset.betSide = anchor.side;
+    // Появление ставки: стопка подъезжает на 12 px от игрока к банку.
+    {
+      const dx = TABLE.width * TABLE.focusX - anchor.seat[0] * TABLE.width;
+      const dy = TABLE.height * TABLE.focusY - anchor.seat[1] * TABLE.height;
+      const len = Math.hypot(dx, dy) || 1;
+      node.style.setProperty('--bdx', `${(dx / len * 12).toFixed(1)}px`);
+      node.style.setProperty('--bdy', `${(dy / len * 12).toFixed(1)}px`);
+    }
 
     state.fx.points.set(seat.index, {
       seat: { x: anchor.seat[0] * TABLE.width, y: anchor.seat[1] * TABLE.height },
@@ -1233,8 +1252,15 @@ function flyChip(from, to, options = {}) {
   const duration = options.duration || 260;
   const delay = options.delay || 0;
   const chip = document.createElement('div');
-  chip.className = `fx-chip${options.kind ? ` ${options.kind}` : ''}`;
-  if (options.text) chip.textContent = options.text;
+  chip.className = `fx-chip${options.kind ? ` ${options.kind}` : ''}${options.chip ? ' coin' : ''}`;
+  if (options.chip) {
+    // Летит одна фишка старшего номинала — представитель стопки.
+    const stack = chipStack(options.chip);
+    while (stack.children.length > 1) stack.lastChild.remove();
+    chip.appendChild(stack);
+  } else if (options.text) {
+    chip.textContent = options.text;
+  }
   chip.style.setProperty('--fx-x0', `${from.x.toFixed(1)}px`);
   chip.style.setProperty('--fx-y0', `${from.y.toFixed(1)}px`);
   chip.style.setProperty('--fx-x1', `${to.x.toFixed(1)}px`);
@@ -1363,25 +1389,22 @@ function runTableFx(room) {
   for (const value of fx.bets.values()) wasBet += value;
   for (const value of bets.values()) nowBet += value;
 
-  // 1. Игрок поставил — фишка летит от места на его точку ставки.
-  for (const [index, value] of bets) {
-    const before = fx.bets.has(index) ? fx.bets.get(index) : 0;
-    const point = fx.points.get(index);
-    if (point && value > before) {
-      flyChip(point.seat, point.bet, { text: money(value - before), duration: 240 });
-    }
-  }
+  // 1. Игрок поставил — стопка появляется у места и чуть подъезжает к
+  //    банку (анимация bet-pop на самом блоке ставки, см. styles.css).
+  //    Отдельного полёта от аватара нет: две анимации одной ставки
+  //    читались как две ставки.
 
-  // 2. Улица закрылась — все ставки уехали в банк.
+  // 2. Улица закрылась — фишки уезжают со своих якорей в банк, по одной
+  //    представительной фишке старшего номинала от каждого, с шагом 40 мс.
   if (wasBet > 0 && nowBet === 0) {
     let order = 0;
     for (const [index, value] of fx.bets) {
       const point = fx.points.get(index);
       if (!point || value <= 0) continue;
-      flyChip(point.bet, pot, { text: money(value), duration: 280, delay: order * 40 });
+      flyChip(point.bet, pot, { chip: value, duration: 300, delay: order * 40 });
       order += 1;
     }
-    if (order) bumpPot(200 + order * 40);
+    if (order) bumpPot(220 + order * 40);
   }
 
   fx.bets = bets;
