@@ -2762,7 +2762,10 @@ body[data-tab="home"] .lobby > .status { display: none; }
   background: rgba(6, 2, 12, 0.26);
   pointer-events: none;
 }
-#screen-table > * { position: relative; }
+/* Только шапка и сцена лежат в потоке над фоном; шторки, панель и тост
+   остаются absolute — иначе они отжимают сцену и стол меняет масштаб. */
+#screen-table > .topbar, #screen-table > .table-wrap { position: relative; }
+#screen-table > .log-panel, #screen-table > .sheet { position: absolute; }
 
 /* ── Шапка: компактная, полупрозрачная, без огромных пилюль ── */
 #screen-table .topbar {
@@ -3005,3 +3008,61 @@ body[data-tab="home"] .lobby > .status { display: none; }
   to { opacity: 1; scale: 1; }
 }
 @keyframes seat-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── Остальные поверхности игрового экрана в той же палитре:
+      шторки чата/истории и баланса, лента действий, тост. ── */
+#screen-table .log-panel,
+#screen-table .sheet-body {
+  background: linear-gradient(180deg, rgba(24, 10, 42, 0.97), rgba(12, 5, 22, 0.98));
+  border-top: 1px solid var(--tp-line-strong);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(16px);
+}
+#screen-table .sheet { background: rgba(4, 1, 10, 0.6); }
+#screen-table .log-head h3, #screen-table .sheet-head h3 { font: 600 15px var(--font); color: var(--tp-text); }
+#screen-table .log-line { color: var(--tp-muted); }
+#screen-table .log-line b { color: var(--tp-text); }
+#screen-table .log-line.system { color: var(--tp-champ); }
+#screen-table .log-panel .round-btn,
+#screen-table .sheet .round-btn {
+  border: 1px solid var(--tp-line-strong);
+  background: rgba(20, 10, 34, 0.7);
+  color: rgba(236, 224, 255, 0.85);
+  border-radius: 8px;
+}
+#screen-table .chat-form input,
+#screen-table .sheet input {
+  background: rgba(20, 10, 34, 0.85);
+  border: 1px solid var(--tp-line-strong);
+  color: var(--tp-text);
+  border-radius: 10px;
+}
+#screen-table .chat-form input::placeholder { color: var(--tp-muted); }
+#screen-table .chat-form .btn,
+#screen-table .sheet .btn-primary {
+  background: linear-gradient(180deg, #8d55ff, #5f2fd0);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(109, 53, 214, 0.4);
+}
+#screen-table .sheet .chip-btn,
+#screen-table .sheet .btn-surface,
+#screen-table .sheet .btn-ghost {
+  background: rgba(20, 10, 34, 0.85);
+  border: 1px solid var(--tp-line-strong);
+  color: rgba(236, 224, 255, 0.9);
+}
+#screen-table .sheet .hint { color: var(--tp-muted); }
+#screen-table .feed-pill {
+  background: rgba(12, 5, 22, 0.8);
+  border-color: rgba(196, 150, 255, 0.2);
+  color: rgba(236, 222, 255, 0.72);
+}
+#screen-table .feed-pill .amount { color: var(--tp-champ); }
+body:has(#screen-table:not(.hidden)) .toast {
+  background: rgba(18, 8, 32, 0.96);
+  border-color: rgba(196, 150, 255, 0.3);
+  color: #f1eaff;
+}
+#screen-table .winner-pop .win-amount { color: var(--tp-champ); }
