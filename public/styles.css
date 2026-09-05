@@ -1806,8 +1806,10 @@ input::placeholder { color: var(--text-muted); }
   box-shadow: none;
   transform-origin: 50% 100%;
 }
-.seat.proto .seat-cards .card-face:first-child { transform: rotate(-3deg); }
-.seat.proto .seat-cards .card-face + .card-face { margin-left: -1.5px; }
+/* В макете карты ПАРАЛЛЕЛЬНЫ и касаются длинными рёбрами — веера нет,
+   наклон общий на всю пару. */
+.seat.proto .seat-cards .card-face:first-child { transform: none; }
+.seat.proto .seat-cards .card-face + .card-face { margin-left: -1px; }
 /* Кант — сама карта, рубашка внутри с отступом: белая кромка идёт снаружи
    синего, как в макете, а не врезается в него внутренней тенью. */
 .seat.proto .card-face.back {
@@ -1817,23 +1819,28 @@ input::placeholder { color: var(--text-muted); }
 .seat.proto .card-face.back::before {
   content: '';
   position: absolute;
-  inset: 1.9px;
-  border-radius: 1.5px;
-  /* Глубокий насыщенный синий, как в макете, с мягким светом сверху. */
+  inset: 1.7px;
+  border-radius: 1.6px;
+  /* Как в макете: тонкая тёмно-синяя линия по краю, внутри чуть более
+     светлая панель со свечением в верхней трети. */
   background:
-    radial-gradient(ellipse at 50% 18%, rgba(255, 255, 255, 0.16) 0 20%, rgba(255, 255, 255, 0) 60%),
-    linear-gradient(160deg, #2d7af5 0%, #1a5fe0 45%, #1049c2 100%);
-  box-shadow: inset 0 0 0 0.6px rgba(0, 30, 110, 0.45);
+    radial-gradient(ellipse 60% 45% at 50% 30%, rgba(255, 255, 255, 0.2) 0 30%, rgba(255, 255, 255, 0) 100%),
+    linear-gradient(165deg, #2f7ef8 0%, #1d63e6 50%, #1350cc 100%);
+  box-shadow:
+    inset 0 0 0 0.7px rgba(0, 25, 100, 0.55),
+    inset 0 0 0 1.4px rgba(90, 150, 255, 0.35);
 }
 .seat.proto .card-face.back::after {
   content: '♠';
   position: absolute;
   inset: 0;
   display: grid; place-items: center;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1;
-  padding-top: 3px;
-  color: rgba(0, 30, 110, 0.35);
+  padding-top: 2px;
+  /* В макете масть — тонкий контур чуть светлее рубашки, не залитый знак. */
+  color: transparent;
+  -webkit-text-stroke: 0.55px rgba(150, 195, 255, 0.55);
 }
 
 /* ── Плашка имени и стека ────────────────────────────────────────────
