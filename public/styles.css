@@ -881,6 +881,12 @@ input::placeholder { color: var(--text-muted); }
 /* Свободное место: на ассете уже нарисован пунктирный кружок, поэтому
    здесь только область нажатия и мягкая подсветка, когда сесть можно. */
 .seat.empty .seat-empty-slot {
+  /* Кружок нарисован на ассете в точке якоря, поэтому слот привязан прямо
+     к якорю, а не к .seat-body: тот сдвинут (--body-x/--body-y) и утаскивал
+     подсветку с нарисованного кружка — было видно два круга и два плюса. */
+  position: absolute;
+  left: 0; top: 0;
+  transform: translate(-50%, -50%);
   width: 46px; height: 46px;
   border-radius: 50%;
   display: grid; place-items: center;
@@ -894,7 +900,7 @@ input::placeholder { color: var(--text-muted); }
   box-shadow: inset 0 0 0 1.5px rgba(52, 211, 153, 0.45);
   cursor: pointer;
 }
-.seat.joinable .seat-empty-slot:active { transform: scale(0.92); }
+.seat.joinable .seat-empty-slot:active { transform: translate(-50%, -50%) scale(0.92); }
 
 
 /* ═══ Лента действий ═══ */
@@ -998,6 +1004,13 @@ input::placeholder { color: var(--text-muted); }
 
 .controls {
   flex: none;
+  /* Высота подвала зарезервирована. fitTable() считает масштаб от высоты
+     области стола, поэтому любое изменение высоты подвала (появилась
+     панель действий, сменился набор кнопок) дёргало стол посреди
+     раздачи на 5-7%. Резерв держит высоту постоянной. */
+  min-height: var(--controls-h, 104px);
+  box-sizing: content-box;
+  justify-content: flex-end;
   padding-block: 10px calc(10px + var(--safe-bottom));
   /* Фон во всю ширину, а кнопки — ровно по краям стола */
   padding-inline: max(var(--s3), calc((100% - var(--table-px)) / 2));
@@ -1015,7 +1028,7 @@ input::placeholder { color: var(--text-muted); }
 .host-controls, .seat-controls { display: flex; gap: var(--s2); }
 .host-controls .btn, .seat-controls .btn { flex: 1; }
 
-.action-bar { display: flex; flex-direction: column; gap: 8px; }
+.action-bar { position: relative; display: flex; flex-direction: column; gap: 8px; }
 .action-buttons { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 7px; }
 
 /* Иерархия: главное действие залито цветом, остальные — тонированные
@@ -1063,6 +1076,11 @@ input::placeholder { color: var(--text-muted); }
 
 /* Панель рейза — над кнопками действий */
 .raise-row {
+  /* Всплывает над подвалом, а не раздвигает его: иначе открытие слайдера
+     сжимает стол ровно в тот момент, когда игрок целится в размер ставки. */
+  position: absolute;
+  left: 0; right: 0; bottom: calc(100% + 8px);
+  z-index: 5;
   display: flex; flex-direction: column; gap: var(--s2);
   padding: var(--s3);
   background: var(--surface);
@@ -1213,7 +1231,7 @@ input::placeholder { color: var(--text-muted); }
 .seat-hint {
   align-self: center;
   max-width: 320px;
-  margin: 0 auto 10px;
+  margin: 0 auto;
   padding: 10px 22px;
   border: 1px solid rgba(198, 154, 86, 0.45);
   border-radius: 14px;

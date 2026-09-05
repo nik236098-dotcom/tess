@@ -894,7 +894,9 @@ function renderSeats(room) {
           send({ type: 'sit', seat: seat.index });
         });
       }
-      body.appendChild(slot);
+      // Слот вешаем на само место, а не на .seat-body: подсветка должна
+      // лечь ровно на кружок ассета, без сдвига тела места.
+      node.appendChild(slot);
       container.appendChild(node);
       return;
     }
