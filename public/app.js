@@ -91,13 +91,13 @@ const SEAT_LAYOUT = [
   // Карты подоткнуты под аватар (z-index ниже) и читаются как часть места.
   // К банку уходит только ставка. У нижних мест ставка идёт ВВЕРХ и внутрь.
   { cards: [0, -70], bet: [64, -34] },    // 0 герой: карты сверху, фишки справа-сверху
-  { cards: [30, -14], bet: [28, -56] },   // 1 низ слева: фишки выше и внутрь
-  { cards: [32, -6], bet: [56, 18] },     // 2 середина слева
+  { cards: [30, -14], bet: [40, -34] },   // 1 низ слева: фишки выше и внутрь
+  { cards: [32, -6], bet: [58, 6] },      // 2 середина слева
   { cards: [30, -2], bet: [50, 34] },     // 3 верх слева
   { cards: [0, 20], bet: [0, 64] },       // 4 верх по центру
   { cards: [-30, -2], bet: [-50, 34] },   // 5 верх справа
-  { cards: [-32, -6], bet: [-56, 18] },   // 6 середина справа
-  { cards: [-30, -14], bet: [-28, -56] }, // 7 низ справа: фишки выше и внутрь
+  { cards: [-32, -6], bet: [-58, 6] },    // 6 середина справа
+  { cards: [-30, -14], bet: [-40, -34] }, // 7 низ справа: фишки выше и внутрь
 ];
 
 // Какие кружки заняты при каком числе игроков. Новых координат не выдумываем:
@@ -1026,7 +1026,7 @@ function renderSeats(room) {
     node.dataset.anchor = String(anchor.at);
     node.style.left = `${(anchor.seat[0] * 100).toFixed(3)}%`;
     node.style.top = `${(anchor.seat[1] * 100).toFixed(3)}%`;
-    node.style.setProperty('--av', `${Math.round(anchor.avatar * 0.8)}px`);
+    node.style.setProperty('--av', `${Math.round(anchor.avatar * 0.88)}px`);
     node.style.setProperty('--cx', `${anchor.cards[0]}px`);
     node.style.setProperty('--cy', `${anchor.cards[1]}px`);
     node.style.setProperty('--bx', `${anchor.bet[0]}px`);
