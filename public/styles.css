@@ -727,7 +727,7 @@ input::placeholder { color: var(--text-muted); }
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(10, 16, 24, 0.16);
   animation: deal 0.3s var(--ease) both;
 }
-.card-face.small { --card-w: 23px; border-radius: 3px; }
+.card-face.small { --card-w: 19px; border-radius: 3px; }
 .card-face.no-anim { animation: none; }
 .card-face.red { color: #ce2f27; }
 .card-face .corner {
@@ -828,15 +828,20 @@ input::placeholder { color: var(--text-muted); }
   left: 0; top: 0;
   transform: translate(calc(-50% + var(--body-x, 0px)), calc(-22px + var(--body-y, 0px)));
   display: flex; flex-direction: column; align-items: center;
-  width: 84px;
+  /* Блок соперника компактный: на 3 и 9 часах между краем сукна и бордом
+     всего 47.7 px слева и 41.9 px справа (замерено по ассету), и блок
+     шире 42 px туда физически не встаёт. У героя свой размер — ниже. */
+  width: 42px;
 }
+.seat.me .seat-body { width: 84px; }
 .seat.folded { opacity: 0.4; }
 .seat.away { opacity: 0.58; }
 .seat.clickable .seat-plate { cursor: pointer; }
 
+.seat.me .seat-avatar { width: 44px; height: 44px; }
 .seat-avatar {
   position: relative;
-  width: 44px; height: 44px;
+  width: 40px; height: 40px;
   border-radius: 50%;
   display: grid; place-items: center;
   background: linear-gradient(158deg, #303c4b, #1a212b);
