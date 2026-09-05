@@ -839,11 +839,11 @@ input::placeholder { color: var(--text-muted); }
 /* Ход игрока (пункт 22): тонкое зелёное кольцо вокруг аватара и мягкий
    ореол. Не заливаем блок, не перекрашиваем аватар, не трогаем масть на
    ассете. Подсветка следует за активным игроком, у героя её нет постоянно. */
-.seat.acting .seat-avatar {
-  box-shadow:
-    0 0 0 2px rgba(52, 211, 153, 0.95),
-    0 0 12px rgba(52, 211, 153, 0.45),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+/* Подсветка хода живёт на оправе и кольце-таймере, аватар не трогаем:
+   тень и ::after на аватаре перебивали виньетку и заливали фото зелёным. */
+.seat.acting .seat-ring {
+  box-shadow: 0 0 14px 3px rgba(52, 211, 153, 0.42);
+  animation: seat-halo 1.9s ease-in-out infinite;
 }
 
 .pos-badge {
@@ -1418,26 +1418,18 @@ input::placeholder { color: var(--text-muted); }
 .seat.acting .seat-avatar { animation: none; }
 /* Ореол — только мягкое свечение, без чёткого ободка: чёткий круг здесь
    один, и это кольцо-таймер, иначе они сливаются. */
-.seat.acting .seat-avatar::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: 50%;
-  box-shadow: 0 0 16px 4px rgba(52, 211, 153, 0.4);
-  animation: seat-halo 1.9s ease-in-out infinite;
-  pointer-events: none;
-}
 @keyframes seat-halo {
-  0%, 100% { opacity: 0.55; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.07); }
+  0%, 100% { box-shadow: 0 0 12px 2px rgba(52, 211, 153, 0.3); }
+  50% { box-shadow: 0 0 16px 4px rgba(52, 211, 153, 0.5); }
 }
 
 .turn-ring {
   position: absolute;
-  inset: -6px;
-  transform: rotate(-90deg);
+  left: 0; top: 0;
+  transform: translate(-50%, -50%) rotate(-90deg);
   pointer-events: none;
   overflow: visible;
+  z-index: 3;
 }
 .turn-ring circle { fill: none; }
 .turn-ring .track { stroke: rgba(0, 0, 0, 0.45); stroke-width: 2.6; }
@@ -1763,9 +1755,7 @@ input::placeholder { color: var(--text-muted); }
   pointer-events: none;
   z-index: 3;
 }
-.seat.acting .seat-avatar {
-  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.9), 0 0 12px rgba(52, 211, 153, 0.4);
-}
+
 
 /* ── Карманные карты ─────────────────────────────────────────────────
    Пара лежит ПОВЕРХ аватара и оправы, левым краем на фото, правым на
@@ -1786,12 +1776,16 @@ input::placeholder { color: var(--text-muted); }
 }
 .seat[data-side="right"] .seat-cards .card-face + .card-face { margin-left: 0; margin-right: -3.5px; }
 .seat[data-side="top"] .seat-cards {
-  transform: translate(-50%, calc(-50% + 21px));
+  /* Верхнее место: пара под аватаром широким веером, уголки выглядывают
+     по обе стороны плашки — а не два прямоугольника, слепленных под фото. */
+  transform: translate(-50%, calc(-50% + 24px));
   z-index: 4;
 }
-.seat[data-side="top"] .seat-cards .card-face:first-child { transform: translate(-13px, 0) rotate(-18deg); }
-.seat[data-side="top"] .seat-cards .card-face:last-child { transform: translate(13px, 0) rotate(18deg); }
-.seat[data-side="top"] .seat-cards .card-face + .card-face { margin-left: -4px; }
+/* Через отдельные свойства rotate/translate, а не transform: у карты идёт
+   анимация раздачи по transform, и она затирала наклон веера. */
+.seat[data-side="top"] .seat-cards .card-face:first-child { rotate: -22deg; translate: -22px 1px; }
+.seat[data-side="top"] .seat-cards .card-face:last-child { rotate: 22deg; translate: 22px 1px; }
+.seat[data-side="top"] .seat-cards .card-face + .card-face { margin-left: -6px; }
 
   filter: drop-shadow(0 2.5px 3.5px rgba(0, 0, 0, 0.75));
 }

@@ -1186,7 +1186,10 @@ function renderSeats(room) {
     if (seat.inHand && !seat.folded && !seat.isActing && seat.lastAction) node.classList.add('acted');
     if (winnerIds.has(seat.userId)) node.classList.add('winner');
 
-    node.appendChild(avatarNode(seat, room));
+    room.__rout = SEAT_CIRCLES[anchor.at].rout;
+    const avatarEl = avatarNode(seat, room);
+    node.appendChild(avatarEl);
+    if (avatarEl.__turnRing) node.appendChild(avatarEl.__turnRing);
 
     const plate = document.createElement('div');
     plate.className = 'seat-plate';
@@ -1240,8 +1243,8 @@ function avatarNode(seat, room) {
   // Кольцо-прогресс — после буквы: textContent затирает всех детей,
   // поэтому раньше него класть нельзя. Бейджи идут следом и остаются сверху.
   if (seat.isActing && room && room.turnDeadline) {
-    const ring = turnRing(room);
-    if (ring) avatar.appendChild(ring);
+    const ring = turnRing(room, room.__rout || 26);
+    if (ring) avatar.__turnRing = ring;
   }
 
   // Блайнды и баттон — бейджами на аватаре, как за живым столом.
@@ -1362,24 +1365,29 @@ function bumpPot(delay = 0) {
 // Кольцо-прогресс вокруг аватара того, чей ход. Сервер присылает
 // turnDeadline и settings.turnSeconds, поэтому таймер настоящий:
 // один переход stroke-dashoffset на весь остаток времени, без таймеров в JS.
-const RING_RADIUS = 24;
-const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
-
-function turnRing(room) {
+// Кольцо-таймер лежит СНАРУЖИ золотой оправы места и концентрично ей:
+// радиус берётся из подгонки кольца (rout) плюс зазор, а не из константы —
+// иначе на кружках разного диаметра оно съезжало с оправы.
+function turnRing(room, rout = 26) {
   const total = (room.settings && room.settings.turnSeconds) * 1000;
   const left = room.turnDeadline - Date.now();
   if (!total || left <= 0) return null;
+  const RING_RADIUS = rout + 2.1;
+  const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
+  const SIZE = Math.ceil(RING_RADIUS * 2 + 8);
   const ratio = clamp(left / total, 0, 1);
 
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('class', `turn-ring${ratio < 0.25 ? ' is-low' : ''}`);
-  svg.setAttribute('viewBox', '0 0 52 52');
+  svg.setAttribute('viewBox', `0 0 ${SIZE} ${SIZE}`);
+  svg.style.width = `${SIZE}px`;
+  svg.style.height = `${SIZE}px`;
   for (const kind of ['track', 'bar']) {
     const circle = document.createElementNS(ns, 'circle');
     circle.setAttribute('class', kind);
-    circle.setAttribute('cx', '26');
-    circle.setAttribute('cy', '26');
+    circle.setAttribute('cx', String(SIZE / 2));
+    circle.setAttribute('cy', String(SIZE / 2));
     circle.setAttribute('r', String(RING_RADIUS));
     if (kind === 'bar') {
       circle.style.strokeDasharray = String(RING_LENGTH);
