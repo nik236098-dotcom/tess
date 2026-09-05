@@ -49,8 +49,11 @@
   --rim-lo: #1b120a;
 
   /* ——— Типографика ——— */
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-  --font-display: "SF Pro Display", var(--font);
+  /* Один шрифт на всё приложение. Inter — современный UI-гротеск с
+     табличными цифрами: суммы и стеки не «прыгают» при пересчёте.
+     Запасная цепочка на случай, если шрифт не загрузился. */
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-display: var(--font);
 
   --fs-display: 32px;
   --fs-h1: 21px;
@@ -561,7 +564,8 @@ input::placeholder { color: var(--text-muted); }
   grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: var(--s2);
-  padding: calc(var(--safe-top) + 8px) var(--s3) 8px;
+  padding-block: calc(var(--safe-top) + 6px) 6px;
+  padding-inline: max(var(--s3), calc((100% - var(--table-px)) / 2));
   background: rgba(9, 13, 19, 0.8);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
@@ -571,126 +575,180 @@ input::placeholder { color: var(--text-muted); }
   min-width: 0; text-align: center; padding: 0;
 }
 .title-block .room-title {
-  font: 600 var(--fs-h2)/1.2 var(--font);
+  font: 600 15px/1.2 var(--font);
+  letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .room-subtitle {
-  font-size: var(--fs-caption); color: var(--text-muted);
+  font: 500 10.5px/1.3 var(--font);
+  letter-spacing: 0.005em;
+  color: rgba(255, 255, 255, 0.42);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
 
-/* ═══ Экран стола: сцена ═══ */
+/* ═══════════════════════════════════════════════════════════════════════
+   ИГРОВОЙ СТОЛ
+   ═══════════════════════════════════════════════════════════════════════
+   Стол рисуется на холсте постоянного размера 440×700 логических пикселей.
+   Всё внутри — борт, сукно, места, аватары, карты, фишки, шрифты — задано
+   в этих же пикселях, а холст целиком масштабируется одним transform.
+   Поэтому форма стола не зависит от размера окна: меняется только масштаб.
+
+   Так сделано намеренно: aspect-ratio вместе с max-width не работает —
+   браузер обрезает ширину, но не пересчитывает высоту, и овал расплывается.
+
+   Материал стола собран слоями, как настоящий: внешняя тень, кожаный борт,
+   его внутренняя фаска, бронзовый кант, сукно с подсветкой и текстурой,
+   тонкая золотая линия. Ни один слой не кричит — дорогой стол, а не неон.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --table-w: 440px;
+  --table-h: 700px;
+  --table-px: 440px;  /* фактическая ширина стола на экране — считает JS */
+
+  /* Типографика стола: отдельная шкала, чтобы игровые подписи были
+     плотнее и собраннее интерфейсных. */
+  --t-name: 600 12px/1.15 var(--font);
+  --t-money: 700 13px/1.15 var(--font);
+  --t-bet: 700 11.5px/1 var(--font);
+  --t-label: 600 9.5px/1 var(--font);
+  --t-status: 500 10px/1.2 var(--font);
+}
 
 .table-wrap {
   flex: 1;
   min-height: 0;
   position: relative;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: var(--s2);
-  padding: var(--s3) var(--s3) 0;
-  background: radial-gradient(ellipse at 50% 30%, #0d141d 0%, var(--bg-deep) 72%);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  /* Тёмная игровая среда: стол — главный объект, всё остальное уходит в тень */
+  background:
+    radial-gradient(ellipse 78% 46% at 50% 40%, #17222e 0%, #0c131b 46%, #060a0f 78%, #04070a 100%);
+}
+/* Виньетка поверх фона — взгляд собирается к центру стола */
+.table-wrap::after {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 92% 60% at 50% 42%, transparent 40%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+.table-viewport {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
   overflow: hidden;
 }
 
-.table-brand {
-  flex: none;
-  font: 600 12px/1 var(--font-display);
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: var(--gold);
-  text-shadow: 0 0 14px rgba(227, 185, 107, 0.35);
-  opacity: 0.9;
-}
-
-.hand-badge {
-  flex: none;
-  padding: 4px 12px;
-  border: 1px solid var(--gold-line);
-  border-radius: var(--r-pill);
-  background: rgba(227, 185, 107, 0.08);
-  color: var(--gold-bright);
-  font: 500 var(--fs-small) var(--font);
-  white-space: nowrap;
-  animation: pop-in 0.25s var(--ease);
-}
-
-/* Овальный стол. Пропорции задаются один раз здесь — места считаются
-   от того же эллипса, поэтому ничего не разъезжается на других экранах. */
-/* Овал тянется по высоте доступной области, а ширина ограничена экраном:
-   так стол заполняет пространство и на длинном, и на коротком телефоне. */
-.table-stage {
+.table-canvas {
   position: relative;
-  flex: 0 1 auto;
-  height: min(100%, 880px);
-  width: auto;
-  aspect-ratio: 0.84;
-  max-width: 100%;
-  margin: auto;
+  width: var(--table-w);
+  height: var(--table-h);
+  flex: none;
+  transform-origin: center center;
+  will-change: transform;
 }
+
+/* ——— Борт ———
+   .rail — внешний кожаный борт, ::before — его внутренняя фаска,
+   ::after — бронзовый кант у самого сукна. */
 
 .rail {
   position: absolute;
-  inset: 11% 6%;
+  left: 46px; top: 72px;
+  width: 348px; height: 556px;
   border-radius: 50% / 50%;
   background:
-    linear-gradient(184deg, #7a5636 0%, #543a23 18%, #33220f 52%, #241708 78%, #4a3220 100%);
+    linear-gradient(191deg,
+      #6d4c30 0%, #563b23 12%, #3b2714 34%,
+      #2a1a0c 56%, #1e1208 72%, #33200f 88%, #4a3220 100%);
   box-shadow:
-    0 30px 60px rgba(0, 0, 0, 0.62),
-    0 6px 18px rgba(0, 0, 0, 0.5),
-    inset 0 3px 8px rgba(255, 214, 160, 0.16),
-    inset 0 -14px 30px rgba(0, 0, 0, 0.55);
+    0 34px 64px rgba(0, 0, 0, 0.66),
+    0 10px 24px rgba(0, 0, 0, 0.5),
+    inset 0 4px 8px rgba(255, 216, 165, 0.14),
+    inset 0 -16px 32px rgba(0, 0, 0, 0.6);
 }
-/* Бронзовый кант между бортом и сукном */
+/* Внутренняя фаска борта: даёт толщину и «завал» к сукну */
 .rail::before {
   content: '';
-  position: absolute; inset: 12px;
+  position: absolute; inset: 17px;
   border-radius: 50% / 50%;
-  background: linear-gradient(180deg, var(--gold-bright) 0%, var(--gold-deep) 40%, #4a3418 100%);
-  opacity: 0.5;
-  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.45), 0 1px 5px rgba(0, 0, 0, 0.45);
+  background: linear-gradient(188deg, #23150a 0%, #3a2512 46%, #1b1007 100%);
+  box-shadow:
+    inset 0 4px 10px rgba(0, 0, 0, 0.66),
+    0 -1px 0 rgba(255, 214, 160, 0.13);
+}
+/* Бронзовый кант — тонкая тёплая линия между бортом и сукном.
+   Именно кольцо из border, а не залитый эллипс: ::after рисуется поверх
+   дочерних элементов, и заливка перекрасила бы всё сукно. */
+.rail::after {
+  content: '';
+  position: absolute; inset: 25px;
+  border-radius: 50% / 50%;
+  border: 2px solid rgba(206, 163, 94, 0.52);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 240, 205, 0.22),
+    0 1px 3px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
 }
 
 .felt {
-  position: absolute; inset: 17px;
+  position: absolute; inset: 28px;
   border-radius: 50% / 50%;
   overflow: hidden;
+  /* Глубокий зелёный с мягкой подсветкой сверху-по-центру */
   background:
-    radial-gradient(ellipse at 50% 40%, var(--felt-1) 0%, var(--felt-2) 52%, var(--felt-3) 100%);
+    radial-gradient(ellipse 76% 58% at 50% 34%, #227953 0%, #14563a 42%, #0a3624 72%, #051f14 100%);
   box-shadow:
-    inset 0 4px 12px rgba(0, 0, 0, 0.55),
-    inset 0 0 70px rgba(0, 0, 0, 0.45);
+    inset 0 6px 16px rgba(0, 0, 0, 0.6),
+    inset 0 0 68px rgba(0, 0, 0, 0.5);
 }
-/* Ткань: мелкий шум поверх градиента, чтобы сукно не выглядело пластиковым */
+/* Ворс сукна: мелкий шум, иначе поверхность выглядит пластиковой */
 .felt::after {
   content: '';
   position: absolute; inset: 0;
   pointer-events: none;
-  opacity: 0.055;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='4'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-/* Тонкая золотая линия по форме овала */
+/* Тонкая декоративная линия по форме овала */
 .felt-line {
-  position: absolute; inset: 16px;
+  position: absolute; inset: 17px;
   border-radius: 50% / 50%;
-  border: 1px solid var(--gold-line);
-  box-shadow: 0 0 14px rgba(227, 185, 107, 0.16), inset 0 0 22px rgba(227, 185, 107, 0.05);
+  border: 1px solid rgba(214, 174, 102, 0.3);
+  box-shadow: 0 0 10px rgba(214, 174, 102, 0.1), inset 0 0 22px rgba(0, 0, 0, 0.28);
   pointer-events: none;
 }
 .watermark {
   position: absolute; inset: 0;
   display: grid; place-items: center;
-  font-size: 116px; line-height: 1;
-  color: rgba(255, 255, 255, 0.028);
+  font-size: 118px; line-height: 1;
+  color: rgba(255, 255, 255, 0.022);
   pointer-events: none;
 }
 
+.table-brand {
+  position: absolute;
+  top: 20%; left: 0; right: 0;
+  text-align: center;
+  font: 600 11px/1 var(--font);
+  letter-spacing: 0.4em;
+  text-indent: 0.4em;
+  text-transform: uppercase;
+  color: rgba(224, 183, 112, 0.62);
+  pointer-events: none;
+}
+
+/* Центральная зона: общие карты, банк, подсказка */
 .center {
   position: absolute;
   left: 50%; top: 47%;
   transform: translate(-50%, -50%);
-  width: 92%;
-  display: flex; flex-direction: column; align-items: center; gap: var(--s2);
+  width: 300px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
 }
 
 /* ═══ Карты ═══ */
@@ -698,183 +756,224 @@ input::placeholder { color: var(--text-muted); }
 .board { display: flex; gap: 5px; justify-content: center; }
 
 .card-slot {
-  width: var(--card-w, 40px);
-  height: calc(var(--card-w, 40px) * 1.42);
-  border-radius: 7px;
-  border: 1px dashed rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.14);
+  width: 45px; height: 64px;
+  border-radius: 6px;
+  border: 1px dashed rgba(255, 255, 255, 0.09);
+  background: rgba(0, 0, 0, 0.12);
   flex: none;
 }
 .card-slot.filled { border: none; background: none; }
 
 .card-face {
-  --card-w: 40px;
+  --card-w: 45px;
   position: relative;
   width: var(--card-w);
   height: calc(var(--card-w) * 1.42);
   flex: none;
-  border-radius: 7px;
-  background: linear-gradient(170deg, #ffffff, #eef1f6);
-  color: #16202e;
-  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(0, 0, 0, 0.12);
-  animation: deal 0.28s var(--ease) both;
+  border-radius: 6px;
+  background: linear-gradient(168deg, #ffffff 0%, #f4f6fa 62%, #e6eaf1 100%);
+  color: #131c28;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(10, 16, 24, 0.14);
+  animation: deal 0.3s var(--ease) both;
 }
-.card-face.small { --card-w: 29px; border-radius: 5px; }
+.card-face.small { --card-w: 33px; border-radius: 5px; }
 .card-face.no-anim { animation: none; }
-.card-face.red { color: #d3342c; }
+.card-face.red { color: #ce2f27; }
 .card-face .corner {
   position: absolute;
-  display: flex; flex-direction: column; align-items: center; line-height: 1;
+  display: flex; flex-direction: column; align-items: center;
+  line-height: 0.95;
   font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: lining-nums;
 }
-.card-face .corner b { font-size: calc(var(--card-w) * 0.42); }
-.card-face .corner i { font-size: calc(var(--card-w) * 0.36); font-style: normal; }
-.card-face.ten .corner b { font-size: calc(var(--card-w) * 0.34); }
+.card-face .corner b { font-size: calc(var(--card-w) * 0.46); }
+.card-face .corner i { font-size: calc(var(--card-w) * 0.33); font-style: normal; margin-top: 1px; }
+.card-face.ten .corner b { font-size: calc(var(--card-w) * 0.35); }
 .card-face .corner.tl { top: 3px; left: 4px; }
 .card-face .corner.br { bottom: 3px; right: 4px; transform: rotate(180deg); }
-/* Рубашка: тёмно-синий узор, как у настоящих карт */
+
+/* Рубашка: синий узор с рамкой, как у настоящей колоды */
 .card-face.back {
   background:
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.07) 0 3px, transparent 3px 6px),
-    linear-gradient(165deg, #2b4a86, #16274a);
-  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.09) 0 2px, transparent 2px 5px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.06) 0 2px, transparent 2px 5px),
+    linear-gradient(162deg, #2f4f8e 0%, #1d3663 52%, #12224a 100%);
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    inset 0 0 0 4px rgba(255, 255, 255, 0.07);
 }
 
 /* ═══ Банк ═══ */
 
 .pot {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 5px 14px;
-  border-radius: var(--r-pill);
-  background: rgba(6, 12, 9, 0.66);
-  border: 1px solid var(--gold-line);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(3px);
+  display: inline-flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 5px 18px 6px;
+  border-radius: 13px;
+  background: linear-gradient(180deg, rgba(9, 18, 13, 0.78), rgba(4, 10, 7, 0.86));
+  border: 1px solid rgba(214, 174, 102, 0.34);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-.pot-label { font-size: 9.5px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--text-muted); }
-.pot b { font: 600 var(--fs-h2) var(--font); color: var(--gold-bright); font-variant-numeric: tabular-nums; }
+.pot-label {
+  font: var(--t-label);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(224, 183, 112, 0.72);
+}
+.pot b {
+  font: 700 19px/1.1 var(--font);
+  letter-spacing: -0.015em;
+  color: #f2dcae;
+  font-variant-numeric: tabular-nums;
+}
 
 .table-message {
-  font-size: var(--fs-small);
-  color: rgba(255, 255, 255, 0.66);
+  font: 500 12px var(--font);
+  color: rgba(255, 255, 255, 0.55);
   text-align: center;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.hand-badge {
+  padding: 3px 12px;
+  border: 1px solid rgba(214, 174, 102, 0.34);
+  border-radius: var(--r-pill);
+  background: rgba(8, 14, 10, 0.72);
+  color: #eccd94;
+  font: 600 11px var(--font);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  animation: pop-in 0.25s var(--ease);
 }
 
 /* ═══ Места ═══ */
 
 .seats { position: absolute; inset: 0; pointer-events: none; }
+
+/* Порядок в разметке всегда один: ставка, карты, аватар, подпись.
+   Нижние места растут вниз, верхние — вверх, поэтому ставка и карты
+   у всех оказываются со стороны стола, а имя со стеком — снаружи. */
 .seat {
   position: absolute;
   transform: translate(-50%, -50%);
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  width: 80px;
+  display: flex; align-items: center; gap: 4px;
+  width: 92px;
   pointer-events: auto;
 }
-/* Ставку кладём в сторону центра стола: у нижних мест — сверху, у верхних — снизу */
-.seat.at-bottom .seat-bet { bottom: calc(100% + 4px); }
-.seat.at-top .seat-bet { top: calc(100% + 4px); }
-.seat.folded { opacity: 0.42; }
-.seat.away { opacity: 0.6; }
+.seat.at-bottom { flex-direction: column; }
+.seat.at-top { flex-direction: column-reverse; }
+.seat.folded { opacity: 0.38; }
+.seat.away { opacity: 0.55; }
 .seat.clickable .seat-plate { cursor: pointer; }
 
 .seat-avatar {
   position: relative;
-  width: 48px; height: 48px;
+  width: 50px; height: 50px;
   border-radius: 50%;
   display: grid; place-items: center;
-  overflow: visible;
-  background: linear-gradient(160deg, #2b3543, #1a222d);
-  border: 2px solid rgba(255, 255, 255, 0.13);
-  color: var(--text-2);
-  font: 600 17px var(--font);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(158deg, #303c4b, #1a212b);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.75);
+  font: 600 18px var(--font);
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .seat-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.seat.me .seat-avatar { border-color: rgba(227, 185, 107, 0.6); }
+.seat.me .seat-avatar { border-color: rgba(214, 174, 102, 0.55); }
+/* Активный игрок: аккуратное кольцо, без кислотного свечения */
 .seat.acting .seat-avatar {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18), 0 0 18px rgba(52, 211, 153, 0.4);
-  animation: breathe 1.9s ease-in-out infinite;
+  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.22), 0 5px 12px rgba(0, 0, 0, 0.55);
+  animation: breathe 2s ease-in-out infinite;
 }
 
+/* Маркеры позиций — маленькие круглые фишки у аватара */
 .pos-badge {
   position: absolute;
-  width: 21px; height: 21px;
+  width: 19px; height: 19px;
   border-radius: 50%;
   display: grid; place-items: center;
-  font: 700 9px var(--font);
+  font: 700 9px/1 var(--font);
   letter-spacing: -0.02em;
-  border: 1.5px solid rgba(0, 0, 0, 0.45);
-  box-shadow: var(--sh-1);
+  border: 1.5px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
-.pos-badge.d { right: -6px; top: -4px; background: #f2f5f9; color: #16202e; }
-.pos-badge.sb { left: -8px; top: -4px; background: var(--info); color: #04121f; }
-.pos-badge.bb { left: -8px; top: -4px; background: var(--gold); color: #2b1d05; }
+.pos-badge.d { right: -5px; bottom: -2px; background: linear-gradient(180deg, #ffffff, #d9dee6); color: #16202e; }
+.pos-badge.sb { left: -6px; bottom: -2px; background: linear-gradient(180deg, #6db4ff, #3579d0); color: #04121f; }
+.pos-badge.bb { left: -6px; bottom: -2px; background: linear-gradient(180deg, #efc478, #b8862f); color: #2b1d05; }
 
-.seat-plate { text-align: center; max-width: 88px; }
+.seat-plate { text-align: center; max-width: 92px; display: flex; flex-direction: column; gap: 1px; }
 .seat-name {
-  font-size: var(--fs-caption);
+  font: var(--t-name);
+  letter-spacing: 0.005em;
   color: rgba(255, 255, 255, 0.9);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 .seat-stack {
-  font: 600 var(--fs-small) var(--font);
-  color: var(--gold);
+  font: var(--t-money);
+  letter-spacing: -0.015em;
+  color: #ecc989;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
-.seat-stack.allin { color: var(--violet); letter-spacing: 0.04em; }
+.seat-stack.allin { color: #b6a8ff; font-size: 11.5px; letter-spacing: 0.04em; }
 
 .seat-cards { display: flex; gap: 3px; }
 .seat-combo {
-  font-size: 10px;
-  color: var(--gold-bright);
-  background: rgba(6, 12, 9, 0.6);
-  border: 1px solid var(--gold-line);
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.01em;
+  color: #eccd94;
+  background: rgba(8, 14, 10, 0.66);
+  border: 1px solid rgba(214, 174, 102, 0.3);
   border-radius: var(--r-pill);
-  padding: 1px 8px;
+  padding: 1px 7px;
   white-space: nowrap;
 }
-.seat-status { font-size: 10px; color: rgba(255, 255, 255, 0.42); }
+.seat-status {
+  font: var(--t-status);
+  color: rgba(255, 255, 255, 0.36);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
 
-/* Ставка игрока — единый чип рядом с местом */
+/* Ставка: компактный чип рядом с игроком, со стороны стола */
 .seat-bet {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   display: inline-flex; align-items: center; gap: 4px;
-  white-space: nowrap;
-  padding: 2px 9px;
+  padding: 1px 8px 1px 5px;
   border-radius: var(--r-pill);
-  background: rgba(6, 12, 9, 0.72);
-  border: 1px solid var(--gold-line);
-  color: var(--gold-bright);
-  font: 600 11px var(--font);
+  background: rgba(6, 11, 8, 0.78);
+  border: 1px solid rgba(214, 174, 102, 0.32);
+  color: #f0d6a2;
+  font: var(--t-bet);
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
   animation: pop-in 0.2s var(--ease);
 }
+/* Фишка перед суммой — маленький столбик, а не просто точка */
 .seat-bet::before {
   content: '';
-  width: 7px; height: 7px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, var(--gold-bright), var(--gold-deep));
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  width: 9px; height: 9px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #f6dca8, #b8862f 62%, #7a5518);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 -1px 1px rgba(0, 0, 0, 0.3);
 }
 
 .seat.empty .seat-empty-slot {
-  width: 42px; height: 42px;
+  width: 44px; height: 44px;
   border-radius: 50%;
-  border: 1.5px dashed rgba(255, 255, 255, 0.16);
+  border: 1.5px dashed rgba(255, 255, 255, 0.15);
   display: grid; place-items: center;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.28);
   font-size: 19px;
   transition: border-color 0.2s, color 0.2s, transform 0.15s var(--ease);
 }
 .seat.joinable .seat-empty-slot {
-  border-color: rgba(52, 211, 153, 0.45);
+  border-color: rgba(52, 211, 153, 0.42);
   color: var(--primary);
   cursor: pointer;
 }
@@ -884,94 +983,106 @@ input::placeholder { color: var(--text-muted); }
 
 .feed {
   position: absolute;
-  left: 50%; top: calc(var(--s3) + 46px);
+  left: 50%; top: 42px;
   transform: translateX(-50%);
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   pointer-events: none;
   z-index: 4;
-  width: min(94%, 380px);
+  width: 300px;
 }
 .feed-pill {
   max-width: 100%;
-  padding: 4px 11px;
+  padding: 3px 11px;
   border-radius: var(--r-pill);
-  background: rgba(8, 13, 20, 0.78);
-  border: 1px solid var(--border);
-  backdrop-filter: blur(6px);
-  font-size: var(--fs-caption);
-  color: var(--text-2);
+  background: rgba(7, 12, 18, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  font: 500 10.5px var(--font);
+  color: rgba(255, 255, 255, 0.62);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   animation: pop-in 0.22s var(--ease);
 }
-.feed-pill b { color: var(--text); font-weight: 600; }
-.feed-pill .amount { color: var(--gold); font-variant-numeric: tabular-nums; }
+.feed-pill b { color: #fff; font-weight: 600; }
+.feed-pill .amount { color: #ecc989; font-variant-numeric: tabular-nums; }
 
-/* ═══ Поп-ап победителя ═══ */
+/* ═══ Итог раздачи ═══ */
 
 .winner-pop {
   position: absolute;
   left: 50%; top: 47%;
   transform: translate(-50%, -50%);
   z-index: 6;
-  min-width: 190px;
-  padding: var(--s4) var(--s5);
-  border-radius: var(--r-xl);
+  min-width: 194px;
+  padding: 15px 20px 16px;
+  border-radius: 18px;
   text-align: center;
-  background: linear-gradient(165deg, #2a2450, #171335);
-  border: 1px solid rgba(139, 123, 240, 0.4);
-  box-shadow: var(--sh-3);
+  background: linear-gradient(168deg, #2b2554 0%, #1b1740 55%, #131029 100%);
+  border: 1px solid rgba(139, 123, 240, 0.36);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   animation: pop-in 0.3s var(--ease);
 }
-.winner-pop .win-title { font: 600 var(--fs-h2) var(--font); }
-.winner-pop .win-sub { font-size: var(--fs-small); color: var(--text-2); margin-top: 2px; }
-.winner-pop .win-amount {
-  font: 700 26px var(--font-display);
-  color: var(--primary);
-  font-variant-numeric: tabular-nums;
-  margin-top: 6px;
+.winner-pop .win-title { font: 600 15px var(--font); letter-spacing: -0.005em; }
+.winner-pop .win-sub, .winner-pop .win-note { font: 500 11.5px var(--font); color: rgba(255, 255, 255, 0.55); margin-top: 2px; }
+.winner-pop .win-avatar {
+  width: 42px; height: 42px; margin: 0 auto 7px;
+  border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(158deg, #413a80, #262159);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font: 600 17px var(--font);
 }
-.winner-pop .win-combo { font-size: var(--fs-small); color: var(--gold); margin-top: 2px; }
+.winner-pop .win-amount {
+  font: 700 25px/1.1 var(--font);
+  letter-spacing: -0.02em;
+  color: #4ade9f;
+  font-variant-numeric: tabular-nums;
+  margin-top: 5px;
+}
+.winner-pop .win-combo { font: 600 11.5px var(--font); color: #ecc989; margin-top: 3px; }
 
 /* ═══ Плавающая кнопка чата ═══ */
 
 .fab {
   position: absolute;
-  right: var(--s4); bottom: var(--s3);
-  width: 46px; height: 46px;
+  right: max(var(--s4), calc((100% - var(--table-px)) / 2));
+  bottom: var(--s3);
+  width: 42px; height: 42px;
   border-radius: 50%;
   display: grid; place-items: center;
-  background: rgba(16, 22, 32, 0.9);
-  border: 1px solid var(--border-strong);
-  color: var(--text);
-  box-shadow: var(--sh-2);
+  background: rgba(14, 20, 29, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
   cursor: pointer;
   z-index: 5;
   transition: transform 0.12s var(--ease);
 }
+.fab .icon { width: 19px; height: 19px; }
 .fab:active { transform: scale(0.93); }
 .fab-badge {
   position: absolute; top: -3px; right: -3px;
-  min-width: 18px; height: 18px; padding: 0 4px;
+  min-width: 17px; height: 17px; padding: 0 4px;
   border-radius: var(--r-pill);
   background: var(--danger);
   color: #fff;
-  font: 600 10px/18px var(--font);
+  font: 700 9.5px/17px var(--font);
   text-align: center;
 }
 
 .seat-hint {
   flex: none;
   text-align: center;
-  font-size: var(--fs-small);
-  color: var(--text-muted);
-  padding: var(--s2) var(--s4) 0;
+  font: 500 12px var(--font);
+  color: rgba(255, 255, 255, 0.42);
+  padding: 6px var(--s4) 0;
 }
+
 
 /* ═══ Управление ═══ */
 
 .controls {
   flex: none;
-  padding: var(--s3) var(--s3) calc(var(--s3) + var(--safe-bottom));
+  padding-block: 10px calc(10px + var(--safe-bottom));
+  /* Фон во всю ширину, а кнопки — ровно по краям стола */
+  padding-inline: max(var(--s3), calc((100% - var(--table-px)) / 2));
   display: flex; flex-direction: column; gap: var(--s2);
   background: rgba(9, 13, 19, 0.92);
   backdrop-filter: blur(12px);
@@ -979,22 +1090,58 @@ input::placeholder { color: var(--text-muted); }
 }
 .balance-chip {
   text-align: center;
-  font-size: var(--fs-small);
-  color: var(--text-2);
+  font: 500 12px var(--font);
+  color: rgba(255, 255, 255, 0.55);
 }
-.balance-chip b { color: var(--gold); font-variant-numeric: tabular-nums; }
+.balance-chip b { color: #ecc989; font-weight: 700; font-variant-numeric: tabular-nums; }
 .host-controls, .seat-controls { display: flex; gap: var(--s2); }
 .host-controls .btn, .seat-controls .btn { flex: 1; }
 
-.action-bar { display: flex; flex-direction: column; gap: var(--s2); }
-.action-buttons { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: var(--s2); }
-.action-buttons .btn { padding: 14px 6px; border-radius: var(--r-md); font-size: var(--fs-button); }
+.action-bar { display: flex; flex-direction: column; gap: 8px; }
+.action-buttons { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 7px; }
 
-.btn-fold { background: linear-gradient(180deg, #e5695f, #b93b32); color: #fff; }
-.btn-check { background: linear-gradient(180deg, #5aa6f8, #2f6fc4); color: #04121f; }
-.btn-call { background: linear-gradient(180deg, #5aa6f8, #2f6fc4); color: #04121f; }
-.btn-raise { background: linear-gradient(180deg, var(--primary-bright), var(--primary-deep)); color: var(--primary-ink); }
-.btn-raise.is-allin { background: linear-gradient(180deg, #a394f5, #6f5cd8); color: #fff; }
+/* Иерархия: главное действие залито цветом, остальные — тонированные
+   поверхности с цветным текстом. Так взгляд сразу находит основное. */
+.action-buttons .btn {
+  padding: 13px 6px;
+  border-radius: 13px;
+  font: 600 14.5px/1 var(--font);
+  letter-spacing: -0.005em;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.btn-fold {
+  background: rgba(229, 89, 79, 0.14);
+  border-color: rgba(229, 89, 79, 0.34);
+  color: #f08e85;
+}
+.btn-fold:active:not(:disabled) { background: rgba(229, 89, 79, 0.22); }
+
+.btn-check, .btn-call {
+  background: linear-gradient(180deg, #5aa6f8, #2c68bd);
+  color: #04121f;
+  box-shadow: 0 2px 6px rgba(44, 104, 189, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.btn-raise {
+  background: linear-gradient(180deg, var(--primary-bright), var(--primary-deep));
+  color: var(--primary-ink);
+  box-shadow: 0 2px 8px rgba(31, 169, 122, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.btn-raise.is-allin,
+#btn-allin {
+  background: rgba(139, 123, 240, 0.16);
+  border-color: rgba(139, 123, 240, 0.4);
+  color: #b3a6ff;
+  box-shadow: none;
+}
+#btn-allin:active:not(:disabled) { background: rgba(139, 123, 240, 0.26); }
+/* В панели рейза подтверждение — главное действие, оно залито */
+.raise-actions .btn.confirm.is-allin {
+  background: linear-gradient(180deg, #a394f5, #6f5cd8);
+  border-color: transparent;
+  color: #fff;
+}
 
 /* Панель рейза — над кнопками действий */
 .raise-row {
@@ -1026,16 +1173,17 @@ input::placeholder { color: var(--text-muted); }
   height: 22px;
 }
 .raise-slider output {
-  min-width: 74px; text-align: right;
-  font: 600 var(--fs-h2) var(--font);
-  color: var(--gold);
+  min-width: 78px; text-align: right;
+  font: 700 17px var(--font);
+  letter-spacing: -0.015em;
+  color: #ecc989;
   font-variant-numeric: tabular-nums;
 }
 .raise-actions { display: flex; gap: var(--s2); }
 .raise-actions .btn { flex: 1; }
 .raise-actions .btn.confirm { flex: 1.6; }
 
-.turn-timer { height: 3px; border-radius: var(--r-pill); background: var(--surface-up); overflow: hidden; }
+.turn-timer { height: 3px; border-radius: var(--r-pill); background: rgba(255, 255, 255, 0.07); overflow: hidden; }
 .turn-timer i {
   display: block; height: 100%; width: 100%;
   background: linear-gradient(90deg, var(--primary), var(--gold));
@@ -1137,11 +1285,14 @@ input::placeholder { color: var(--text-muted); }
   .card-slot { width: 34px; height: 48px; }
   .watermark { font-size: 88px; }
 }
-@media (max-width: 360px) {
+@media (max-width: 400px) {
   .tiles { gap: var(--s2); }
   .tile { font-size: var(--fs-caption); }
-  .action-buttons .btn { padding: 13px 4px; font-size: var(--fs-small); }
+  .action-buttons .btn { padding: 13px 3px; font-size: var(--fs-small); }
+  .action-buttons { gap: 6px; }
 }
+/* Названия действий не переносим на вторую строку — теряется ритм строки */
+.action-buttons .btn { white-space: nowrap; }
 
 /* Статусы счёта на пополнение и выплаты */
 #topup-invoice-state.is-paid, #payout-state-text.is-paid { color: var(--primary); }

@@ -1109,7 +1109,11 @@ function describeCombination(hole, board) {
   if (!hole || hole.length < 2) return null;
   if (hole.length + board.length >= 5) return bestHand([...hole, ...board]).name;
   // До флопа подсказываем только карманную пару — остальное было бы шумом.
-  if (rankOf(hole[0]) === rankOf(hole[1])) return `Пара ${RANK_CHARS[rankOf(hole[0])]}`;
+  if (rankOf(hole[0]) === rankOf(hole[1])) {
+    // Десятку показываем как «10»: буква T в русской подписи читается как «Т».
+    const rank = RANK_CHARS[rankOf(hole[0])];
+    return `Пара ${rank === 'T' ? '10' : rank}`;
+  }
   return null;
 }
 

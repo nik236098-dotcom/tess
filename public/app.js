@@ -51,6 +51,22 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
+// Стол живёт на холсте постоянного размера и масштабируется целиком.
+// Эти числа обязаны совпадать с --table-w/--table-h и рамкой .rail в CSS:
+// от них считаются места, поэтому держим их в одном месте.
+const TABLE = {
+  width: 440,
+  height: 700,
+  // Центр и радиусы эллипса, по которому садятся места. Совпадают с рамкой
+  // .rail в CSS, только чуть уже: места слегка заходят на борт, как за
+  // настоящим столом, а не висят снаружи.
+  centerX: 220,
+  centerY: 350,
+  radiusX: 168,
+  radiusY: 270,
+  maxScale: 2.4,
+};
+
 // Иконки берутся из общего спрайта в index.html — эмодзи в интерфейсе не
 // используются, чтобы вид не зависел от шрифта конкретной платформы.
 const icon = (name, extra = '') => `<svg class="icon ${extra}"><use href="#i-${name}"></use></svg>`;
@@ -106,6 +122,7 @@ async function boot() {
   state.pendingRoom = readRoomFromLaunch();
   // Интерфейс не должен мешать связи: если разметка и скрипт разошлись
   // (например, браузер подсунул старый app.js), играть всё равно можно.
+  watchTableSize();
   try {
     bindUi();
   } catch (error) {
@@ -332,12 +349,50 @@ function showLobby() {
   startRoomsPolling();
 }
 
+// Один общий коэффициент по обеим осям: форма стола не может измениться,
+// как бы ни менялось окно. Меняется только размер — вместе со всем, что
+// лежит на холсте: местами, картами, фишками, аватарами и шрифтами.
+function fitTable() {
+  const viewport = $('table-viewport');
+  const canvas = $('table-canvas');
+  if (!viewport || !canvas) return;
+
+  const box = viewport.getBoundingClientRect();
+  if (box.width < 2 || box.height < 2) return; // экран стола ещё скрыт
+
+  // Поля по краям: иначе крайние места упираются в границы области и
+  // верхнее срезается шапкой.
+  const pad = 12;
+  const scale = Math.min(
+    Math.max(box.width - pad * 2, 1) / TABLE.width,
+    Math.max(box.height - pad * 2, 1) / TABLE.height,
+    TABLE.maxScale,
+  );
+  canvas.style.transform = `scale(${scale})`;
+  // Ширину стола на экране забирает нижняя панель, чтобы кнопки шли ровно
+  // по краям стола, а не расползались на всю ширину монитора.
+  document.documentElement.style.setProperty('--table-px', `${Math.round(TABLE.width * scale)}px`);
+}
+
+function watchTableSize() {
+  const viewport = $('table-viewport');
+  if (!viewport) return;
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(fitTable).observe(viewport);
+  }
+  window.addEventListener('resize', fitTable);
+  window.addEventListener('orientationchange', fitTable);
+}
+
 function showTable() {
   $('screen-lobby').classList.add('hidden');
   $('screen-table').classList.remove('hidden');
   if (tg && tg.BackButton) tg.BackButton.show();
   stopRoomsPolling();
   closeChipsSheet();
+  // Пока экран был скрыт, у области стола не было размеров — считаем сейчас.
+  fitTable();
+  requestAnimationFrame(fitTable);
 }
 
 // Главная и Игры — это две панели одного экрана лобби: столы и лента
@@ -753,11 +808,12 @@ function renderSeats(room) {
     const position = ((seat.index - offset) + count) % count;
     const angle = (90 + (position * 360) / count) * (Math.PI / 180);
     const node = document.createElement('div');
-    // at-bottom / at-top решают, в какую сторону от места ложится ставка,
-    // чтобы чип всегда смотрел к центру стола, а не наружу.
+    // Нижние места растут вниз, верхние — вверх: ставка и карты у всех
+    // оказываются со стороны стола, а имя со стеком — снаружи.
     node.className = `seat ${Math.sin(angle) >= 0 ? 'at-bottom' : 'at-top'}`;
-    node.style.left = `${50 + 44 * Math.cos(angle)}%`;
-    node.style.top = `${50 + 40 * Math.sin(angle)}%`;
+    // Координаты в логических пикселях холста — тех же, в которых задан борт.
+    node.style.left = `${TABLE.centerX + TABLE.radiusX * Math.cos(angle)}px`;
+    node.style.top = `${TABLE.centerY + TABLE.radiusY * Math.sin(angle)}px`;
 
     if (seat.empty) {
       node.classList.add('empty');
@@ -782,6 +838,28 @@ function renderSeats(room) {
     if (seat.isActing) node.classList.add('acting');
     if (!seat.connected || seat.sittingOut) node.classList.add('away');
 
+    // Порядок в разметке один для всех мест, направление задаёт CSS.
+    if (seat.bet > 0) {
+      const bet = document.createElement('div');
+      bet.className = 'seat-bet';
+      bet.textContent = money(seat.bet);
+      node.appendChild(bet);
+    }
+
+    if (seat.cards) {
+      const cards = document.createElement('div');
+      cards.className = 'seat-cards';
+      seat.cards.forEach((card, position) => {
+        // Ключ помнит, что уже лежало на этом месте: новая карта прилетает
+        // с анимацией, а прежние просто перерисовываются.
+        const key = `${seat.index}:${position}:${card}`;
+        const fresh = !state.shownCards.has(key);
+        state.shownCards.add(key);
+        cards.appendChild(cardNode(card, true, fresh));
+      });
+      node.appendChild(cards);
+    }
+
     node.appendChild(avatarNode(seat));
 
     const plate = document.createElement('div');
@@ -796,33 +874,7 @@ function renderSeats(room) {
     }
     node.appendChild(plate);
 
-    if (seat.cards) {
-      const cards = document.createElement('div');
-      cards.className = 'seat-cards';
-      seat.cards.forEach((card, position) => {
-        // Ключ помнит, что именно уже лежало на этом месте: новая карта
-        // прилетает с анимацией, а прежние просто перерисовываются.
-        const key = `${seat.index}:${position}:${card}`;
-        const fresh = !state.shownCards.has(key);
-        state.shownCards.add(key);
-        cards.appendChild(cardNode(card, true, fresh));
-      });
-      node.appendChild(cards);
-    }
-
-    if (seat.combination) {
-      const combo = document.createElement('div');
-      combo.className = 'seat-combo';
-      combo.textContent = seat.combination;
-      node.appendChild(combo);
-    }
-
-    if (seat.bet > 0) {
-      const bet = document.createElement('div');
-      bet.className = 'seat-bet';
-      bet.textContent = money(seat.bet);
-      node.appendChild(bet);
-    } else {
+    if (seat.bet <= 0) {
       const status = document.createElement('div');
       status.className = 'seat-status';
       status.textContent = seatStatus(seat);

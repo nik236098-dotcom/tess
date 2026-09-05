@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
   <title>Poker ok 👌</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1017'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='%2334d399'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/styles.css?v=2" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/styles.css?v=3" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -373,29 +376,32 @@
       </header>
 
       <div class="table-wrap">
-        <div class="table-brand">Poker ok</div>
-        <div id="hand-badge" class="hand-badge hidden"></div>
-
-        <div class="table-stage">
-          <div class="rail">
-            <div class="felt">
-              <div class="watermark">&#9824;</div>
-              <div class="felt-line"></div>
-              <div class="center">
-                <div id="board" class="board"></div>
-                <div id="pot" class="pot hidden">
-                  <span class="pot-label">Банк</span>
-                  <b id="pot-value">$0.00</b>
+        <!-- Холст стола: постоянный размер 440×660, масштаб задаёт JS.
+             Всё, что должно расти вместе со столом, лежит внутри него. -->
+        <div id="table-viewport" class="table-viewport">
+          <div id="table-canvas" class="table-canvas">
+            <div class="rail">
+              <div class="felt">
+                <div class="watermark">&#9824;</div>
+                <div class="felt-line"></div>
+                <div class="table-brand">Poker ok</div>
+                <div class="center">
+                  <div id="hand-badge" class="hand-badge hidden"></div>
+                  <div id="board" class="board"></div>
+                  <div id="pot" class="pot hidden">
+                    <span class="pot-label">Банк</span>
+                    <b id="pot-value">$0.00</b>
+                  </div>
+                  <div id="table-message" class="table-message">Ждём игроков</div>
                 </div>
-                <div id="table-message" class="table-message">Ждём игроков</div>
               </div>
             </div>
-          </div>
-          <div id="seats" class="seats"></div>
-        </div>
 
-        <div id="feed" class="feed"></div>
-        <div id="winner-pop" class="winner-pop hidden"></div>
+            <div id="seats" class="seats"></div>
+            <div id="feed" class="feed"></div>
+            <div id="winner-pop" class="winner-pop hidden"></div>
+          </div>
+        </div>
 
         <button id="btn-log" class="fab" title="История и чат">
           <svg class="icon"><use href="#i-chat"></use></svg>
@@ -510,6 +516,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=2"></script>
+  <script src="/app.js?v=3"></script>
 </body>
 </html>
