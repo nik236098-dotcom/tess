@@ -1802,9 +1802,9 @@ input::placeholder { color: var(--text-muted); }
    17×25.5, пара почти без нахлёста — в макете карты лежат рядом, а не
    одна на другой. Мелкие 15×23 с нахлёстом 4 читались обрубками. */
 .seat.proto .seat-cards .card-face {
-  --card-w: 17px;
-  --card-h: 28px;
-  border-radius: 2.8px;
+  --card-w: 18px;
+  --card-h: 29px;
+  border-radius: 2.9px;
   box-shadow: none;
   transform-origin: 50% 100%;
 }
@@ -1826,11 +1826,11 @@ input::placeholder { color: var(--text-muted); }
   /* Как в макете: тонкая тёмно-синяя линия по краю, внутри чуть более
      светлая панель со свечением в верхней трети. */
   background:
-    radial-gradient(ellipse 60% 45% at 50% 30%, rgba(255, 255, 255, 0.2) 0 30%, rgba(255, 255, 255, 0) 100%),
-    linear-gradient(165deg, #2c80ff 0%, #1c66ef 50%, #1553d6 100%);
+    radial-gradient(ellipse 60% 45% at 50% 30%, rgba(255, 255, 255, 0.14) 0 30%, rgba(255, 255, 255, 0) 100%),
+    linear-gradient(165deg, #1a62f0 0%, #0a4ede 50%, #0640b8 100%);
   box-shadow:
-    inset 0 0 0 0.7px rgba(0, 25, 100, 0.55),
-    inset 0 0 0 1.4px rgba(90, 150, 255, 0.35);
+    inset 0 0 0 0.7px rgba(0, 20, 90, 0.6),
+    inset 0 0 0 1.4px rgba(60, 130, 255, 0.35);
 }
 .seat.proto .card-face.back::after {
   content: '♠';
@@ -1842,7 +1842,7 @@ input::placeholder { color: var(--text-muted); }
   padding-top: 2px;
   /* В макете масть — тонкий контур чуть светлее рубашки, не залитый знак. */
   color: transparent;
-  -webkit-text-stroke: 0.55px rgba(150, 195, 255, 0.55);
+  -webkit-text-stroke: 0.55px rgba(120, 175, 255, 0.5);
 }
 
 /* ── Плашка имени и стека ────────────────────────────────────────────
@@ -1852,9 +1852,8 @@ input::placeholder { color: var(--text-muted); }
    стек чуть крупнее золотом; плашка обтягивает текст, а не сидит с
    воздухом. Верх на +19 — чуть заходит под низ оправы. */
 .seat.proto .seat-plate {
-  --oct: polygon(
-    4.5px 0, calc(100% - 4.5px) 0, 100% 4.5px, 100% calc(100% - 4.5px),
-    calc(100% - 4.5px) 100%, 4.5px 100%, 0 calc(100% - 4.5px), 0 4.5px);
+  /* В макете углы не срезаны, а чуть скруглены. */
+  --oct: inset(0 round 6px);
   transform: translate(-50%, 14.5px);
   z-index: 5;
   width: auto; min-width: 57px; max-width: 70px;
@@ -1871,7 +1870,7 @@ input::placeholder { color: var(--text-muted); }
   content: '';
   position: absolute;
   inset: 0.7px;
-  clip-path: var(--oct);
+  clip-path: inset(0 round 5.3px);
   background: linear-gradient(180deg, #0c0e12 0%, #050608 60%, #08090c 100%);
 }
 .seat.proto .seat-name,
