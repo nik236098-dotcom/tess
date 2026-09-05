@@ -405,7 +405,7 @@ function fitTable() {
     Math.max(box.height - pad * 2, 1) / TABLE.height,
     TABLE.maxScale,
   );
-  canvas.style.transform = `scale(${scale})`;
+  canvas.style.transform = `translate(-50%, -50%) scale(${scale})`;
   // Ширину стола на экране забирает нижняя панель, чтобы кнопки шли ровно
   // по краям стола, а не расползались на всю ширину монитора.
   document.documentElement.style.setProperty('--table-px', `${Math.round(TABLE.width * scale)}px`);

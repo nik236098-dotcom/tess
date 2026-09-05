@@ -384,7 +384,7 @@ systemctl restart poker
 ### Вариант А: бесплатный поддомен DuckDNS (постоянный, рекомендую)
 
 1. Зайдите на [duckdns.org](https://www.duckdns.org) и войдите (Google, GitHub — что удобнее).
-2. Придумайте имя, например `pokergena`, и нажмите **add domain**. Получится `pokergena.duckdns.org`.
+2. Придумайте имя, например `pokerok`, и нажмите **add domain**. Получится `pokerok.duckdns.org`.
 3. На странице DuckDNS два поля адреса — **current ip** и **current ipv6**.
    Заполняйте только первое, IPv6 оставьте пустым: если вписать туда лишнее,
    у домена появится AAAA-запись, Let's Encrypt пойдёт проверять именно по ней
@@ -401,7 +401,7 @@ curl -s -6 ifconfig.me    # IPv6 — если пусто или ошибка, п
 
 ```bash
 # подставьте своё имя и токен; IP подставится сам
-curl "https://www.duckdns.org/update?domains=pokergena&token=ВАШ_ТОКЕН&ip=$(curl -s -4 ifconfig.me)&ipv6="
+curl "https://www.duckdns.org/update?domains=pokerok&token=ВАШ_ТОКЕН&ip=$(curl -s -4 ifconfig.me)&ipv6="
 # в ответ должно прийти: OK
 ```
 
@@ -410,22 +410,22 @@ curl "https://www.duckdns.org/update?domains=pokergena&token=ВАШ_ТОКЕН&i
 5. Проверьте, что имя резолвится в ваш IPv4 и никуда больше:
 
 ```bash
-getent ahosts pokergena.duckdns.org
+getent ahosts pokerok.duckdns.org
 ```
 
-6. Дальше идите по шагу 6, подставляя `pokergena.duckdns.org` вместо `ВАШ_ДОМЕН`:
+6. Дальше идите по шагу 6, подставляя `pokerok.duckdns.org` вместо `ВАШ_ДОМЕН`:
 
 ```bash
-sed -i 's/poker.example.com/pokergena.duckdns.org/' /etc/nginx/sites-available/poker
+sed -i 's/poker.example.com/pokerok.duckdns.org/' /etc/nginx/sites-available/poker
 ln -sf /etc/nginx/sites-available/poker /etc/nginx/sites-enabled/poker
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
 apt install -y certbot python3-certbot-nginx
-certbot --nginx -d pokergena.duckdns.org --agree-tos -m ваша@почта --redirect
+certbot --nginx -d pokerok.duckdns.org --agree-tos -m ваша@почта --redirect
 ```
 
-Web App URL в BotFather: `https://pokergena.duckdns.org`.
+Web App URL в BotFather: `https://pokerok.duckdns.org`.
 
 ### Вариант Б: туннель Cloudflare (без сервера и домена, но временный)
 

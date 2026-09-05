@@ -618,17 +618,25 @@ input::placeholder { color: var(--text-muted); }
 .table-viewport {
   flex: 1;
   min-height: 0;
-  display: grid;
-  place-items: center;
+  /* Центрируем стол трансформом, а не гридом. place-items центрирует
+     НЕмасштабированную коробку 450×600, и когда она больше области,
+     браузер зажимает выравнивание в ноль: коробка липнет в левый верхний
+     угол, а scale() держит визуальный центр в её собственном центре —
+     стол уезжает и обрезается. Абсолютная привязка к 50% этим не страдает. */
+  position: relative;
   overflow: hidden;
 }
 
 .table-canvas {
-  position: relative;
+  position: absolute;
+  left: 50%; top: 50%;
   width: var(--table-w);
   height: var(--table-h);
   flex: none;
   transform-origin: center center;
+  /* translate(-50%,-50%) ставит центр холста ровно в центр области при
+     любом масштабе; fitTable() дописывает scale() к этой же строке. */
+  transform: translate(-50%, -50%) scale(1);
   will-change: transform;
   background: url('/img/table.webp') center / 100% 100% no-repeat;
 }
