@@ -574,7 +574,7 @@ function showTable() {
 // Экран собран по макету на холсте 390×653; холст масштабируется так,
 // чтобы закрыть окно целиком (cover), лишнее по краям обрезается.
 
-const BJ_PRESETS = [500, 1000, 2500, 5000, 10000]; // по макету: MIN $5 · MAX $100
+const BJ_PRESETS = [500, 1000, 2500, 5000, 10000];
 const BJ_SUITS = { s: '♠', h: '♥', d: '♦', c: '♣' };
 
 function fitBlackjack() {
@@ -625,7 +625,7 @@ function bjCard(code) {
 function bjBetRange() {
   const view = state.bj.view;
   const min = view ? view.minBet : 100;
-  const max = Math.min(view ? view.maxBet : 100000, Math.max(min, state.balance));
+  const max = Math.min(view ? view.maxBet : 1000000, Math.max(min, state.balance));
   return { min, max };
 }
 

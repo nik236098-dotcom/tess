@@ -3124,7 +3124,7 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bj-canvas[data-phase="bet"] { background-image: url('/img/bj-bet-bg.webp'); }
 /* В фазе ставки в пилюле только сумма, крупнее (кап-высота 16 px по макету). */
 .bj-canvas[data-phase="bet"] .bj-bet-text span { display: none; }
-.bj-canvas[data-phase="bet"] .bj-bet-text input { font-size: 22px; width: 130px; }
+.bj-canvas[data-phase="bet"] .bj-bet-text input { font-size: 22px; width: 140px; }
 .bj-actions-after { }
 /* Кнопка Bet: 65.9..324.1 × 515.1..565.3, фиолетовый градиент, свечение,
    серифный «Bet» и пики по краям (центры x 99.7 и 290, y 540.4). */
@@ -3289,7 +3289,7 @@ body:has(#screen-table:not(.hidden)) .toast {
   font: 500 19px/1 var(--font);
   display: grid; place-items: center;
 }
-.bj-step:disabled { opacity: 0.35; }
+.bj-step:disabled { opacity: 1; color: rgba(230, 210, 255, 0.35); border-color: rgba(196, 150, 255, 0.2); }
 .bj-bet-text { display: flex; align-items: baseline; gap: 7px; }
 .bj-bet-text span { font: 500 11.5px var(--font); color: #b48cff; }
 .bj-bet-text input {
@@ -3314,7 +3314,9 @@ body:has(#screen-table:not(.hidden)) .toast {
   font-variant-numeric: tabular-nums;
 }
 .bj-preset.is-active { background: #3000c6; border-color: #8a5dff; color: #fff; box-shadow: 0 0 10px rgba(110, 60, 255, 0.55); }
-.bj-preset:disabled { opacity: 0.45; }
+/* Недоступный пресет остаётся непрозрачным: под ним нарисованный на фоне,
+   и полупрозрачная кнопка «слипалась» с ним. Гасим только текст. */
+.bj-preset:disabled { opacity: 1; color: rgba(201, 168, 255, 0.35); border-color: #1e0840; }
 
 /* Кнопки действий: 4 × 84.1×74.6, x0 15.7, шаг 91.6, y 516.4 */
 .bj-actions { position: absolute; left: 15.7px; top: 516.4px; width: 358.6px; height: 74.6px; display: flex; gap: 7.5px; pointer-events: none; }
