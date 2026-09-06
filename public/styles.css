@@ -3120,6 +3120,45 @@ body:has(#screen-table:not(.hidden)) .toast {
   transform: translate(-50%, 0) scale(var(--bj, 1));
   background: url('/img/bj-bg.webp') center top / 100% auto no-repeat;
 }
+/* До раздачи — «чистый стол» из второго макета, как есть. */
+.bj-canvas[data-phase="bet"] { background-image: url('/img/bj-bet-bg.webp'); }
+/* В фазе ставки в пилюле только сумма, крупнее (кап-высота 16 px по макету). */
+.bj-canvas[data-phase="bet"] .bj-bet-text span { display: none; }
+.bj-canvas[data-phase="bet"] .bj-bet-text b { font-size: 22px; }
+.bj-actions-after { }
+/* Кнопка Bet: 65.9..324.1 × 515.1..565.3, фиолетовый градиент, свечение,
+   серифный «Bet» и пики по краям (центры x 99.7 и 290, y 540.4). */
+.bj-bet-btn {
+  position: absolute; left: 65.9px; top: 515.1px;
+  width: 258.2px; height: 50.2px;
+  border-radius: 16px;
+  border: 1.5px solid rgba(150, 100, 255, 0.85);
+  background: linear-gradient(180deg, #3b02a6 0%, #4d14c4 55%, #6c36dd 100%);
+  box-shadow: 0 0 18px rgba(120, 60, 255, 0.6), 0 0 40px rgba(90, 30, 220, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  color: #efe6ff;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.12s var(--ease), opacity 0.15s;
+}
+.bj-bet-btn b {
+  font: 600 27px/1 'Playfair Display', Georgia, 'Times New Roman', serif;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0 10px rgba(200, 160, 255, 0.6);
+}
+.bj-bet-btn .bj-spade {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  font-size: 15px; line-height: 1; color: #c9a8ff;
+  text-shadow: 0 0 8px rgba(181, 108, 255, 0.9);
+}
+.bj-bet-btn .bj-spade:first-child { left: 26px; }
+.bj-bet-btn .bj-spade:last-child { right: 26px; }
+.bj-bet-btn:active:not(:disabled) { transform: scale(0.97); }
+.bj-bet-btn:disabled { opacity: 0.45; box-shadow: none; }
+.bj-deal-sub {
+  position: absolute; left: 50%; top: 575px;
+  transform: translateX(-50%);
+  font: 600 11px var(--font); color: #ff8a9a; letter-spacing: 0.04em;
+}
+
 .bj-back {
   position: absolute; left: 10px; top: 10px;
   width: 30px; height: 30px;
@@ -3271,7 +3310,8 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bj-preset:disabled { opacity: 0.45; }
 
 /* Кнопки действий: 4 × 84.1×74.6, x0 15.7, шаг 91.6, y 516.4 */
-.bj-actions { position: absolute; left: 15.7px; top: 516.4px; width: 358.6px; height: 74.6px; display: flex; gap: 7.5px; }
+.bj-actions { position: absolute; left: 15.7px; top: 516.4px; width: 358.6px; height: 74.6px; display: flex; gap: 7.5px; pointer-events: none; }
+.bj-actions > * { pointer-events: auto; }
 .bj-act {
   flex: 1;
   height: 74.6px;

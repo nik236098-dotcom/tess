@@ -713,8 +713,8 @@ function createApp(options = {}) {
   // ——— Блекджек против дилера ———
   // Игра живёт у пользователя, а не в комнате: стола и мест нет, ставка
   // списывается с баланса, выигрыш возвращается на баланс.
-  const BJ_MIN_BET = 100;
-  const BJ_MAX_BET = 100000;
+  const BJ_MIN_BET = 500;    // по макету: MIN $5 · MAX $100
+  const BJ_MAX_BET = 10000;
   const blackjackGames = new Map();
 
   function blackjackGame(client) {

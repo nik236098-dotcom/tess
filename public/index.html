@@ -7,8 +7,8 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1017'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='%2334d399'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=96" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
+  <link rel="stylesheet" href="/styles.css?v=97" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -569,7 +569,7 @@
 
         <div class="bj-bet">
           <button id="bj-minus" class="bj-step" aria-label="Меньше">−</button>
-          <div class="bj-bet-text"><span>Bet</span><b id="bj-bet-amount">$5.00</b></div>
+          <div class="bj-bet-text"><span id="bj-bet-label">Bet</span><b id="bj-bet-amount">$5.00</b></div>
           <button id="bj-plus" class="bj-step" aria-label="Больше">+</button>
         </div>
         <div id="bj-presets" class="bj-presets"></div>
@@ -591,10 +591,13 @@
             <i class="bj-ico"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="10" height="14" rx="2" transform="rotate(-12 8 13)"/><rect x="11" y="4" width="10" height="14" rx="2" transform="rotate(12 16 11)"/></svg></i>
             <b>SPLIT</b><small>Split your hand</small>
           </button>
-          <button id="bj-deal" class="bj-act bj-double bj-wide hidden">
-            <i class="bj-ico"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M12 8l2.2 3.2L12 15l-2.2-3.8z"/></svg></i>
-            <b>DEAL</b><small id="bj-deal-sub">Place your bet</small>
-          </button>
+        </div>
+        <!-- До раздачи — по макету «чистого стола»: кнопка Bet с пиками по краям -->
+        <button id="bj-deal" class="bj-bet-btn hidden">
+          <span class="bj-spade">♠</span><b>Bet</b><span class="bj-spade">♠</span>
+        </button>
+        <div id="bj-deal-sub" class="bj-deal-sub hidden"></div>
+        <div class="bj-actions bj-actions-after">
           <button id="bj-next" class="bj-act bj-split bj-wide hidden">
             <i class="bj-ico"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.5-5.8M20 12a8 8 0 0 1-13.5 5.8M17.5 3v3.5H14M6.5 21v-3.5H10"/></svg></i>
             <b>NEW HAND</b><small>Play again</small>
@@ -606,6 +609,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=59"></script>
+  <script src="/app.js?v=60"></script>
 </body>
 </html>

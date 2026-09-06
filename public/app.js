@@ -579,7 +579,7 @@ function showTable() {
 // Экран собран по макету на холсте 390×653; холст масштабируется так,
 // чтобы закрыть окно целиком (cover), лишнее по краям обрезается.
 
-const BJ_PRESETS = [500, 1000, 2500, 5000, 10000];
+const BJ_PRESETS = [500, 1000, 2500, 5000, 10000]; // по макету: MIN $5 · MAX $100
 const BJ_SUITS = { s: '♠', h: '♥', d: '♦', c: '♣' };
 
 function fitBlackjack() {
@@ -744,13 +744,16 @@ function renderBlackjack() {
     button.classList.toggle('hidden', !playing);
     button.disabled = !options[action];
   }
+  $('bj-canvas').dataset.phase = phase;
   const deal = $('bj-deal');
   deal.classList.toggle('hidden', phase !== 'bet');
   deal.classList.remove('is-loading');
   const { min } = bjBetRange();
   const short = state.balance < state.bj.bet || state.balance < min;
   deal.disabled = short;
-  $('bj-deal-sub').textContent = short ? 'Недостаточно средств' : `Bet ${money(state.bj.bet)}`;
+  const sub = $('bj-deal-sub');
+  sub.classList.toggle('hidden', phase !== 'bet' || !short);
+  sub.textContent = 'Недостаточно средств';
   $('bj-next').classList.toggle('hidden', !done);
 
   // Итог раздачи.
