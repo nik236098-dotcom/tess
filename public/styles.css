@@ -3313,7 +3313,9 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bj-bet.is-locked .bj-bet-text b { color: rgba(255, 255, 255, 0.8); }
 /* Цифровая панель: над зоной кнопок, в стиле пресетов. */
 .bj-keypad {
-  position: absolute; left: 65.9px; top: 506px;
+  /* Над пилюлей суммы (её верх 430): низ панели на 422, «Готово» в
+     середине экрана, а не у нижнего края под системной полосой. */
+  position: absolute; left: 65.9px; bottom: calc(819px - 422px);
   width: 258.2px;
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
   padding: 8px;
@@ -3324,7 +3326,7 @@ body:has(#screen-table:not(.hidden)) .toast {
   z-index: 8;
 }
 .bj-keypad button {
-  height: 38px;
+  height: 36px;
   border-radius: 8px;
   background: #12042b;
   border: 1px solid #2a0a5a;
