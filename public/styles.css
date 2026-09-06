@@ -3413,17 +3413,25 @@ body:has(#screen-table:not(.hidden)) .toast {
    РУЛЕТКА — по макету 941×1576 → холст 390×653 (k = 0.41445)
    ═══════════════════════════════════════════════════════════════════════ */
 .lb-play-rl .lb-play-art { display: block; }
-.rl-canvas { background-image: url('/img/rl-bg.webp'); }
+.rl-canvas { background-image: url('/img/rl-bg.webp'); height: 769.4px; }
 /* Кольцо с числами: вырезка эллипса (центр 196.9,157.5; 285×186 px макета).
    Вращаем как диск: распрямляем по Y, поворачиваем, сжимаем обратно. */
 .rl-ring {
   position: absolute;
-  left: 75.84px; top: 77.92px;
-  width: 242.04px; height: 159.15px;
+  left: 71.78px; top: 75.09px;
+  width: 250.08px; height: 165.06px;
   background: url('/img/rl-ring.png') center / 100% 100% no-repeat;
   transform: scaleY(0.6526) rotate(var(--a, 0deg)) scaleY(1.5323);
   will-change: transform;
   pointer-events: none;
+}
+/* Шпиль в центре — объёмный, его не крутим: лежит поверх диска. */
+.rl-hub {
+  position: absolute; left: 143.23px; top: 92.29px;
+  width: 107.51px; height: 100.89px;
+  background: url('/img/rl-hub.png') center / 100% 100% no-repeat;
+  pointer-events: none;
+  z-index: 2;
 }
 .rl-ball {
   position: absolute; left: 0; top: 0;
@@ -3437,7 +3445,7 @@ body:has(#screen-table:not(.hidden)) .toast {
 }
 /* Итог — на месте надписи PLACE YOUR BETS (центр y 283.5) */
 .rl-result {
-  position: absolute; left: 50%; top: 283.5px;
+  position: absolute; left: 50%; top: 281.2px;
   transform: translate(-50%, -50%);
   display: flex; align-items: center; justify-content: center; gap: 8px;
   min-width: 176px;
@@ -3490,14 +3498,15 @@ body:has(#screen-table:not(.hidden)) .toast {
 .rl-canvas.is-spinning .rl-cell { pointer-events: none; }
 
 /* Ставка и пресеты: 85..305 × 481.6..519.6, пресеты y 520.6 */
-.rl-bet { top: 481.6px; }
+.rl-bet { top: 458.8px; }
 .rl-bet .bj-bet-text b { font-size: 22px; min-width: 140px; }
-.rl-presets { top: 520.6px; }
-.rl-keypad { bottom: calc(819px - 474px); }
+.rl-presets { top: 501.8px; gap: 4.4px; }
+.rl-presets .bj-preset { width: 47.6px; height: 28.4px; }
+.rl-keypad { bottom: calc(769.4px - 452px); }
 /* Кнопка Bet: 67.1..323.1 × 562..606.8 */
-.rl-spin { top: 562px; left: 67.1px; width: 256px; height: 44.8px; }
+.rl-spin { top: 540.2px; left: 64.5px; width: 260.3px; height: 52.9px; }
 .rl-foot {
-  position: absolute; left: 0; right: 0; top: 612px;
+  position: absolute; left: 0; right: 0; top: 598px;
   display: flex; justify-content: center; gap: 8px;
   font: 500 11px var(--font); color: rgba(226, 212, 255, 0.6);
 }

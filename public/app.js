@@ -931,47 +931,44 @@ function bjOutcome(outcome) {
 // Y, поворачиваем и сжимаем обратно. Шарик считаем в «плоских» координатах
 // диска и проецируем на эллипс тем же коэффициентом.
 
-const RL_K = 390 / 941;                    // px макета → px холста
-const RL_CX = 475 * RL_K;                  // центр колеса на холсте
-const RL_CY = (476 - 96) * RL_K;
-const RL_SQUASH = 186 / 285;               // эллипс кольца: ry / rx
+// Геометрия снята с макета 1179×2556 (шапка Telegram до y=350), k = 390/1179.
+const RL_CX = 196.85;                      // центр колеса на холсте
+const RL_CY = 157.65;
+const RL_SQUASH = 0.653;                   // эллипс кольца: ry / rx
+const RL_BALL_SQUASH = 0.64;               // у лунок (ближе к центру) перспектива чуть сильнее
 const RL_ZERO_ANGLE = -94.7;               // угол кармана 0 на распрямлённом диске
 const RL_POCKET = 360 / 37;
 const RL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
 const RL_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-const RL_R_TRACK = 305 * RL_K;             // радиус дорожки шарика во время разгона
-const RL_R_POCKET = 250 * RL_K;            // радиус, на котором шарик лежит в кармане
+const RL_R_TRACK = 126.4;                  // внешняя дорожка, по ней шарик бежит
+const RL_R_POCKET = 85.0;                  // радиус лунок, куда шарик ложится
 const RL_SPIN_MS = 7200;
 const RL_PRESETS = [500, 1000, 2500, 5000, 10000];
 
-// Клетки поля — по нарисованной сетке макета (координаты макета в px).
+// Клетки поля — по нарисованной сетке макета, уже в px холста.
 function rlCells() {
-  const X = (x) => x * RL_K;
-  const Y = (y) => (y - 96) * RL_K;
   const cells = [];
-  const col0 = 97;
-  const colW = (835 - 97) / 12;
-  const rows = [822, 884, 946, 1008];
-  cells.push({ key: 'straight:0', type: 'straight', value: 0, x: X(33), y: Y(822), w: X(97) - X(33), h: Y(1008) - Y(822) });
+  const rows = [295.06, 323.08, 351.07, 379.08];
+  const col0 = 40.2;
+  const colW = 25.489;
+  cells.push({ key: 'straight:0', type: 'straight', value: 0, x: 13.68, y: rows[0], w: col0 - 13.68, h: rows[3] - rows[0] });
   for (let c = 0; c < 12; c++) {
     for (let r = 0; r < 3; r++) {
       const n = 3 * c + (3 - r);
-      cells.push({ key: `straight:${n}`, type: 'straight', value: n, x: X(col0 + c * colW), y: Y(rows[r]), w: X(colW), h: Y(rows[r + 1]) - Y(rows[r]) });
+      cells.push({ key: `straight:${n}`, type: 'straight', value: n, x: col0 + c * colW, y: rows[r], w: colW, h: rows[r + 1] - rows[r] });
     }
   }
   [3, 2, 1].forEach((column, r) => {
-    cells.push({ key: `column:${column}`, type: 'column', value: column, x: X(835), y: Y(rows[r]), w: X(900) - X(835), h: Y(rows[r + 1]) - Y(rows[r]) });
+    cells.push({ key: `column:${column}`, type: 'column', value: column, x: 346.07, y: rows[r], w: 373.01 - 346.07, h: rows[r + 1] - rows[r] });
   });
-  [[97, 343], [343, 589], [589, 835]].forEach(([a, b], i) => {
-    cells.push({ key: `dozen:${i + 1}`, type: 'dozen', value: i + 1, x: X(a), y: Y(1008), w: X(b) - X(a), h: Y(1068) - Y(1008) });
-  });
-  const outside = [['even', 97, 247], ['red', 247, 425], ['black', 425, 590], ['odd', 590, 725], ['high', 725, 835]];
-  for (const [type, a, b] of outside) {
-    cells.push({ key: `${type}:`, type, value: null, x: X(a), y: Y(1068), w: X(b) - X(a), h: Y(1130) - Y(1068) });
+  const third = (346.07 - col0) / 3;
+  for (let i = 0; i < 3; i++) {
+    cells.push({ key: `dozen:${i + 1}`, type: 'dozen', value: i + 1, x: col0 + i * third, y: 379.08, w: third, h: 403.23 - 379.08 });
   }
-  // Большие кнопки RED / BLACK — те же ставки, что и клетки.
-  cells.push({ key: 'red:', type: 'red', value: null, x: X(60), y: Y(1152), w: X(454) - X(60), h: Y(1242) - Y(1152), big: true });
-  cells.push({ key: 'black:', type: 'black', value: null, x: X(484), y: Y(1152), w: X(880) - X(484), h: Y(1242) - Y(1152), big: true });
+  const outside = [['even', 40.2, 102.37], ['red', 102.37, 176.14], ['black', 176.14, 244.53], ['odd', 244.53, 300.48], ['high', 300.48, 346.07]];
+  for (const [type, a, b] of outside) {
+    cells.push({ key: `${type}:`, type, value: null, x: a, y: 403.23, w: b - a, h: 431.02 - 403.23 });
+  }
   return cells;
 }
 
@@ -1150,8 +1147,11 @@ function rlPocketAngle(n) {
 function rlBallAt(angleDeg, r) {
   const a = (angleDeg * Math.PI) / 180;
   const ball = $('rl-ball');
+  // Коэффициент сжатия меняется с радиусом: у лунок перспектива сильнее.
+  const t = Math.max(0, Math.min(1, (r - RL_R_POCKET) / (RL_R_TRACK - RL_R_POCKET)));
+  const squash = RL_BALL_SQUASH + (RL_SQUASH - RL_BALL_SQUASH) * t;
   ball.style.left = `${(RL_CX + r * Math.cos(a)).toFixed(2)}px`;
-  ball.style.top = `${(RL_CY + RL_SQUASH * r * Math.sin(a)).toFixed(2)}px`;
+  ball.style.top = `${(RL_CY + squash * r * Math.sin(a)).toFixed(2)}px`;
 }
 
 // Запуск: число уже известно. Колесо крутится по часовой и тормозит,
