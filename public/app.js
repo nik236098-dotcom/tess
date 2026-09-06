@@ -649,11 +649,31 @@ function addBjBet(value) {
   renderBlackjack();
 }
 
+// iOS в Telegram сдвигает страницу под клавиатуру и не возвращает сам.
+// Возвращаем наверх несколькими заходами: сразу, после закрытия клавиатуры
+// и ещё раз с запасом.
 function bjUnshift() {
-  const reset = () => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; };
+  const reset = () => {
+    window.scrollTo(0, 0);
+    if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    const screen = $('screen-bj');
+    if (screen) screen.scrollTop = 0;
+  };
   reset();
-  setTimeout(reset, 60);
-  setTimeout(reset, 300);
+  [50, 150, 350, 700].forEach((ms) => setTimeout(reset, ms));
+}
+
+// Тап в любое место стола во время ввода — закрываем клавиатуру и
+// возвращаем экран на место.
+function bjTapOutside(event) {
+  const input = $('bj-bet-amount');
+  if (!input || document.activeElement !== input) return;
+  if (event.target === input) return;
+  event.preventDefault();
+  input.blur();
+  bjUnshift();
 }
 
 function applyBjInput(input) {
@@ -2673,7 +2693,12 @@ function bindUi() {
     // iOS сдвигает страницу под клавиатуру и не всегда возвращает обратно.
     bjUnshift();
   });
-  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (state.bj.open) bjUnshift(); });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => { if (state.bj.open) bjUnshift(); });
+    window.visualViewport.addEventListener('scroll', () => { if (state.bj.open && document.activeElement !== $('bj-bet-amount')) bjUnshift(); });
+  }
+  $('screen-bj').addEventListener('touchstart', bjTapOutside, { passive: false });
+  $('screen-bj').addEventListener('mousedown', bjTapOutside);
   on('bj-bet-amount', 'keydown', (event) => { if (event.key === 'Enter') event.target.blur(); });
   on('bj-deal', 'click', (event) => {
     markBusy(event.currentTarget);
