@@ -37,7 +37,7 @@ const state = {
   bjBetTouched: false,
   buyIn: { open: false, mode: 'sit', seat: null, amount: 0, touched: false },
   bj: { view: null, bet: 500, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null, typing: false, typed: '' },
-  rl: { open: false, info: null, amount: 500, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
+  rl: { open: false, info: null, amount: 1000, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
   unread: 0,
   tab: 'home', // главная | игры | турниры | бонусы | профиль
   wins: [], // лента последних выигрышей
@@ -931,43 +931,114 @@ function bjOutcome(outcome) {
 // Y, поворачиваем и сжимаем обратно. Шарик считаем в «плоских» координатах
 // диска и проецируем на эллипс тем же коэффициентом.
 
-// Геометрия снята с макета 1179×2556 (шапка Telegram до y=350), k = 390/1179.
-const RL_CX = 196.85;                      // центр колеса на холсте
-const RL_CY = 157.65;
-const RL_SQUASH = 0.653;                   // эллипс кольца: ry / rx
-const RL_BALL_SQUASH = 0.64;               // у лунок (ближе к центру) перспектива чуть сильнее
-const RL_ZERO_ANGLE = -94.7;               // угол кармана 0 на распрямлённом диске
+// Плоское колесо сверху: единицы макета (941 px ширины), центр (470,512).
+// На холсте 390×653 всё умножается на k = 0.41445.
+const RL_K = 390 / 941;
+const RL_CX = 470 * RL_K;
+const RL_CY = (512 - 96) * RL_K;
+const RL_ZERO_ANGLE = -90;                 // зеро сверху
 const RL_POCKET = 360 / 37;
 const RL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
 const RL_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-const RL_R_TRACK = 126.4;                  // внешняя дорожка, по ней шарик бежит
-const RL_R_POCKET = 85.0;                  // радиус лунок, куда шарик ложится
+const RL_R_TRACK = 270 * RL_K;             // дорожка между кольцом чисел и свечением
+const RL_R_POCKET = 174 * RL_K;            // кольцо лунок
 const RL_SPIN_MS = 7200;
-const RL_PRESETS = [500, 1000, 2500, 5000, 10000];
+const RL_PRESETS = [100, 500, 1000, 2500, 10000];
 
-// Клетки поля — по нарисованной сетке макета, уже в px холста.
+function rlColour(n) {
+  return n === 0 ? 'green' : RL_RED.has(n) ? 'red' : 'black';
+}
+
+// Колесо — SVG в единицах макета: кольцо чисел r 205..245, лунки r 150..200,
+// сердцевина с лучами и втулкой. Вращается группа #rl-rotor.
+function buildRouletteWheel() {
+  const box = $('rl-wheel');
+  if (box.children.length) return;
+  const fill = { red: '#b9172c', black: '#14101f', green: '#0f6f47' };
+  const deep = { red: '#6d0f1c', black: '#0a0712', green: '#0a4a30' };
+  const seg = (r0, r1, a0, a1, colour) => {
+    const p = (r, a) => `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`;
+    return `<path d="M${p(r0, a0)} L${p(r1, a0)} A${r1},${r1} 0 0 1 ${p(r1, a1)} L${p(r0, a1)} A${r0},${r0} 0 0 0 ${p(r0, a0)} Z" fill="${colour}"/>`;
+  };
+  let rotor = '';
+  let labels = '';
+  RL_ORDER.forEach((n, i) => {
+    const c = RL_ZERO_ANGLE + i * RL_POCKET;
+    const a0 = ((c - RL_POCKET / 2) * Math.PI) / 180;
+    const a1 = ((c + RL_POCKET / 2) * Math.PI) / 180;
+    const col = rlColour(n);
+    rotor += seg(205, 245, a0, a1, fill[col]);
+    rotor += seg(150, 200, a0, a1, deep[col]);
+    const rad = (c * Math.PI) / 180;
+    labels += `<text class="num" x="${(225 * Math.cos(rad)).toFixed(2)}" y="${(225 * Math.sin(rad)).toFixed(2)}" text-anchor="middle" dominant-baseline="central" transform="rotate(${(c + 90).toFixed(2)} ${(225 * Math.cos(rad)).toFixed(2)} ${(225 * Math.sin(rad)).toFixed(2)})">${n}</text>`;
+  });
+  // разделители карманов
+  let lines = '';
+  for (let i = 0; i < 37; i++) {
+    const a = ((RL_ZERO_ANGLE + i * RL_POCKET - RL_POCKET / 2) * Math.PI) / 180;
+    lines += `<line x1="${(150 * Math.cos(a)).toFixed(2)}" y1="${(150 * Math.sin(a)).toFixed(2)}" x2="${(245 * Math.cos(a)).toFixed(2)}" y2="${(245 * Math.sin(a)).toFixed(2)}" stroke="rgba(190,150,255,0.55)" stroke-width="1.2"/>`;
+  }
+  let rays = '';
+  for (let i = 0; i < 16; i++) {
+    const a = (i * 22.5 * Math.PI) / 180;
+    const len = i % 2 ? 95 : 140;
+    rays += `<line x1="${(34 * Math.cos(a)).toFixed(2)}" y1="${(34 * Math.sin(a)).toFixed(2)}" x2="${(len * Math.cos(a)).toFixed(2)}" y2="${(len * Math.sin(a)).toFixed(2)}" stroke="rgba(190,150,255,${i % 2 ? 0.16 : 0.3})" stroke-width="${i % 2 ? 1.5 : 2.5}"/>`;
+  }
+  const pointer = (rot) => `<polygon points="0,-318 -7,-300 7,-300" fill="#cdb0ff" transform="rotate(${rot})"/>`;
+  box.innerHTML = `<svg viewBox="-320 -320 640 640" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="rl-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="4"/></filter>
+      <radialGradient id="rl-core" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#1b0d33"/><stop offset="1" stop-color="#0a0514"/></radialGradient>
+      <radialGradient id="rl-hub" cx="40%" cy="35%" r="65%"><stop offset="0" stop-color="#b08cff"/><stop offset="0.5" stop-color="#5a2fd0"/><stop offset="1" stop-color="#2a1160"/></radialGradient>
+    </defs>
+    <circle r="300" fill="none" stroke="#7a3cff" stroke-width="9" opacity="0.9" filter="url(#rl-glow)"/>
+    <circle r="300" fill="none" stroke="#b48cff" stroke-width="2.5"/>
+    <circle r="270" fill="#0d0718"/>
+    <circle r="252" fill="none" stroke="rgba(190,150,255,0.5)" stroke-width="1.5"/>
+    ${pointer(0)}${pointer(90)}${pointer(180)}${pointer(270)}
+    <g id="rl-rotor">
+      <circle r="245" fill="#12091f"/>
+      ${rotor}
+      <circle r="150" fill="url(#rl-core)"/>
+      ${rays}
+      <circle r="200" fill="none" stroke="rgba(190,150,255,0.6)" stroke-width="1.5"/>
+      <circle r="205" fill="none" stroke="rgba(190,150,255,0.35)" stroke-width="1"/>
+      <circle r="150" fill="none" stroke="rgba(190,150,255,0.6)" stroke-width="1.5"/>
+      ${lines}
+      ${labels}
+      <circle r="36" fill="url(#rl-hub)" stroke="#c9adff" stroke-width="2"/>
+      <circle r="22" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
+      <circle r="9" fill="#e6d8ff"/>
+    </g>
+  </svg>`;
+}
+
+// Клетки поля в px холста: зеро, три ряда 1-4-7 / 2-5-8 / 3-6-9, «2 to 1»,
+// шесть внешних ставок. Координаты сняты с макета.
 function rlCells() {
+  const X = (x) => x * RL_K;
+  const Y = (y) => (y - 96) * RL_K;
   const cells = [];
-  const rows = [295.06, 323.08, 351.07, 379.08];
-  const col0 = 40.2;
-  const colW = 25.489;
-  cells.push({ key: 'straight:0', type: 'straight', value: 0, x: 13.68, y: rows[0], w: col0 - 13.68, h: rows[3] - rows[0] });
+  const rows = [833, 898, 963, 1028];
+  const col0 = 100;
+  const colW = (830 - 100) / 12;
+  cells.push({ key: 'straight:0', type: 'straight', value: 0, x: X(35), y: Y(rows[0]), w: X(col0) - X(35), h: Y(rows[3]) - Y(rows[0]), label: '0', cls: 'green' });
   for (let c = 0; c < 12; c++) {
     for (let r = 0; r < 3; r++) {
-      const n = 3 * c + (3 - r);
-      cells.push({ key: `straight:${n}`, type: 'straight', value: n, x: col0 + c * colW, y: rows[r], w: colW, h: rows[r + 1] - rows[r] });
+      const n = 3 * c + (r + 1);
+      cells.push({ key: `straight:${n}`, type: 'straight', value: n, x: X(col0 + c * colW), y: Y(rows[r]), w: X(colW), h: Y(rows[r + 1]) - Y(rows[r]), label: String(n), cls: rlColour(n) });
     }
   }
-  [3, 2, 1].forEach((column, r) => {
-    cells.push({ key: `column:${column}`, type: 'column', value: column, x: 346.07, y: rows[r], w: 373.01 - 346.07, h: rows[r + 1] - rows[r] });
+  [1, 2, 3].forEach((column, r) => {
+    cells.push({ key: `column:${column}`, type: 'column', value: column, x: X(830), y: Y(rows[r]), w: X(905) - X(830), h: Y(rows[r + 1]) - Y(rows[r]), label: '2 to 1', cls: 'dark small' });
   });
-  const third = (346.07 - col0) / 3;
-  for (let i = 0; i < 3; i++) {
-    cells.push({ key: `dozen:${i + 1}`, type: 'dozen', value: i + 1, x: col0 + i * third, y: 379.08, w: third, h: 403.23 - 379.08 });
-  }
-  const outside = [['even', 40.2, 102.37], ['red', 102.37, 176.14], ['black', 176.14, 244.53], ['odd', 244.53, 300.48], ['high', 300.48, 346.07]];
-  for (const [type, a, b] of outside) {
-    cells.push({ key: `${type}:`, type, value: null, x: a, y: 403.23, w: b - a, h: 431.02 - 403.23 });
+  const outside = [
+    ['low', 35, 183, '1 – 18'], ['even', 183, 327, 'Even'], ['red', 327, 470, '<svg class="diamond" viewBox="0 0 22 12"><path d="M11 0 L22 6 L11 12 L0 6 Z" fill="#d9243b"/></svg>'],
+    ['black', 470, 613, '<svg class="diamond" viewBox="0 0 22 12"><path d="M11 0.8 L20.5 6 L11 11.2 L1.5 6 Z" fill="#0d0814" stroke="#cbb8f0" stroke-width="1"/></svg>'],
+    ['odd', 613, 757, 'Odd'], ['high', 757, 905, '19 – 36'],
+  ];
+  for (const [type, a, b, label] of outside) {
+    cells.push({ key: `${type}:`, type, value: null, x: X(a), y: Y(1043), w: X(b) - X(a), h: Y(1152) - Y(1043), label, cls: 'dark outside' });
   }
   return cells;
 }
@@ -990,6 +1061,7 @@ function openRoulette() {
   stopRoomsPolling();
   fitRoulette();
   requestAnimationFrame(fitRoulette);
+  buildRouletteWheel();
   buildRouletteCells();
   send({ type: 'rl_open' });
   renderRoulette();
@@ -1008,15 +1080,23 @@ function closeRoulette() {
 function buildRouletteCells() {
   const box = $('rl-cells');
   if (box.children.length) return;
+  const X = (x) => x * RL_K;
+  const Y = (y) => (y - 96) * RL_K;
+  for (const [x0, x1, y0, y1] of [[35, 905, 833, 1028], [35, 905, 1043, 1152]]) {
+    const frame = document.createElement('div');
+    frame.className = 'rl-frame';
+    frame.style.cssText = `left:${X(x0).toFixed(2)}px;top:${Y(y0).toFixed(2)}px;width:${(X(x1) - X(x0)).toFixed(2)}px;height:${(Y(y1) - Y(y0)).toFixed(2)}px`;
+    box.appendChild(frame);
+  }
   for (const cell of rlCells()) {
-    // Одна и та же ставка может иметь две области (клетка и большая кнопка).
     const node = document.createElement('div');
-    node.className = 'rl-cell';
+    node.className = `rl-cell ${cell.cls}`;
     node.dataset.key = cell.key;
     node.style.left = `${cell.x.toFixed(2)}px`;
     node.style.top = `${cell.y.toFixed(2)}px`;
     node.style.width = `${cell.w.toFixed(2)}px`;
     node.style.height = `${cell.h.toFixed(2)}px`;
+    node.innerHTML = `<span class="rl-cell-label">${cell.label}</span>`;
     node.addEventListener('click', () => placeRlBet(cell, node));
     box.appendChild(node);
   }
@@ -1147,11 +1227,8 @@ function rlPocketAngle(n) {
 function rlBallAt(angleDeg, r) {
   const a = (angleDeg * Math.PI) / 180;
   const ball = $('rl-ball');
-  // Коэффициент сжатия меняется с радиусом: у лунок перспектива сильнее.
-  const t = Math.max(0, Math.min(1, (r - RL_R_POCKET) / (RL_R_TRACK - RL_R_POCKET)));
-  const squash = RL_BALL_SQUASH + (RL_SQUASH - RL_BALL_SQUASH) * t;
   ball.style.left = `${(RL_CX + r * Math.cos(a)).toFixed(2)}px`;
-  ball.style.top = `${(RL_CY + squash * r * Math.sin(a)).toFixed(2)}px`;
+  ball.style.top = `${(RL_CY + r * Math.sin(a)).toFixed(2)}px`;
 }
 
 // Запуск: число уже известно. Колесо крутится по часовой и тормозит,
@@ -1181,7 +1258,8 @@ function startRouletteSpin(spin) {
   const frame = (now) => {
     const t = Math.min(1, (now - t0) / RL_SPIN_MS);
     const wheel = startAngle + (endAngle - startAngle) * ease(t);
-    $('rl-ring').style.setProperty('--a', `${wheel.toFixed(2)}deg`);
+    const rotor = document.getElementById('rl-rotor');
+    if (rotor) rotor.setAttribute('transform', `rotate(${wheel.toFixed(2)})`);
     // Свободный бег шарика: тормозит раньше колеса.
     const tb = Math.min(1, t / 0.86);
     const free = ballStart - (ballStart - (endAngle + rlPocketAngle(spin.number))) * ease(tb);

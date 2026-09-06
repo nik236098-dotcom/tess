@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=108" />
+  <link rel="stylesheet" href="/styles.css?v=110" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -622,23 +622,30 @@
       </div>
     </section>
 
-    <!-- Рулетка: экран по макету на холсте 390×653. Фон — макет без шапки
-         Telegram (img/rl-bg.webp), кольцо с числами — отдельный слой
-         (img/rl-ring.png), он и вращается; шарик рисуется поверх. -->
+    <!-- Рулетка: плоский макет сверху, собран кодом по его координатам
+         (холст 390×653): колесо и поле — SVG/DOM, поэтому диск крутится
+         без разрывов, а цифры на нём настоящие. -->
     <section id="screen-rl" class="screen bj-screen hidden">
       <div id="rl-canvas" class="bj-canvas rl-canvas">
+        <div class="rl-deco" aria-hidden="true">
+          <i class="rl-arc rl-arc-1"></i><i class="rl-arc rl-arc-2"></i>
+          <b class="rl-spade rl-spade-tl">♠</b><b class="rl-spade rl-spade-tr">♠</b><b class="rl-spade rl-spade-bl">♠</b><b class="rl-spade rl-spade-br">♠</b>
+        </div>
+        <div class="rl-title"><span class="rl-title-line"></span><b>ROULETTE</b><span class="rl-title-line"></span></div>
+        <div class="rl-subtitle">SPIN · BET · WIN</div>
+        <div class="rl-side rl-side-l">PLAY<br>SMART</div>
+        <div class="rl-side rl-side-r">GOOD<br>LUCK</div>
         <div id="rl-balance" class="bj-balance"><span>Баланс</span><b id="rl-balance-value">$0.00</b></div>
         <button id="rl-back" class="bj-back" title="В лобби">
           <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
         </button>
-        <div id="rl-ring" class="rl-ring"></div>
-        <div class="rl-hub"></div>
+        <div id="rl-wheel" class="rl-wheel"></div>
         <div id="rl-ball" class="rl-ball hidden"></div>
         <div id="rl-result" class="rl-result hidden"></div>
         <div id="rl-cells" class="rl-cells"></div>
         <div class="bj-bet rl-bet">
           <button id="rl-minus" class="bj-step" aria-label="Меньше">−</button>
-          <div class="bj-bet-text"><b id="rl-amount" role="button">$5.00</b></div>
+          <div class="bj-bet-text"><b id="rl-amount" role="button">$10.00</b></div>
           <button id="rl-plus" class="bj-step" aria-label="Больше">+</button>
         </div>
         <div id="rl-presets" class="bj-presets rl-presets"></div>
@@ -650,7 +657,7 @@
           <button data-key="ok" class="bj-key-ok">Готово</button>
         </div>
         <button id="rl-spin" class="bj-bet-btn rl-spin">
-          <span class="bj-spade">♠</span><b>Bet</b><span class="bj-spade">♠</span>
+          <span class="rl-chip-ico"></span><b>Spin</b><span class="rl-chip-ico"></span>
         </button>
         <div id="rl-foot" class="rl-foot"><span id="rl-total">На столе $0.00</span><button id="rl-clear" class="rl-clear hidden">сбросить</button></div>
       </div>
@@ -659,6 +666,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=67"></script>
+  <script src="/app.js?v=69"></script>
 </body>
 </html>

@@ -3413,26 +3413,36 @@ body:has(#screen-table:not(.hidden)) .toast {
    РУЛЕТКА — по макету 941×1576 → холст 390×653 (k = 0.41445)
    ═══════════════════════════════════════════════════════════════════════ */
 .lb-play-rl .lb-play-art { display: block; }
-.rl-canvas { background-image: url('/img/rl-bg.webp'); height: 769.4px; }
-/* Кольцо с числами: вырезка эллипса (центр 196.9,157.5; 285×186 px макета).
-   Вращаем как диск: распрямляем по Y, поворачиваем, сжимаем обратно. */
-.rl-ring {
-  position: absolute;
-  left: 71.78px; top: 75.09px;
-  width: 250.08px; height: 165.06px;
-  background: url('/img/rl-ring.png') center / 100% 100% no-repeat;
-  transform: scaleY(0.6526) rotate(var(--a, 0deg)) scaleY(1.5323);
-  will-change: transform;
-  pointer-events: none;
+/* Холст 390×653 (макет 941×1576 → k = 0.41445). Фон рисуем сами:
+   тёмный фиолетовый, свечение за колесом, дуги и пики по углам. */
+.rl-canvas {
+  height: 760px;
+  background:
+    radial-gradient(60% 34% at 50% 23%, rgba(86, 34, 170, 0.55), rgba(86, 34, 170, 0) 70%),
+    radial-gradient(90% 40% at 50% 100%, rgba(50, 18, 100, 0.35), rgba(50, 18, 100, 0) 70%),
+    linear-gradient(180deg, #0b0516 0%, #0e0720 45%, #090412 100%);
+  overflow: hidden;
+  font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
 }
-/* Шпиль в центре — объёмный, его не крутим: лежит поверх диска. */
-.rl-hub {
-  position: absolute; left: 143.23px; top: 92.29px;
-  width: 107.51px; height: 100.89px;
-  background: url('/img/rl-hub.png') center / 100% 100% no-repeat;
-  pointer-events: none;
-  z-index: 2;
-}
+.rl-deco { position: absolute; inset: 0; pointer-events: none; }
+.rl-arc { position: absolute; left: 194.8px; top: 172.4px; border-radius: 50%; border: 1px solid rgba(150, 100, 255, 0.22); transform: translate(-50%, -50%); }
+.rl-arc-1 { width: 720px; height: 720px; }
+.rl-arc-2 { width: 880px; height: 880px; border-color: rgba(150, 100, 255, 0.14); }
+.rl-spade { position: absolute; font: 400 96px/1 Georgia, serif; color: rgba(120, 70, 200, 0.16); }
+.rl-spade-tl { left: -6px; top: 20px; } .rl-spade-tr { right: -6px; top: 26px; }
+.rl-spade-bl { left: 2px; top: 606px; } .rl-spade-br { right: 4px; top: 604px; }
+.rl-title { position: absolute; left: 0; right: 0; top: 8px; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.rl-title b { font: 500 21px/1 'Playfair Display', Georgia, serif; letter-spacing: 0.14em; color: #dcc8ff; text-shadow: 0 0 10px rgba(180, 120, 255, 0.5); }
+.rl-title-line { width: 24px; height: 1px; background: rgba(170, 120, 255, 0.45); }
+.rl-subtitle { position: absolute; left: 0; right: 0; top: 33px; text-align: center; font: 500 8.5px/1 'Playfair Display', Georgia, serif; letter-spacing: 0.34em; color: rgba(200, 170, 255, 0.7); }
+.rl-side { position: absolute; top: 150px; font: 500 8px/1.45 'Playfair Display', Georgia, serif; letter-spacing: 0.22em; color: rgba(190, 160, 255, 0.65); text-align: center; }
+.rl-side::after { content: ''; display: block; width: 30px; height: 1px; margin: 5px auto 0; background: rgba(170, 120, 255, 0.4); }
+.rl-side-l { left: 20px; } .rl-side-r { right: 20px; top: 118px; }
+
+/* Колесо: SVG в единицах макета, центр (470,512) → (194.8,172.4) */
+.rl-wheel { position: absolute; left: 194.8px; top: 172.4px; width: 265.2px; height: 265.2px; transform: translate(-50%, -50%); }
+.rl-wheel svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.rl-wheel .num { font: 500 24px 'Playfair Display', Georgia, serif; fill: #fff; }
 .rl-ball {
   position: absolute; left: 0; top: 0;
   width: 9px; height: 9px;
@@ -3443,9 +3453,9 @@ body:has(#screen-table:not(.hidden)) .toast {
   pointer-events: none;
   z-index: 3;
 }
-/* Итог — на месте надписи PLACE YOUR BETS (центр y 283.5) */
+/* Итог — между колесом и полем */
 .rl-result {
-  position: absolute; left: 50%; top: 281.2px;
+  position: absolute; left: 50%; top: 296px;
   transform: translate(-50%, -50%);
   display: flex; align-items: center; justify-content: center; gap: 8px;
   min-width: 176px;
@@ -3461,28 +3471,36 @@ body:has(#screen-table:not(.hidden)) .toast {
   animation: pop-in 0.25s var(--ease);
 }
 .rl-result.lose { border-color: rgba(255, 90, 110, 0.5); color: #ff8a9a; }
-.rl-result .rl-num {
-  min-width: 22px; height: 22px; padding: 0 6px;
-  border-radius: 6px;
-  display: grid; place-items: center;
-  font: 700 13px/1 var(--font); color: #fff;
-}
+.rl-result .rl-num { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; display: grid; place-items: center; font: 700 13px/1 var(--font); color: #fff; }
 .rl-result .rl-num.red { background: #b3151f; }
 .rl-result .rl-num.black { background: #15101a; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25); }
 .rl-result .rl-num.green { background: #0f6b3a; }
 
-/* Поле ставок: невидимые области ровно по нарисованным клеткам, фишка сверху */
+/* Поле: клетки нарисованы DOM-ом по координатам макета */
 .rl-cells { position: absolute; inset: 0; pointer-events: none; }
+.rl-frame { position: absolute; border: 1px solid rgba(160, 110, 255, 0.55); border-radius: 4px; box-shadow: 0 0 10px rgba(120, 60, 255, 0.25), inset 0 0 0 1px rgba(90, 40, 170, 0.35); }
 .rl-cell {
   position: absolute;
   pointer-events: auto;
-  border-radius: 3px;
   display: grid; place-items: center;
+  box-sizing: border-box;
+  border: 0.5px solid rgba(160, 110, 255, 0.45);
+  color: #fff;
+  font: 500 14px/1 'Playfair Display', Georgia, serif;
   -webkit-tap-highlight-color: transparent;
 }
-.rl-cell.is-hit { background: rgba(255, 255, 255, 0.14); }
-.rl-cell.is-win { box-shadow: inset 0 0 0 2px #f2c667, 0 0 12px rgba(242, 198, 103, 0.7); }
+.rl-cell.red { background: #b9172c; }
+.rl-cell.black { background: #14101f; }
+.rl-cell.green { background: #0f6f47; }
+.rl-cell.dark { background: rgba(14, 6, 26, 0.85); color: #e3d4ff; }
+.rl-cell.small { font-size: 10.5px; letter-spacing: 0.02em; }
+.rl-cell.outside { font-size: 14px; color: #ece2ff; }
+.rl-cell .diamond { width: 22px; height: 12px; }
+.rl-cell.is-hit { filter: brightness(1.35); }
+.rl-cell.is-win { box-shadow: inset 0 0 0 2px #f2c667, 0 0 12px rgba(242, 198, 103, 0.7); z-index: 2; }
 .rl-chip {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
   min-width: 18px; height: 18px; padding: 0 3px;
   border-radius: 9px;
   background: radial-gradient(circle at 50% 50%, #3b2a86 0 40%, #1f1447 42% 60%, #6e56ff 62% 70%, #1f1447 72%);
@@ -3493,23 +3511,29 @@ body:has(#screen-table:not(.hidden)) .toast {
   font-variant-numeric: tabular-nums;
   pointer-events: none;
   animation: chip-pop 0.18s var(--ease);
+  z-index: 3;
 }
-@keyframes chip-pop { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes chip-pop { from { transform: translate(-50%, -50%) scale(0.6); opacity: 0; } to { transform: translate(-50%, -50%); opacity: 1; } }
 .rl-canvas.is-spinning .rl-cell { pointer-events: none; }
 
-/* Ставка и пресеты: 85..305 × 481.6..519.6, пресеты y 520.6 */
-.rl-bet { top: 458.8px; }
-.rl-bet .bj-bet-text b { font-size: 22px; min-width: 140px; }
-.rl-presets { top: 501.8px; gap: 4.4px; }
-.rl-presets .bj-preset { width: 47.6px; height: 28.4px; }
-.rl-keypad { bottom: calc(769.4px - 452px); }
-/* Кнопка Bet: 67.1..323.1 × 562..606.8 */
-.rl-spin { top: 540.2px; left: 64.5px; width: 260.3px; height: 52.9px; }
-.rl-foot {
-  position: absolute; left: 0; right: 0; top: 598px;
-  display: flex; justify-content: center; gap: 8px;
-  font: 500 11px var(--font); color: rgba(226, 212, 255, 0.6);
+/* Ставка (85..305 × 451..489), пресеты (y 499), Spin (67..324 × 540..586) */
+.rl-bet { top: 451.3px; }
+.rl-bet .bj-bet-text b { font: 700 22px/1 var(--font); min-width: 140px; }
+.rl-presets { top: 499px; left: 61.3px; gap: 6px; }
+.rl-presets .bj-preset { width: 48.9px; height: 25px; }
+.rl-keypad { bottom: calc(760px - 445px); }
+.rl-spin { top: 540.4px; left: 67.1px; width: 257px; height: 45.6px; }
+.rl-spin b { font: 500 27px/1 'Playfair Display', Georgia, serif; }
+.rl-chip-ico {
+  position: absolute; top: 50%; width: 18px; height: 18px; transform: translateY(-50%);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #1a0a3a 0 30%, transparent 31%),
+    repeating-conic-gradient(#cdb0ff 0 22deg, #6a3fd6 22deg 45deg);
+  box-shadow: 0 0 0 1.5px #b48cff, 0 0 8px rgba(181, 108, 255, 0.7);
 }
+.rl-chip-ico:first-child { left: 30px; } .rl-chip-ico:last-child { right: 30px; }
+.rl-foot { position: absolute; left: 0; right: 0; top: 596px; display: flex; justify-content: center; gap: 8px; font: 500 11px var(--font); color: rgba(226, 212, 255, 0.6); }
 .rl-clear { background: none; border: 0; color: #c48bff; font: 600 11px var(--font); text-decoration: underline; padding: 0; }
 
 /* Карточка рулетки в играх — красно-золотая, в ряд с покером и блекджеком */
