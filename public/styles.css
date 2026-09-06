@@ -3124,7 +3124,7 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bj-canvas[data-phase="bet"] { background-image: url('/img/bj-bet-bg.webp'); }
 /* В фазе ставки в пилюле только сумма, крупнее (кап-высота 16 px по макету). */
 .bj-canvas[data-phase="bet"] .bj-bet-text span { display: none; }
-.bj-canvas[data-phase="bet"] .bj-bet-text input { font-size: 22px; width: 140px; }
+.bj-canvas[data-phase="bet"] .bj-bet-text b { font-size: 22px; min-width: 140px; }
 .bj-actions-after { }
 /* Кнопка Bet: 65.9..324.1 × 515.1..565.3, фиолетовый градиент, свечение,
    серифный «Bet» и пики по краям (центры x 99.7 и 290, y 540.4). */
@@ -3302,15 +3302,37 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bj-step:disabled { opacity: 1; color: rgba(230, 210, 255, 0.35); border-color: rgba(196, 150, 255, 0.2); }
 .bj-bet-text { display: flex; align-items: baseline; gap: 7px; }
 .bj-bet-text span { font: 500 11.5px var(--font); color: #b48cff; }
-.bj-bet-text input {
-  width: 110px; padding: 0; margin: 0;
-  border: 0; background: transparent; outline: none;
-  text-align: center;
+.bj-bet-text b {
+  min-width: 110px; text-align: center;
   font: 700 19px/1 var(--font); color: #fff; letter-spacing: -0.01em; font-variant-numeric: tabular-nums;
-  caret-color: #c48bff;
+  cursor: pointer;
 }
-.bj-bet-text input:focus { text-shadow: 0 0 8px rgba(181, 108, 255, 0.7); }
-.bj-bet.is-locked .bj-bet-text input { color: rgba(255, 255, 255, 0.8); }
+.bj-bet.is-typing .bj-bet-text b { text-shadow: 0 0 8px rgba(181, 108, 255, 0.7); }
+.bj-bet.is-typing .bj-bet-text b::after { content: ''; display: inline-block; width: 1.5px; height: 0.9em; margin-left: 2px; background: #c48bff; vertical-align: -0.1em; animation: bj-caret 1s steps(2) infinite; }
+@keyframes bj-caret { to { opacity: 0; } }
+.bj-bet.is-locked .bj-bet-text b { color: rgba(255, 255, 255, 0.8); }
+/* Цифровая панель: над зоной кнопок, в стиле пресетов. */
+.bj-keypad {
+  position: absolute; left: 65.9px; top: 506px;
+  width: 258.2px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(10, 4, 20, 0.96);
+  border: 1px solid rgba(150, 100, 255, 0.45);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 18px rgba(120, 60, 255, 0.25);
+  z-index: 8;
+}
+.bj-keypad button {
+  height: 38px;
+  border-radius: 8px;
+  background: #12042b;
+  border: 1px solid #2a0a5a;
+  color: #e6d2ff;
+  font: 700 17px/1 var(--font);
+}
+.bj-keypad button:active { background: #3000c6; border-color: #8a5dff; color: #fff; }
+.bj-keypad .bj-key-ok { grid-column: 1 / -1; background: linear-gradient(180deg, #3b02a6, #6c36dd); border-color: rgba(150, 100, 255, 0.85); font-size: 15px; letter-spacing: 0.02em; }
 
 /* Пресеты: 5 × 47.3×25, x0 67.6, шаг 51.9, y 474.6 */
 .bj-presets { position: absolute; left: 67.6px; top: 474.6px; display: flex; gap: 4.6px; }

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=101" />
+  <link rel="stylesheet" href="/styles.css?v=102" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -570,10 +570,19 @@
 
         <div class="bj-bet">
           <button id="bj-minus" class="bj-step" aria-label="Меньше">−</button>
-          <div class="bj-bet-text"><span id="bj-bet-label">Bet</span><input id="bj-bet-amount" type="text" inputmode="decimal" value="$5.00" aria-label="Ставка" /></div>
+          <div class="bj-bet-text"><span id="bj-bet-label">Bet</span><b id="bj-bet-amount" role="button">$5.00</b></div>
           <button id="bj-plus" class="bj-step" aria-label="Больше">+</button>
         </div>
         <div id="bj-presets" class="bj-presets"></div>
+        <!-- Своя цифровая панель вместо системной клавиатуры: в Telegram на iOS
+             она сдвигала экран и не возвращала обратно. -->
+        <div id="bj-keypad" class="bj-keypad hidden">
+          <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+          <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+          <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+          <button data-key=".">.</button><button data-key="0">0</button><button data-key="back" aria-label="Стереть">⌫</button>
+          <button data-key="ok" class="bj-key-ok">Готово</button>
+        </div>
 
         <div class="bj-actions">
           <button id="bj-hit" class="bj-act bj-hit" data-action="hit">
@@ -610,6 +619,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=64"></script>
+  <script src="/app.js?v=65"></script>
 </body>
 </html>

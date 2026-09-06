@@ -36,7 +36,7 @@ const state = {
   bjBet: 0,
   bjBetTouched: false,
   buyIn: { open: false, mode: 'sit', seat: null, amount: 0, touched: false },
-  bj: { view: null, bet: 500, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null },
+  bj: { view: null, bet: 500, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null, typing: false, typed: '' },
   unread: 0,
   tab: 'home', // главная | игры | турниры | бонусы | профиль
   wins: [], // лента последних выигрышей
@@ -602,6 +602,7 @@ function openBlackjack() {
 }
 
 function closeBlackjack() {
+  closeBjKeypad(false);
   state.bj.open = false;
   $('screen-bj').classList.add('hidden');
   showLobby();
@@ -649,41 +650,44 @@ function addBjBet(value) {
   renderBlackjack();
 }
 
-// iOS в Telegram сдвигает страницу под клавиатуру и не возвращает сам.
-// Возвращаем наверх несколькими заходами: сразу, после закрытия клавиатуры
-// и ещё раз с запасом.
-function bjUnshift() {
-  const reset = () => {
-    window.scrollTo(0, 0);
-    if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-    const screen = $('screen-bj');
-    if (screen) screen.scrollTop = 0;
-  };
-  reset();
-  [50, 150, 350, 700].forEach((ms) => setTimeout(reset, ms));
-}
-
-// Тап в любое место стола во время ввода — закрываем клавиатуру и
-// возвращаем экран на место.
-function bjTapOutside(event) {
-  const input = $('bj-bet-amount');
-  if (!input || document.activeElement !== input) return;
-  if (event.target === input) return;
-  event.preventDefault();
-  input.blur();
-  bjUnshift();
-}
-
-function applyBjInput(input) {
+// ——— Своя панель ввода суммы ———
+function openBjKeypad() {
   const view = state.bj.view;
   if (view && view.phase === 'play') return;
-  const text = String(input.value || '').replace(/[^0-9.,]/g, '').replace(',', '.');
-  const parsed = Math.round(Number(text) * 100);
-  const { min, max } = bjBetRange();
-  if (Number.isFinite(parsed) && parsed > 0) state.bj.bet = clamp(parsed, min, max);
-  input.value = money(state.bj.bet);
+  state.bj.typing = true;
+  state.bj.typed = '';
+  $('bj-keypad').classList.remove('hidden');
+  document.querySelector('.bj-bet').classList.add('is-typing');
+  renderBlackjack();
+}
+
+function bjKey(key) {
+  if (!state.bj.typing) return;
+  haptic('light');
+  if (key === 'ok') { closeBjKeypad(true); return; }
+  let typed = state.bj.typed;
+  if (key === 'back') typed = typed.slice(0, -1);
+  else if (key === '.') { if (!typed.includes('.')) typed = (typed || '0') + '.'; }
+  else {
+    const [whole = '', frac] = typed.split('.');
+    if (frac !== undefined) { if (frac.length >= 2) return; typed += key; }
+    else { if (whole.length >= 5) return; typed = whole === '0' ? key : whole + key; }
+  }
+  state.bj.typed = typed;
+  renderBlackjack();
+}
+
+function closeBjKeypad(apply) {
+  if (!state.bj.typing) return;
+  if (apply && state.bj.typed) {
+    const parsed = Math.round(Number(state.bj.typed) * 100);
+    const { min, max } = bjBetRange();
+    if (Number.isFinite(parsed) && parsed > 0) state.bj.bet = clamp(parsed, min, max);
+  }
+  state.bj.typing = false;
+  state.bj.typed = '';
+  $('bj-keypad').classList.add('hidden');
+  document.querySelector('.bj-bet').classList.remove('is-typing');
   renderBlackjack();
 }
 
@@ -841,8 +845,8 @@ function renderBlackjack() {
     state.bj.bet = clamp(state.bj.bet, range.min, range.max);
   }
   const bet = $('bj-bet-amount');
-  if (document.activeElement !== bet) bet.value = money(state.bj.bet);
-  bet.readOnly = playing;
+  bet.textContent = state.bj.typing ? (state.bj.typed ? `$${state.bj.typed}` : '$') : money(state.bj.bet);
+  if (playing && state.bj.typing) closeBjKeypad(false);
   document.querySelector('.bj-bet').classList.toggle('is-locked', playing);
   $('bj-minus').disabled = playing;
   $('bj-plus').disabled = playing;
@@ -2680,26 +2684,17 @@ function bindUi() {
   on('bj-back', 'click', closeBlackjack);
   on('bj-minus', 'click', () => stepBjBet(-1));
   on('bj-plus', 'click', () => stepBjBet(1));
-  // Сумму можно написать руками: тап по полю — ввод, Enter или уход — применить.
-  on('bj-bet-amount', 'focus', (event) => {
-    const view = state.bj.view;
-    if (view && view.phase === 'play') { event.target.blur(); return; }
-    event.target.value = (state.bj.bet / 100).toFixed(2).replace(/\.00$/, '');
-    requestAnimationFrame(() => event.target.select());
+  // Сумму можно написать руками: тап по полю открывает свою панель цифр.
+  on('bj-bet-amount', 'click', () => openBjKeypad());
+  document.querySelectorAll('#bj-keypad [data-key]').forEach((button) => {
+    button.addEventListener('click', (event) => { event.stopPropagation(); bjKey(button.dataset.key); });
   });
-  on('bj-bet-amount', 'change', (event) => applyBjInput(event.target));
-  on('bj-bet-amount', 'blur', (event) => {
-    applyBjInput(event.target);
-    // iOS сдвигает страницу под клавиатуру и не всегда возвращает обратно.
-    bjUnshift();
+  // Тап мимо панели — применяем набранное и закрываем.
+  $('screen-bj').addEventListener('pointerdown', (event) => {
+    if (!state.bj.typing) return;
+    if (event.target.closest('#bj-keypad') || event.target.closest('#bj-bet-amount')) return;
+    closeBjKeypad(true);
   });
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => { if (state.bj.open) bjUnshift(); });
-    window.visualViewport.addEventListener('scroll', () => { if (state.bj.open && document.activeElement !== $('bj-bet-amount')) bjUnshift(); });
-  }
-  $('screen-bj').addEventListener('touchstart', bjTapOutside, { passive: false });
-  $('screen-bj').addEventListener('mousedown', bjTapOutside);
-  on('bj-bet-amount', 'keydown', (event) => { if (event.key === 'Enter') event.target.blur(); });
   on('bj-deal', 'click', (event) => {
     markBusy(event.currentTarget);
     send({ type: 'bj_bet', amount: state.bj.bet });
