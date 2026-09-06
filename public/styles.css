@@ -3099,3 +3099,206 @@ body:has(#screen-table:not(.hidden)) .toast {
   z-index: 5;
   animation: none;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   БЛЕКДЖЕК ПРОТИВ ДИЛЕРА — по макету 1 в 1
+   ═══════════════════════════════════════════════════════════════════════
+   Макет 941×1576 (без шапки Telegram) → холст 390×653, k = 0.41445.
+   Все координаты ниже сняты с макета и поделены на 2.413.            */
+.bj-screen {
+  position: relative;
+  overflow: hidden;
+  background: #05010c;
+}
+.bj-canvas {
+  /* Холст масштабируется только по ширине: все элементы влезают на любой
+     телефон. Ниже макета фон продлён затемнённым полом (ещё 166 px). */
+  position: absolute;
+  left: 50%; top: 0;
+  width: 390px; height: 819px;
+  transform-origin: top center;
+  transform: translate(-50%, 0) scale(var(--bj, 1));
+  background: url('/img/bj-bg.webp') center top / 100% auto no-repeat;
+}
+.bj-back {
+  position: absolute; left: 10px; top: 10px;
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(196, 150, 255, 0.3);
+  background: rgba(14, 4, 26, 0.6);
+  color: rgba(236, 224, 255, 0.85);
+  display: grid; place-items: center;
+  z-index: 5;
+}
+.bj-back .icon { width: 15px; height: 15px; }
+
+/* Плашки суммы очков: «10» у дилера (центр 195,104), «16» у игрока (254.5,325) */
+.bj-pill {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 35px; height: 21px; padding: 0 9px;
+  border-radius: 11px;
+  background: #17002e;
+  border: 1px solid #7a1ba0;
+  box-shadow: 0 0 8px rgba(160, 60, 220, 0.45);
+  color: #f5ecff;
+  font: 700 13px/19px var(--font);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.bj-dealer-total { left: 195px; top: 104px; }
+.bj-hand-total { left: 254.5px; top: 325px; }
+
+/* Карты: дилер — центр (195.6,156), игрок — центр (167,377.5); 50×72 */
+.bj-cards {
+  position: absolute;
+  display: flex; align-items: center;
+  transform: translate(-50%, -50%);
+}
+.bj-dealer-cards { left: 195.6px; top: 156px; }
+.bj-hands {
+  position: absolute; left: 167px; top: 377.5px;
+  transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 22px;
+}
+.bj-hands.is-split { left: 195px; }
+.bj-hand { position: relative; display: flex; align-items: center; }
+.bj-hand + .bj-hand::before {
+  content: ''; position: absolute; left: -12px; top: 10%; height: 80%; width: 1px;
+  background: rgba(196, 150, 255, 0.3);
+}
+.bj-hand.is-active .bj-card:last-child { box-shadow: 0 0 0 1.5px #c48bff, 0 0 12px rgba(181, 108, 255, 0.8), 0 6px 14px rgba(0, 0, 0, 0.6); }
+.bj-hand .bj-hand-tag {
+  position: absolute; left: 50%; bottom: -16px;
+  transform: translateX(-50%);
+  font: 700 9.5px/1 var(--font); color: #d9c3ff; white-space: nowrap;
+}
+.bj-card {
+  position: relative;
+  flex: none;
+  width: 50px; height: 72px;
+  border-radius: 5px;
+  background: linear-gradient(160deg, #ffffff 0%, #f1f2f6 60%, #dfe1e8 100%);
+  color: #101018;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  animation: bj-deal 0.28s var(--ease) both;
+}
+.bj-card + .bj-card { margin-left: 2px; }
+.bj-cards.is-many .bj-card + .bj-card, .bj-hand.is-many .bj-card + .bj-card { margin-left: -22px; }
+.bj-card.red { color: #d8202a; }
+.bj-card .bj-rank {
+  position: absolute; left: 5px; top: 3px;
+  font: 700 15px/1 var(--font); letter-spacing: -0.03em;
+}
+.bj-card .bj-suit-sm { position: absolute; left: 5px; top: 18px; font-size: 11px; line-height: 1; }
+.bj-card .bj-suit {
+  position: absolute; left: 50%; top: 56%;
+  transform: translate(-50%, -50%);
+  font-size: 34px; line-height: 1;
+}
+.bj-card.back {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(140, 60, 220, 0.35) 0, rgba(60, 10, 110, 0) 46%),
+    linear-gradient(160deg, #2a0a4e 0%, #160528 60%, #1d0838 100%);
+  box-shadow: 0 0 0 1.5px #b56cff, 0 0 12px rgba(181, 108, 255, 0.85), 0 6px 14px rgba(0, 0, 0, 0.6);
+}
+.bj-card.back::before {
+  content: ''; position: absolute; inset: 5px; border-radius: 3px;
+  border: 1px solid rgba(196, 150, 255, 0.35);
+}
+.bj-card.back .bj-suit { color: #9a4fe0; font-size: 26px; text-shadow: 0 0 8px rgba(181, 108, 255, 0.8); }
+@keyframes bj-deal {
+  from { opacity: 0; transform: translate(0, -18px) scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Итог раздачи — между аркой и подписью YOUR HAND */
+.bj-result {
+  position: absolute; left: 50%; top: 301px;
+  transform: translate(-50%, -50%);
+  padding: 3px 12px 4px;
+  border-radius: var(--r-pill);
+  background: rgba(14, 4, 28, 0.9);
+  border: 1px solid rgba(233, 207, 149, 0.5);
+  color: #f2dcaa;
+  font: 700 11.5px/1.2 var(--font);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  z-index: 4;
+  animation: pop-in 0.25s var(--ease);
+}
+.bj-result.lose { border-color: rgba(255, 90, 110, 0.5); color: #ff8a9a; }
+.bj-result.push { border-color: rgba(196, 150, 255, 0.5); color: #d9c3ff; }
+
+/* Ставка: пилюля 85..305 × 430..469, кружки −/+ Ø26 */
+.bj-bet {
+  position: absolute; left: 85px; top: 430px;
+  width: 220px; height: 39px;
+  border-radius: 20px;
+  background: rgba(13, 9, 23, 0.92);
+  border: 1px solid rgba(120, 80, 190, 0.45);
+  box-shadow: 0 0 10px rgba(120, 60, 200, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px;
+}
+.bj-step {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(196, 150, 255, 0.55);
+  background: rgba(30, 10, 56, 0.9);
+  color: #e6d2ff;
+  font: 500 19px/1 var(--font);
+  display: grid; place-items: center;
+}
+.bj-step:disabled { opacity: 0.35; }
+.bj-bet-text { display: flex; align-items: baseline; gap: 7px; }
+.bj-bet-text span { font: 500 11.5px var(--font); color: #b48cff; }
+.bj-bet-text b { font: 700 19px/1 var(--font); color: #fff; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.bj-bet.is-locked .bj-bet-text b { color: rgba(255, 255, 255, 0.8); }
+
+/* Пресеты: 5 × 47.3×25, x0 67.6, шаг 51.9, y 474.6 */
+.bj-presets { position: absolute; left: 67.6px; top: 474.6px; display: flex; gap: 4.6px; }
+.bj-preset {
+  width: 47.3px; height: 25px;
+  border-radius: 6px;
+  background: #12042b;
+  border: 1px solid #2a0a5a;
+  color: #c9a8ff;
+  font: 700 11.5px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.bj-preset.is-active { background: #3000c6; border-color: #8a5dff; color: #fff; box-shadow: 0 0 10px rgba(110, 60, 255, 0.55); }
+.bj-preset:disabled { opacity: 0.45; }
+
+/* Кнопки действий: 4 × 84.1×74.6, x0 15.7, шаг 91.6, y 516.4 */
+.bj-actions { position: absolute; left: 15.7px; top: 516.4px; width: 358.6px; height: 74.6px; display: flex; gap: 7.5px; }
+.bj-act {
+  flex: 1;
+  height: 74.6px;
+  border-radius: 12px;
+  border: 1px solid;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 4px 2px;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: transform 0.12s var(--ease), opacity 0.15s;
+}
+.bj-act:active:not(:disabled) { transform: scale(0.96); }
+.bj-act:disabled { opacity: 0.32; }
+.bj-act b { font: 700 13px/1 var(--font); letter-spacing: 0.03em; }
+.bj-act small { font: 500 9px/1.1 var(--font); color: rgba(236, 224, 255, 0.72); white-space: nowrap; }
+.bj-ico { width: 24px; height: 22px; display: grid; place-items: center; margin-bottom: 2px; }
+.bj-ico svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.bj-ico-text { font: 700 19px/1 var(--font); font-style: normal; }
+.bj-hit { background: linear-gradient(180deg, #073a33, #04261f); border-color: rgba(47, 211, 155, 0.75); box-shadow: 0 0 12px rgba(47, 211, 155, 0.18), 0 6px 16px rgba(0, 0, 0, 0.45); }
+.bj-hit b, .bj-hit .bj-ico { color: #34e3a6; }
+.bj-stand { background: linear-gradient(180deg, #3d0a24, #26061a); border-color: rgba(255, 79, 110, 0.75); }
+.bj-stand b, .bj-stand .bj-ico { color: #ff5a78; }
+.bj-double { background: linear-gradient(180deg, #33200f, #22150a); border-color: rgba(224, 168, 58, 0.75); }
+.bj-double b, .bj-double .bj-ico { color: #f0b84a; }
+.bj-split { background: linear-gradient(180deg, #250a4e, #170634); border-color: rgba(181, 108, 255, 0.75); box-shadow: 0 0 12px rgba(181, 108, 255, 0.2), 0 6px 16px rgba(0, 0, 0, 0.45); }
+.bj-split b, .bj-split .bj-ico { color: #c48bff; }
+.bj-act.bj-wide { flex: 1 1 100%; flex-direction: row; gap: 12px; }
+.bj-act.bj-wide b { font-size: 15px; }
+.bj-act.bj-wide small { font-size: 10.5px; }
+.bj-act.bj-wide .bj-ico { margin: 0; }

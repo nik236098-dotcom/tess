@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const { attachWebSocketServer } = require('./wsserver');
 const { verifyInitData } = require('./telegram');
 const { Room, RoomError, normalizeSettings } = require('./room');
+const { SoloBlackjack, SoloError } = require('./blackjack/solo');
 const { Accounts, AccountError, DEFAULT_START_BALANCE } = require('./accounts');
 const { createPayments, PaymentError } = require('./payments');
 const { formatMoney, parseMoney } = require('./money');
@@ -130,11 +131,13 @@ function createApp(options = {}) {
     rooms.set(room.code, room);
     room.on('update', () => broadcastState(room));
     room.on('chat', (message) => broadcast(room, { type: 'chat', ...message }));
-    room.on('win', (win) => {
-      if (!win || win.amount <= 0) return;
-      recentWins.unshift({ ...win, at: Date.now() });
-      recentWins.length = Math.min(recentWins.length, RECENT_WINS_LIMIT);
-    });
+    room.on('win', noteWin);
+  }
+
+  function noteWin(win) {
+    if (!win || win.amount <= 0) return;
+    recentWins.unshift({ ...win, at: Date.now() });
+    recentWins.length = Math.min(recentWins.length, RECENT_WINS_LIMIT);
   }
 
   // ——— Постоянные столы ———
@@ -145,8 +148,8 @@ function createApp(options = {}) {
 
   function createHouseTables() {
     const presets = [
+      // Блекджек за столом больше не играется — он одиночный, против дилера.
       { game: 'holdem', smallBlind: 5, bigBlind: 10, buyIn: 1000, minBuyIn: 500, maxPlayers: 8, turnSeconds: 45, isPublic: true },
-      { game: 'blackjack', minBet: 10, maxBet: 200, buyIn: 1000, minBuyIn: 500, turnSeconds: 45, isPublic: true },
     ];
     for (const preset of presets) {
       const room = new Room(createRoomCode(), HOUSE, preset, { bank: accounts });
@@ -319,7 +322,7 @@ function createApp(options = {}) {
       try {
         handleMessage(client, message);
       } catch (error) {
-        if (error instanceof RoomError) {
+        if (error instanceof RoomError || error instanceof SoloError) {
           client.fail(error.message);
         } else {
           console.error('Ошибка обработки сообщения:', error);
@@ -429,6 +432,19 @@ function createApp(options = {}) {
         break;
       case 'list_rooms':
         client.send({ type: 'rooms', rooms: publicRooms(), wins: recentWins });
+        break;
+      case 'bj_open':
+        sendBlackjack(client);
+        break;
+      case 'bj_bet':
+        blackjackBet(client, Number(message.amount));
+        break;
+      case 'bj_action':
+        blackjackAction(client, String(message.action || ''));
+        break;
+      case 'bj_next':
+        blackjackGame(client).reset();
+        sendBlackjack(client);
         break;
       case 'ping':
         client.send({ type: 'pong', at: Date.now() });
@@ -692,6 +708,73 @@ function createApp(options = {}) {
       default:
         throw new RoomError(`Неизвестная команда «/${command}». Наберите /помощь`);
     }
+  }
+
+  // ——— Блекджек против дилера ———
+  // Игра живёт у пользователя, а не в комнате: стола и мест нет, ставка
+  // списывается с баланса, выигрыш возвращается на баланс.
+  const BJ_MIN_BET = 100;
+  const BJ_MAX_BET = 100000;
+  const blackjackGames = new Map();
+
+  function blackjackGame(client) {
+    let game = blackjackGames.get(client.user.id);
+    if (!game) {
+      game = new SoloBlackjack({ minBet: BJ_MIN_BET, maxBet: BJ_MAX_BET });
+      game.bet = 500;
+      blackjackGames.set(client.user.id, game);
+    }
+    return game;
+  }
+
+  function sendBlackjack(client) {
+    const game = blackjackGame(client);
+    const balance = accounts.balanceOf(client.user.id);
+    client.send({ type: 'bj', ...game.state(balance), balance });
+  }
+
+  function blackjackBet(client, amount) {
+    const game = blackjackGame(client);
+    if (game.phase === 'play') throw new SoloError('Раздача уже идёт');
+    if (game.phase === 'done') game.reset();
+    const bet = Math.round(amount);
+    if (!Number.isFinite(bet) || bet < game.minBet) throw new SoloError(`Минимальная ставка ${formatMoney(game.minBet)}`);
+    if (bet > game.maxBet) throw new SoloError(`Максимальная ставка ${formatMoney(game.maxBet)}`);
+    if (accounts.balanceOf(client.user.id) < bet) throw new SoloError('Недостаточно средств');
+    accounts.withdraw(client.user.id, bet);
+    try {
+      game.start(bet);
+    } catch (error) {
+      accounts.deposit(client.user.id, bet);
+      throw error;
+    }
+    settleBlackjack(client, game);
+  }
+
+  function blackjackAction(client, action) {
+    const game = blackjackGame(client);
+    if (game.phase !== 'play') throw new SoloError('Сейчас нет раздачи');
+    const balance = accounts.balanceOf(client.user.id);
+    const options = game.options(balance);
+    if (!options[action]) throw new SoloError('Это действие сейчас недоступно');
+    if (action === 'double' || action === 'split') {
+      // Доплата за вторую ставку — с баланса, до хода.
+      accounts.withdraw(client.user.id, game.hand.bet);
+    }
+    game[action]();
+    settleBlackjack(client, game);
+  }
+
+  // Раздача закончилась — выплата на баланс и запись в ленту выигрышей.
+  function settleBlackjack(client, game) {
+    if (game.phase === 'done' && !game.settled) {
+      game.settled = true;
+      const { payout, net } = game.results;
+      if (payout > 0) accounts.deposit(client.user.id, payout);
+      if (net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: net, game: 'blackjack', code: 'BJ' });
+    }
+    if (game.phase === 'play') game.settled = false;
+    sendBlackjack(client);
   }
 
   function withRoom(client, action) {
