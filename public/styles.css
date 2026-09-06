@@ -3087,13 +3087,15 @@ body:has(#screen-table:not(.hidden)) .toast {
 }
 /* Комбинация героя — одной плашкой аккуратно под ником, в стиле экрана. */
 #screen-table .hand-label {
-  transform: translate(-50%, calc(var(--rin, 25px) + 18px));
-  padding: 2px 9px 3px;
+  /* Плашка ника заканчивается на rin+14.5; зазор до пилюли 6 px, как в образце. */
+  transform: translate(-50%, calc(var(--rin, 25px) + 20.5px));
+  padding: 3px 10px 3.5px;
   border-radius: var(--r-pill);
-  background: rgba(18, 8, 34, 0.9);
-  border: 1px solid rgba(196, 150, 255, 0.45);
-  color: #e6d2ff;
-  font: 600 10px/1.2 var(--font);
+  background: rgba(20, 8, 38, 0.92);
+  border: 1px solid rgba(206, 160, 255, 0.55);
+  color: #f0e6ff;
+  font: 600 10.5px/1.2 var(--font);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
   z-index: 5;
   animation: none;
 }
