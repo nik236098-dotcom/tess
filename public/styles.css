@@ -3502,3 +3502,17 @@ body:has(#screen-table:not(.hidden)) .toast {
   font: 500 11px var(--font); color: rgba(226, 212, 255, 0.6);
 }
 .rl-clear { background: none; border: 0; color: #c48bff; font: 600 11px var(--font); text-decoration: underline; padding: 0; }
+
+/* Карточка рулетки в играх — красно-золотая, в ряд с покером и блекджеком */
+.lb-play-rl {
+  border-color: rgba(229, 89, 79, 0.25);
+  background:
+    radial-gradient(70% 90% at 0% 50%, rgba(229, 89, 79, 0.35), rgba(229, 89, 79, 0) 60%),
+    radial-gradient(60% 60% at 100% 100%, rgba(120, 30, 40, 0.6), rgba(120, 30, 40, 0) 60%),
+    linear-gradient(170deg, #2a1018 0%, #140a10 100%);
+  color: var(--lb-text);
+}
+.lb-play-rl .lb-hero-kicker { color: #ff8a80; }
+.lb-play-rl .lb-play-cta { background: linear-gradient(180deg, #ff6b62, #c9302c); box-shadow: 0 8px 18px rgba(229, 89, 79, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3); }
+.lb-play-rl .lb-play-art { background: none; }
+.lb-play-rl .lb-wheel { top: 50%; }
