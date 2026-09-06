@@ -35,7 +35,7 @@ const state = {
   fx: { hand: null, bets: new Map(), points: new Map(), potPoint: null, winKey: null, seated: new Set() },
   bjBet: 0,
   bjBetTouched: false,
-  buyIn: { open: false, seat: null, amount: 0, touched: false },
+  buyIn: { open: false, mode: 'sit', seat: null, amount: 0, touched: false },
   unread: 0,
   tab: 'home', // главная | игры | турниры | бонусы | профиль
   wins: [], // лента последних выигрышей
@@ -1677,11 +1677,12 @@ function renderControls(room) {
   sitBtn.classList.toggle('hidden', seated || !hasFreeSeat);
   rebuyBtn.classList.toggle('hidden', !you.canRebuy);
 
-  // Панель выбора суммы входа открыта — вместо кнопок «сесть» и баланса.
-  const picker = state.buyIn.open && !seated && you.buyIn;
+  // Панель выбора суммы (посадка или пополнение) — вместо кнопок и баланса.
+  const picker = state.buyIn.open && you.buyIn && !myTurn
+    && (state.buyIn.mode === 'rebuy' ? (seated && you.canRebuy) : !seated);
   if (!picker) state.buyIn.open = false;
   renderBuyIn(room, Boolean(picker));
-  if (picker) sitBtn.classList.add('hidden');
+  if (picker) { sitBtn.classList.add('hidden'); rebuyBtn.classList.add('hidden'); }
 
   const seatBox = $('seat-controls');
   const seatButtonsVisible = [sitBtn, rebuyBtn].some((b) => !b.classList.contains('hidden'));
@@ -1753,15 +1754,18 @@ function renderControls(room) {
 
 const BUYIN_PRESETS = [500, 1000, 2500, 5000];
 
-function openBuyIn(seatIndex) {
+function openBuyIn(seatIndex, mode = 'sit') {
   const room = state.room;
-  if (!room || room.you.seatIndex !== null) return;
+  if (!room) return;
+  if (mode === 'sit' && room.you.seatIndex !== null) return;
+  if (mode === 'rebuy' && !room.you.canRebuy) return;
   const range = room.you.buyIn;
   if (range && !range.enough) {
     toast('Недостаточно средств');
     haptic('error');
   }
   state.buyIn.open = true;
+  state.buyIn.mode = mode;
   state.buyIn.seat = seatIndex;
   state.buyIn.touched = false;
   renderControls(room);
@@ -1777,6 +1781,8 @@ function renderBuyIn(room, open) {
   panel.classList.toggle('hidden', !open);
   if (!open) return;
   const range = room.you.buyIn;
+  const rebuy = state.buyIn.mode === 'rebuy';
+  panel.querySelector('.buyin-head span').textContent = rebuy ? 'На сколько пополнить стек' : 'С какой суммой сесть';
   $('buyin-balance').textContent = `Баланс ${money(room.you.balance)}`;
   const enough = Boolean(range && range.enough);
   $('buyin-short').classList.toggle('hidden', enough);
@@ -1833,7 +1839,7 @@ function renderBuyInValue() {
   if (!range) return;
   const value = money(state.buyIn.amount);
   $('buyin-value').textContent = value;
-  $('buyin-confirm').textContent = `Сесть с ${value}`;
+  $('buyin-confirm').textContent = state.buyIn.mode === 'rebuy' ? `Пополнить на ${value}` : `Сесть с ${value}`;
   const t = range.max > range.min ? (state.buyIn.amount - range.min) / (range.max - range.min) : 0;
   $('buyin-slider').style.setProperty('--t', t.toFixed(4));
   for (const button of $('buyin-presets').querySelectorAll('[data-buyin]')) {
@@ -2472,7 +2478,8 @@ function bindUi() {
     const range = state.room && state.room.you.buyIn;
     if (!range || !range.enough) return;
     markBusy(event.currentTarget);
-    send({ type: 'sit', seat: state.buyIn.seat, amount: state.buyIn.amount });
+    if (state.buyIn.mode === 'rebuy') send({ type: 'rebuy', amount: state.buyIn.amount });
+    else send({ type: 'sit', seat: state.buyIn.seat, amount: state.buyIn.amount });
     state.buyIn.open = false;
   });
   on('buyin-range', 'input', (event) => {
@@ -2482,10 +2489,7 @@ function bindUi() {
   });
   on('buyin-minus', 'click', () => stepBuyIn(-1));
   on('buyin-plus', 'click', () => stepBuyIn(1));
-  on('btn-rebuy', 'click', (event) => {
-    markBusy(event.currentTarget);
-    send({ type: 'rebuy' });
-  });
+  on('btn-rebuy', 'click', () => openBuyIn(null, 'rebuy'));
 
   document.querySelectorAll('[data-game]').forEach((button) => {
     button.addEventListener('click', () => {

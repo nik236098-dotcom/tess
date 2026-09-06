@@ -28,7 +28,7 @@ const DEFAULT_SETTINGS = {
   maxBet: 500,
   buyIn: 1000,
   minBuyIn: 500,   // с какой суммой можно сесть
-  maxBuyIn: 5000,
+  maxBuyIn: 100000000, // сверху ограничивает только баланс игрока
   maxPlayers: 6,
   turnSeconds: 45,
   isPublic: true, // стол по умолчанию виден всем в списке
@@ -42,8 +42,8 @@ const SETTING_LIMITS = {
   minBet: [1, 100000],
   maxBet: [1, 1000000],
   buyIn: [20, 1000000],
-  minBuyIn: [1, 1000000],
-  maxBuyIn: [1, 1000000],
+  minBuyIn: [1, 100000000],
+  maxBuyIn: [1, 100000000],
   maxPlayers: [2, 9],
   turnSeconds: [10, 180],
 };
@@ -52,6 +52,9 @@ const SHOWDOWN_PAUSE_MS = 6000;
 // Промолчал ход целиком — пас и встаёт из-за стола: стол не ждёт ушедших.
 const MISSED_TURNS_LIMIT = 1;
 const FOLD_PAUSE_MS = 2500;
+// Потерял связь между раздачами — через столько встаёт из-за стола.
+// Короткий зазор нужен только на переподключение.
+const OFFLINE_GRACE_MS = 5000;
 const MAX_LOG = 60;
 
 class Room extends EventEmitter {
@@ -105,6 +108,8 @@ class Room extends EventEmitter {
     if (seat) {
       seat.connected = true;
       seat.offlineAt = null;
+      if (seat.offlineTimer) clearTimeout(seat.offlineTimer);
+      seat.offlineTimer = null;
       // Вернулся в игру — снимаем автоматический «сижу мимо».
       if (seat.autoSitOut) {
         seat.sittingOut = false;
@@ -126,6 +131,20 @@ class Room extends EventEmitter {
         seat.sittingOut = true;
         seat.autoSitOut = true;
       }
+      // Не вернулся за несколько секунд — встаёт из-за стола: не в сети
+      // за столом никто не сидит и раздач не получает. Посреди раздачи
+      // руку доигрывает укороченный таймер хода, место уйдёт после неё.
+      if (seat.offlineTimer) clearTimeout(seat.offlineTimer);
+      seat.offlineTimer = setTimeout(() => {
+        seat.offlineTimer = null;
+        const current = this.seatOf(userId);
+        if (!current || current.connected) return;
+        this.pushLog(`${current.name} не в сети и встаёт из-за стола`);
+        this.stand(userId, { silent: true });
+        this.maybeStartHand();
+        this.touch();
+      }, OFFLINE_GRACE_MS);
+      seat.offlineTimer.unref?.();
     } else {
       this.members.delete(userId);
     }
@@ -254,6 +273,7 @@ class Room extends EventEmitter {
   releaseSeat(index, { silent = false } = {}) {
     const seat = this.seats[index];
     if (!seat) return;
+    if (seat.offlineTimer) clearTimeout(seat.offlineTimer);
     this.seats[index] = null;
     if (this.bank && seat.stack > 0) this.bank.deposit(seat.userId, seat.stack);
     if (!silent) {
@@ -269,30 +289,31 @@ class Room extends EventEmitter {
     });
   }
 
-  // Пополнение стека до размера входа — фишки берутся с баланса игрока.
-  rebuy(userId) {
+  // Пополнение стека — та же сумма на выбор, что и при посадке: от
+  // минимального входа до всего баланса.
+  rebuy(userId, amount) {
     const seat = this.seatOf(userId);
     if (!seat) throw new RoomError('Вы не за столом');
     if (this.inActiveHand(userId)) throw new RoomError('Пополнить стек можно между раздачами');
-    if (seat.stack >= this.settings.buyIn) throw new RoomError('Фишек и так достаточно');
 
-    const needed = this.settings.buyIn - seat.stack;
-    const available = this.bank ? this.bank.balanceOf(userId) : needed;
-    const amount = Math.min(needed, available);
-    if (amount <= 0) throw new RoomError('На балансе нет фишек — попросите админа выдать');
+    const range = this.buyInRange(userId);
+    if (!range.enough) throw new RoomError('Недостаточно средств');
+    const value = amount === undefined || amount === null ? range.default : Math.round(Number(amount));
+    if (!Number.isFinite(value) || value < range.min) throw new RoomError(`Минимальное пополнение ${formatMoney(range.min)}`);
+    if (value > range.max) throw new RoomError('Недостаточно средств');
 
     if (this.bank) {
       try {
-        this.bank.withdraw(userId, amount);
+        this.bank.withdraw(userId, value);
       } catch (error) {
         throw new RoomError(error.message);
       }
     }
-    seat.stack += amount;
+    seat.stack += value;
     seat.sittingOut = false;
     seat.autoSitOut = false;
     seat.brokeSitOut = false;
-    this.pushLog(`${seat.name} пополняет стек на ${formatMoney(amount)}, теперь ${formatMoney(seat.stack)}`);
+    this.pushLog(`${seat.name} пополняет стек на ${formatMoney(value)}, теперь ${formatMoney(seat.stack)}`);
     this.maybeStartHand();
     this.touch();
   }
@@ -750,6 +771,9 @@ class Room extends EventEmitter {
   dispose() {
     this.clearTurnTimer();
     this.clearNextHandTimer();
+    for (const seat of this.seats) {
+      if (seat && seat.offlineTimer) clearTimeout(seat.offlineTimer);
+    }
   }
 
   // ——— Журнал и события ———
@@ -894,11 +918,11 @@ class Room extends EventEmitter {
         ...this.controlsFor(userId),
         stack: mySeatIndex >= 0 ? seats[mySeatIndex].stack : 0,
         balance: this.bank ? this.bank.balanceOf(userId) : 0,
-        buyIn: mySeatIndex < 0 ? this.buyInRange(userId) : null,
+        buyIn: this.buyInRange(userId),
         sittingOut: mySeatIndex >= 0 ? this.seats[mySeatIndex].sittingOut : false,
         canRebuy: mySeatIndex >= 0
           && this.seats[mySeatIndex].stack < this.settings.buyIn / 2
-          && (this.bank ? this.bank.balanceOf(userId) > 0 : true)
+          && (this.bank ? this.bank.balanceOf(userId) >= this.settings.minBuyIn : true)
           && !this.inActiveHand(userId),
         betTurn: myBetTurn
           ? { min: Math.min(this.settings.minBet, this.maxBet), max: this.maxBet }
@@ -1073,10 +1097,10 @@ class Room extends EventEmitter {
         stack: mySeatIndex >= 0 ? (hand && hand.player(userId) ? hand.player(userId).stack : this.seats[mySeatIndex].stack) : 0,
         sittingOut: mySeatIndex >= 0 ? this.seats[mySeatIndex].sittingOut : false,
         balance: this.bank ? this.bank.balanceOf(userId) : 0,
-        buyIn: mySeatIndex < 0 ? this.buyInRange(userId) : null,
+        buyIn: this.buyInRange(userId),
         canRebuy: mySeatIndex >= 0
           && this.seats[mySeatIndex].stack < this.settings.buyIn / 2
-          && (this.bank ? this.bank.balanceOf(userId) > 0 : true)
+          && (this.bank ? this.bank.balanceOf(userId) >= this.settings.minBuyIn : true)
           && !this.inActiveHand(userId),
         legal: legal && {
           canFold: legal.canFold,

@@ -145,8 +145,8 @@ function createApp(options = {}) {
 
   function createHouseTables() {
     const presets = [
-      { game: 'holdem', smallBlind: 5, bigBlind: 10, buyIn: 1000, minBuyIn: 500, maxBuyIn: 5000, maxPlayers: 8, turnSeconds: 45, isPublic: true },
-      { game: 'blackjack', minBet: 10, maxBet: 200, buyIn: 1000, minBuyIn: 500, maxBuyIn: 5000, turnSeconds: 45, isPublic: true },
+      { game: 'holdem', smallBlind: 5, bigBlind: 10, buyIn: 1000, minBuyIn: 500, maxPlayers: 8, turnSeconds: 45, isPublic: true },
+      { game: 'blackjack', minBet: 10, maxBet: 200, buyIn: 1000, minBuyIn: 500, turnSeconds: 45, isPublic: true },
     ];
     for (const preset of presets) {
       const room = new Room(createRoomCode(), HOUSE, preset, { bank: accounts });
@@ -287,7 +287,8 @@ function createApp(options = {}) {
 
   // ——— WebSocket ———
 
-  const wss = attachWebSocketServer(server, { path: '/ws' });
+  // Пинг раз в 10 с: мёртвый сокет замечаем за 20 с, а не за 50.
+  const wss = attachWebSocketServer(server, { path: '/ws', heartbeatMs: 10000 });
 
   wss.on('connection', (socket) => {
     const client = {
@@ -377,7 +378,7 @@ function createApp(options = {}) {
         withRoom(client, (room) => room.stand(client.user.id));
         break;
       case 'rebuy':
-        withRoom(client, (room) => room.rebuy(client.user.id));
+        withRoom(client, (room) => room.rebuy(client.user.id, message.amount === undefined ? undefined : Number(message.amount)));
         break;
       case 'settings':
         withRoom(client, (room) => room.updateSettings(client.user.id, message.settings || {}));

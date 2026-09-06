@@ -75,7 +75,7 @@ test('пополнение предлагается, только когда с�
   assert.strictEqual(room.stateFor('u1').you.canRebuy, true);
 });
 
-test('пополнение стека берёт фишки с баланса', (t) => {
+test('пополнение без суммы добавляет размер входа', (t) => {
   const room = table({ balance: 3000 });
   t.after(() => room.dispose());
 
@@ -83,20 +83,19 @@ test('пополнение стека берёт фишки с баланса', 
   seat.stack = 200;
   room.rebuy('u1');
 
-  assert.strictEqual(seat.stack, 1000, 'стек дотянули до размера входа');
-  assert.strictEqual(room.bankRef.balanceOf('u1'), 1200, 'списали ровно недостающие 800');
+  assert.strictEqual(seat.stack, 1200, 'добавили вход по умолчанию — 1000');
+  assert.strictEqual(room.bankRef.balanceOf('u1'), 1000);
 });
 
-test('пополнение ограничено остатком на балансе', (t) => {
+test('на балансе меньше минимума — пополнить нельзя', (t) => {
   const room = table({ balance: 1300 });
   t.after(() => room.dispose());
 
   const seat = room.seatOf('u1');
   seat.stack = 100;
-  room.rebuy('u1');
-
-  assert.strictEqual(seat.stack, 400, 'добавили всё, что было на балансе');
-  assert.strictEqual(room.bankRef.balanceOf('u1'), 0);
+  assert.strictEqual(room.stateFor('u1').you.canRebuy, false, 'на балансе 300 при минимуме 500');
+  assert.throws(() => room.rebuy('u1'), /Недостаточно средств/);
+  assert.strictEqual(seat.stack, 100);
 });
 
 test('фишки со стола возвращаются на балансы при закрытии комнаты', (t) => {
@@ -398,7 +397,7 @@ test('когда за столом остаётся один, прошлая р�
 });
 
 test('вход: сумму выбирает игрок в границах стола и баланса', (t) => {
-  const room = table({ players: ['Аня', 'Боря'], balance: 3000, settings: { minBuyIn: 500, maxBuyIn: 5000 } });
+  const room = table({ players: ['Аня', 'Боря'], balance: 3000, settings: { minBuyIn: 500 } });
   t.after(() => room.dispose());
 
   room.stand('u1');
@@ -428,4 +427,56 @@ test('ответ обнуляет счётчик молчания', (t) => {
 
   room.applyAction(actor, 'fold');
   assert.strictEqual(room.seatOf(actor).missedTurns, 0, 'походил — счётчик сброшен');
+});
+
+test('максимум входа — весь баланс', (t) => {
+  const room = table({ players: ['Аня', 'Боря'], balance: 250000 });
+  t.after(() => room.dispose());
+  room.stand('u1');
+  assert.strictEqual(room.stateFor('u1').you.buyIn.max, 250000);
+  room.sit('u1', 1, 250000);
+  assert.strictEqual(room.seatOf('u1').stack, 250000);
+  assert.strictEqual(room.bankRef.balanceOf('u1'), 0);
+});
+
+test('пополнение стека — та же сумма на выбор, что при посадке', (t) => {
+  const room = table({ players: ['Аня', 'Боря'], balance: 4000 });
+  t.after(() => room.dispose());
+  room.seatOf('u1').stack = 100; // проигрался
+  const you = room.stateFor('u1').you;
+  assert.strictEqual(you.canRebuy, true);
+  assert.deepStrictEqual({ min: you.buyIn.min, max: you.buyIn.max }, { min: 500, max: 3000 });
+
+  assert.throws(() => room.rebuy('u1', 200), /Минимальное пополнение/);
+  assert.throws(() => room.rebuy('u1', 3500), /Недостаточно средств/);
+  room.rebuy('u1', 2000);
+  assert.strictEqual(room.seatOf('u1').stack, 2100);
+  assert.strictEqual(room.bankRef.balanceOf('u1'), 1000);
+});
+
+test('потерял связь между раздачами — через несколько секунд встаёт из-за стола', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const room = table({ players: ['Аня', 'Боря'], balance: 5000 });
+  t.after(() => room.dispose());
+
+  room.setDisconnected('u1');
+  assert.ok(room.seatOf('u1'), 'сразу место не отбираем — вдруг переподключится');
+  assert.strictEqual(room.seatOf('u1').sittingOut, true, 'но раздач не получает');
+
+  t.mock.timers.tick(6000);
+  assert.strictEqual(room.seatIndexOf('u1'), -1, 'не вернулся — встал');
+  assert.strictEqual(room.bankRef.balanceOf('u1'), 5000, 'стек вернулся на баланс');
+});
+
+test('вернулся до истечения зазора — остаётся за столом', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const room = table({ players: ['Аня', 'Боря'] });
+  t.after(() => room.dispose());
+
+  room.setDisconnected('u1');
+  t.mock.timers.tick(2000);
+  room.addMember({ id: 'u1', name: 'Боря' });
+  t.mock.timers.tick(6000);
+  assert.ok(room.seatOf('u1'), 'место сохранилось');
+  assert.strictEqual(room.seatOf('u1').sittingOut, false);
 });
