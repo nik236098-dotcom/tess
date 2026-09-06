@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=97" />
+  <link rel="stylesheet" href="/styles.css?v=98" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -558,6 +558,7 @@
          фон — сам макет без нарисованных карт и кнопок (img/bj-bg.webp). -->
     <section id="screen-bj" class="screen bj-screen hidden">
       <div id="bj-canvas" class="bj-canvas">
+        <div id="bj-balance" class="bj-balance"><span>Баланс</span><b id="bj-balance-value">$0.00</b></div>
         <button id="bj-back" class="bj-back" title="В лобби">
           <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
         </button>
@@ -569,7 +570,7 @@
 
         <div class="bj-bet">
           <button id="bj-minus" class="bj-step" aria-label="Меньше">−</button>
-          <div class="bj-bet-text"><span id="bj-bet-label">Bet</span><b id="bj-bet-amount">$5.00</b></div>
+          <div class="bj-bet-text"><span id="bj-bet-label">Bet</span><input id="bj-bet-amount" type="text" inputmode="decimal" value="$5.00" aria-label="Ставка" /></div>
           <button id="bj-plus" class="bj-step" aria-label="Больше">+</button>
         </div>
         <div id="bj-presets" class="bj-presets"></div>
@@ -609,6 +610,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=60"></script>
+  <script src="/app.js?v=61"></script>
 </body>
 </html>

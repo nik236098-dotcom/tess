@@ -36,7 +36,7 @@ const state = {
   bjBet: 0,
   bjBetTouched: false,
   buyIn: { open: false, mode: 'sit', seat: null, amount: 0, touched: false },
-  bj: { view: null, bet: 500, open: false, dealt: '' },
+  bj: { view: null, bet: 500, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null },
   unread: 0,
   tab: 'home', // главная | игры | турниры | бонусы | профиль
   wins: [], // лента последних выигрышей
@@ -409,12 +409,7 @@ function handleMessage(message) {
       renderAccount();
       break;
     case 'bj':
-      state.bj.view = message;
-      // Пока идёт раздача и сразу после неё ставка — та, что на столе.
-      if (message.phase !== 'bet') state.bj.bet = message.bet;
-      state.balance = message.balance;
-      renderAccount();
-      renderBlackjack();
+      onBlackjackState(message);
       break;
     case 'topup_invoice':
       state.topup.busy = false;
@@ -592,7 +587,9 @@ function fitBlackjack() {
 
 function openBlackjack() {
   state.bj.open = true;
-  state.bj.dealt = '';
+  state.bj.dealerShown = null;
+  state.bj.shownBalance = null;
+  bjShowBalance(state.balance, true);
   $('screen-lobby').classList.add('hidden');
   $('screen-table').classList.add('hidden');
   $('screen-bj').classList.remove('hidden');
@@ -625,20 +622,6 @@ function bjCard(code) {
   return node;
 }
 
-// Карты перерисовываем только когда их набор изменился — иначе каждое
-// состояние заново проигрывает анимацию раздачи.
-function bjFill(container, cards, key) {
-  if (container.dataset.key === key) return;
-  container.dataset.key = key;
-  container.innerHTML = '';
-  container.classList.toggle('is-many', cards.length > 2);
-  cards.forEach((code, i) => {
-    const card = bjCard(code);
-    card.style.animationDelay = `${i * 90}ms`;
-    container.appendChild(card);
-  });
-}
-
 function bjBetRange() {
   const view = state.bj.view;
   const min = view ? view.minBet : 100;
@@ -646,23 +629,138 @@ function bjBetRange() {
   return { min, max };
 }
 
+// Шаг −/+ всегда один доллар.
 function stepBjBet(direction) {
   const view = state.bj.view;
   if (view && view.phase === 'play') return;
   const { min, max } = bjBetRange();
-  const step = state.bj.bet >= 2000 ? 500 : 100;
-  state.bj.bet = clamp(state.bj.bet + direction * step, min, max);
+  state.bj.bet = clamp(state.bj.bet + direction * 100, min, max);
   haptic('light');
   renderBlackjack();
 }
 
-function setBjBet(value) {
+// Пресеты складываются: $5, потом $10 — получается $15.
+function addBjBet(value) {
   const view = state.bj.view;
   if (view && view.phase === 'play') return;
   const { min, max } = bjBetRange();
-  state.bj.bet = clamp(value, min, max);
+  state.bj.bet = clamp(state.bj.bet + value, min, max);
   haptic('light');
   renderBlackjack();
+}
+
+function applyBjInput(input) {
+  const view = state.bj.view;
+  if (view && view.phase === 'play') return;
+  const text = String(input.value || '').replace(/[^0-9.,]/g, '').replace(',', '.');
+  const parsed = Math.round(Number(text) * 100);
+  const { min, max } = bjBetRange();
+  if (Number.isFinite(parsed) && parsed > 0) state.bj.bet = clamp(parsed, min, max);
+  input.value = money(state.bj.bet);
+  renderBlackjack();
+}
+
+// Новое состояние от сервера. Карты дилера открываем по одной: сначала
+// переворот закрытой, потом каждая добранная с паузой — как за живым
+// столом, а не всё сразу. Итог и баланс показываем после последней.
+function onBlackjackState(message) {
+  const prev = state.bj.view;
+  state.bj.view = message;
+  if (message.phase !== 'bet') state.bj.bet = message.bet;
+  state.balance = message.balance;
+  renderAccount();
+
+  const bj = state.bj;
+  bj.timers.forEach(clearTimeout);
+  bj.timers = [];
+  bj.revealing = false;
+
+  const target = message.dealer.cards;
+  const shown = bj.dealerShown || [];
+  const needsReveal = message.phase === 'done' && prev && prev.phase === 'play'
+    && (shown.length < target.length || shown.some((c, i) => c !== target[i]));
+  if (needsReveal) {
+    bj.revealing = true;
+    // Шаг 1: переворачиваем закрытую карту, дальше — по одной добранной.
+    const steps = [];
+    steps.push(target.slice(0, Math.max(2, shown.length)));
+    for (let n = steps[0].length + 1; n <= target.length; n++) steps.push(target.slice(0, n));
+    let delay = 450;
+    steps.forEach((cards, i) => {
+      bj.timers.push(setTimeout(() => {
+        bj.dealerShown = cards;
+        if (i === steps.length - 1) bj.revealing = false;
+        renderBlackjack();
+      }, delay));
+      delay += 700;
+    });
+    // Пока карты не открыты, ставка уже списана, а выигрыш ещё не пришёл.
+    renderBlackjack();
+    return;
+  }
+  bj.dealerShown = target.slice();
+  if (message.phase === 'bet') bj.dealerShown = [];
+  renderBlackjack();
+}
+
+// Сумма руки по кодам карт — для плашки дилера во время открытия.
+function bjTotal(cards) {
+  let total = 0;
+  let aces = 0;
+  for (const code of cards) {
+    if (code === '??') continue;
+    const r = code[0];
+    if (r === 'A') { total += 11; aces += 1; } else if ('TJQK'.includes(r)) total += 10; else total += Number(r);
+  }
+  while (total > 21 && aces > 0) { total -= 10; aces -= 1; }
+  return total;
+}
+
+// Баланс в углу перелистывается к новому значению.
+function bjShowBalance(target, immediate = false) {
+  const box = $('bj-balance');
+  const out = $('bj-balance-value');
+  const from = state.bj.shownBalance === null ? target : state.bj.shownBalance;
+  state.bj.shownBalance = target;
+  if (immediate || from === target || reducedMotion()) {
+    out.textContent = money(target);
+    return;
+  }
+  box.classList.remove('is-up', 'is-down');
+  box.classList.add(target > from ? 'is-up' : 'is-down');
+  const start = performance.now();
+  const duration = 750;
+  const tick = (now) => {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    out.textContent = money(Math.round(from + (target - from) * eased));
+    if (t < 1) requestAnimationFrame(tick);
+    else setTimeout(() => box.classList.remove('is-up', 'is-down'), 900);
+  };
+  requestAnimationFrame(tick);
+}
+
+// Добавляем только новые карты: старые не перерисовываем и не анимируем заново.
+function bjSync(container, cards, flipFirstHidden = false) {
+  const existing = Array.from(container.children);
+  const samePrefix = existing.length <= cards.length
+    && existing.every((node, i) => node.dataset.code === cards[i] || (node.dataset.code === '??' && flipFirstHidden));
+  if (!samePrefix) container.innerHTML = '';
+  const nodes = Array.from(container.children);
+  cards.forEach((code, i) => {
+    const node = nodes[i];
+    if (node && node.dataset.code === code) return;
+    const card = bjCard(code);
+    card.dataset.code = code;
+    if (node) {
+      card.classList.add('flip-in');
+      node.replaceWith(card);
+    } else {
+      card.style.animationDelay = `${(i - nodes.length) * 90}ms`;
+      container.appendChild(card);
+    }
+  });
+  container.classList.toggle('is-many', cards.length > 2);
 }
 
 function renderBlackjack() {
@@ -672,32 +770,27 @@ function renderBlackjack() {
   const playing = phase === 'play';
   const done = phase === 'done';
 
-  // Дилер: одна карта открыта, вторая закрыта, пока игрок не закончил.
-  const dealer = view.dealer;
-  bjFill($('bj-dealer-cards'), dealer.cards, dealer.cards.join(','));
+  // Дилер: одна карта открыта, вторая закрыта, пока игрок не закончил;
+  // после — карты открываются по одной (state.bj.dealerShown).
+  const revealing = state.bj.revealing;
+  const dealerCards = state.bj.dealerShown || view.dealer.cards;
+  bjSync($('bj-dealer-cards'), dealerCards, true);
   const dealerPill = $('bj-dealer-total');
-  dealerPill.classList.toggle('hidden', dealer.total === null);
-  if (dealer.total !== null) dealerPill.textContent = String(dealer.total);
+  dealerPill.classList.toggle('hidden', !dealerCards.length);
+  if (dealerCards.length) dealerPill.textContent = String(bjTotal(dealerCards));
 
   // Руки игрока: обычно одна, после сплита две.
   const hands = $('bj-hands');
-  const key = view.hands.map((h) => h.cards.join(',')).join('|');
   hands.classList.toggle('is-split', view.hands.length > 1);
-  if (hands.dataset.key !== key) {
-    hands.dataset.key = key;
+  if (hands.children.length !== view.hands.length) {
     hands.innerHTML = '';
-    view.hands.forEach((hand) => {
+    view.hands.forEach(() => {
       const node = document.createElement('div');
       node.className = 'bj-hand';
-      node.classList.toggle('is-many', hand.cards.length > 2);
-      hand.cards.forEach((code, i) => {
-        const card = bjCard(code);
-        card.style.animationDelay = `${i * 90}ms`;
-        node.appendChild(card);
-      });
       hands.appendChild(node);
     });
   }
+  view.hands.forEach((hand, i) => bjSync(hands.children[i], hand.cards));
   Array.from(hands.children).forEach((node, i) => {
     const hand = view.hands[i];
     if (!hand) return;
@@ -715,7 +808,8 @@ function renderBlackjack() {
 
   // Ставка: во время раздачи заперта, в остальное время — из состояния клиента.
   const bet = $('bj-bet-amount');
-  bet.textContent = money(state.bj.bet);
+  if (document.activeElement !== bet) bet.value = money(state.bj.bet);
+  bet.readOnly = playing;
   document.querySelector('.bj-bet').classList.toggle('is-locked', playing);
   $('bj-minus').disabled = playing;
   $('bj-plus').disabled = playing;
@@ -727,14 +821,16 @@ function renderBlackjack() {
       button.className = 'bj-preset';
       button.textContent = `$${value / 100}`;
       button.dataset.value = String(value);
-      button.addEventListener('click', () => setBjBet(value));
+      button.addEventListener('click', () => {
+        addBjBet(value);
+        button.classList.add('is-pressed');
+        setTimeout(() => button.classList.remove('is-pressed'), 180);
+      });
       presets.appendChild(button);
     }
   }
   for (const button of presets.children) {
-    const value = Number(button.dataset.value);
-    button.classList.toggle('is-active', value === state.bj.bet);
-    button.disabled = playing || value > max;
+    button.disabled = playing || state.bj.bet >= max;
   }
 
   // Кнопки: во время раздачи — четыре действия, до неё — DEAL, после — NEW HAND.
@@ -754,11 +850,14 @@ function renderBlackjack() {
   const sub = $('bj-deal-sub');
   sub.classList.toggle('hidden', phase !== 'bet' || !short);
   sub.textContent = 'Недостаточно средств';
-  $('bj-next').classList.toggle('hidden', !done);
+  $('bj-next').classList.toggle('hidden', !done || revealing);
 
-  // Итог раздачи.
+  // Баланс: после ставки сразу, после раздачи — когда дилер открыл карты.
+  if (!(done && revealing)) bjShowBalance(view.balance, !done);
+
+  // Итог раздачи — после того, как дилер открыл все карты.
   const result = $('bj-result');
-  if (done && view.results) {
+  if (done && view.results && !revealing) {
     const r = view.results;
     result.className = 'bj-result';
     if (r.net > 0) {
@@ -2548,11 +2647,25 @@ function bindUi() {
   on('bj-back', 'click', closeBlackjack);
   on('bj-minus', 'click', () => stepBjBet(-1));
   on('bj-plus', 'click', () => stepBjBet(1));
+  // Сумму можно написать руками: тап по полю — ввод, Enter или уход — применить.
+  on('bj-bet-amount', 'focus', (event) => {
+    const view = state.bj.view;
+    if (view && view.phase === 'play') { event.target.blur(); return; }
+    event.target.value = (state.bj.bet / 100).toFixed(2).replace(/\.00$/, '');
+    requestAnimationFrame(() => event.target.select());
+  });
+  on('bj-bet-amount', 'change', (event) => applyBjInput(event.target));
+  on('bj-bet-amount', 'blur', (event) => applyBjInput(event.target));
+  on('bj-bet-amount', 'keydown', (event) => { if (event.key === 'Enter') event.target.blur(); });
   on('bj-deal', 'click', (event) => {
     markBusy(event.currentTarget);
     send({ type: 'bj_bet', amount: state.bj.bet });
   });
-  on('bj-next', 'click', () => send({ type: 'bj_next' }));
+  on('bj-next', 'click', () => {
+    state.bj.dealerShown = [];
+    $('bj-dealer-cards').innerHTML = '';
+    send({ type: 'bj_next' });
+  });
   document.querySelectorAll('.bj-act[data-action]').forEach((button) => {
     button.addEventListener('click', () => {
       haptic('light');

@@ -3124,7 +3124,7 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bj-canvas[data-phase="bet"] { background-image: url('/img/bj-bet-bg.webp'); }
 /* В фазе ставки в пилюле только сумма, крупнее (кап-высота 16 px по макету). */
 .bj-canvas[data-phase="bet"] .bj-bet-text span { display: none; }
-.bj-canvas[data-phase="bet"] .bj-bet-text b { font-size: 22px; }
+.bj-canvas[data-phase="bet"] .bj-bet-text input { font-size: 22px; width: 130px; }
 .bj-actions-after { }
 /* Кнопка Bet: 65.9..324.1 × 515.1..565.3, фиолетовый градиент, свечение,
    серифный «Bet» и пики по краям (центры x 99.7 и 290, y 540.4). */
@@ -3160,7 +3160,7 @@ body:has(#screen-table:not(.hidden)) .toast {
 }
 
 .bj-back {
-  position: absolute; left: 10px; top: 10px;
+  position: absolute; right: 10px; top: 10px;
   width: 30px; height: 30px;
   border-radius: 8px;
   border: 1px solid rgba(196, 150, 255, 0.3);
@@ -3292,8 +3292,15 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bj-step:disabled { opacity: 0.35; }
 .bj-bet-text { display: flex; align-items: baseline; gap: 7px; }
 .bj-bet-text span { font: 500 11.5px var(--font); color: #b48cff; }
-.bj-bet-text b { font: 700 19px/1 var(--font); color: #fff; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
-.bj-bet.is-locked .bj-bet-text b { color: rgba(255, 255, 255, 0.8); }
+.bj-bet-text input {
+  width: 110px; padding: 0; margin: 0;
+  border: 0; background: transparent; outline: none;
+  text-align: center;
+  font: 700 19px/1 var(--font); color: #fff; letter-spacing: -0.01em; font-variant-numeric: tabular-nums;
+  caret-color: #c48bff;
+}
+.bj-bet-text input:focus { text-shadow: 0 0 8px rgba(181, 108, 255, 0.7); }
+.bj-bet.is-locked .bj-bet-text input { color: rgba(255, 255, 255, 0.8); }
 
 /* Пресеты: 5 × 47.3×25, x0 67.6, шаг 51.9, y 474.6 */
 .bj-presets { position: absolute; left: 67.6px; top: 474.6px; display: flex; gap: 4.6px; }
@@ -3342,3 +3349,26 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bj-act.bj-wide b { font-size: 15px; }
 .bj-act.bj-wide small { font-size: 10.5px; }
 .bj-act.bj-wide .bj-ico { margin: 0; }
+
+/* Баланс в левом верхнем углу; при выигрыше и проигрыше сумма
+   перелистывается к новой и коротко подсвечивается. */
+.bj-balance {
+  position: absolute; left: 10px; top: 10px;
+  height: 30px; padding: 0 11px 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(196, 150, 255, 0.3);
+  background: rgba(14, 4, 26, 0.72);
+  display: flex; align-items: center; gap: 7px;
+  z-index: 5;
+}
+.bj-balance span { font: 500 10.5px var(--font); color: rgba(226, 212, 255, 0.55); }
+.bj-balance b { font: 700 13.5px/1 var(--font); color: #e9cf95; font-variant-numeric: tabular-nums; transition: color 0.3s; }
+.bj-balance.is-up b { color: #34e3a6; text-shadow: 0 0 8px rgba(52, 227, 166, 0.6); }
+.bj-balance.is-down b { color: #ff5a78; text-shadow: 0 0 8px rgba(255, 90, 120, 0.6); }
+.bj-preset.is-pressed { background: #3000c6; border-color: #8a5dff; color: #fff; }
+/* Открытие закрытой карты дилера — переворот */
+.bj-card.flip-in { animation: bj-flip 0.42s var(--ease) both; }
+@keyframes bj-flip {
+  0% { transform: rotateY(90deg) scale(0.96); opacity: 0.4; }
+  100% { transform: none; opacity: 1; }
+}
