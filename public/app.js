@@ -37,6 +37,7 @@ const state = {
   bjBetTouched: false,
   buyIn: { open: false, mode: 'sit', seat: null, amount: 0, touched: false },
   bj: { view: null, bet: 500, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null, typing: false, typed: '' },
+  rl: { open: false, info: null, amount: 500, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
   unread: 0,
   tab: 'home', // главная | игры | турниры | бонусы | профиль
   wins: [], // лента последних выигрышей
@@ -260,7 +261,7 @@ async function boot() {
     applyTelegramTheme();
     tg.onEvent('themeChanged', applyTelegramTheme);
     // Обработчик системной кнопки «назад» регистрируем один раз.
-    if (tg.BackButton) tg.BackButton.onClick(() => (state.bj.open ? closeBlackjack() : leaveRoom()));
+    if (tg.BackButton) tg.BackButton.onClick(() => (state.rl.open ? closeRoulette() : state.bj.open ? closeBlackjack() : leaveRoom()));
   }
 
   try {
@@ -411,6 +412,9 @@ function handleMessage(message) {
     case 'bj':
       onBlackjackState(message);
       break;
+    case 'rl':
+      onRouletteState(message);
+      break;
     case 'topup_invoice':
       state.topup.busy = false;
       state.topup.invoice = message.invoice;
@@ -499,7 +503,9 @@ function handleMessage(message) {
 function showLobby() {
   $('screen-table').classList.add('hidden');
   $('screen-bj').classList.add('hidden');
+  $('screen-rl').classList.add('hidden');
   state.bj.open = false;
+  state.rl.open = false;
   $('screen-lobby').classList.remove('hidden');
   if (tg && tg.BackButton) tg.BackButton.hide();
   startRoomsPolling();
@@ -548,6 +554,7 @@ function watchTableSize() {
   window.addEventListener('resize', fitTable);
   window.addEventListener('resize', fitLobby);
   window.addEventListener('resize', fitBlackjack);
+  window.addEventListener('resize', fitRoulette);
   window.addEventListener('orientationchange', fitTable);
 }
 
@@ -916,6 +923,361 @@ function renderBlackjack() {
 
 function bjOutcome(outcome) {
   return { win: 'WIN', blackjack: 'BLACKJACK', lose: 'LOSE', push: 'PUSH', bust: 'BUST' }[outcome] || '';
+}
+
+// ——— Рулетка ———
+// Холст 390×653 по макету. Колесо в макете нарисовано в перспективе,
+// поэтому вращается только кольцо с числами: слой-эллипс распрямляем по
+// Y, поворачиваем и сжимаем обратно. Шарик считаем в «плоских» координатах
+// диска и проецируем на эллипс тем же коэффициентом.
+
+const RL_K = 390 / 941;                    // px макета → px холста
+const RL_CX = 475 * RL_K;                  // центр колеса на холсте
+const RL_CY = (476 - 96) * RL_K;
+const RL_SQUASH = 186 / 285;               // эллипс кольца: ry / rx
+const RL_ZERO_ANGLE = -94.7;               // угол кармана 0 на распрямлённом диске
+const RL_POCKET = 360 / 37;
+const RL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+const RL_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+const RL_R_TRACK = 305 * RL_K;             // радиус дорожки шарика во время разгона
+const RL_R_POCKET = 250 * RL_K;            // радиус, на котором шарик лежит в кармане
+const RL_SPIN_MS = 7200;
+const RL_PRESETS = [500, 1000, 2500, 5000, 10000];
+
+// Клетки поля — по нарисованной сетке макета (координаты макета в px).
+function rlCells() {
+  const X = (x) => x * RL_K;
+  const Y = (y) => (y - 96) * RL_K;
+  const cells = [];
+  const col0 = 97;
+  const colW = (835 - 97) / 12;
+  const rows = [822, 884, 946, 1008];
+  cells.push({ key: 'straight:0', type: 'straight', value: 0, x: X(33), y: Y(822), w: X(97) - X(33), h: Y(1008) - Y(822) });
+  for (let c = 0; c < 12; c++) {
+    for (let r = 0; r < 3; r++) {
+      const n = 3 * c + (3 - r);
+      cells.push({ key: `straight:${n}`, type: 'straight', value: n, x: X(col0 + c * colW), y: Y(rows[r]), w: X(colW), h: Y(rows[r + 1]) - Y(rows[r]) });
+    }
+  }
+  [3, 2, 1].forEach((column, r) => {
+    cells.push({ key: `column:${column}`, type: 'column', value: column, x: X(835), y: Y(rows[r]), w: X(900) - X(835), h: Y(rows[r + 1]) - Y(rows[r]) });
+  });
+  [[97, 343], [343, 589], [589, 835]].forEach(([a, b], i) => {
+    cells.push({ key: `dozen:${i + 1}`, type: 'dozen', value: i + 1, x: X(a), y: Y(1008), w: X(b) - X(a), h: Y(1068) - Y(1008) });
+  });
+  const outside = [['even', 97, 247], ['red', 247, 425], ['black', 425, 590], ['odd', 590, 725], ['high', 725, 835]];
+  for (const [type, a, b] of outside) {
+    cells.push({ key: `${type}:`, type, value: null, x: X(a), y: Y(1068), w: X(b) - X(a), h: Y(1130) - Y(1068) });
+  }
+  // Большие кнопки RED / BLACK — те же ставки, что и клетки.
+  cells.push({ key: 'red:', type: 'red', value: null, x: X(60), y: Y(1152), w: X(454) - X(60), h: Y(1242) - Y(1152), big: true });
+  cells.push({ key: 'black:', type: 'black', value: null, x: X(484), y: Y(1152), w: X(880) - X(484), h: Y(1242) - Y(1152), big: true });
+  return cells;
+}
+
+function fitRoulette() {
+  const screen = $('screen-rl');
+  if (!screen || screen.classList.contains('hidden')) return;
+  const w = screen.clientWidth || window.innerWidth;
+  $('rl-canvas').style.setProperty('--bj', (w / 390).toFixed(4));
+}
+
+function openRoulette() {
+  state.rl.open = true;
+  state.rl.shownBalance = null;
+  $('screen-lobby').classList.add('hidden');
+  $('screen-table').classList.add('hidden');
+  $('screen-bj').classList.add('hidden');
+  $('screen-rl').classList.remove('hidden');
+  if (tg && tg.BackButton) tg.BackButton.show();
+  stopRoomsPolling();
+  fitRoulette();
+  requestAnimationFrame(fitRoulette);
+  buildRouletteCells();
+  send({ type: 'rl_open' });
+  renderRoulette();
+}
+
+function closeRoulette() {
+  closeRlKeypad(false);
+  if (state.rl.raf) cancelAnimationFrame(state.rl.raf);
+  state.rl.raf = null;
+  state.rl.spinning = false;
+  state.rl.open = false;
+  $('screen-rl').classList.add('hidden');
+  showLobby();
+}
+
+function buildRouletteCells() {
+  const box = $('rl-cells');
+  if (box.children.length) return;
+  for (const cell of rlCells()) {
+    // Одна и та же ставка может иметь две области (клетка и большая кнопка).
+    const node = document.createElement('div');
+    node.className = 'rl-cell';
+    node.dataset.key = cell.key;
+    node.style.left = `${cell.x.toFixed(2)}px`;
+    node.style.top = `${cell.y.toFixed(2)}px`;
+    node.style.width = `${cell.w.toFixed(2)}px`;
+    node.style.height = `${cell.h.toFixed(2)}px`;
+    node.addEventListener('click', () => placeRlBet(cell, node));
+    box.appendChild(node);
+  }
+}
+
+function rlRange() {
+  const info = state.rl.info;
+  const min = info ? info.minBet : 100;
+  const max = Math.min(info ? info.maxBet : 1000000, Math.max(min, state.balance));
+  return { min, max };
+}
+
+function rlTotal() {
+  let total = 0;
+  for (const bet of state.rl.bets.values()) total += bet.amount;
+  return total;
+}
+
+function placeRlBet(cell, node) {
+  if (state.rl.spinning) return;
+  const { min } = rlRange();
+  const amount = Math.max(min, state.rl.amount);
+  if (rlTotal() + amount > state.balance) {
+    toast('Недостаточно средств');
+    haptic('error');
+    return;
+  }
+  const current = state.rl.bets.get(cell.key);
+  state.rl.bets.set(cell.key, { type: cell.type, value: cell.value, amount: (current ? current.amount : 0) + amount });
+  node.classList.add('is-hit');
+  setTimeout(() => node.classList.remove('is-hit'), 160);
+  haptic('light');
+  renderRoulette();
+}
+
+function stepRlAmount(direction) {
+  if (state.rl.spinning) return;
+  const { min, max } = rlRange();
+  state.rl.amount = clamp(state.rl.amount + direction * 100, min, max);
+  haptic('light');
+  renderRoulette();
+}
+
+function addRlAmount(value) {
+  if (state.rl.spinning) return;
+  const { min, max } = rlRange();
+  state.rl.amount = clamp(state.rl.amount + value, min, max);
+  haptic('light');
+  renderRoulette();
+}
+
+function openRlKeypad() {
+  if (state.rl.spinning) return;
+  state.rl.typing = true;
+  state.rl.typed = '';
+  $('rl-keypad').classList.remove('hidden');
+  document.querySelector('.rl-bet').classList.add('is-typing');
+  renderRoulette();
+}
+
+function rlKey(key) {
+  if (!state.rl.typing) return;
+  haptic('light');
+  if (key === 'ok') { closeRlKeypad(true); return; }
+  let typed = state.rl.typed;
+  if (key === 'back') typed = typed.slice(0, -1);
+  else if (key === '.') { if (!typed.includes('.')) typed = (typed || '0') + '.'; }
+  else {
+    const [whole = '', frac] = typed.split('.');
+    if (frac !== undefined) { if (frac.length >= 2) return; typed += key; }
+    else { if (whole.length >= 5) return; typed = whole === '0' ? key : whole + key; }
+  }
+  state.rl.typed = typed;
+  renderRoulette();
+}
+
+function closeRlKeypad(apply) {
+  if (!state.rl.typing) return;
+  if (apply && state.rl.typed) {
+    const parsed = Math.round(Number(state.rl.typed) * 100);
+    const { min, max } = rlRange();
+    if (Number.isFinite(parsed) && parsed > 0) state.rl.amount = clamp(parsed, min, max);
+  }
+  state.rl.typing = false;
+  state.rl.typed = '';
+  $('rl-keypad').classList.add('hidden');
+  document.querySelector('.rl-bet').classList.remove('is-typing');
+  renderRoulette();
+}
+
+function rlShowBalance(target, immediate = false) {
+  const box = $('rl-balance');
+  const out = $('rl-balance-value');
+  const from = state.rl.shownBalance === null ? target : state.rl.shownBalance;
+  state.rl.shownBalance = target;
+  if (immediate || from === target || reducedMotion()) { out.textContent = money(target); return; }
+  box.classList.remove('is-up', 'is-down');
+  box.classList.add(target > from ? 'is-up' : 'is-down');
+  const start = performance.now();
+  const tick = (now) => {
+    const t = Math.min(1, (now - start) / 750);
+    const eased = 1 - Math.pow(1 - t, 3);
+    out.textContent = money(Math.round(from + (target - from) * eased));
+    if (t < 1) requestAnimationFrame(tick);
+    else setTimeout(() => box.classList.remove('is-up', 'is-down'), 900);
+  };
+  requestAnimationFrame(tick);
+}
+
+function onRouletteState(message) {
+  state.rl.info = message;
+  state.balance = message.balance;
+  renderAccount();
+  if (message.spin) {
+    startRouletteSpin(message.spin);
+    return;
+  }
+  rlShowBalance(message.balance, true);
+  renderRoulette();
+}
+
+// Угол кармана с числом n на распрямлённом диске (0 — вверх, по часовой).
+function rlPocketAngle(n) {
+  const index = RL_ORDER.indexOf(n);
+  return RL_ZERO_ANGLE + index * RL_POCKET;
+}
+
+function rlBallAt(angleDeg, r) {
+  const a = (angleDeg * Math.PI) / 180;
+  const ball = $('rl-ball');
+  ball.style.left = `${(RL_CX + r * Math.cos(a)).toFixed(2)}px`;
+  ball.style.top = `${(RL_CY + RL_SQUASH * r * Math.sin(a)).toFixed(2)}px`;
+}
+
+// Запуск: число уже известно. Колесо крутится по часовой и тормозит,
+// шарик бежит против часовой по внешней дорожке, затем сваливается в
+// карман и дальше едет вместе с колесом.
+function startRouletteSpin(spin) {
+  const rl = state.rl;
+  if (rl.raf) cancelAnimationFrame(rl.raf);
+  rl.spinning = true;
+  rl.result = null;
+  $('rl-canvas').classList.add('is-spinning');
+  $('rl-result').classList.add('hidden');
+  // Баланс: ставки уже списаны — показываем сразу, выигрыш придёт после остановки.
+  rlShowBalance(state.balance - (spin.payout || 0));
+  renderRoulette();
+
+  const startAngle = rl.angle;
+  const wheelTurns = 4 + Math.random() * 1.5;
+  const endAngle = startAngle + wheelTurns * 360 + Math.random() * 360;
+  const ballTurns = 7 + Math.random() * 2;
+  const ballStart = endAngle + rlPocketAngle(spin.number) + ballTurns * 360; // против часовой → угол убывает
+  const t0 = performance.now();
+  const ball = $('rl-ball');
+  ball.classList.remove('hidden');
+  const ease = (t) => 1 - Math.pow(1 - t, 3);
+
+  const frame = (now) => {
+    const t = Math.min(1, (now - t0) / RL_SPIN_MS);
+    const wheel = startAngle + (endAngle - startAngle) * ease(t);
+    $('rl-ring').style.setProperty('--a', `${wheel.toFixed(2)}deg`);
+    // Свободный бег шарика: тормозит раньше колеса.
+    const tb = Math.min(1, t / 0.86);
+    const free = ballStart - (ballStart - (endAngle + rlPocketAngle(spin.number))) * ease(tb);
+    const locked = wheel + rlPocketAngle(spin.number);
+    let angle = free;
+    let r = RL_R_TRACK;
+    if (t >= 0.72) {
+      const k = Math.min(1, (t - 0.72) / 0.14);
+      angle = free * (1 - k) + locked * k;
+      const drop = k < 0.7 ? k / 0.7 : 1 - 0.12 * Math.sin(((k - 0.7) / 0.3) * Math.PI); // маленький подскок
+      r = RL_R_TRACK + (RL_R_POCKET - RL_R_TRACK) * drop;
+    }
+    rlBallAt(angle, r);
+    if (t < 1) {
+      rl.raf = requestAnimationFrame(frame);
+      return;
+    }
+    rl.raf = null;
+    rl.angle = endAngle % 360;
+    finishRouletteSpin(spin);
+  };
+  rl.raf = requestAnimationFrame(frame);
+}
+
+function finishRouletteSpin(spin) {
+  const rl = state.rl;
+  rl.spinning = false;
+  rl.result = spin;
+  $('rl-canvas').classList.remove('is-spinning');
+  haptic(spin.net > 0 ? 'success' : 'light');
+  const result = $('rl-result');
+  const colour = spin.colour;
+  const label = spin.net > 0 ? `WIN +${money(spin.net)}` : spin.net === 0 ? 'PUSH' : `LOSE −${money(-spin.net)}`;
+  result.className = `rl-result${spin.net < 0 ? ' lose' : ''}`;
+  result.innerHTML = `<span class="rl-num ${colour}">${spin.number}</span><span>${label}</span>`;
+  result.classList.remove('hidden');
+  rlShowBalance(state.balance);
+  // Подсветка выигравших клеток, фишки убираем.
+  const winners = new Set(spin.bets.filter((b) => b.won).map((b) => `${b.type}:${b.value === null ? '' : b.value}`));
+  for (const node of $('rl-cells').children) node.classList.toggle('is-win', winners.has(node.dataset.key));
+  setTimeout(() => { for (const node of $('rl-cells').children) node.classList.remove('is-win'); }, 2600);
+  rl.bets.clear();
+  renderRoulette();
+}
+
+// Подпись на фишке: коротко, без лишних нулей ($5, $12.5, $1.2k).
+function rlChipText(cents) {
+  const dollars = cents / 100;
+  if (dollars >= 1000) return `$${(dollars / 1000).toFixed(dollars % 1000 ? 1 : 0)}k`;
+  return `$${Number.isInteger(dollars) ? dollars : dollars.toFixed(2).replace(/0$/, '')}`;
+}
+
+function renderRoulette() {
+  if (!state.rl.open) return;
+  const rl = state.rl;
+  const spinning = rl.spinning;
+  const amount = $('rl-amount');
+  if (!spinning) {
+    const { min, max } = rlRange();
+    rl.amount = clamp(rl.amount, min, max);
+  }
+  amount.textContent = rl.typing ? (rl.typed ? `$${rl.typed}` : '$') : money(rl.amount);
+  $('rl-minus').disabled = spinning;
+  $('rl-plus').disabled = spinning;
+  const presets = $('rl-presets');
+  if (!presets.children.length) {
+    for (const value of RL_PRESETS) {
+      const button = document.createElement('button');
+      button.className = 'bj-preset';
+      button.textContent = `$${value / 100}`;
+      button.addEventListener('click', () => {
+        addRlAmount(value);
+        button.classList.add('is-pressed');
+        setTimeout(() => button.classList.remove('is-pressed'), 180);
+      });
+      presets.appendChild(button);
+    }
+  }
+  for (const button of presets.children) button.disabled = spinning;
+
+  // Фишки на клетках.
+  for (const node of $('rl-cells').children) {
+    const bet = rl.bets.get(node.dataset.key);
+    let chip = node.querySelector('.rl-chip');
+    if (!bet) { if (chip) chip.remove(); continue; }
+    if (!chip) { chip = document.createElement('i'); chip.className = 'rl-chip'; node.appendChild(chip); }
+    const text = rlChipText(bet.amount);
+    if (chip.textContent !== text) chip.textContent = text;
+  }
+
+  const total = rlTotal();
+  $('rl-total').textContent = `На столе ${money(total)}`;
+  $('rl-clear').classList.toggle('hidden', !total || spinning);
+  const spinBtn = $('rl-spin');
+  spinBtn.classList.remove('is-loading');
+  spinBtn.disabled = spinning || !total || total > state.balance;
 }
 
 // Главная и Игры — это две панели одного экрана лобби: столы и лента
@@ -2681,6 +3043,25 @@ function bindUi() {
   };
   on('play-holdem', 'click', () => { haptic('light'); openGame('holdem'); });
   on('play-blackjack', 'click', () => { haptic('light'); openBlackjack(); });
+  on('play-roulette', 'click', () => { haptic('light'); openRoulette(); });
+  on('rl-back', 'click', closeRoulette);
+  on('rl-minus', 'click', () => stepRlAmount(-1));
+  on('rl-plus', 'click', () => stepRlAmount(1));
+  on('rl-amount', 'click', () => openRlKeypad());
+  document.querySelectorAll('#rl-keypad [data-key]').forEach((button) => {
+    button.addEventListener('click', (event) => { event.stopPropagation(); rlKey(button.dataset.key); });
+  });
+  $('screen-rl').addEventListener('pointerdown', (event) => {
+    if (!state.rl.typing) return;
+    if (event.target.closest('#rl-keypad') || event.target.closest('#rl-amount')) return;
+    closeRlKeypad(true);
+  });
+  on('rl-spin', 'click', (event) => {
+    if (state.rl.spinning || !state.rl.bets.size) return;
+    markBusy(event.currentTarget);
+    send({ type: 'rl_spin', bets: Array.from(state.rl.bets.values()).map((b) => ({ type: b.type, value: b.value, amount: b.amount })) });
+  });
+  on('rl-clear', 'click', () => { state.rl.bets.clear(); haptic('light'); renderRoulette(); });
   on('bj-back', 'click', closeBlackjack);
   on('bj-minus', 'click', () => stepBjBet(-1));
   on('bj-plus', 'click', () => stepBjBet(1));

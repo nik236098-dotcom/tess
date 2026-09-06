@@ -9,6 +9,7 @@ const { attachWebSocketServer } = require('./wsserver');
 const { verifyInitData } = require('./telegram');
 const { Room, RoomError, normalizeSettings } = require('./room');
 const { SoloBlackjack, SoloError } = require('./blackjack/solo');
+const roulette = require('./roulette/wheel');
 const { Accounts, AccountError, DEFAULT_START_BALANCE } = require('./accounts');
 const { createPayments, PaymentError } = require('./payments');
 const { formatMoney, parseMoney } = require('./money');
@@ -322,7 +323,7 @@ function createApp(options = {}) {
       try {
         handleMessage(client, message);
       } catch (error) {
-        if (error instanceof RoomError || error instanceof SoloError) {
+        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError) {
           client.fail(error.message);
         } else {
           console.error('Ошибка обработки сообщения:', error);
@@ -445,6 +446,12 @@ function createApp(options = {}) {
       case 'bj_next':
         blackjackGame(client).reset();
         sendBlackjack(client);
+        break;
+      case 'rl_open':
+        client.send({ type: 'rl', ...rouletteInfo(client) });
+        break;
+      case 'rl_spin':
+        rouletteSpin(client, message.bets);
         break;
       case 'ping':
         client.send({ type: 'pong', at: Date.now() });
@@ -775,6 +782,34 @@ function createApp(options = {}) {
     }
     if (game.phase === 'play') game.settled = false;
     sendBlackjack(client);
+  }
+
+  // ——— Рулетка ———
+  // Ставки списываются с баланса разом, розыгрыш мгновенный, выплата сразу
+  // на баланс; анимацию колеса клиент крутит уже зная число.
+  const RL_MIN_BET = 100;
+  const RL_MAX_BET = 1000000;
+  const rouletteHistory = new Map(); // userId → последние числа
+
+  function rouletteInfo(client) {
+    return {
+      minBet: RL_MIN_BET,
+      maxBet: RL_MAX_BET,
+      balance: accounts.balanceOf(client.user.id),
+      history: rouletteHistory.get(client.user.id) || [],
+    };
+  }
+
+  function rouletteSpin(client, rawBets) {
+    const balance = accounts.balanceOf(client.user.id);
+    const { bets, total } = roulette.normalizeBets(rawBets, { minBet: RL_MIN_BET, maxBet: RL_MAX_BET, maxTotal: balance });
+    accounts.withdraw(client.user.id, total);
+    const result = roulette.spin(bets);
+    if (result.payout > 0) accounts.deposit(client.user.id, result.payout);
+    if (result.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: result.net, game: 'roulette', code: 'RL' });
+    const history = [result.number, ...(rouletteHistory.get(client.user.id) || [])].slice(0, 12);
+    rouletteHistory.set(client.user.id, history);
+    client.send({ type: 'rl', spin: result, ...rouletteInfo(client) });
   }
 
   function withRoom(client, action) {

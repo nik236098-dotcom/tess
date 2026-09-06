@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=103" />
+  <link rel="stylesheet" href="/styles.css?v=104" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -163,10 +163,17 @@
               </span>
             </button>
 
-            <div class="lb-game lb-game-soon lb-game-roulette lb-play-soon">
-              <span class="lb-game-art" aria-hidden="true"><i class="lb-wheel"></i></span>
-              <span class="lb-game-body"><b>Рулетка</b><span>Европейская</span><span class="lb-game-meta lb-soon">скоро</span></span>
-            </div>
+            <button id="play-roulette" class="lb-play lb-play-rl">
+              <span class="lb-play-art lb-game-roulette" aria-hidden="true"><i class="lb-wheel"></i></span>
+              <span class="lb-play-body">
+                <span class="lb-hero-kicker">Roulette</span>
+                <b>Рулетка</b>
+                <span>Европейская · одно зеро · ставки $1 – $10 000</span>
+                <span class="lb-play-foot">
+                  <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
+                </span>
+              </span>
+            </button>
 
             <details class="card rules" id="rules-card">
               <summary>Правила и порядок комбинаций</summary>
@@ -616,9 +623,42 @@
       </div>
     </section>
 
+    <!-- Рулетка: экран по макету на холсте 390×653. Фон — макет без шапки
+         Telegram (img/rl-bg.webp), кольцо с числами — отдельный слой
+         (img/rl-ring.png), он и вращается; шарик рисуется поверх. -->
+    <section id="screen-rl" class="screen bj-screen hidden">
+      <div id="rl-canvas" class="bj-canvas rl-canvas">
+        <div id="rl-balance" class="bj-balance"><span>Баланс</span><b id="rl-balance-value">$0.00</b></div>
+        <button id="rl-back" class="bj-back" title="В лобби">
+          <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
+        </button>
+        <div id="rl-ring" class="rl-ring"></div>
+        <div id="rl-ball" class="rl-ball hidden"></div>
+        <div id="rl-result" class="rl-result hidden"></div>
+        <div id="rl-cells" class="rl-cells"></div>
+        <div class="bj-bet rl-bet">
+          <button id="rl-minus" class="bj-step" aria-label="Меньше">−</button>
+          <div class="bj-bet-text"><b id="rl-amount" role="button">$5.00</b></div>
+          <button id="rl-plus" class="bj-step" aria-label="Больше">+</button>
+        </div>
+        <div id="rl-presets" class="bj-presets rl-presets"></div>
+        <div id="rl-keypad" class="bj-keypad rl-keypad hidden">
+          <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+          <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+          <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+          <button data-key=".">.</button><button data-key="0">0</button><button data-key="back" aria-label="Стереть">⌫</button>
+          <button data-key="ok" class="bj-key-ok">Готово</button>
+        </div>
+        <button id="rl-spin" class="bj-bet-btn rl-spin">
+          <span class="bj-spade">♠</span><b>Bet</b><span class="bj-spade">♠</span>
+        </button>
+        <div id="rl-foot" class="rl-foot"><span id="rl-total">На столе $0.00</span><button id="rl-clear" class="rl-clear hidden">сбросить</button></div>
+      </div>
+    </section>
+
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=65"></script>
+  <script src="/app.js?v=66"></script>
 </body>
 </html>
