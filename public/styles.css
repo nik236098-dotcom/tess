@@ -3501,12 +3501,15 @@ body:has(#screen-table:not(.hidden)) .toast {
 .rl-chip {
   position: absolute; left: 50%; top: 50%;
   transform: translate(-50%, -50%);
-  min-width: 18px; height: 18px; padding: 0 3px;
-  border-radius: 9px;
+  /* Фишка всегда круглая: ширина фиксирована, длинная сумма мельче. */
+  width: 21px; height: 21px; padding: 0;
+  border-radius: 50%;
   background: radial-gradient(circle at 50% 50%, #3b2a86 0 40%, #1f1447 42% 60%, #6e56ff 62% 70%, #1f1447 72%);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 2px 5px rgba(0, 0, 0, 0.7);
   color: #fff;
-  font: 700 8px/18px var(--font);
+  font: 700 8px/21px var(--font);
+  letter-spacing: -0.02em;
+  overflow: hidden;
   text-align: center;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
@@ -3514,6 +3517,8 @@ body:has(#screen-table:not(.hidden)) .toast {
   z-index: 3;
 }
 @keyframes chip-pop { from { transform: translate(-50%, -50%) scale(0.6); opacity: 0; } to { transform: translate(-50%, -50%); opacity: 1; } }
+.rl-chip.is-long { font-size: 6.5px; letter-spacing: -0.04em; }
+.rl-chip.is-xlong { font-size: 5.5px; letter-spacing: -0.05em; }
 .rl-canvas.is-spinning .rl-cell { pointer-events: none; }
 
 /* Ставка (85..305 × 451..489), пресеты (y 499), Spin (67..324 × 540..586) */

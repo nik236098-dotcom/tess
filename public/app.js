@@ -1309,6 +1309,7 @@ function finishRouletteSpin(spin) {
 function rlChipText(cents) {
   const dollars = cents / 100;
   if (dollars >= 1000) return `$${(dollars / 1000).toFixed(dollars % 1000 ? 1 : 0)}k`;
+  if (dollars >= 100) return `$${Math.round(dollars)}`;
   return `$${Number.isInteger(dollars) ? dollars : dollars.toFixed(2).replace(/0$/, '')}`;
 }
 
@@ -1348,6 +1349,8 @@ function renderRoulette() {
     if (!chip) { chip = document.createElement('i'); chip.className = 'rl-chip'; node.appendChild(chip); }
     const text = rlChipText(bet.amount);
     if (chip.textContent !== text) chip.textContent = text;
+    chip.classList.toggle('is-long', text.length === 4);
+    chip.classList.toggle('is-xlong', text.length >= 5);
   }
 
   const total = rlTotal();
