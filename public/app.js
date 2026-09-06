@@ -35,6 +35,7 @@ const state = {
   fx: { hand: null, bets: new Map(), points: new Map(), potPoint: null, winKey: null, seated: new Set() },
   bjBet: 0,
   bjBetTouched: false,
+  buyIn: { open: false, seat: null, amount: 0, touched: false },
   unread: 0,
   tab: 'home', // главная | игры | турниры | бонусы | профиль
   wins: [], // лента последних выигрышей
@@ -184,7 +185,6 @@ function shortHand(text) {
     .replace(/^Стрит-флеш до .+$/, 'Стрит-флеш')
     .replace(/^Стрит до .+$/, 'Стрит')
     .replace(/^Флеш до .+$/, 'Флеш')
-    .replace(/^Старшая .+$/, 'Старшая карта')
     .replace(/^Фулл-хаус (\S+) на (\S+)$/, 'Фулл-хаус $1/$2');
   return t;
 }
@@ -1037,12 +1037,10 @@ function cardNode(code, small = false, animate = true) {
 
 // Своя комбинация — отдельной пилюлей над столом. Считается на сервере
 // только по картам, которые игрок и так видит.
-function renderHandBadge(room) {
-  const badge = $('hand-badge');
-  const seat = room.you.seatIndex !== null ? room.seats[room.you.seatIndex] : null;
-  const text = seat && seat.combination;
-  badge.classList.toggle('hidden', !text);
-  if (text) badge.textContent = text;
+function renderHandBadge() {
+  // Комбинация показывается одним местом — плашкой под ником героя
+  // (.hand-label в renderSeats). Пилюля над бордом больше не нужна.
+  $('hand-badge').classList.add('hidden');
 }
 
 // Карты игрока. Раздаём как за живым столом: круг за кругом, по одной
@@ -1144,7 +1142,7 @@ function renderSeats(room) {
       if (free) {
         slot.addEventListener('click', () => {
           haptic('light');
-          send({ type: 'sit', seat: seat.index });
+          openBuyIn(seat.index);
         });
       }
       node.appendChild(slot);
@@ -1573,7 +1571,7 @@ function renderMessage(room) {
   const seated = room.seats.filter((s) => !s.empty).length;
 
   // Подсказка «сядьте за стол» — отдельной плашкой под столом.
-  const canSit = room.you.seatIndex === null && room.seats.some((s) => s.empty);
+  const canSit = room.you.seatIndex === null && room.seats.some((s) => s.empty) && !state.buyIn.open;
   $('seat-hint').classList.toggle('hidden', !canSit);
 
   if (room.status === 'playing') {
@@ -1588,7 +1586,8 @@ function renderMessage(room) {
     return;
   }
   if (seated < 2) {
-    node.textContent = 'Нужно минимум два игрока';
+    // Сидящему герою про это говорит строка «Ожидаем игроков» внизу.
+    node.textContent = room.you.seatIndex === null ? 'Нужно минимум два игрока' : '';
   } else if (!room.running) {
     node.textContent = room.you.isHost ? 'Нажмите «Начать игру»' : 'Ждём, когда хозяин начнёт игру';
   } else if (room.you.sittingOut) {
@@ -1678,17 +1677,28 @@ function renderControls(room) {
   sitBtn.classList.toggle('hidden', seated || !hasFreeSeat);
   rebuyBtn.classList.toggle('hidden', !you.canRebuy);
 
+  // Панель выбора суммы входа открыта — вместо кнопок «сесть» и баланса.
+  const picker = state.buyIn.open && !seated && you.buyIn;
+  if (!picker) state.buyIn.open = false;
+  renderBuyIn(room, Boolean(picker));
+  if (picker) sitBtn.classList.add('hidden');
+
   const seatBox = $('seat-controls');
   const seatButtonsVisible = [sitBtn, rebuyBtn].some((b) => !b.classList.contains('hidden'));
   seatBox.classList.toggle('hidden', myTurn || !seatButtonsVisible);
 
+  // Сел и ждёт соперников — строка внизу вместо текста на столе.
+  const alone = seated && room.status === 'waiting' && room.seats.filter((s) => !s.empty).length < 2;
+  $('wait-line').classList.toggle('hidden', !alone);
+
   // Пока игрок не за столом, показываем баланс: хватит ли на вход.
   const chip = $('balance-chip');
-  const short = !seated && you.balance < room.settings.buyIn;
-  chip.classList.toggle('hidden', seated || myTurn);
+  const minBuy = (you.buyIn && you.buyIn.min) || room.settings.minBuyIn || room.settings.buyIn;
+  const short = !seated && you.balance < minBuy;
+  chip.classList.toggle('hidden', seated || myTurn || Boolean(picker));
   chip.innerHTML = short
-    ? `На балансе <b>${money(you.balance)}</b> — на вход нужно <b>${money(room.settings.buyIn)}</b>. Пополните баланс на главной`
-    : `На балансе <b>${money(you.balance)}</b> · вход <b>${money(room.settings.buyIn)}</b>`;
+    ? `Недостаточно средств: на балансе <b>${money(you.balance)}</b>, вход от <b>${money(minBuy)}</b>. Пополните баланс на главной`
+    : `На балансе <b>${money(you.balance)}</b> · вход от <b>${money(minBuy)}</b>`;
   if (short) sitBtn.classList.add('hidden');
 
   if (room.game === 'blackjack') {
@@ -1737,6 +1747,98 @@ function renderControls(room) {
 
   startTurnTimer(room);
   syncControls();
+}
+
+// ——— Выбор суммы входа ———
+
+const BUYIN_PRESETS = [500, 1000, 2500, 5000];
+
+function openBuyIn(seatIndex) {
+  const room = state.room;
+  if (!room || room.you.seatIndex !== null) return;
+  const range = room.you.buyIn;
+  if (range && !range.enough) {
+    toast('Недостаточно средств');
+    haptic('error');
+  }
+  state.buyIn.open = true;
+  state.buyIn.seat = seatIndex;
+  state.buyIn.touched = false;
+  renderControls(room);
+}
+
+function closeBuyIn() {
+  state.buyIn.open = false;
+  if (state.room) renderControls(state.room);
+}
+
+function renderBuyIn(room, open) {
+  const panel = $('buyin-panel');
+  panel.classList.toggle('hidden', !open);
+  if (!open) return;
+  const range = room.you.buyIn;
+  $('buyin-balance').textContent = `Баланс ${money(room.you.balance)}`;
+  const enough = Boolean(range && range.enough);
+  $('buyin-short').classList.toggle('hidden', enough);
+  $('buyin-slider').classList.toggle('hidden', !enough);
+  $('buyin-presets').classList.toggle('hidden', !enough);
+  $('buyin-confirm').classList.toggle('hidden', !enough);
+  if (!enough) return;
+
+  const input = $('buyin-range');
+  input.min = String(range.min);
+  input.max = String(range.max);
+  input.step = String(Math.max(1, Math.min(50, Math.floor((range.max - range.min) / 20) || 1)));
+  if (!state.buyIn.touched) state.buyIn.amount = range.default;
+  state.buyIn.amount = clamp(state.buyIn.amount, range.min, range.max);
+  input.value = String(state.buyIn.amount);
+
+  const presets = $('buyin-presets');
+  presets.innerHTML = '';
+  for (const value of BUYIN_PRESETS.filter((v) => v >= range.min && v <= range.max)) {
+    const button = document.createElement('button');
+    button.className = 'ab-preset';
+    button.textContent = `$${value / 100}`;
+    button.dataset.buyin = String(value);
+    button.addEventListener('click', () => setBuyIn(value));
+    presets.appendChild(button);
+  }
+  const max = document.createElement('button');
+  max.className = 'ab-preset';
+  max.textContent = 'MAX';
+  max.dataset.buyin = String(range.max);
+  max.addEventListener('click', () => setBuyIn(range.max));
+  presets.appendChild(max);
+  renderBuyInValue();
+}
+
+function setBuyIn(value) {
+  const range = state.room && state.room.you.buyIn;
+  if (!range) return;
+  state.buyIn.touched = true;
+  state.buyIn.amount = clamp(value, range.min, range.max);
+  $('buyin-range').value = String(state.buyIn.amount);
+  renderBuyInValue();
+  haptic('light');
+}
+
+function stepBuyIn(direction) {
+  const range = state.room && state.room.you.buyIn;
+  if (!range) return;
+  setBuyIn(state.buyIn.amount + direction * 100);
+}
+
+function renderBuyInValue() {
+  const range = state.room && state.room.you.buyIn;
+  if (!range) return;
+  const value = money(state.buyIn.amount);
+  $('buyin-value').textContent = value;
+  $('buyin-confirm').textContent = `Сесть с ${value}`;
+  const t = range.max > range.min ? (state.buyIn.amount - range.min) / (range.max - range.min) : 0;
+  $('buyin-slider').style.setProperty('--t', t.toFixed(4));
+  for (const button of $('buyin-presets').querySelectorAll('[data-buyin]')) {
+    button.classList.toggle('is-active', Number(button.dataset.buyin) === state.buyIn.amount);
+  }
 }
 
 // Подвал прячем целиком, когда в нём нечего показывать: иначе под столом
@@ -2360,13 +2462,26 @@ function bindUi() {
     markBusy(event.currentTarget);
     send({ type: 'start' });
   });
-  on('btn-sit', 'click', (event) => {
+  on('btn-sit', 'click', () => {
     const free = state.room && state.room.seats.find((s) => s.empty);
-    if (free) {
-      markBusy(event.currentTarget);
-      send({ type: 'sit', seat: free.index });
-    } else toast('Свободных мест нет');
+    if (free) openBuyIn(free.index);
+    else toast('Свободных мест нет');
   });
+  on('buyin-cancel', 'click', closeBuyIn);
+  on('buyin-confirm', 'click', (event) => {
+    const range = state.room && state.room.you.buyIn;
+    if (!range || !range.enough) return;
+    markBusy(event.currentTarget);
+    send({ type: 'sit', seat: state.buyIn.seat, amount: state.buyIn.amount });
+    state.buyIn.open = false;
+  });
+  on('buyin-range', 'input', (event) => {
+    state.buyIn.touched = true;
+    state.buyIn.amount = Number(event.target.value);
+    renderBuyInValue();
+  });
+  on('buyin-minus', 'click', () => stepBuyIn(-1));
+  on('buyin-plus', 'click', () => stepBuyIn(1));
   on('btn-rebuy', 'click', (event) => {
     markBusy(event.currentTarget);
     send({ type: 'rebuy' });

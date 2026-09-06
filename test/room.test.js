@@ -40,7 +40,7 @@ test('без денег на балансе за стол не сесть', (t) 
   room.bankRef.ensure({ id: 'u2', name: 'Вика' });
   room.bankRef.grant('u2', 100, 'set');
 
-  assert.throws(() => room.sit('u2', 2), /не хватает денег/);
+  assert.throws(() => room.sit('u2', 2), /Недостаточно средств/);
   assert.strictEqual(room.seats[2], null);
 });
 
@@ -319,7 +319,7 @@ test('начать игру можно только когда есть с ке�
   assert.strictEqual(room.stateFor('u0').you.canStart, false, 'игра уже идёт');
 });
 
-test('кто дважды подряд промолчал, встаёт из-за стола', (t) => {
+test('кто промолчал ход целиком, пасует и встаёт из-за стола', (t) => {
   const room = table({ players: ['Аня', 'Боря', 'Вика'], balance: 5000 });
   t.after(() => room.dispose());
   room.start('u0');
@@ -328,11 +328,8 @@ test('кто дважды подряд промолчал, встаёт из-з�
   const seatIndex = room.seatIndexOf(quiet);
 
   room.noteTimeout(quiet);
-  assert.ok(room.seatOf(quiet), 'один пропуск — ещё не повод');
-  assert.strictEqual(room.seatOf(quiet).missedTurns, 1);
-
-  room.noteTimeout(quiet);
-  assert.strictEqual(room.seats[seatIndex].leaveAfterHand, true, 'уйдёт после раздачи');
+  assert.strictEqual(room.seats[seatIndex].leaveAfterHand, true, 'одного пропуска достаточно — уйдёт после раздачи');
+  assert.strictEqual(room.seats[seatIndex].sittingOut, true, 'и больше карт не получает');
 
   // Доигрываем — место освобождается, фишки возвращаются на баланс.
   let guard = 0;
@@ -341,6 +338,83 @@ test('кто дважды подряд промолчал, встаёт из-з�
   }
   assert.strictEqual(room.seatIndexOf(quiet), -1, 'выбыл');
   assert.ok(room.bankRef.balanceOf(quiet) > 4000, 'стек вернулся на баланс');
+});
+
+test('уход не в свою очередь сразу сбрасывает руку', (t) => {
+  const room = table({ players: ['Аня', 'Боря', 'Вика'] });
+  t.after(() => room.dispose());
+  room.start('u0');
+
+  const acting = room.hand.actingPlayer.id;
+  const leaver = ['u0', 'u1', 'u2'].find((id) => id !== acting);
+  room.stand(leaver);
+  assert.strictEqual(room.hand.player(leaver).folded, true, 'рука сброшена без очереди');
+  assert.strictEqual(room.hand.actingPlayer.id, acting, 'ход остался у того же игрока');
+  assert.strictEqual(room.seatOf(leaver).leaveAfterHand, true);
+
+  // Второй уходит — раздача заканчивается сразу, оба места свободны.
+  const other = ['u0', 'u1', 'u2'].find((id) => id !== acting && id !== leaver);
+  room.stand(other);
+  assert.strictEqual(room.hand.complete, true, 'остался один — раздача закончена');
+  assert.strictEqual(room.seatIndexOf(leaver), -1);
+  assert.strictEqual(room.seatIndexOf(other), -1);
+  assert.strictEqual(room.seats.filter(Boolean).length, 1);
+});
+
+test('по таймеру хода игрок пасует, даже если мог чекнуть, и вылетает', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const room = table({ players: ['Аня', 'Боря', 'Вика'], settings: { turnSeconds: 10 } });
+  t.after(() => room.dispose());
+  room.start('u0');
+
+  // Доводим до большого блайнда: все до него коллируют, ему доступен чек.
+  let guard = 0;
+  while (!room.hand.legalActions(room.hand.actingPlayer.id).canCheck && guard++ < 10) {
+    room.applyAction(room.hand.actingPlayer.id, 'call');
+  }
+  const bb = room.hand.actingPlayer.id;
+  assert.ok(room.hand.legalActions(bb).canCheck, 'у большого блайнда есть чек');
+
+  t.mock.timers.tick(10 * 1000);
+  assert.strictEqual(room.hand.player(bb).folded, true, 'по таймеру — пас, не чек');
+  assert.strictEqual(room.seatOf(bb).leaveAfterHand, true, 'и уходит после раздачи');
+});
+
+test('когда за столом остаётся один, прошлая раздача не показывается', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const room = table({ players: ['Аня', 'Боря'] });
+  t.after(() => room.dispose());
+  room.start('u0');
+  room.applyAction(room.hand.actingPlayer.id, 'fold');
+  assert.ok(room.lastResult, 'раздача закончилась');
+
+  room.stand('u1');
+  t.mock.timers.tick(10 * 1000);
+  const state = room.stateFor('u0');
+  assert.deepStrictEqual(state.board, [], 'борд пустой');
+  assert.strictEqual(state.lastResult, null, 'карточки победителя нет');
+  assert.strictEqual(state.seats[0].cards, null, 'карт на руках нет');
+  assert.strictEqual(state.status, 'waiting');
+});
+
+test('вход: сумму выбирает игрок в границах стола и баланса', (t) => {
+  const room = table({ players: ['Аня', 'Боря'], balance: 3000, settings: { minBuyIn: 500, maxBuyIn: 5000 } });
+  t.after(() => room.dispose());
+
+  room.stand('u1');
+  const range = room.stateFor('u1').you.buyIn;
+  assert.deepStrictEqual({ min: range.min, max: range.max, enough: range.enough }, { min: 500, max: 3000, enough: true });
+
+  assert.throws(() => room.sit('u1', 1, 400), /Минимальный вход/);
+  assert.throws(() => room.sit('u1', 1, 3500), /Недостаточно средств/);
+  room.sit('u1', 1, 2500);
+  assert.strictEqual(room.seatOf('u1').stack, 2500);
+  assert.strictEqual(room.bankRef.balanceOf('u1'), 500);
+
+  room.stand('u1');
+  room.bankRef.withdraw('u1', 2600);
+  assert.strictEqual(room.stateFor('u1').you.buyIn.enough, false, 'меньше минимума — сесть нельзя');
+  assert.throws(() => room.sit('u1', 1), /Недостаточно средств/);
 });
 
 test('ответ обнуляет счётчик молчания', (t) => {

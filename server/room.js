@@ -27,6 +27,8 @@ const DEFAULT_SETTINGS = {
   minBet: 10, // для блекджека
   maxBet: 500,
   buyIn: 1000,
+  minBuyIn: 500,   // с какой суммой можно сесть
+  maxBuyIn: 5000,
   maxPlayers: 6,
   turnSeconds: 45,
   isPublic: true, // стол по умолчанию виден всем в списке
@@ -40,13 +42,15 @@ const SETTING_LIMITS = {
   minBet: [1, 100000],
   maxBet: [1, 1000000],
   buyIn: [20, 1000000],
+  minBuyIn: [1, 1000000],
+  maxBuyIn: [1, 1000000],
   maxPlayers: [2, 9],
   turnSeconds: [10, 180],
 };
 
 const SHOWDOWN_PAUSE_MS = 6000;
-// Сколько ходов подряд можно промолчать, прежде чем встать из-за стола.
-const MISSED_TURNS_LIMIT = 2;
+// Промолчал ход целиком — пас и встаёт из-за стола: стол не ждёт ушедших.
+const MISSED_TURNS_LIMIT = 1;
 const FOLD_PAUSE_MS = 2500;
 const MAX_LOG = 60;
 
@@ -165,14 +169,29 @@ class Room extends EventEmitter {
 
   // ——— Место за столом ———
 
-  sit(userId, seatIndex) {
+  // Границы входа: от minBuyIn до maxBuyIn, но не больше баланса.
+  buyInRange(userId) {
+    const min = this.settings.minBuyIn;
+    const max = Math.max(min, this.settings.maxBuyIn);
+    const balance = this.bank ? this.bank.balanceOf(userId) : max;
+    return { min, max: Math.min(max, balance), enough: balance >= min, default: Math.min(this.settings.buyIn, Math.min(max, balance)) };
+  }
+
+  sit(userId, seatIndex, amount) {
     const member = this.members.get(userId);
     if (!member) throw new RoomError('Вы не в этой комнате');
     if (this.seatOf(userId)) throw new RoomError('Вы уже за столом');
     if (seatIndex < 0 || seatIndex >= this.seats.length) throw new RoomError('Такого места нет');
     if (this.seats[seatIndex]) throw new RoomError('Место занято');
 
-    const buyIn = this.settings.buyIn;
+    const range = this.buyInRange(userId);
+    if (!range.enough) throw new RoomError('Недостаточно средств');
+    const buyIn = amount === undefined || amount === null
+      ? range.default
+      : Math.round(Number(amount));
+    if (!Number.isFinite(buyIn) || buyIn < range.min) throw new RoomError(`Минимальный вход ${formatMoney(range.min)}`);
+    if (buyIn > this.settings.maxBuyIn) throw new RoomError(`Максимальный вход ${formatMoney(this.settings.maxBuyIn)}`);
+    if (buyIn > range.max) throw new RoomError('Недостаточно средств');
     if (this.bank) {
       try {
         this.bank.withdraw(userId, buyIn);
@@ -214,12 +233,10 @@ class Room extends EventEmitter {
 
     const inHand = this.hand && !this.hand.complete && this.hand.player(userId);
     if (inHand && !inHand.folded) {
-      // Нельзя просто исчезнуть посреди раздачи — сначала пас.
-      try {
-        this.applyAction(userId, 'fold');
-      } catch {
-        /* ход уже перешёл дальше */
-      }
+      // Нельзя просто исчезнуть посреди раздачи — рука сбрасывается сразу,
+      // даже не в свою очередь; остальные продолжают без него.
+      this.hand.leave(userId);
+      this.afterHandProgress();
     }
 
     if (this.hand && !this.hand.complete && this.hand.player(userId)) {
@@ -328,9 +345,20 @@ class Room extends EventEmitter {
     const eligible = this.eligibleSeats();
     if (eligible.length < 2) {
       this.status = 'waiting';
+      // Раздачи не будет — прошлую не показываем: пустой борд, без карт и
+      // без карточки победителя, иначе одинокий игрок видит чужую руку.
+      this.clearFinishedHand();
       return;
     }
     this.startHand();
+  }
+
+  clearFinishedHand() {
+    if (this.hand && !this.hand.complete) return;
+    this.hand = null;
+    this.lastResult = null;
+    this.feed = [];
+    this.turnDeadline = null;
   }
 
   get isBlackjack() {
@@ -676,9 +704,9 @@ class Room extends EventEmitter {
       if (!this.hand || this.hand.complete) return;
       const current = this.hand.actingPlayer;
       if (!current || current.id !== playerId) return;
-      const legal = this.hand.legalActions(playerId);
-      this.hand.timeout(playerId);
-      this.pushLog(`${this.nameOf(playerId)} не успевает походить — ${legal && legal.canCheck ? 'чек' : 'пас'}`);
+      // Время вышло — пас (даже если можно было чек) и место освобождается.
+      this.hand.act(playerId, 'fold');
+      this.pushLog(`${this.nameOf(playerId)} не успевает походить — пас`);
       this.noteTimeout(playerId);
       this.afterHandProgress();
     }, seconds * 1000);
@@ -866,6 +894,7 @@ class Room extends EventEmitter {
         ...this.controlsFor(userId),
         stack: mySeatIndex >= 0 ? seats[mySeatIndex].stack : 0,
         balance: this.bank ? this.bank.balanceOf(userId) : 0,
+        buyIn: mySeatIndex < 0 ? this.buyInRange(userId) : null,
         sittingOut: mySeatIndex >= 0 ? this.seats[mySeatIndex].sittingOut : false,
         canRebuy: mySeatIndex >= 0
           && this.seats[mySeatIndex].stack < this.settings.buyIn / 2
@@ -894,8 +923,10 @@ class Room extends EventEmitter {
     if (seat.missedTurns < MISSED_TURNS_LIMIT) return;
 
     this.pushLog(`${seat.name} не отвечает и выходит из-за стола`);
-    if (this.inActiveHand(userId)) seat.leaveAfterHand = true;
-    else this.releaseSeat(this.seatIndexOf(userId), { silent: true });
+    if (this.inActiveHand(userId)) {
+      seat.leaveAfterHand = true;
+      seat.sittingOut = true;
+    } else this.releaseSeat(this.seatIndexOf(userId), { silent: true });
   }
 
   // Кнопки управления столом: показываем их только когда есть что нажимать.
@@ -1042,6 +1073,7 @@ class Room extends EventEmitter {
         stack: mySeatIndex >= 0 ? (hand && hand.player(userId) ? hand.player(userId).stack : this.seats[mySeatIndex].stack) : 0,
         sittingOut: mySeatIndex >= 0 ? this.seats[mySeatIndex].sittingOut : false,
         balance: this.bank ? this.bank.balanceOf(userId) : 0,
+        buyIn: mySeatIndex < 0 ? this.buyInRange(userId) : null,
         canRebuy: mySeatIndex >= 0
           && this.seats[mySeatIndex].stack < this.settings.buyIn / 2
           && (this.bank ? this.bank.balanceOf(userId) > 0 : true)
@@ -1078,6 +1110,9 @@ function normalizeSettings(raw) {
   }
   if (settings.bigBlind <= settings.smallBlind) settings.bigBlind = settings.smallBlind * 2;
   if (settings.buyIn < settings.bigBlind * 2) settings.buyIn = settings.bigBlind * 20;
+  // Диапазон входа обнимает вход по умолчанию.
+  if (settings.minBuyIn > settings.buyIn) settings.minBuyIn = settings.buyIn;
+  if (settings.maxBuyIn < settings.buyIn) settings.maxBuyIn = settings.buyIn;
   const game = settings.game === 'blackjack' ? 'blackjack' : 'holdem';
   if (game === 'blackjack') {
     // Блекджек у нас строго на двоих: один ставит, второй держит банк.
@@ -1093,6 +1128,8 @@ function normalizeSettings(raw) {
     minBet: settings.minBet,
     maxBet: settings.maxBet,
     buyIn: settings.buyIn,
+    minBuyIn: settings.minBuyIn,
+    maxBuyIn: settings.maxBuyIn,
     maxPlayers: settings.maxPlayers,
     turnSeconds: settings.turnSeconds,
     isPublic: settings.isPublic !== false,

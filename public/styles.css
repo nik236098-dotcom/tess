@@ -3066,3 +3066,34 @@ body:has(#screen-table:not(.hidden)) .toast {
   color: #f1eaff;
 }
 #screen-table .winner-pop .win-amount { color: var(--tp-champ); }
+
+/* ── Выбор суммы входа и строка ожидания ── */
+.buyin { display: flex; flex-direction: column; gap: 8px; padding-top: 2px; }
+.buyin-head { display: flex; justify-content: space-between; align-items: baseline; font: 500 12px var(--font); color: var(--tp-muted); }
+.buyin-head b { color: var(--tp-champ); font-weight: 600; font-variant-numeric: tabular-nums; }
+.buyin-presets { display: flex; gap: 6px; }
+.buyin-presets .ab-preset { flex: 1; min-width: 0; }
+.buyin .bet-slider { margin-top: 14px; }
+.buyin-actions { display: flex; gap: 7px; }
+.buyin-actions .act { flex: 1; }
+.buyin-actions .act.act-raise { flex: 1.8; }
+.buyin-short { text-align: center; font: 600 13px var(--font); color: #ff7a82; padding: 6px 0 2px; }
+.wait-line {
+  text-align: center;
+  font: 500 12.5px var(--font);
+  color: var(--tp-muted);
+  padding: 4px 0;
+  letter-spacing: 0.01em;
+}
+/* Комбинация героя — одной плашкой аккуратно под ником, в стиле экрана. */
+#screen-table .hand-label {
+  transform: translate(-50%, calc(var(--rin, 25px) + 18px));
+  padding: 2px 9px 3px;
+  border-radius: var(--r-pill);
+  background: rgba(18, 8, 34, 0.9);
+  border: 1px solid rgba(196, 150, 255, 0.45);
+  color: #e6d2ff;
+  font: 600 10px/1.2 var(--font);
+  z-index: 5;
+  animation: none;
+}

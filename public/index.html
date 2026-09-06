@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=92" />
+  <link rel="stylesheet" href="/styles.css?v=93" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -454,6 +454,24 @@
           <button id="btn-rebuy" class="act act-call solo hidden">Пополнить стек</button>
         </div>
 
+        <!-- Выбор суммы входа: пресеты, ползунок и подтверждение. -->
+        <div id="buyin-panel" class="buyin hidden">
+          <div class="buyin-head"><span>С какой суммой сесть</span><b id="buyin-balance"></b></div>
+          <div id="buyin-presets" class="bet-presets buyin-presets"></div>
+          <div id="buyin-slider" class="bet-slider">
+            <output id="buyin-value" class="bet-bubble">$5.00</output>
+            <button id="buyin-minus" class="ab-step" aria-label="Меньше">−</button>
+            <input id="buyin-range" type="range" min="500" max="5000" step="50" value="1000" />
+            <button id="buyin-plus" class="ab-step" aria-label="Больше">+</button>
+          </div>
+          <div id="buyin-short" class="buyin-short hidden">Недостаточно средств</div>
+          <div class="buyin-actions">
+            <button id="buyin-cancel" class="act act-fold solo">Отмена</button>
+            <button id="buyin-confirm" class="act act-raise solo">Сесть</button>
+          </div>
+        </div>
+        <div id="wait-line" class="wait-line hidden">Ожидаем игроков…</div>
+
         <div id="action-bar" class="action-bar hidden">
           <div id="bet-row" class="bet-row hidden">
             <button id="btn-more" class="ab-more" title="История и чат"><i></i><i></i><i></i></button>
@@ -564,6 +582,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=56"></script>
+  <script src="/app.js?v=57"></script>
 </body>
 </html>

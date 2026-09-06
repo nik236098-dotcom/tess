@@ -238,6 +238,28 @@ class Hand {
     return this.players.filter((p) => !p.folded && !p.allIn).length;
   }
 
+  // Игрок уходит из-за стола посреди раздачи: его рука сбрасывается сразу,
+  // не дожидаясь очереди. Если он был единственным соперником — раздача
+  // тут же заканчивается, иначе торговля идёт дальше без него.
+  leave(playerId) {
+    const p = this.player(playerId);
+    if (!p || p.folded || this.complete) return false;
+    if (this.actingIndex !== null && this.players[this.actingIndex] === p) {
+      this.act(playerId, 'fold');
+      return true;
+    }
+    p.folded = true;
+    p.acted = true;
+    p.lastAction = 'fold';
+    this._log({ type: 'action', playerId, action: 'fold' });
+    if (this.activePlayers.length === 1) {
+      this._finishWithoutShowdown();
+    } else if (this._bettingRoundComplete()) {
+      this._advancePhase();
+    }
+    return true;
+  }
+
   // Ставит ход на первого игрока, который вообще может действовать.
   _openBetting(startIndex) {
     if (this._playersWhoCanStillAct() === 0) {

@@ -18,7 +18,7 @@ loadEnv();
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const ROOM_TTL_MS = 30 * 60 * 1000; // пустую комнату держим полчаса
-const HOUSE_SEAT_GRACE_MS = 90 * 1000; // отвалившийся игрок держит место за столом заведения полторы минуты
+const HOUSE_SEAT_GRACE_MS = 30 * 1000; // отвалившийся игрок держит место за столом заведения полминуты
 const WEBHOOK_PREFIX = '/pay/'; // /pay/<провайдер>/webhook
 const MAX_WEBHOOK_BYTES = 64 * 1024; // тело вебхука заведомо меньше
 const RECENT_WINS_LIMIT = 12; // лента «Последние выигрыши» на главной
@@ -145,8 +145,8 @@ function createApp(options = {}) {
 
   function createHouseTables() {
     const presets = [
-      { game: 'holdem', smallBlind: 5, bigBlind: 10, buyIn: 1000, maxPlayers: 8, turnSeconds: 30, isPublic: true },
-      { game: 'blackjack', minBet: 10, maxBet: 200, buyIn: 1000, turnSeconds: 30, isPublic: true },
+      { game: 'holdem', smallBlind: 5, bigBlind: 10, buyIn: 1000, minBuyIn: 500, maxBuyIn: 5000, maxPlayers: 8, turnSeconds: 45, isPublic: true },
+      { game: 'blackjack', minBet: 10, maxBet: 200, buyIn: 1000, minBuyIn: 500, maxBuyIn: 5000, turnSeconds: 45, isPublic: true },
     ];
     for (const preset of presets) {
       const room = new Room(createRoomCode(), HOUSE, preset, { bank: accounts });
@@ -371,7 +371,7 @@ function createApp(options = {}) {
         leaveRoom(client);
         break;
       case 'sit':
-        withRoom(client, (room) => room.sit(client.user.id, Number(message.seat)));
+        withRoom(client, (room) => room.sit(client.user.id, Number(message.seat), message.amount === undefined ? undefined : Number(message.amount)));
         break;
       case 'stand':
         withRoom(client, (room) => room.stand(client.user.id));
