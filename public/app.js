@@ -38,6 +38,7 @@ const state = {
   buyIn: { open: false, mode: 'sit', seat: null, amount: 0, touched: false },
   bj: { view: null, bet: 500, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null, typing: false, typed: '' },
   rl: { open: false, info: null, amount: 1000, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
+  bc: { open: false, info: null, amount: 1000, zone: null, dealing: false, timers: [], shownBalance: null, typing: false, typed: '', round: null },
   unread: 0,
   tab: 'home', // главная | игры | турниры | бонусы | профиль
   wins: [], // лента последних выигрышей
@@ -261,7 +262,7 @@ async function boot() {
     applyTelegramTheme();
     tg.onEvent('themeChanged', applyTelegramTheme);
     // Обработчик системной кнопки «назад» регистрируем один раз.
-    if (tg.BackButton) tg.BackButton.onClick(() => (state.rl.open ? closeRoulette() : state.bj.open ? closeBlackjack() : leaveRoom()));
+    if (tg.BackButton) tg.BackButton.onClick(() => (state.bc.open ? closeBaccarat() : state.rl.open ? closeRoulette() : state.bj.open ? closeBlackjack() : leaveRoom()));
   }
 
   try {
@@ -415,6 +416,9 @@ function handleMessage(message) {
     case 'rl':
       onRouletteState(message);
       break;
+    case 'bc':
+      onBaccaratState(message);
+      break;
     case 'topup_invoice':
       state.topup.busy = false;
       state.topup.invoice = message.invoice;
@@ -504,8 +508,10 @@ function showLobby() {
   $('screen-table').classList.add('hidden');
   $('screen-bj').classList.add('hidden');
   $('screen-rl').classList.add('hidden');
+  $('screen-bc').classList.add('hidden');
   state.bj.open = false;
   state.rl.open = false;
+  state.bc.open = false;
   $('screen-lobby').classList.remove('hidden');
   if (tg && tg.BackButton) tg.BackButton.hide();
   startRoomsPolling();
@@ -555,6 +561,7 @@ function watchTableSize() {
   window.addEventListener('resize', fitLobby);
   window.addEventListener('resize', fitBlackjack);
   window.addEventListener('resize', fitRoulette);
+  window.addEventListener('resize', fitBaccarat);
   window.addEventListener('orientationchange', fitTable);
 }
 
@@ -1359,6 +1366,262 @@ function renderRoulette() {
   const spinBtn = $('rl-spin');
   spinBtn.classList.remove('is-loading');
   spinBtn.disabled = spinning || !total || total > state.balance;
+}
+
+// ——— Баккара ———
+// Холст 390×653 по макету. Ставка одна за раунд: зона + сумма фишки.
+// Карты раздаются по одной с паузой: P1, B1, P2, B2, затем третьи.
+
+const BC_CHIPS = [100, 500, 1000, 2500, 10000];
+
+function fitBaccarat() {
+  const screen = $('screen-bc');
+  if (!screen || screen.classList.contains('hidden')) return;
+  const w = screen.clientWidth || window.innerWidth;
+  $('bc-canvas').style.setProperty('--bj', (w / 390).toFixed(4));
+}
+
+function openBaccarat() {
+  state.bc.open = true;
+  state.bc.shownBalance = null;
+  state.bc.round = null;
+  $('screen-lobby').classList.add('hidden');
+  $('screen-table').classList.add('hidden');
+  $('screen-bj').classList.add('hidden');
+  $('screen-rl').classList.add('hidden');
+  $('screen-bc').classList.remove('hidden');
+  if (tg && tg.BackButton) tg.BackButton.show();
+  stopRoomsPolling();
+  fitBaccarat();
+  requestAnimationFrame(fitBaccarat);
+  buildBaccaratChips();
+  bcClearTable();
+  send({ type: 'bc_open' });
+  renderBaccarat();
+}
+
+function closeBaccarat() {
+  closeBcKeypad(false);
+  state.bc.timers.forEach(clearTimeout);
+  state.bc.timers = [];
+  state.bc.dealing = false;
+  state.bc.open = false;
+  $('screen-bc').classList.add('hidden');
+  showLobby();
+}
+
+function buildBaccaratChips() {
+  const box = $('bc-chips');
+  if (box.children.length) return;
+  const xs = [66, 130.5, 195, 259, 323];
+  BC_CHIPS.forEach((value, i) => {
+    const button = document.createElement('button');
+    button.className = `bc-chip c${value / 100}`;
+    button.style.left = `${xs[i]}px`;
+    button.dataset.value = String(value);
+    button.innerHTML = `<span>${value / 100}</span>`;
+    button.addEventListener('click', () => {
+      if (state.bc.dealing) return;
+      const { min, max } = bcRange();
+      state.bc.amount = clamp(value, min, max);
+      haptic('light');
+      renderBaccarat();
+    });
+    box.appendChild(button);
+  });
+}
+
+function bcRange() {
+  const info = state.bc.info;
+  const min = info ? info.minBet : 100;
+  const max = Math.min(info ? info.maxBet : 1000000, Math.max(min, state.balance));
+  return { min, max };
+}
+
+function openBcKeypad() {
+  if (state.bc.dealing) return;
+  state.bc.typing = true;
+  state.bc.typed = '';
+  $('bc-keypad').classList.remove('hidden');
+  $('bc-amount').classList.add('is-typing');
+  renderBaccarat();
+}
+
+function bcKey(key) {
+  if (!state.bc.typing) return;
+  haptic('light');
+  if (key === 'ok') { closeBcKeypad(true); return; }
+  let typed = state.bc.typed;
+  if (key === 'back') typed = typed.slice(0, -1);
+  else if (key === '.') { if (!typed.includes('.')) typed = (typed || '0') + '.'; }
+  else {
+    const [whole = '', frac] = typed.split('.');
+    if (frac !== undefined) { if (frac.length >= 2) return; typed += key; }
+    else { if (whole.length >= 5) return; typed = whole === '0' ? key : whole + key; }
+  }
+  state.bc.typed = typed;
+  renderBaccarat();
+}
+
+function closeBcKeypad(apply) {
+  if (!state.bc.typing) return;
+  if (apply && state.bc.typed) {
+    const parsed = Math.round(Number(state.bc.typed) * 100);
+    const { min, max } = bcRange();
+    if (Number.isFinite(parsed) && parsed > 0) state.bc.amount = clamp(parsed, min, max);
+  }
+  state.bc.typing = false;
+  state.bc.typed = '';
+  $('bc-keypad').classList.add('hidden');
+  $('bc-amount').classList.remove('is-typing');
+  renderBaccarat();
+}
+
+function bcShowBalance(target, immediate = false) {
+  const box = $('bc-balance');
+  const out = $('bc-balance-value');
+  const from = state.bc.shownBalance === null ? target : state.bc.shownBalance;
+  state.bc.shownBalance = target;
+  if (immediate || from === target || reducedMotion()) { out.textContent = money(target); return; }
+  box.classList.remove('is-up', 'is-down');
+  box.classList.add(target > from ? 'is-up' : 'is-down');
+  const start = performance.now();
+  const tick = (now) => {
+    const t = Math.min(1, (now - start) / 750);
+    const eased = 1 - Math.pow(1 - t, 3);
+    out.textContent = money(Math.round(from + (target - from) * eased));
+    if (t < 1) requestAnimationFrame(tick);
+    else setTimeout(() => box.classList.remove('is-up', 'is-down'), 900);
+  };
+  requestAnimationFrame(tick);
+}
+
+function bcClearTable() {
+  for (const side of ['player', 'banker']) {
+    $(`bc-${side}-cards`).querySelectorAll('.bc-card').forEach((n) => n.remove());
+    const total = $(`bc-${side}-total`);
+    total.textContent = '';
+    total.classList.remove('is-on');
+  }
+  $('bc-result').classList.add('hidden');
+  document.querySelectorAll('.bc-zone').forEach((z) => z.classList.remove('is-win'));
+}
+
+function bcCard(code, third) {
+  const node = bjCard(code);
+  node.className = node.className.replace('bj-card', 'bc-card');
+  if (third) node.classList.add('third');
+  return node;
+}
+
+// Кладём карту в слот: у игрока третья слева, у банкира справа.
+function bcPlace(side, index, code) {
+  const box = $(`bc-${side}-cards`);
+  const slots = box.querySelectorAll('.bc-slot');
+  const third = index === 2;
+  const slot = side === 'player' ? (third ? slots[0] : slots[index + 1]) : slots[index];
+  const card = bcCard(code, third);
+  card.style.left = `${slot.offsetLeft + (third ? (slot.offsetWidth - 41) / 2 : 0)}px`;
+  card.style.top = `${third ? (slot.offsetHeight - 58) / 2 : 0}px`;
+  box.appendChild(card);
+}
+
+function bcTotal(codes) {
+  let sum = 0;
+  for (const code of codes) {
+    const r = code[0];
+    sum += r === 'A' ? 1 : 'TJQK'.includes(r) ? 0 : Number(r);
+  }
+  return sum % 10;
+}
+
+function onBaccaratState(message) {
+  state.bc.info = message;
+  state.balance = message.balance;
+  renderAccount();
+  if (message.round) {
+    startBaccaratDeal(message.round);
+    return;
+  }
+  bcShowBalance(message.balance, true);
+  renderBaccarat();
+}
+
+function startBaccaratDeal(round) {
+  const bc = state.bc;
+  bc.timers.forEach(clearTimeout);
+  bc.timers = [];
+  bc.dealing = true;
+  bc.round = round;
+  bcClearTable();
+  bcShowBalance(state.balance - round.payout);
+  renderBaccarat();
+  // Очередь: P1 B1 P2 B2, потом третьи карты (если есть).
+  const steps = [['player', 0], ['banker', 0], ['player', 1], ['banker', 1]];
+  if (round.player[2]) steps.push(['player', 2]);
+  if (round.banker[2]) steps.push(['banker', 2]);
+  let delay = 350;
+  steps.forEach(([side, index], i) => {
+    bc.timers.push(setTimeout(() => {
+      bcPlace(side, index, round[side][index]);
+      const shown = round[side].slice(0, index + 1);
+      const total = $(`bc-${side}-total`);
+      total.textContent = String(bcTotal(shown));
+      total.classList.add('is-on');
+      haptic('light');
+      if (i === steps.length - 1) bc.timers.push(setTimeout(() => finishBaccaratDeal(round), 500));
+    }, delay));
+    delay += 520;
+  });
+}
+
+function finishBaccaratDeal(round) {
+  const bc = state.bc;
+  bc.dealing = false;
+  const result = $('bc-result');
+  const label = round.winner === 'tie' ? 'TIE' : round.winner === 'player' ? 'PLAYER WINS' : 'BANKER WINS';
+  const tail = round.net > 0 ? ` +${money(round.net)}` : round.net < 0 ? ` −${money(-round.net)}` : ' · ставка возвращена';
+  result.className = `rl-result bc-result${round.net < 0 ? ' lose' : ''}${round.winner === 'tie' ? ' tie' : ''}`;
+  result.textContent = `${label}${tail}`;
+  result.classList.remove('hidden');
+  const zone = document.querySelector(`.bc-zone[data-zone="${round.winner}"]`);
+  if (zone) zone.classList.add('is-win');
+  haptic(round.net > 0 ? 'success' : 'light');
+  bcShowBalance(state.balance);
+  renderBaccarat();
+}
+
+function renderBaccarat() {
+  if (!state.bc.open) return;
+  const bc = state.bc;
+  if (!bc.dealing) {
+    const { min, max } = bcRange();
+    bc.amount = clamp(bc.amount, min, max);
+  }
+  const value = bc.typing ? (bc.typed ? `$${bc.typed}` : '$') : `$${(bc.amount / 100).toFixed(2).replace(/\.00$/, '')}`;
+  $('bc-amount-value').textContent = value;
+  for (const chip of $('bc-chips').children) {
+    chip.classList.toggle('is-active', Number(chip.dataset.value) === bc.amount);
+    chip.disabled = bc.dealing;
+  }
+  document.querySelectorAll('.bc-zone').forEach((z) => {
+    z.classList.toggle('is-selected', z.dataset.zone === bc.zone);
+    z.disabled = bc.dealing;
+    const chip = z.querySelector('.rl-chip');
+    if (z.dataset.zone === bc.zone && !bc.dealing) {
+      let c = chip;
+      if (!c) { c = document.createElement('i'); c.className = 'rl-chip'; z.appendChild(c); }
+      const text = rlChipText(bc.amount);
+      c.textContent = text;
+      c.classList.toggle('is-long', text.length === 4);
+      c.classList.toggle('is-xlong', text.length >= 5);
+    } else if (chip && !bc.dealing) chip.remove();
+  });
+  const place = $('bc-place');
+  place.classList.remove('is-loading');
+  const short = state.balance < bc.amount;
+  place.disabled = bc.dealing || !bc.zone || short;
+  $('bc-hint').textContent = short ? 'Недостаточно средств' : bc.dealing ? 'Раздача…' : bc.zone ? `Ставка ${money(bc.amount)} на ${bc.zone.toUpperCase()}` : 'Выберите PLAYER, TIE или BANKER';
 }
 
 // Главная и Игры — это две панели одного экрана лобби: столы и лента
@@ -3125,6 +3388,30 @@ function bindUi() {
   on('play-holdem', 'click', () => { haptic('light'); openGame('holdem'); });
   on('play-blackjack', 'click', () => { haptic('light'); openBlackjack(); });
   on('play-roulette', 'click', () => { haptic('light'); openRoulette(); });
+  on('play-baccarat', 'click', () => { haptic('light'); openBaccarat(); });
+  on('bc-back', 'click', closeBaccarat);
+  document.querySelectorAll('.bc-zone').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (state.bc.dealing) return;
+      state.bc.zone = button.dataset.zone;
+      haptic('light');
+      renderBaccarat();
+    });
+  });
+  on('bc-amount', 'click', () => openBcKeypad());
+  document.querySelectorAll('#bc-keypad [data-key]').forEach((button) => {
+    button.addEventListener('click', (event) => { event.stopPropagation(); bcKey(button.dataset.key); });
+  });
+  $('screen-bc').addEventListener('pointerdown', (event) => {
+    if (!state.bc.typing) return;
+    if (event.target.closest('#bc-keypad') || event.target.closest('#bc-amount')) return;
+    closeBcKeypad(true);
+  });
+  on('bc-place', 'click', (event) => {
+    if (state.bc.dealing || !state.bc.zone) return;
+    markBusy(event.currentTarget);
+    send({ type: 'bc_bet', zone: state.bc.zone, amount: state.bc.amount });
+  });
   on('rl-back', 'click', closeRoulette);
   on('rl-minus', 'click', () => stepRlAmount(-1));
   on('rl-plus', 'click', () => stepRlAmount(1));

@@ -10,6 +10,7 @@ const { verifyInitData } = require('./telegram');
 const { Room, RoomError, normalizeSettings } = require('./room');
 const { SoloBlackjack, SoloError } = require('./blackjack/solo');
 const roulette = require('./roulette/wheel');
+const baccarat = require('./baccarat/game');
 const { Accounts, AccountError, DEFAULT_START_BALANCE } = require('./accounts');
 const { createPayments, PaymentError } = require('./payments');
 const { formatMoney, parseMoney } = require('./money');
@@ -323,7 +324,7 @@ function createApp(options = {}) {
       try {
         handleMessage(client, message);
       } catch (error) {
-        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError) {
+        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError) {
           client.fail(error.message);
         } else {
           console.error('Ошибка обработки сообщения:', error);
@@ -452,6 +453,12 @@ function createApp(options = {}) {
         break;
       case 'rl_spin':
         rouletteSpin(client, message.bets);
+        break;
+      case 'bc_open':
+        client.send({ type: 'bc', ...baccaratInfo(client) });
+        break;
+      case 'bc_bet':
+        baccaratDeal(client, String(message.zone || ''), Number(message.amount));
         break;
       case 'ping':
         client.send({ type: 'pong', at: Date.now() });
@@ -810,6 +817,35 @@ function createApp(options = {}) {
     const history = [result.number, ...(rouletteHistory.get(client.user.id) || [])].slice(0, 12);
     rouletteHistory.set(client.user.id, history);
     client.send({ type: 'rl', spin: result, ...rouletteInfo(client) });
+  }
+
+  // ——— Баккара ———
+  const BC_MIN_BET = 100;
+  const BC_MAX_BET = 1000000;
+  const baccaratHistory = new Map();
+
+  function baccaratInfo(client) {
+    return {
+      minBet: BC_MIN_BET,
+      maxBet: BC_MAX_BET,
+      balance: accounts.balanceOf(client.user.id),
+      history: baccaratHistory.get(client.user.id) || [],
+    };
+  }
+
+  function baccaratDeal(client, zone, amount) {
+    if (!baccarat.ZONES[zone]) throw new baccarat.BaccaratError('Выберите PLAYER, BANKER или TIE');
+    const bet = Math.round(amount);
+    if (!Number.isFinite(bet) || bet < BC_MIN_BET) throw new baccarat.BaccaratError(`Минимальная ставка ${formatMoney(BC_MIN_BET)}`);
+    if (bet > BC_MAX_BET) throw new baccarat.BaccaratError(`Максимальная ставка ${formatMoney(BC_MAX_BET)}`);
+    if (accounts.balanceOf(client.user.id) < bet) throw new baccarat.BaccaratError('Недостаточно средств');
+    accounts.withdraw(client.user.id, bet);
+    const result = baccarat.deal({ zone, amount: bet });
+    if (result.payout > 0) accounts.deposit(client.user.id, result.payout);
+    if (result.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: result.net, game: 'baccarat', code: 'BC' });
+    const history = [result.winner, ...(baccaratHistory.get(client.user.id) || [])].slice(0, 12);
+    baccaratHistory.set(client.user.id, history);
+    client.send({ type: 'bc', round: result, ...baccaratInfo(client) });
   }
 
   function withRoom(client, action) {

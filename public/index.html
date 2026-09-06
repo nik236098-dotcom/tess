@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=111" />
+  <link rel="stylesheet" href="/styles.css?v=113" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -156,6 +156,22 @@
                 <span class="lb-hero-kicker">Blackjack</span>
                 <b>Блекджек</b>
                 <span>Против дилера · до 21 · ставки $1 – $10 000</span>
+                <span class="lb-play-foot">
+                  <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
+                </span>
+              </span>
+            </button>
+
+            <button id="play-baccarat" class="lb-play lb-play-bc">
+              <span class="lb-play-art" aria-hidden="true">
+                <i class="lb-mini lb-mini-3 red">9<b>♥</b></i>
+                <i class="lb-mini lb-mini-4">K<b>♠</b></i>
+                <i class="lb-21 lb-bc-tag">TIE</i>
+              </span>
+              <span class="lb-play-body">
+                <span class="lb-hero-kicker">Baccarat</span>
+                <b>Баккара</b>
+                <span>Player · Banker · Tie · ставки $1 – $10 000</span>
                 <span class="lb-play-foot">
                   <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
                 </span>
@@ -663,9 +679,47 @@
       </div>
     </section>
 
+    <!-- Баккара: экран по макету на холсте 390×653, всё нарисовано кодом. -->
+    <section id="screen-bc" class="screen bj-screen hidden">
+      <div id="bc-canvas" class="bj-canvas bc-canvas">
+        <div id="bc-balance" class="bj-balance"><span>Баланс</span><b id="bc-balance-value">$0.00</b></div>
+        <button id="bc-back" class="bj-back" title="В лобби">
+          <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
+        </button>
+        <div class="bc-logo">
+          <svg class="bc-spade" viewBox="0 0 40 44"><path d="M20 2 C14 12 4 17 4 26 a8 8 0 0 0 14 5 c-1 5-3 8-6 10h16c-3-2-5-5-6-10a8 8 0 0 0 14-5c0-9-10-14-16-24z" fill="none" stroke="#e2bd78" stroke-width="2.2" stroke-linejoin="round"/></svg>
+          <b>POKERGENA</b>
+          <i>BACCARAT</i>
+          <small>PLAYER &nbsp;|&nbsp; BANKER &nbsp;|&nbsp; TIE</small>
+          <em>PURE GAME<br>HIGHER MOMENTS</em>
+          <span class="bc-div"><s></s>◇<s></s></span>
+        </div>
+        <div class="bc-side bc-side-player"><h4>PLAYER</h4><div class="bc-cards" id="bc-player-cards"><i class="bc-slot bc-slot-third"></i><i class="bc-slot"></i><i class="bc-slot"></i></div><div class="bc-total" id="bc-player-total"></div></div>
+        <div class="bc-vline"></div>
+        <div class="bc-side bc-side-banker"><h4>BANKER</h4><div class="bc-cards" id="bc-banker-cards"><i class="bc-slot"></i><i class="bc-slot"></i><i class="bc-slot bc-slot-third"></i></div><div class="bc-total" id="bc-banker-total"></div></div>
+        <div id="bc-result" class="rl-result bc-result hidden"></div>
+        <div class="bc-zones">
+          <button class="bc-zone bc-zone-player" data-zone="player"><b>PLAYER</b><small>1:1</small></button>
+          <button class="bc-zone bc-zone-tie" data-zone="tie"><b>TIE</b><small>8:1</small></button>
+          <button class="bc-zone bc-zone-banker" data-zone="banker"><b>BANKER</b><small>1:1</small></button>
+        </div>
+        <button id="bc-amount" class="bc-bet"><span>Bet</span><b id="bc-amount-value">$10</b></button>
+        <div id="bc-chips" class="bc-chips"></div>
+        <div id="bc-keypad" class="bj-keypad bc-keypad hidden">
+          <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+          <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+          <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+          <button data-key=".">.</button><button data-key="0">0</button><button data-key="back" aria-label="Стереть">⌫</button>
+          <button data-key="ok" class="bj-key-ok">Готово</button>
+        </div>
+        <button id="bc-place" class="bj-bet-btn bc-place"><b>PLACE BET</b></button>
+        <div id="bc-hint" class="bc-hint">Выберите PLAYER, TIE или BANKER</div>
+      </div>
+    </section>
+
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=70"></script>
+  <script src="/app.js?v=71"></script>
 </body>
 </html>

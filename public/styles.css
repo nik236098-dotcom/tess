@@ -3554,3 +3554,142 @@ body:has(#screen-table:not(.hidden)) .toast {
 .lb-play-rl .lb-play-cta { background: linear-gradient(180deg, #ff6b62, #c9302c); box-shadow: 0 8px 18px rgba(229, 89, 79, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3); }
 .lb-play-rl .lb-play-art { background: none; }
 .lb-play-rl .lb-wheel { top: 50%; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   БАККАРА — по макету 941×1576 → холст 390×653 (k = 0.41445)
+   ═══════════════════════════════════════════════════════════════════════ */
+.lb-play-bc {
+  border-color: rgba(233, 207, 149, 0.22);
+  background:
+    radial-gradient(70% 90% at 0% 50%, rgba(233, 207, 149, 0.22), rgba(233, 207, 149, 0) 60%),
+    radial-gradient(60% 60% at 100% 100%, rgba(90, 40, 170, 0.5), rgba(90, 40, 170, 0) 60%),
+    linear-gradient(170deg, #1d1230 0%, #0f0a1a 100%);
+  color: var(--lb-text);
+}
+.lb-play-bc .lb-hero-kicker { color: #e9cf95; }
+.lb-play-bc .lb-play-cta { background: linear-gradient(180deg, #f0d7a0, #c9a24f); color: #2a1d05; box-shadow: 0 8px 18px rgba(233, 207, 149, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
+.lb-play-bc .lb-bc-tag { background: linear-gradient(180deg, #b48cff, #6a3fd6); color: #fff; font-size: 12px; letter-spacing: 0.08em; }
+
+.bc-canvas {
+  height: 760px;
+  background:
+    radial-gradient(70% 30% at 50% 12%, rgba(120, 60, 220, 0.35), rgba(120, 60, 220, 0) 70%),
+    radial-gradient(120% 45% at 50% 62%, rgba(86, 34, 170, 0.45), rgba(86, 34, 170, 0) 70%),
+    linear-gradient(180deg, #0f0a1c 0%, #140b26 40%, #0a0614 100%);
+  overflow: hidden;
+}
+/* Полукруглый борт стола под зонами ставок */
+.bc-canvas::before {
+  content: ''; position: absolute; left: -60px; right: -60px; top: 292px; height: 200px;
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  border-top: 2px solid rgba(233, 207, 149, 0.55);
+  box-shadow: 0 -8px 26px rgba(120, 60, 255, 0.35), inset 0 6px 18px rgba(120, 60, 255, 0.2);
+  background: linear-gradient(180deg, rgba(60, 24, 110, 0.5), rgba(20, 8, 40, 0.2) 60%, rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+.bc-logo { position: absolute; left: 0; right: 0; top: 14px; text-align: center; font-family: 'Playfair Display', Georgia, serif; }
+.bc-spade { width: 22px; height: 24px; display: block; margin: 0 auto 6px; filter: drop-shadow(0 0 6px rgba(226, 189, 120, 0.6)); }
+.bc-logo b { display: block; font: 500 21px/1 var(--font); letter-spacing: 0.42em; color: #e2bd78; text-indent: 0.42em; }
+.bc-logo i { display: block; margin-top: 8px; font: 500 14px/1 var(--font); letter-spacing: 0.36em; color: #c8b0ff; text-indent: 0.36em; font-style: normal; }
+.bc-logo small { display: block; margin-top: 8px; font: 500 7.5px/1 var(--font); letter-spacing: 0.34em; color: rgba(200, 176, 255, 0.6); text-indent: 0.34em; }
+.bc-logo em { display: block; margin-top: 18px; font: 500 6.8px/1.7 var(--font); letter-spacing: 0.36em; color: rgba(200, 176, 255, 0.55); font-style: normal; text-indent: 0.36em; }
+.bc-div { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 4px; font-size: 8px; color: #b48cff; }
+.bc-div s { width: 56px; height: 1px; background: linear-gradient(90deg, rgba(180, 140, 255, 0), rgba(180, 140, 255, 0.6), rgba(180, 140, 255, 0)); text-decoration: none; }
+
+/* Стороны: подписи y 175, карты y 221 (центр), итог y 272 */
+.bc-side { position: absolute; top: 166px; width: 178px; text-align: center; }
+.bc-side-player { left: 10px; } .bc-side-banker { right: 10px; }
+.bc-side h4 { margin: 0; font: 600 16px/1 var(--font); letter-spacing: 0.14em; }
+.bc-side-player h4 { color: #8db4ff; text-shadow: 0 0 10px rgba(120, 160, 255, 0.7); }
+.bc-side-banker h4 { color: #ff7d95; text-shadow: 0 0 10px rgba(255, 100, 130, 0.7); }
+.bc-vline { position: absolute; left: 194.5px; top: 205px; width: 1px; height: 120px; background: linear-gradient(180deg, rgba(180, 140, 255, 0), rgba(180, 140, 255, 0.5), rgba(180, 140, 255, 0)); }
+.bc-cards { position: relative; height: 58px; margin-top: 12px; display: flex; justify-content: center; align-items: center; gap: 4px; }
+.bc-slot { width: 41px; height: 58px; border-radius: 4px; border: 1.5px dashed rgba(200, 180, 240, 0.35); box-sizing: border-box; position: relative; flex: none; }
+.bc-slot::after { content: '♠'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 16px; color: rgba(200, 180, 240, 0.28); }
+.bc-slot-third { width: 58px; height: 41px; }
+.bc-card {
+  position: absolute; top: 0;
+  width: 41px; height: 58px; border-radius: 4px;
+  background: linear-gradient(160deg, #ffffff 0%, #f1f2f6 60%, #dfe1e8 100%);
+  color: #101018;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  animation: bj-deal 0.32s var(--ease) both;
+}
+.bc-card.red { color: #d8202a; }
+.bc-card .bj-rank { position: absolute; left: 4px; top: 2px; font: 700 13px/1 var(--font); letter-spacing: -0.03em; }
+.bc-card .bj-suit-sm { position: absolute; left: 4px; top: 15px; font-size: 9px; line-height: 1; }
+.bc-card .bj-suit { position: absolute; left: 50%; top: 57%; transform: translate(-50%, -50%); font-size: 27px; line-height: 1; }
+/* Третья карта кладётся боком, как за живым столом */
+.bc-card.third { transform: rotate(90deg); animation: bc-deal-third 0.32s var(--ease) both; }
+@keyframes bc-deal-third { from { opacity: 0; transform: rotate(90deg) translate(0, -18px) scale(0.9); } to { opacity: 1; transform: rotate(90deg); } }
+.bc-total {
+  width: 31px; height: 31px; margin: 8px auto 0;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  font: 600 15px/1 var(--font); color: #fff;
+  background: rgba(10, 6, 20, 0.9);
+  opacity: 0; transition: opacity 0.2s;
+}
+.bc-total.is-on { opacity: 1; }
+.bc-side-player .bc-total { border: 1.5px solid #7fa8ff; box-shadow: 0 0 10px rgba(120, 160, 255, 0.6); }
+.bc-side-banker .bc-total { border: 1.5px solid #ff6b8a; box-shadow: 0 0 10px rgba(255, 100, 130, 0.6); }
+.bc-result { top: 296px; }
+.bc-result.tie { border-color: rgba(196, 150, 255, 0.5); color: #d9c3ff; }
+
+/* Зоны ставок: 25..365 × 300..399, три равные */
+.bc-zones { position: absolute; left: 25px; top: 300px; width: 340px; height: 99px; display: flex; gap: 3px; }
+.bc-zone {
+  position: relative;
+  flex: 1; border: 1px solid rgba(160, 110, 255, 0.35); border-radius: 6px;
+  background: rgba(36, 14, 70, 0.35);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  color: #fff; transition: background 0.15s, box-shadow 0.15s;
+}
+.bc-zone b { font: 600 16px/1 var(--font); letter-spacing: 0.12em; }
+.bc-zone small { font: 500 9.5px/1 var(--font); color: rgba(226, 212, 255, 0.55); letter-spacing: 0.06em; }
+.bc-zone-player b { color: #8db4ff; text-shadow: 0 0 8px rgba(120, 160, 255, 0.6); }
+.bc-zone-tie b { color: #c48bff; text-shadow: 0 0 8px rgba(181, 108, 255, 0.6); }
+.bc-zone-banker b { color: #ff7d95; text-shadow: 0 0 8px rgba(255, 100, 130, 0.6); }
+.bc-zone.is-selected { background: rgba(90, 40, 170, 0.55); box-shadow: inset 0 0 0 1.5px #b48cff, 0 0 14px rgba(181, 108, 255, 0.5); }
+.bc-zone.is-win { box-shadow: inset 0 0 0 2px #f2c667, 0 0 14px rgba(242, 198, 103, 0.7); }
+.bc-zone:disabled { opacity: 0.7; }
+.bc-zone .rl-chip { position: absolute; right: 8px; top: 8px; }
+
+/* Ставка (114..275 × 441..470), фишки (центры x 66..323, y 507, Ø50), PLACE BET (54..336 × 569..606) */
+.bc-bet {
+  position: absolute; left: 114px; top: 441px; width: 162px; height: 29px;
+  border-radius: 15px;
+  border: 1px solid rgba(160, 110, 255, 0.5);
+  background: rgba(13, 9, 23, 0.95);
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  color: #fff;
+}
+.bc-bet span { font: 500 11px var(--font); color: #b48cff; }
+.bc-bet b { font: 700 15px/1 var(--font); color: #d9b3ff; font-variant-numeric: tabular-nums; }
+.bc-bet.is-typing b::after { content: ''; display: inline-block; width: 1.5px; height: 0.9em; margin-left: 2px; background: #c48bff; vertical-align: -0.1em; animation: bj-caret 1s steps(2) infinite; }
+.bc-chips { position: absolute; left: 0; right: 0; top: 482px; height: 50px; }
+.bc-chip {
+  position: absolute; top: 0; width: 50px; height: 50px; margin-left: -25px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  color: #fff; font: 700 15px/1 var(--font);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6), inset 0 0 0 5px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s var(--ease), box-shadow 0.15s;
+  --c1: #2a2a30; --c2: #f0f0f0;
+  background:
+    radial-gradient(circle, var(--c1) 0 58%, transparent 59%),
+    repeating-conic-gradient(var(--c2) 0 20deg, var(--c1) 20deg 45deg);
+}
+.bc-chip::before { content: ''; position: absolute; inset: 9px; border-radius: 50%; border: 1.5px dashed rgba(255, 255, 255, 0.45); }
+.bc-chip span { position: relative; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+.bc-chip.c1 { --c1: #1d1d22; --c2: #ececec; }
+.bc-chip.c5 { --c1: #a3141e; --c2: #f2dede; }
+.bc-chip.c10 { --c1: #5b2bc9; --c2: #d9c3ff; }
+.bc-chip.c25 { --c1: #146a3c; --c2: #cfe8d8; }
+.bc-chip.c100 { --c1: #8a5a12; --c2: #f2d9a0; }
+.bc-chip.is-active { transform: translateY(-4px) scale(1.08); box-shadow: 0 0 0 3px rgba(181, 108, 255, 0.9), 0 0 18px rgba(181, 108, 255, 0.8), 0 8px 16px rgba(0, 0, 0, 0.6), inset 0 0 0 5px rgba(0, 0, 0, 0.25); }
+.bc-chip:disabled { opacity: 0.55; }
+.bc-keypad { bottom: calc(760px - 436px); }
+.bc-place { top: 569px; left: 54px; width: 282px; height: 37px; border-radius: 19px; }
+.bc-place b { font: 600 15px/1 var(--font); letter-spacing: 0.22em; text-indent: 0.22em; }
+.bc-hint { position: absolute; left: 0; right: 0; top: 614px; text-align: center; font: 500 11px var(--font); color: rgba(226, 212, 255, 0.6); }
