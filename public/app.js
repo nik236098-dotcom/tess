@@ -1566,7 +1566,7 @@ function bcClearTable() {
 // Карта с двумя гранями: летит из шуза рубашкой вверх и переворачивается.
 function bcDealCard(side, index, code) {
   const third = index === 2;
-  const x = third ? (side === 'player' ? 14 : 336) : BC_SLOTS[side][index];
+  const x = third ? (side === 'player' ? 14 : 322) : BC_SLOTS[side][index];
   const y = third ? BC_CARD_Y + 10 : BC_CARD_Y;
   const rank = code[0] === 'T' ? '10' : code[0];
   const suitChar = code[1];
