@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { deal, total, cardPoints, bankerDraws, BaccaratError } = require('../server/baccarat/game');
+const { deal, total, cardPoints, bankerDraws, normalizeBets, BaccaratError } = require('../server/baccarat/game');
 const { stringToCard } = require('../server/poker/cards');
 
 // Колода задаётся в порядке раздачи: P1 B1 P2 B2 P3 B3.
@@ -66,4 +66,21 @@ test('выплаты: сторона 1:1, ничья 8:1, при ничьей с
 
 test('неизвестная зона отклоняется', () => {
   assert.throws(() => deal({ zone: 'dragon', amount: 100 }), BaccaratError);
+});
+
+test('пара: первые две карты стороны одного достоинства, платит 11:1', () => {
+  // игрок 9h 9c = 18→8 (натуральная, пара), банкир Kd 4s
+  const r = deal({ bets: [{ zone: 'playerPair', amount: 100 }, { zone: 'bankerPair', amount: 100 }, { zone: 'player', amount: 100 }], deck: deck('9h Kd 9c 4s') });
+  assert.strictEqual(r.playerPair, true);
+  assert.strictEqual(r.bankerPair, false);
+  assert.deepStrictEqual(r.bets.map((b) => b.payout), [1200, 0, 200]);
+  assert.strictEqual(r.net, 1400 - 300);
+});
+
+test('несколько ставок: проверка зон, повторов и общей суммы', () => {
+  const limits = { minBet: 100, maxBet: 1000000, maxTotal: 1000 };
+  assert.throws(() => normalizeBets([], limits), BaccaratError);
+  assert.throws(() => normalizeBets([{ zone: 'player', amount: 100 }, { zone: 'player', amount: 100 }], limits), /повторяется/);
+  assert.throws(() => normalizeBets([{ zone: 'player', amount: 600 }, { zone: 'tie', amount: 600 }], limits), /Недостаточно/);
+  assert.strictEqual(normalizeBets([{ zone: 'player', amount: 300 }, { zone: 'tie', amount: 200 }], limits).total, 500);
 });

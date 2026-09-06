@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=113" />
+  <link rel="stylesheet" href="/styles.css?v=114" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -679,32 +679,26 @@
       </div>
     </section>
 
-    <!-- Баккара: экран по макету на холсте 390×653, всё нарисовано кодом. -->
+    <!-- Баккара: фон — макет (img/bc-bg.webp), живые элементы поверх
+         нарисованных: карты ложатся на рубашки, зоны и кнопки — по своим
+         местам. Холст 390×653 (k = 0.41445). -->
     <section id="screen-bc" class="screen bj-screen hidden">
       <div id="bc-canvas" class="bj-canvas bc-canvas">
         <div id="bc-balance" class="bj-balance"><span>Баланс</span><b id="bc-balance-value">$0.00</b></div>
         <button id="bc-back" class="bj-back" title="В лобби">
           <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
         </button>
-        <div class="bc-logo">
-          <svg class="bc-spade" viewBox="0 0 40 44"><path d="M20 2 C14 12 4 17 4 26 a8 8 0 0 0 14 5 c-1 5-3 8-6 10h16c-3-2-5-5-6-10a8 8 0 0 0 14-5c0-9-10-14-16-24z" fill="none" stroke="#e2bd78" stroke-width="2.2" stroke-linejoin="round"/></svg>
-          <b>POKERGENA</b>
-          <i>BACCARAT</i>
-          <small>PLAYER &nbsp;|&nbsp; BANKER &nbsp;|&nbsp; TIE</small>
-          <em>PURE GAME<br>HIGHER MOMENTS</em>
-          <span class="bc-div"><s></s>◇<s></s></span>
-        </div>
-        <div class="bc-side bc-side-player"><h4>PLAYER</h4><div class="bc-cards" id="bc-player-cards"><i class="bc-slot bc-slot-third"></i><i class="bc-slot"></i><i class="bc-slot"></i></div><div class="bc-total" id="bc-player-total"></div></div>
-        <div class="bc-vline"></div>
-        <div class="bc-side bc-side-banker"><h4>BANKER</h4><div class="bc-cards" id="bc-banker-cards"><i class="bc-slot"></i><i class="bc-slot"></i><i class="bc-slot bc-slot-third"></i></div><div class="bc-total" id="bc-banker-total"></div></div>
+        <div id="bc-player-total" class="bc-total bc-total-player"></div>
+        <div id="bc-banker-total" class="bc-total bc-total-banker"></div>
+        <div id="bc-cards" class="bc-cards"></div>
         <div id="bc-result" class="rl-result bc-result hidden"></div>
-        <div class="bc-zones">
-          <button class="bc-zone bc-zone-player" data-zone="player"><b>PLAYER</b><small>1:1</small></button>
-          <button class="bc-zone bc-zone-tie" data-zone="tie"><b>TIE</b><small>8:1</small></button>
-          <button class="bc-zone bc-zone-banker" data-zone="banker"><b>BANKER</b><small>1:1</small></button>
+        <div id="bc-zones" class="bc-zones"></div>
+        <div class="bj-bet bc-bet">
+          <button id="bc-minus" class="bj-step" aria-label="Меньше">−</button>
+          <div class="bj-bet-text"><b id="bc-amount" role="button">$25.00</b></div>
+          <button id="bc-plus" class="bj-step" aria-label="Больше">+</button>
         </div>
-        <button id="bc-amount" class="bc-bet"><span>Bet</span><b id="bc-amount-value">$10</b></button>
-        <div id="bc-chips" class="bc-chips"></div>
+        <div id="bc-presets" class="bj-presets bc-presets"></div>
         <div id="bc-keypad" class="bj-keypad bc-keypad hidden">
           <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
           <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
@@ -712,14 +706,16 @@
           <button data-key=".">.</button><button data-key="0">0</button><button data-key="back" aria-label="Стереть">⌫</button>
           <button data-key="ok" class="bj-key-ok">Готово</button>
         </div>
-        <button id="bc-place" class="bj-bet-btn bc-place"><b>PLACE BET</b></button>
-        <div id="bc-hint" class="bc-hint">Выберите PLAYER, TIE или BANKER</div>
+        <button id="bc-place" class="bj-bet-btn bc-place">
+          <span class="bj-spade">♠</span><b>Place Bet</b><span class="bj-spade">♠</span>
+        </button>
+        <div id="bc-foot" class="rl-foot bc-foot"><span id="bc-total">На столе $0.00</span><button id="bc-clear" class="rl-clear hidden">сбросить</button></div>
       </div>
     </section>
 
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=71"></script>
+  <script src="/app.js?v=73"></script>
 </body>
 </html>

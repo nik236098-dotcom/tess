@@ -9,7 +9,9 @@ const { freshDeck, shuffle, cardToString, rankOf } = require('../poker/cards');
 
 class BaccaratError extends Error {}
 
-const ZONES = { player: 1, banker: 1, tie: 8 };
+// Выплаты по макету: стороны 1:1, ничья 8:1, пара (первые две карты стороны
+// одного достоинства) 11:1.
+const ZONES = { player: 1, banker: 1, tie: 8, playerPair: 11, bankerPair: 11 };
 
 // Достоинство: туз 1, двойка–девятка по номиналу, десятки и картинки 0.
 function cardPoints(card) {
@@ -35,9 +37,35 @@ function bankerDraws(bankerTotal, playerThird) {
   return false;
 }
 
-// Раздача: возвращает карты обеих сторон, итог и выплату по ставке.
-function deal({ zone, amount, deck = null, rng = Math.random }) {
-  if (!ZONES[zone]) throw new BaccaratError('Неизвестная ставка');
+function isPair(cards) {
+  return cards.length >= 2 && rankOf(cards[0]) === rankOf(cards[1]);
+}
+
+// Ставки списком: { zone, amount }. Одна и та же зона может встречаться
+// один раз — клиент складывает фишки сам.
+function normalizeBets(raw, { minBet, maxBet, maxTotal }) {
+  if (!Array.isArray(raw) || raw.length === 0) throw new BaccaratError('Выберите PLAYER, TIE или BANKER');
+  const seen = new Set();
+  let total = 0;
+  const bets = raw.map((item) => {
+    const zone = item && ZONES[item.zone] ? item.zone : null;
+    if (!zone) throw new BaccaratError('Неизвестная ставка');
+    if (seen.has(zone)) throw new BaccaratError('Ставка на зону повторяется');
+    seen.add(zone);
+    const amount = Math.round(Number(item.amount));
+    if (!Number.isFinite(amount) || amount < minBet) throw new BaccaratError(`Минимальная ставка ${minBet}`);
+    if (amount > maxBet) throw new BaccaratError(`Максимальная ставка ${maxBet}`);
+    total += amount;
+    return { zone, amount };
+  });
+  if (total > maxTotal) throw new BaccaratError('Недостаточно средств');
+  return { bets, total };
+}
+
+// Раздача: карты обеих сторон, итог и расчёт каждой ставки.
+function deal({ bets, zone, amount, deck = null, rng = Math.random }) {
+  const list = bets || [{ zone, amount }];
+  for (const b of list) if (!ZONES[b.zone]) throw new BaccaratError('Неизвестная ставка');
   const shoe = deck ? deck.slice() : shuffle(freshDeck(), rng);
   const draw = () => shoe.pop();
   const player = [draw()];
@@ -58,9 +86,20 @@ function deal({ zone, amount, deck = null, rng = Math.random }) {
   const p = total(player);
   const b = total(banker);
   const winner = p > b ? 'player' : b > p ? 'banker' : 'tie';
+  const playerPair = isPair(player);
+  const bankerPair = isPair(banker);
+  const wins = { player: winner === 'player', banker: winner === 'banker', tie: winner === 'tie', playerPair, bankerPair };
+
   let payout = 0;
-  if (winner === zone) payout = amount * (ZONES[zone] + 1);
-  else if (winner === 'tie') payout = amount; // ничья возвращает ставки на стороны
+  let stake = 0;
+  const results = list.map((bet) => {
+    let win = 0;
+    if (wins[bet.zone]) win = bet.amount * (ZONES[bet.zone] + 1);
+    else if (winner === 'tie' && (bet.zone === 'player' || bet.zone === 'banker')) win = bet.amount; // ничья возвращает ставки на стороны
+    payout += win;
+    stake += bet.amount;
+    return { ...bet, won: Boolean(wins[bet.zone]), payout: win };
+  });
   return {
     player: player.map(cardToString),
     banker: banker.map(cardToString),
@@ -68,11 +107,16 @@ function deal({ zone, amount, deck = null, rng = Math.random }) {
     bankerTotal: b,
     winner,
     natural,
-    zone,
-    amount,
+    playerPair,
+    bankerPair,
+    bets: results,
     payout,
-    net: payout - amount,
+    stake,
+    net: payout - stake,
+    // для одной ставки — как раньше
+    zone: list.length === 1 ? list[0].zone : null,
+    amount: list.length === 1 ? list[0].amount : stake,
   };
 }
 
-module.exports = { deal, total, cardPoints, bankerDraws, BaccaratError, ZONES };
+module.exports = { deal, total, cardPoints, bankerDraws, normalizeBets, isPair, BaccaratError, ZONES };

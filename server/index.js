@@ -458,7 +458,7 @@ function createApp(options = {}) {
         client.send({ type: 'bc', ...baccaratInfo(client) });
         break;
       case 'bc_bet':
-        baccaratDeal(client, String(message.zone || ''), Number(message.amount));
+        baccaratDeal(client, message.bets || (message.zone ? [{ zone: message.zone, amount: message.amount }] : []));
         break;
       case 'ping':
         client.send({ type: 'pong', at: Date.now() });
@@ -833,14 +833,11 @@ function createApp(options = {}) {
     };
   }
 
-  function baccaratDeal(client, zone, amount) {
-    if (!baccarat.ZONES[zone]) throw new baccarat.BaccaratError('Выберите PLAYER, BANKER или TIE');
-    const bet = Math.round(amount);
-    if (!Number.isFinite(bet) || bet < BC_MIN_BET) throw new baccarat.BaccaratError(`Минимальная ставка ${formatMoney(BC_MIN_BET)}`);
-    if (bet > BC_MAX_BET) throw new baccarat.BaccaratError(`Максимальная ставка ${formatMoney(BC_MAX_BET)}`);
-    if (accounts.balanceOf(client.user.id) < bet) throw new baccarat.BaccaratError('Недостаточно средств');
-    accounts.withdraw(client.user.id, bet);
-    const result = baccarat.deal({ zone, amount: bet });
+  function baccaratDeal(client, rawBets) {
+    const balance = accounts.balanceOf(client.user.id);
+    const { bets, total } = baccarat.normalizeBets(rawBets, { minBet: BC_MIN_BET, maxBet: BC_MAX_BET, maxTotal: balance });
+    accounts.withdraw(client.user.id, total);
+    const result = baccarat.deal({ bets });
     if (result.payout > 0) accounts.deposit(client.user.id, result.payout);
     if (result.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: result.net, game: 'baccarat', code: 'BC' });
     const history = [result.winner, ...(baccaratHistory.get(client.user.id) || [])].slice(0, 12);

@@ -38,7 +38,7 @@ const state = {
   buyIn: { open: false, mode: 'sit', seat: null, amount: 0, touched: false },
   bj: { view: null, bet: 500, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null, typing: false, typed: '' },
   rl: { open: false, info: null, amount: 1000, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
-  bc: { open: false, info: null, amount: 1000, zone: null, dealing: false, timers: [], shownBalance: null, typing: false, typed: '', round: null },
+  bc: { open: false, info: null, amount: 2500, bets: new Map(), dealing: false, timers: [], shownBalance: null, typing: false, typed: '', round: null },
   unread: 0,
   tab: 'home', // главная | игры | турниры | бонусы | профиль
   wins: [], // лента последних выигрышей
@@ -1369,10 +1369,27 @@ function renderRoulette() {
 }
 
 // ——— Баккара ———
-// Холст 390×653 по макету. Ставка одна за раунд: зона + сумма фишки.
-// Карты раздаются по одной с паузой: P1, B1, P2, B2, затем третьи.
+// Фон — макет, живые элементы поверх. Ставки на несколько зон сразу:
+// тап по зоне кладёт фишку текущей суммы. Карты летят из шуза (справа) и
+// переворачиваются в полёте: P1, B1, P2, B2, затем третьи боком.
 
-const BC_CHIPS = [100, 500, 1000, 2500, 10000];
+const BC_PRESETS = [500, 1000, 2500, 5000, 10000];
+const BC_K = 390 / 941;
+const BC_SLOTS = { player: [74.6, 125.6], banker: [217.6, 268.6] };
+const BC_CARD_Y = 140.5;
+const BC_SHOE = { x: 364.7, y: 155 };
+
+function bcZones() {
+  const X = (x) => x * BC_K;
+  const Y = (y) => (y - 96) * BC_K;
+  return [
+    { key: 'player', x: X(42), y: Y(715), w: X(357) - X(42), h: Y(1001) - Y(715) },
+    { key: 'tie', x: X(365), y: Y(780), w: X(600) - X(365), h: Y(1005) - Y(780) },
+    { key: 'banker', x: X(609), y: Y(715), w: X(917) - X(609), h: Y(1001) - Y(715) },
+    { key: 'playerPair', x: X(99), y: Y(1002), w: X(381) - X(99), h: Y(1127) - Y(1002) },
+    { key: 'bankerPair', x: X(560), y: Y(1002), w: X(842) - X(560), h: Y(1126) - Y(1002) },
+  ];
+}
 
 function fitBaccarat() {
   const screen = $('screen-bc');
@@ -1394,7 +1411,7 @@ function openBaccarat() {
   stopRoomsPolling();
   fitBaccarat();
   requestAnimationFrame(fitBaccarat);
-  buildBaccaratChips();
+  buildBaccaratZones();
   bcClearTable();
   send({ type: 'bc_open' });
   renderBaccarat();
@@ -1410,25 +1427,34 @@ function closeBaccarat() {
   showLobby();
 }
 
-function buildBaccaratChips() {
-  const box = $('bc-chips');
+function buildBaccaratZones() {
+  const box = $('bc-zones');
   if (box.children.length) return;
-  const xs = [66, 130.5, 195, 259, 323];
-  BC_CHIPS.forEach((value, i) => {
-    const button = document.createElement('button');
-    button.className = `bc-chip c${value / 100}`;
-    button.style.left = `${xs[i]}px`;
-    button.dataset.value = String(value);
-    button.innerHTML = `<span>${value / 100}</span>`;
-    button.addEventListener('click', () => {
-      if (state.bc.dealing) return;
-      const { min, max } = bcRange();
-      state.bc.amount = clamp(value, min, max);
-      haptic('light');
-      renderBaccarat();
-    });
-    box.appendChild(button);
-  });
+  for (const zone of bcZones()) {
+    const node = document.createElement('button');
+    node.className = 'bc-zone';
+    node.dataset.zone = zone.key;
+    node.style.cssText = `left:${zone.x.toFixed(2)}px;top:${zone.y.toFixed(2)}px;width:${zone.w.toFixed(2)}px;height:${zone.h.toFixed(2)}px`;
+    node.addEventListener('click', () => placeBcBet(zone.key, node));
+    box.appendChild(node);
+  }
+  const presets = $('bc-presets');
+  if (!presets.children.length) {
+    for (const value of BC_PRESETS) {
+      const button = document.createElement('button');
+      button.className = 'bj-preset';
+      button.textContent = `$${value / 100}`;
+      button.dataset.value = String(value);
+      button.addEventListener('click', () => {
+        if (state.bc.dealing) return;
+        const { min, max } = bcRange();
+        state.bc.amount = clamp(value, min, max);
+        haptic('light');
+        renderBaccarat();
+      });
+      presets.appendChild(button);
+    }
+  }
 }
 
 function bcRange() {
@@ -1438,12 +1464,42 @@ function bcRange() {
   return { min, max };
 }
 
+function bcTotalStaked() {
+  let total = 0;
+  for (const amount of state.bc.bets.values()) total += amount;
+  return total;
+}
+
+function placeBcBet(zone, node) {
+  if (state.bc.dealing) return;
+  const { min } = bcRange();
+  const amount = Math.max(min, state.bc.amount);
+  if (bcTotalStaked() + amount > state.balance) {
+    toast('Недостаточно средств');
+    haptic('error');
+    return;
+  }
+  state.bc.bets.set(zone, (state.bc.bets.get(zone) || 0) + amount);
+  node.classList.add('is-hit');
+  setTimeout(() => node.classList.remove('is-hit'), 160);
+  haptic('light');
+  renderBaccarat();
+}
+
+function stepBcAmount(direction) {
+  if (state.bc.dealing) return;
+  const { min, max } = bcRange();
+  state.bc.amount = clamp(state.bc.amount + direction * 100, min, max);
+  haptic('light');
+  renderBaccarat();
+}
+
 function openBcKeypad() {
   if (state.bc.dealing) return;
   state.bc.typing = true;
   state.bc.typed = '';
   $('bc-keypad').classList.remove('hidden');
-  $('bc-amount').classList.add('is-typing');
+  document.querySelector('.bc-bet').classList.add('is-typing');
   renderBaccarat();
 }
 
@@ -1473,7 +1529,7 @@ function closeBcKeypad(apply) {
   state.bc.typing = false;
   state.bc.typed = '';
   $('bc-keypad').classList.add('hidden');
-  $('bc-amount').classList.remove('is-typing');
+  document.querySelector('.bc-bet').classList.remove('is-typing');
   renderBaccarat();
 }
 
@@ -1497,8 +1553,8 @@ function bcShowBalance(target, immediate = false) {
 }
 
 function bcClearTable() {
+  $('bc-cards').innerHTML = '';
   for (const side of ['player', 'banker']) {
-    $(`bc-${side}-cards`).querySelectorAll('.bc-card').forEach((n) => n.remove());
     const total = $(`bc-${side}-total`);
     total.textContent = '';
     total.classList.remove('is-on');
@@ -1507,23 +1563,24 @@ function bcClearTable() {
   document.querySelectorAll('.bc-zone').forEach((z) => z.classList.remove('is-win'));
 }
 
-function bcCard(code, third) {
-  const node = bjCard(code);
-  node.className = node.className.replace('bj-card', 'bc-card');
-  if (third) node.classList.add('third');
-  return node;
-}
-
-// Кладём карту в слот: у игрока третья слева, у банкира справа.
-function bcPlace(side, index, code) {
-  const box = $(`bc-${side}-cards`);
-  const slots = box.querySelectorAll('.bc-slot');
+// Карта с двумя гранями: летит из шуза рубашкой вверх и переворачивается.
+function bcDealCard(side, index, code) {
   const third = index === 2;
-  const slot = side === 'player' ? (third ? slots[0] : slots[index + 1]) : slots[index];
-  const card = bcCard(code, third);
-  card.style.left = `${slot.offsetLeft + (third ? (slot.offsetWidth - 41) / 2 : 0)}px`;
-  card.style.top = `${third ? (slot.offsetHeight - 58) / 2 : 0}px`;
-  box.appendChild(card);
+  const x = third ? (side === 'player' ? 14 : 336) : BC_SLOTS[side][index];
+  const y = third ? BC_CARD_Y + 10 : BC_CARD_Y;
+  const rank = code[0] === 'T' ? '10' : code[0];
+  const suitChar = code[1];
+  const suit = BJ_SUITS[suitChar] || '♠';
+  const card = document.createElement('div');
+  card.className = 'bc-card is-flying';
+  card.style.setProperty('--x0', `${BC_SHOE.x - 23}px`);
+  card.style.setProperty('--y0', `${BC_SHOE.y - 33}px`);
+  card.style.setProperty('--x', `${x.toFixed(1)}px`);
+  card.style.setProperty('--y', `${y.toFixed(1)}px`);
+  card.style.setProperty('--r', third ? '90deg' : '0deg');
+  card.innerHTML = `<div class="bc-face front${suitChar === 'h' || suitChar === 'd' ? ' red' : ''}"><span class="bj-rank">${rank}</span><span class="bj-suit-sm">${suit}</span><span class="bj-suit">${suit}</span></div><div class="bc-face back"></div>`;
+  $('bc-cards').appendChild(card);
+  card.addEventListener('animationend', () => card.classList.remove('is-flying'), { once: true });
 }
 
 function bcTotal(codes) {
@@ -1554,40 +1611,48 @@ function startBaccaratDeal(round) {
   bc.dealing = true;
   bc.round = round;
   bcClearTable();
+  $('bc-canvas').classList.add('is-dealing');
   bcShowBalance(state.balance - round.payout);
   renderBaccarat();
-  // Очередь: P1 B1 P2 B2, потом третьи карты (если есть).
   const steps = [['player', 0], ['banker', 0], ['player', 1], ['banker', 1]];
   if (round.player[2]) steps.push(['player', 2]);
   if (round.banker[2]) steps.push(['banker', 2]);
-  let delay = 350;
+  let delay = 300;
   steps.forEach(([side, index], i) => {
     bc.timers.push(setTimeout(() => {
-      bcPlace(side, index, round[side][index]);
-      const shown = round[side].slice(0, index + 1);
-      const total = $(`bc-${side}-total`);
-      total.textContent = String(bcTotal(shown));
-      total.classList.add('is-on');
+      bcDealCard(side, index, round[side][index]);
       haptic('light');
-      if (i === steps.length - 1) bc.timers.push(setTimeout(() => finishBaccaratDeal(round), 500));
+      // Очки обновляются, когда карта легла (после переворота).
+      bc.timers.push(setTimeout(() => {
+        const total = $(`bc-${side}-total`);
+        total.textContent = String(bcTotal(round[side].slice(0, index + 1)));
+        total.classList.add('is-on');
+      }, 620));
+      if (i === steps.length - 1) bc.timers.push(setTimeout(() => finishBaccaratDeal(round), 1100));
     }, delay));
-    delay += 520;
+    delay += index === 2 ? 700 : 560;
   });
 }
 
 function finishBaccaratDeal(round) {
   const bc = state.bc;
   bc.dealing = false;
+  $('bc-canvas').classList.remove('is-dealing');
   const result = $('bc-result');
   const label = round.winner === 'tie' ? 'TIE' : round.winner === 'player' ? 'PLAYER WINS' : 'BANKER WINS';
-  const tail = round.net > 0 ? ` +${money(round.net)}` : round.net < 0 ? ` −${money(-round.net)}` : ' · ставка возвращена';
+  const tail = round.net > 0 ? ` +${money(round.net)}` : round.net < 0 ? ` −${money(-round.net)}` : (round.winner === 'tie' ? ' · ставки возвращены' : ' · $0.00');
   result.className = `rl-result bc-result${round.net < 0 ? ' lose' : ''}${round.winner === 'tie' ? ' tie' : ''}`;
   result.textContent = `${label}${tail}`;
   result.classList.remove('hidden');
-  const zone = document.querySelector(`.bc-zone[data-zone="${round.winner}"]`);
-  if (zone) zone.classList.add('is-win');
+  const winners = new Set(round.bets.filter((b) => b.won).map((b) => b.zone));
+  winners.add(round.winner);
+  if (round.playerPair) winners.add('playerPair');
+  if (round.bankerPair) winners.add('bankerPair');
+  document.querySelectorAll('.bc-zone').forEach((z) => z.classList.toggle('is-win', winners.has(z.dataset.zone)));
+  bc.timers.push(setTimeout(() => document.querySelectorAll('.bc-zone').forEach((z) => z.classList.remove('is-win')), 3000));
   haptic(round.net > 0 ? 'success' : 'light');
   bcShowBalance(state.balance);
+  bc.bets.clear();
   renderBaccarat();
 }
 
@@ -1598,30 +1663,26 @@ function renderBaccarat() {
     const { min, max } = bcRange();
     bc.amount = clamp(bc.amount, min, max);
   }
-  const value = bc.typing ? (bc.typed ? `$${bc.typed}` : '$') : `$${(bc.amount / 100).toFixed(2).replace(/\.00$/, '')}`;
-  $('bc-amount-value').textContent = value;
-  for (const chip of $('bc-chips').children) {
-    chip.classList.toggle('is-active', Number(chip.dataset.value) === bc.amount);
-    chip.disabled = bc.dealing;
+  $('bc-amount').textContent = bc.typing ? (bc.typed ? `$${bc.typed}` : '$') : money(bc.amount);
+  $('bc-minus').disabled = bc.dealing;
+  $('bc-plus').disabled = bc.dealing;
+  for (const button of $('bc-presets').children) button.disabled = bc.dealing;
+  for (const node of $('bc-zones').children) {
+    const amount = bc.bets.get(node.dataset.zone);
+    let chip = node.querySelector('.rl-chip');
+    if (!amount) { if (chip) chip.remove(); continue; }
+    if (!chip) { chip = document.createElement('i'); chip.className = 'rl-chip'; node.appendChild(chip); }
+    const text = rlChipText(amount);
+    if (chip.textContent !== text) chip.textContent = text;
+    chip.classList.toggle('is-long', text.length === 4);
+    chip.classList.toggle('is-xlong', text.length >= 5);
   }
-  document.querySelectorAll('.bc-zone').forEach((z) => {
-    z.classList.toggle('is-selected', z.dataset.zone === bc.zone);
-    z.disabled = bc.dealing;
-    const chip = z.querySelector('.rl-chip');
-    if (z.dataset.zone === bc.zone && !bc.dealing) {
-      let c = chip;
-      if (!c) { c = document.createElement('i'); c.className = 'rl-chip'; z.appendChild(c); }
-      const text = rlChipText(bc.amount);
-      c.textContent = text;
-      c.classList.toggle('is-long', text.length === 4);
-      c.classList.toggle('is-xlong', text.length >= 5);
-    } else if (chip && !bc.dealing) chip.remove();
-  });
+  const total = bcTotalStaked();
+  $('bc-total').textContent = bc.dealing ? 'Раздача…' : `На столе ${money(total)}`;
+  $('bc-clear').classList.toggle('hidden', !total || bc.dealing);
   const place = $('bc-place');
   place.classList.remove('is-loading');
-  const short = state.balance < bc.amount;
-  place.disabled = bc.dealing || !bc.zone || short;
-  $('bc-hint').textContent = short ? 'Недостаточно средств' : bc.dealing ? 'Раздача…' : bc.zone ? `Ставка ${money(bc.amount)} на ${bc.zone.toUpperCase()}` : 'Выберите PLAYER, TIE или BANKER';
+  place.disabled = bc.dealing || !total || total > state.balance;
 }
 
 // Главная и Игры — это две панели одного экрана лобби: столы и лента
@@ -3390,15 +3451,10 @@ function bindUi() {
   on('play-roulette', 'click', () => { haptic('light'); openRoulette(); });
   on('play-baccarat', 'click', () => { haptic('light'); openBaccarat(); });
   on('bc-back', 'click', closeBaccarat);
-  document.querySelectorAll('.bc-zone').forEach((button) => {
-    button.addEventListener('click', () => {
-      if (state.bc.dealing) return;
-      state.bc.zone = button.dataset.zone;
-      haptic('light');
-      renderBaccarat();
-    });
-  });
+  on('bc-minus', 'click', () => stepBcAmount(-1));
+  on('bc-plus', 'click', () => stepBcAmount(1));
   on('bc-amount', 'click', () => openBcKeypad());
+  on('bc-clear', 'click', () => { state.bc.bets.clear(); haptic('light'); renderBaccarat(); });
   document.querySelectorAll('#bc-keypad [data-key]').forEach((button) => {
     button.addEventListener('click', (event) => { event.stopPropagation(); bcKey(button.dataset.key); });
   });
@@ -3408,9 +3464,9 @@ function bindUi() {
     closeBcKeypad(true);
   });
   on('bc-place', 'click', (event) => {
-    if (state.bc.dealing || !state.bc.zone) return;
+    if (state.bc.dealing || !state.bc.bets.size) return;
     markBusy(event.currentTarget);
-    send({ type: 'bc_bet', zone: state.bc.zone, amount: state.bc.amount });
+    send({ type: 'bc_bet', bets: Array.from(state.bc.bets, ([zone, amount]) => ({ zone, amount })) });
   });
   on('rl-back', 'click', closeRoulette);
   on('rl-minus', 'click', () => stepRlAmount(-1));
