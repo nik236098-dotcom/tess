@@ -649,6 +649,13 @@ function addBjBet(value) {
   renderBlackjack();
 }
 
+function bjUnshift() {
+  const reset = () => { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; };
+  reset();
+  setTimeout(reset, 60);
+  setTimeout(reset, 300);
+}
+
 function applyBjInput(input) {
   const view = state.bj.view;
   if (view && view.phase === 'play') return;
@@ -807,6 +814,12 @@ function renderBlackjack() {
   if (active) handPill.textContent = String(active.total);
 
   // Ставка: во время раздачи заперта, в остальное время — из состояния клиента.
+  // Ставка никогда не больше баланса и границ стола — даже если баланс
+  // изменился после ввода.
+  if (!playing) {
+    const range = bjBetRange();
+    state.bj.bet = clamp(state.bj.bet, range.min, range.max);
+  }
   const bet = $('bj-bet-amount');
   if (document.activeElement !== bet) bet.value = money(state.bj.bet);
   bet.readOnly = playing;
@@ -2655,7 +2668,12 @@ function bindUi() {
     requestAnimationFrame(() => event.target.select());
   });
   on('bj-bet-amount', 'change', (event) => applyBjInput(event.target));
-  on('bj-bet-amount', 'blur', (event) => applyBjInput(event.target));
+  on('bj-bet-amount', 'blur', (event) => {
+    applyBjInput(event.target);
+    // iOS сдвигает страницу под клавиатуру и не всегда возвращает обратно.
+    bjUnshift();
+  });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (state.bj.open) bjUnshift(); });
   on('bj-bet-amount', 'keydown', (event) => { if (event.key === 'Enter') event.target.blur(); });
   on('bj-deal', 'click', (event) => {
     markBusy(event.currentTarget);

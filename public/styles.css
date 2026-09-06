@@ -3106,7 +3106,7 @@ body:has(#screen-table:not(.hidden)) .toast {
    Макет 941×1576 (без шапки Telegram) → холст 390×653, k = 0.41445.
    Все координаты ниже сняты с макета и поделены на 2.413.            */
 .bj-screen {
-  position: relative;
+  position: fixed; inset: 0;
   overflow: hidden;
   background: #05010c;
 }
@@ -3152,7 +3152,16 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bj-bet-btn .bj-spade:first-child { left: 26px; }
 .bj-bet-btn .bj-spade:last-child { right: 26px; }
 .bj-bet-btn:active:not(:disabled) { transform: scale(0.97); }
-.bj-bet-btn:disabled { opacity: 0.45; box-shadow: none; }
+/* Заблокированная кнопка тоже непрозрачна: под ней нарисованная на фоне. */
+.bj-bet-btn:disabled {
+  opacity: 1;
+  background: linear-gradient(180deg, #1f0a4a 0%, #24106a 55%, #2d1a80 100%);
+  border-color: rgba(120, 80, 200, 0.5);
+  box-shadow: none;
+  color: rgba(239, 230, 255, 0.45);
+}
+.bj-bet-btn:disabled b { text-shadow: none; }
+.bj-bet-btn:disabled .bj-spade { color: rgba(201, 168, 255, 0.35); text-shadow: none; }
 .bj-deal-sub {
   position: absolute; left: 50%; top: 575px;
   transform: translateX(-50%);
