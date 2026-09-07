@@ -3556,8 +3556,9 @@ body:has(#screen-table:not(.hidden)) .toast {
 .lb-play-rl .lb-wheel { top: 50%; }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   БАККАРА — тот же тёмно-синий неон, что у Mines/Nvuti: своя карта стола
-   (дракон/тигр фоном), колода сверху, плоские зоны ставок, лента фишек.
+   БАККАРА — фон: присланный макет (img/bc-bg.webp, 941×1444, шапка
+   Telegram обрезана) → холст 390×598.5 (k = 0.41445). Поверх — только
+   живое; координаты сняты с макета и умножены на k.
    ═══════════════════════════════════════════════════════════════════════ */
 .lb-play-bc {
   border-color: rgba(233, 207, 149, 0.22);
@@ -3571,314 +3572,160 @@ body:has(#screen-table:not(.hidden)) .toast {
 .lb-play-bc .lb-play-cta { background: linear-gradient(180deg, #f0d7a0, #c9a24f); color: #2a1d05; box-shadow: 0 8px 18px rgba(233, 207, 149, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
 .lb-play-bc .lb-bc-tag { background: linear-gradient(180deg, #b48cff, #6a3fd6); color: #fff; font-size: 12px; letter-spacing: 0.08em; }
 
-.bc-page-bg .mn-suit-1, .bc-page-bg .mn-suit-2 { fill: rgba(90, 120, 255, 0.08); }
 
-/* Двойной класс — специфичность выше, чем у .mn-board-card ниже по файлу,
-   иначе его padding: 22px перекрыл бы наш более узкий отступ. */
-.mn-board-card.bc-board {
-  padding: 18px 16px 16px; overflow: hidden;
-  border-color: rgba(110, 150, 255, 0.5);
-  box-shadow: 0 0 26px rgba(80, 120, 255, 0.28), 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+#screen-bc.bj-screen { background: #060b15; }
+.bc-canvas { height: 598.5px; background-image: url('/img/bc-bg.webp'); }
+/* Невидимые области нажатия поверх нарисованных кнопок. */
+.bc-hit { position: absolute; border: 0; background: transparent; padding: 0; cursor: pointer; border-radius: 12px; }
+.bc-hit:disabled { cursor: default; background: rgba(4, 6, 20, 0.5); }
+.bc-back { left: 15.7px; top: 2.9px; width: 33.2px; height: 29px; }
+.bc-deal { left: 24px; top: 434.8px; width: 260.7px; height: 45.2px; border-radius: 14px; }
+.bc-clear { left: 292.2px; top: 434.8px; width: 74.6px; height: 45.2px; border-radius: 14px; }
+/* Баланс: закрываем нарисованное число цветом пилюли и пишем своё. */
+.bc-balance {
+  position: absolute; left: 296.3px; top: 7px; width: 74.6px; height: 21.6px;
+  background: linear-gradient(90deg, #091120, #070d1c);
+  display: flex; align-items: center; justify-content: flex-end;
 }
-/* Фон экрана баккары — синий, а не фиолетовый (как у Mines/Nvuti). */
-#screen-bc.mn-screen {
-  background:
-    radial-gradient(90% 50% at 50% -10%, rgba(70, 110, 255, 0.32), rgba(70, 110, 255, 0) 60%),
-    radial-gradient(60% 40% at 100% 70%, rgba(40, 70, 200, 0.22), rgba(40, 70, 200, 0) 60%),
-    linear-gradient(180deg, #0a0d22 0%, #07091b 60%, #05061a 100%);
-}
-/* Дракон/тигр — декоративные силуэты фоном по нижней части карты, за
-   зонами ставок, не заходят выше рук с картами. */
-.bc-dragon, .bc-tiger {
-  position: absolute; bottom: 4px;
-  width: auto; pointer-events: none; opacity: 0.14;
-}
-.bc-dragon { left: -8px; height: 62%; color: #5a7bff; fill: #5a7bff; }
-.bc-tiger { right: -10px; height: 50%; color: #ff5a6e; fill: #ff5a6e; }
+.bc-balance b { font: 700 13.5px/1 var(--font); color: #f5c542; font-variant-numeric: tabular-nums; transition: color 0.3s; }
+.bc-balance.is-up b { color: #34e3a6; }
+.bc-balance.is-down b { color: #ff6b7a; }
 
-.bc-table { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; min-height: 150px; z-index: 1; }
-.bc-hand { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 4px; }
-/* Подпись стороны — просто цветной текст, счёт — отдельная пилюля под ним. */
-.bc-side-label { font: 800 15px/1 var(--font); letter-spacing: 0.02em; }
-.bc-side-player { color: #5f8dff; text-shadow: 0 0 8px rgba(95, 141, 255, 0.55); }
-.bc-side-banker { color: #ff5470; text-shadow: 0 0 8px rgba(255, 84, 112, 0.55); }
+/* Стол: подписи сторон, счёт, карты, плашка итога. На пустом столе
+   ничего из этого нет — на фоне уже нарисованы колода и световой конус. */
+.bc-table { position: absolute; inset: 0; pointer-events: none; }
+.bc-side-label {
+  position: absolute; top: 51px; width: 90px; text-align: center;
+  font: 800 12.5px/1 var(--font); letter-spacing: 0.02em;
+  transition: opacity 0.2s;
+}
+.bc-side-player { left: 71px; color: #5f8dff; text-shadow: 0 0 8px rgba(95, 141, 255, 0.55); }
+.bc-side-banker { left: 228.5px; color: #ff5470; text-shadow: 0 0 8px rgba(255, 84, 112, 0.55); }
 .bc-score {
-  min-width: 34px; height: 22px; padding: 0 10px;
+  position: absolute; top: 70.5px; width: 36.5px; height: 18.2px;
   border-radius: 999px;
   display: grid; place-items: center;
-  font: 800 13px/1 var(--font); color: #fff;
-  background: rgba(8, 10, 30, 0.9);
+  font: 800 11px/1 var(--font); color: #fff;
+  background: rgba(8, 10, 30, 0.92);
   opacity: 0; transform: scale(0.6); transition: opacity 0.2s, transform 0.25s var(--ease);
 }
 .bc-score.is-on { opacity: 1; transform: none; }
-.bc-score-player { border: 1.5px solid #5f8dff; box-shadow: 0 0 10px rgba(95, 141, 255, 0.55); }
-.bc-score-banker { border: 1.5px solid #ff5470; box-shadow: 0 0 10px rgba(255, 84, 112, 0.55); }
-.bc-cards-row { display: flex; min-height: 54px; margin-top: 4px; }
-.bc-cards-row .bc-card:not(:first-child) { margin-left: -14px; }
-.bc-cards-row .bc-card:nth-child(2) { transform: translateY(2px); }
-.bc-cards-row .bc-card:nth-child(3) { transform: translateY(4px); }
-/* Карты выигравшей раздачу стороны обводим в цвет исхода — как на макете. */
-.bc-cards-row.is-glow-win .bc-card { box-shadow: 0 0 0 2px rgba(92, 255, 106, 0.9), 0 0 16px rgba(92, 255, 106, 0.65); border-radius: 5px; }
-.bc-cards-row.is-glow-lose .bc-card { box-shadow: 0 0 0 2px rgba(255, 90, 110, 0.9), 0 0 16px rgba(255, 90, 110, 0.65); border-radius: 5px; }
-.bc-cards-row.is-glow-push .bc-card { box-shadow: 0 0 0 2px rgba(242, 201, 107, 0.9), 0 0 16px rgba(242, 201, 107, 0.6); border-radius: 5px; }
-
-/* Центр: колода сверху, под ней плашка итога. Пустой стол — без рук,
-   только колода со световым конусом. */
-.bc-center { flex: none; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.bc-table.is-idle .bc-hand { visibility: hidden; }
-.bc-table.is-idle .bc-shoe::after {
-  content: ''; position: absolute; left: 50%; top: 100%; width: 170px; height: 110px;
-  transform: translateX(-50%);
-  background: radial-gradient(ellipse at top, rgba(120, 150, 255, 0.24), transparent 68%);
-  pointer-events: none;
-}
-
-.bc-shoe { flex: none; position: relative; width: 62px; height: 78px; }
-.bc-shoe-card {
-  position: absolute; inset: 0;
-  border-radius: 7px;
-  background:
-    repeating-linear-gradient(45deg, rgba(120, 150, 255, 0.16) 0 1px, transparent 1px 6px),
-    repeating-linear-gradient(-45deg, rgba(120, 150, 255, 0.16) 0 1px, transparent 1px 6px),
-    linear-gradient(160deg, #1a2160 0%, #0e1236 100%);
-  border: 1.5px solid rgba(150, 175, 255, 0.55);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-  transform: translate(calc(var(--o, 0) * 3px), calc(var(--o, 0) * -3px));
-}
-.bc-shoe-top { display: grid; place-items: center; color: #6f8dff; box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55), 0 0 14px rgba(120, 150, 255, 0.55); }
-.bc-shoe-top .icon { width: 28px; height: 28px; fill: currentColor; stroke: none; filter: drop-shadow(0 0 6px rgba(110, 140, 255, 0.8)); }
-
+.bc-score-player { left: 97.8px; border: 1.5px solid #5f8dff; box-shadow: 0 0 8px rgba(95, 141, 255, 0.6); }
+.bc-score-banker { left: 255.3px; border: 1.5px solid #ff5470; box-shadow: 0 0 8px rgba(255, 84, 112, 0.6); }
+.bc-table.is-idle .bc-side-label { opacity: 0; }
+.bc-shoe { position: absolute; left: 164px; top: 48px; width: 68px; height: 80px; }
+.bc-cards { position: absolute; inset: 0; }
 .bc-card {
-  position: relative; flex: none;
-  width: 36px; height: 52px;
+  position: absolute; left: 0; top: 0;
+  width: 37.3px; height: 51.8px;
+  transform: translate(var(--x), var(--y));
   transform-style: preserve-3d;
+  will-change: transform;
 }
-.bc-face {
-  position: absolute; inset: 0; border-radius: 5px;
-  backface-visibility: hidden;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55);
-}
-.bc-face.front {
-  background: linear-gradient(160deg, #ffffff 0%, #f1f2f6 60%, #dfe1e8 100%);
-  color: #101018;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.12);
-}
-.bc-face.front.red { color: #d8202a; }
-.bc-face.front .bj-rank { position: absolute; left: 3px; top: 2px; font: 700 12px/1 var(--font); letter-spacing: -0.03em; }
-.bc-face.front .bj-suit-sm { position: absolute; left: 3px; top: 14px; font-size: 8px; line-height: 1; }
-.bc-face.front .bj-suit { position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%); font-size: 22px; line-height: 1; }
+.bc-face { position: absolute; inset: 0; border-radius: 4px; backface-visibility: hidden; box-shadow: 0 5px 12px rgba(0, 0, 0, 0.6); }
+.bc-face.front { background: linear-gradient(160deg, #ffffff 0%, #f3f4f8 60%, #e3e5ec 100%); color: #101018; box-shadow: 0 5px 12px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.1); }
+.bc-face.front.red { color: #e0202c; }
+.bc-face.front .bj-rank { position: absolute; left: 3px; top: 2px; font: 800 13px/1 var(--font); letter-spacing: -0.03em; }
+.bc-face.front .bj-suit-sm { position: absolute; left: 3.5px; top: 15px; font-size: 8px; line-height: 1; }
+.bc-face.front .bj-suit { position: absolute; left: 50%; top: 60%; transform: translate(-50%, -50%); font-size: 24px; line-height: 1; }
 .bc-face.back {
   transform: rotateY(180deg);
   background:
-    repeating-linear-gradient(45deg, rgba(120, 150, 255, 0.14) 0 1px, transparent 1px 6px),
-    repeating-linear-gradient(-45deg, rgba(120, 150, 255, 0.14) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(45deg, rgba(120, 150, 255, 0.16) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(-45deg, rgba(120, 150, 255, 0.16) 0 1px, transparent 1px 5px),
     linear-gradient(160deg, #1a2160 0%, #0e1236 100%);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55), inset 0 0 0 1.5px rgba(150, 175, 255, 0.55);
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.6), inset 0 0 0 1.5px rgba(150, 175, 255, 0.55);
 }
 .bc-face.back::after { content: '♠'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 16px; color: #6f8dff; }
+/* Карты выигравшей стороны — обводка в цвет исхода. */
+.bc-card.is-glow-win .bc-face { box-shadow: 0 0 0 2px rgba(92, 255, 106, 0.95), 0 0 14px rgba(92, 255, 106, 0.7); }
+.bc-card.is-glow-lose .bc-face { box-shadow: 0 0 0 2px rgba(255, 90, 110, 0.95), 0 0 14px rgba(255, 90, 110, 0.7); }
+.bc-card.is-glow-push .bc-face { box-shadow: 0 0 0 2px rgba(242, 201, 107, 0.95), 0 0 14px rgba(242, 201, 107, 0.6); }
 
-/* Плашка итога — в центре под колодой, между руками. */
+/* Плашка итога — x 380..563, y 530..632 по макету. */
 .bc-result {
-  min-width: 112px; padding: 8px 14px 10px;
-  border-radius: 12px;
-  text-align: center;
-  opacity: 0; transform: scale(0.85); pointer-events: none;
+  position: absolute; left: 157.5px; top: 125.2px; width: 75.8px; height: 42.3px;
+  border-radius: 8px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  opacity: 0; transform: scale(0.85);
   transition: opacity 0.18s, transform 0.18s var(--ease);
 }
 .bc-result.is-visible { opacity: 1; transform: none; }
-.bc-result.win {
-  background: rgba(10, 30, 26, 0.92);
-  border: 1.5px solid rgba(80, 200, 255, 0.85);
-  box-shadow: 0 0 18px rgba(80, 200, 255, 0.4), 0 0 8px rgba(92, 255, 106, 0.3);
-  color: #3dff7a;
-}
-.bc-result.push {
-  background: rgba(30, 30, 18, 0.92);
-  border: 1.5px solid rgba(242, 201, 107, 0.7);
-  box-shadow: 0 0 18px rgba(242, 201, 107, 0.3);
-  color: #f2c96b;
-}
-.bc-result.lose {
-  background: rgba(40, 10, 22, 0.92);
-  border: 1.5px solid rgba(255, 70, 100, 0.85);
-  box-shadow: 0 0 18px rgba(255, 70, 100, 0.45);
-  color: #ff4d6a;
-}
-.bc-result b { display: block; font: 800 20px/1.05 var(--font); letter-spacing: -0.01em; white-space: nowrap; }
-.bc-result span { display: block; margin-top: 3px; font: 700 14px var(--font); }
+.bc-result.win { background: rgba(8, 26, 30, 0.94); border: 1.5px solid rgba(70, 190, 255, 0.9); box-shadow: 0 0 14px rgba(70, 190, 255, 0.5); color: #3dff7a; }
+.bc-result.push { background: rgba(30, 30, 18, 0.94); border: 1.5px solid rgba(242, 201, 107, 0.8); box-shadow: 0 0 14px rgba(242, 201, 107, 0.35); color: #f2c96b; }
+.bc-result.lose { background: rgba(40, 8, 20, 0.94); border: 1.5px solid rgba(255, 60, 90, 0.9); box-shadow: 0 0 14px rgba(255, 60, 90, 0.5); color: #ff4d6a; }
+.bc-result b { font: 800 14px/1 var(--font); letter-spacing: -0.01em; white-space: nowrap; }
+.bc-result.lose b, .bc-result.push b { font-size: 9.5px; }
+.bc-result span { font: 700 10.5px/1 var(--font); }
 
-/* Подпись TIE PAYS — с тонкими линиями и ромбами по бокам, как в макете. */
-.bc-tie-caption {
-  margin-top: 6px; text-align: center;
-  font: 600 10.5px/1 var(--font); letter-spacing: 0.16em; color: rgba(150, 160, 210, 0.75);
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-}
-.bc-tie-caption i { width: 34px; height: 1px; background: linear-gradient(90deg, transparent, rgba(150, 160, 230, 0.6)); }
-.bc-tie-caption i:last-child { background: linear-gradient(90deg, rgba(150, 160, 230, 0.6), transparent); }
-.bc-tie-caption em { font-style: normal; color: rgba(150, 160, 230, 0.7); font-size: 9px; }
-
-/* Зоны ставок: плоская сетка карточек 5×2 по образцу макета — Perfect Pair
-   и Pair стопкой по бокам, Player/Banker во всю высоту, Tie посередине
-   короче остальных. */
-.bc-zones-grid {
-  position: relative; z-index: 1;
-  display: grid;
-  grid-template-columns: 0.86fr 1.28fr 1fr 1.28fr 0.86fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 8px 6px;
-  margin-top: 12px;
-  padding: 0 2px;
-}
+/* Зоны ставок: нарисованы на фоне; поверх — невидимая область нажатия,
+   подсветка (вспышка при тапе, пульс у выигравшей) и фишка со ставкой. */
+.bc-zones { position: absolute; inset: 0; pointer-events: none; }
 .bc-zone {
-  position: relative;
-  border-radius: 12px;
-  border: 1.5px solid;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  padding: 6px 4px;
-  cursor: pointer;
-  transition: transform 0.12s var(--ease), filter 0.15s, box-shadow 0.2s;
+  position: absolute;
+  left: calc(var(--x) * 0.41445px); top: calc((var(--y) - 228) * 0.41445px);
+  width: calc(var(--w) * 0.41445px); height: calc(var(--h) * 0.41445px);
+  transform: rotate(var(--r, 0deg));
+  border: 0; padding: 0; border-radius: 10px;
+  background: transparent; pointer-events: auto; cursor: pointer;
+  transition: box-shadow 0.15s, background-color 0.15s;
 }
-.bc-zone:active { filter: brightness(1.25); }
-/* Веер: боковые зоны слегка повёрнуты наружу, как на макете. */
-.bc-zone[data-zone="playerPerfectPair"], .bc-zone[data-zone="playerPair"] { transform: rotate(-5deg); transform-origin: 100% 50%; }
-.bc-zone[data-zone="player"] { transform: rotate(-2.5deg); transform-origin: 100% 50%; }
-.bc-zone[data-zone="banker"] { transform: rotate(2.5deg); transform-origin: 0 50%; }
-.bc-zone[data-zone="bankerPerfectPair"], .bc-zone[data-zone="bankerPair"] { transform: rotate(5deg); transform-origin: 0 50%; }
-.bc-zone span { font: 700 9.5px/1.15 var(--font); letter-spacing: 0.03em; text-align: center; }
-.bc-zone b { font: 800 13px/1 var(--font); letter-spacing: -0.01em; }
-.bc-zone[data-zone="playerPerfectPair"] { grid-column: 1; grid-row: 1; }
-.bc-zone[data-zone="playerPair"] { grid-column: 1; grid-row: 2; }
-.bc-zone[data-zone="player"] { grid-column: 2; grid-row: 1 / span 2; }
-.bc-zone[data-zone="tie"] { grid-column: 3; grid-row: 1 / span 2; align-self: center; height: 76%; }
-.bc-zone[data-zone="banker"] { grid-column: 4; grid-row: 1 / span 2; }
-.bc-zone[data-zone="bankerPerfectPair"] { grid-column: 5; grid-row: 1; }
-.bc-zone[data-zone="bankerPair"] { grid-column: 5; grid-row: 2; }
-.bc-zone.side-player {
-  border-color: rgba(110, 150, 255, 0.65);
-  background: rgba(35, 48, 105, 0.4);
-  color: #a9c0ff;
-  box-shadow: 0 0 10px rgba(80, 120, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-.bc-zone.side-banker {
-  border-color: rgba(255, 100, 120, 0.65);
-  background: rgba(100, 35, 46, 0.4);
-  color: #ffb0bd;
-  box-shadow: 0 0 10px rgba(255, 90, 110, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-.bc-zone-tie {
-  border-color: rgba(90, 240, 150, 0.7);
-  background: rgba(20, 90, 60, 0.4);
-  color: #8fe0b0;
-  box-shadow: 0 0 10px rgba(80, 240, 150, 0.18);
-}
-.bc-zone-main { font-size: 0; }
-.bc-zone-main span { font: 800 14px/1 var(--font); letter-spacing: 0.02em; }
-.bc-zone-main b { margin-top: 2px; font-size: 12px; opacity: 0.85; }
-.bc-zone-tie span { font: 800 13px/1 var(--font); }
-/* Иконка над названием зоны — человечек/трилистник/корона, как в макете. */
-.bc-zone-icon { width: 22px; height: 22px; margin-bottom: 2px; fill: currentColor; stroke: none; }
-.bc-zone-tie .bc-zone-icon { width: 20px; height: 20px; }
-.bc-zone-tie b { margin-top: 1px; font-size: 11px; opacity: 0.85; }
-.bc-zone.is-hit { filter: brightness(1.35); box-shadow: 0 0 14px currentColor; }
+.bc-zone[data-zone^="player"], .bc-zone[data-zone="player"] { --zc: rgba(95, 141, 255, 0.9); }
+.bc-zone[data-zone^="banker"], .bc-zone[data-zone="banker"] { --zc: rgba(255, 84, 112, 0.9); }
+.bc-zone[data-zone="tie"] { --zc: rgba(92, 255, 106, 0.9); }
+.bc-zone.is-hit { box-shadow: 0 0 16px var(--zc); }
 .bc-zone.is-win { animation: bc-zone-pulse 0.85s ease-in-out infinite alternate; }
 @keyframes bc-zone-pulse {
-  from { filter: brightness(1.15); box-shadow: 0 0 10px currentColor; }
-  to { filter: brightness(1.55); box-shadow: 0 0 20px currentColor; }
+  from { box-shadow: 0 0 10px var(--zc); }
+  to { box-shadow: 0 0 24px var(--zc), 0 0 6px #fff; }
 }
-.bc-zones-grid.is-locked .bc-zone { pointer-events: none; opacity: 0.75; }
+.bc-zones.is-locked .bc-zone { pointer-events: none; }
 .bc-zone-chip {
-  position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%);
-  min-width: 26px; height: 26px; padding: 0 4px;
+  position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%);
+  min-width: 24px; height: 24px; padding: 0 4px;
   border-radius: 50%;
   display: grid; place-items: center;
-  font: 800 8.5px/1 var(--font); color: #fff;
+  font: 800 8px/1 var(--font); color: #fff;
   background: radial-gradient(circle at 50% 50%, #3b2a86 0 40%, #1f1447 42% 60%, #6e56ff 62% 70%, #1f1447 72%);
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.4), 0 2px 6px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.45), 0 2px 6px rgba(0, 0, 0, 0.6);
   animation: pop-in 0.18s var(--ease);
 }
-/* Perfect Pair / Pair — низкие коробки, текст занимает почти всю высоту:
-   фишку ставим в угол, а не поверх номинала снизу. */
-.bc-zone-pp .bc-zone-chip, .bc-zone-pair .bc-zone-chip {
-  left: auto; right: -6px; top: -6px; bottom: auto; transform: none;
-  min-width: 20px; height: 20px; font-size: 7px;
-}
 
-/* Лента истории — «дорожка» последних раундов, как road map в казино. */
-.bc-history {
-  margin-top: 14px;
-  padding: 14px 12px;
-  border-radius: 18px;
-  border: 1px solid rgba(110, 150, 255, 0.28);
-  background: linear-gradient(180deg, rgba(14, 18, 44, 0.85), rgba(9, 11, 32, 0.85));
-  box-shadow: 0 0 18px rgba(80, 120, 255, 0.12);
-  display: grid;
-  grid-template-columns: repeat(10, 1fr);
-  grid-auto-rows: 22px;
-  place-items: center;
-  min-height: 116px;
-}
+/* Дорожка истории: точки нарисованы на фоне (19×6, шаг 42.5/42 по макету),
+   поверх — цветные точки исходов на тех же местах. */
+.bc-history { position: absolute; left: 33.2px; top: 317.9px; width: 320px; height: 106px; pointer-events: none; }
 .bc-history i {
-  width: 6px; height: 6px; border-radius: 50%; font-style: normal;
-  background: rgba(140, 150, 220, 0.35);
+  position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; font-style: normal;
+  left: calc(var(--c) * 17.61px); top: calc(var(--r) * 17.41px);
+  opacity: 0;
 }
-.bc-history i.player { width: 9px; height: 9px; background: #5a82ff; box-shadow: 0 0 6px rgba(90, 130, 255, 0.8); }
-.bc-history i.banker { width: 9px; height: 9px; background: #ff5a6e; box-shadow: 0 0 6px rgba(255, 90, 110, 0.8); }
-.bc-history i.tie { width: 9px; height: 9px; background: #4ade9f; box-shadow: 0 0 6px rgba(74, 222, 159, 0.8); }
+.bc-history i.player { opacity: 1; background: #5a82ff; box-shadow: 0 0 6px rgba(90, 130, 255, 0.9); }
+.bc-history i.banker { opacity: 1; background: #ff5a6e; box-shadow: 0 0 6px rgba(255, 90, 110, 0.9); }
+.bc-history i.tie { opacity: 1; background: #4ade9f; box-shadow: 0 0 6px rgba(74, 222, 159, 0.9); }
 
-.bc-actions { display: flex; gap: 10px; }
-/* Двойной класс — специфичность выше, чем у .mn-main ниже по файлу, иначе
-   его фиолетовый градиент и width:100% перекрыли бы синий вид и flex. */
-.mn-main.bc-deal { flex: 1; width: auto; background: linear-gradient(180deg, #6e8bff 0%, #3b5bfe 55%, #2540d6 100%); box-shadow: 0 0 20px rgba(70, 100, 255, 0.5), 0 10px 24px rgba(30, 50, 160, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
-.bc-clear-btn {
-  flex: none; width: 84px;
-  border: 1.5px solid rgba(110, 150, 255, 0.5); border-radius: 16px;
-  background: rgba(20, 26, 60, 0.9);
-  color: #dfe6ff;
-  font: 700 15px var(--font);
-  box-shadow: 0 0 10px rgba(80, 120, 255, 0.15);
-}
-.bc-clear-btn:disabled { opacity: 0.45; }
-.bc-clear-btn:active:not(:disabled) { background: rgba(60, 60, 140, 0.5); color: #fff; }
-.bc-chips { display: flex; align-items: center; gap: 8px; }
-.bc-chip-nav {
-  flex: none; width: 22px; height: 44px;
-  border: 0; background: none; padding: 0;
-  color: #4f6bd9; font-size: 14px;
-  display: grid; place-items: center;
-}
-.bc-chip-nav:active { color: #8fa6ff; }
-.bc-chip-row { flex: 1; min-width: 0; display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding: 4px 2px; }
-.bc-chip-row::-webkit-scrollbar { display: none; }
-/* Фишка: сплошной цветной круг + пунктирное кольцо у края (как настоящая
-   казинная фишка), номинал текстом в центре. */
+/* Фишки: круги нарисованы; поверх — области нажатия. Рамка вокруг «10»
+   нарисована на фоне — гасим её цветом ленты и рисуем свою у выбранной. */
+.bc-chip-row { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 .bc-chip {
-  flex: none; width: 46px; height: 46px;
-  border-radius: 50%;
-  border: 3px dashed rgba(255, 255, 255, 0.55);
-  padding: 0;
-  display: grid; place-items: center;
-  font: 800 12px/1 var(--font); color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-  cursor: pointer;
-  background: var(--cc, #888);
-  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.28), inset 0 2px 4px rgba(255, 255, 255, 0.25), 0 4px 10px rgba(0, 0, 0, 0.5);
-  transition: transform 0.12s var(--ease);
+  position: absolute; top: calc(525.1px - 19.1px); width: 38.2px; height: 38.2px;
+  margin-left: -19.1px; border-radius: 50%;
+  border: 0; background: transparent; padding: 0; cursor: pointer;
 }
-.bc-chip.chip-red { --cc: radial-gradient(circle at 35% 30%, #ff8189 0 20%, #ff5a63 45%, #c21f2b 100%); }
-.bc-chip.chip-green { --cc: radial-gradient(circle at 35% 30%, #7df0bd 0 20%, #4ade9f 45%, #1a9c66 100%); }
-.bc-chip.chip-purple { --cc: radial-gradient(circle at 35% 30%, #d3b8ff 0 20%, #b48cff 45%, #6a3fd6 100%); }
-.bc-chip.chip-blue { --cc: radial-gradient(circle at 35% 30%, #a6c3ff 0 20%, #6ea0ff 45%, #2540d6 100%); }
-.bc-chip.chip-gold { --cc: radial-gradient(circle at 35% 30%, #ffe9bf 0 20%, #f4d79b 45%, #c9922f 100%); }
-/* Выбранная фишка — как на макете: не сама фишка светится, а рамка вокруг
-   неё, скруглённый квадрат синим контуром. */
-.bc-chip { position: relative; }
-.bc-chip.is-active::before {
-  content: ''; position: absolute; inset: -6px;
-  border-radius: 11px;
-  border: 2px solid #5a8fff;
-  box-shadow: 0 0 10px rgba(90, 143, 255, 0.65);
+.bc-chip:disabled { cursor: default; }
+.bc-frame-eraser {
+  position: absolute; left: 115.6px; top: 501.5px; width: 46px; height: 47.2px;
+  border: 2.5px solid #0b1327; border-radius: 9px; box-sizing: border-box;
+  box-shadow: 0 0 0 1px #0b1327, inset 0 0 0 1px #0b1327;
+  pointer-events: none;
 }
-.bc-chip:disabled { opacity: 0.5; }
+.bc-chip-frame {
+  position: absolute; top: 501.5px; width: 46px; height: 47.2px; margin-left: -23px;
+  border: 2.5px solid #4f6bff; border-radius: 9px; box-sizing: border-box;
+  box-shadow: 0 0 8px rgba(79, 107, 255, 0.7);
+  pointer-events: none;
+  transition: left 0.15s var(--ease);
+}
+.bc-canvas.is-dealing .bc-chip, .bc-canvas.is-dealing .bc-zone { pointer-events: none; }
 
 /* ═══════════════════════════════════════════════════════════════════════
    MINES — тёмно-синий неон: поле 5×5 со свечением, фиолетовые рамки,
@@ -3926,7 +3773,6 @@ body:has(#screen-table:not(.hidden)) .toast {
   text-shadow: 0 0 14px rgba(180, 160, 255, 0.55);
 }
 .mn-title .mn-spark { color: #b9a6ff; font-size: 16px; text-shadow: 0 0 10px rgba(185, 166, 255, 0.9); }
-.mn-title .bc-suit-mark { color: #6ea0ff; font-size: 16px; text-shadow: 0 0 10px rgba(110, 160, 255, 0.9); }
 .mn-iconbtn {
   width: 40px; height: 40px; border-radius: 12px;
   border: 1px solid rgba(150, 130, 255, 0.35);
