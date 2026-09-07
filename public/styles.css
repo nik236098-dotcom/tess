@@ -3575,7 +3575,18 @@ body:has(#screen-table:not(.hidden)) .toast {
 
 /* Двойной класс — специфичность выше, чем у .mn-board-card ниже по файлу,
    иначе его padding: 22px перекрыл бы наш более узкий отступ. */
-.mn-board-card.bc-board { padding: 18px 16px 16px; overflow: hidden; }
+.mn-board-card.bc-board {
+  padding: 18px 16px 16px; overflow: hidden;
+  border-color: rgba(110, 150, 255, 0.5);
+  box-shadow: 0 0 26px rgba(80, 120, 255, 0.28), 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+/* Фон экрана баккары — синий, а не фиолетовый (как у Mines/Nvuti). */
+#screen-bc.mn-screen {
+  background:
+    radial-gradient(90% 50% at 50% -10%, rgba(70, 110, 255, 0.32), rgba(70, 110, 255, 0) 60%),
+    radial-gradient(60% 40% at 100% 70%, rgba(40, 70, 200, 0.22), rgba(40, 70, 200, 0) 60%),
+    linear-gradient(180deg, #0a0d22 0%, #07091b 60%, #05061a 100%);
+}
 /* Дракон/тигр — декоративные силуэты фоном по нижней части карты, за
    зонами ставок, не заходят выше рук с картами. */
 .bc-dragon, .bc-tiger {
@@ -3611,6 +3622,22 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-total-banker b { border: 1.5px solid #ff6b8a; box-shadow: 0 0 10px rgba(255, 100, 130, 0.7); }
 .bc-cards-row { display: flex; min-height: 54px; }
 .bc-cards-row .bc-card:not(:first-child) { margin-left: -16px; }
+/* Карты выигравшей раздачу стороны обводим в цвет исхода — как на макете. */
+.bc-cards-row.is-glow-win .bc-card { box-shadow: 0 0 0 2px rgba(92, 255, 106, 0.85), 0 0 14px rgba(92, 255, 106, 0.55); border-radius: 5px; }
+.bc-cards-row.is-glow-lose .bc-card { box-shadow: 0 0 0 2px rgba(255, 90, 110, 0.85), 0 0 14px rgba(255, 90, 110, 0.55); border-radius: 5px; }
+.bc-cards-row.is-glow-push .bc-card { box-shadow: 0 0 0 2px rgba(242, 201, 107, 0.85), 0 0 14px rgba(242, 201, 107, 0.55); border-radius: 5px; }
+
+/* Пустой стол: ни рук, ни плашек — только колода по центру, крупнее, со
+   световым конусом под ней, как в исходном макете. */
+.bc-table.is-idle { min-height: 132px; align-items: center; justify-content: center; }
+.bc-table.is-idle .bc-hand { display: none; }
+.bc-table.is-idle .bc-shoe { transform: scale(1.55); }
+.bc-table.is-idle .bc-shoe::after {
+  content: ''; position: absolute; left: 50%; top: 100%; width: 150px; height: 90px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at top, rgba(120, 150, 255, 0.22), transparent 70%);
+  pointer-events: none;
+}
 
 .bc-shoe { flex: none; position: relative; width: 40px; height: 54px; margin-top: 2px; }
 .bc-shoe-card {
@@ -3732,21 +3759,21 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-zone[data-zone="bankerPair"] { grid-column: 5; grid-row: 2; }
 .bc-zone.side-player {
   border-color: rgba(110, 150, 255, 0.65);
-  background: rgba(30, 40, 90, 0.28);
+  background: rgba(35, 48, 105, 0.4);
   color: #a9c0ff;
   box-shadow: 0 0 10px rgba(80, 120, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .bc-zone.side-banker {
   border-color: rgba(255, 100, 120, 0.65);
-  background: rgba(90, 32, 42, 0.28);
+  background: rgba(100, 35, 46, 0.4);
   color: #ffb0bd;
   box-shadow: 0 0 10px rgba(255, 90, 110, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .bc-zone-tie {
-  border-color: rgba(90, 240, 150, 0.65);
-  background: rgba(20, 80, 55, 0.28);
+  border-color: rgba(90, 240, 150, 0.7);
+  background: rgba(20, 90, 60, 0.4);
   color: #8fe0b0;
-  box-shadow: 0 0 10px rgba(80, 240, 150, 0.15);
+  box-shadow: 0 0 10px rgba(80, 240, 150, 0.18);
 }
 .bc-zone-main { font-size: 0; }
 .bc-zone-main span { font: 800 14px/1 var(--font); letter-spacing: 0.02em; }
@@ -3803,10 +3830,11 @@ body:has(#screen-table:not(.hidden)) .toast {
 .mn-main.bc-deal { flex: 1; width: auto; background: linear-gradient(180deg, #6e8bff 0%, #3b5bfe 55%, #2540d6 100%); box-shadow: 0 0 20px rgba(70, 100, 255, 0.5), 0 10px 24px rgba(30, 50, 160, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
 .bc-clear-btn {
   flex: none; width: 84px;
-  border: 1.5px solid rgba(150, 130, 255, 0.4); border-radius: 16px;
-  background: rgba(20, 22, 54, 0.9);
-  color: #b9bde0;
+  border: 1.5px solid rgba(110, 150, 255, 0.5); border-radius: 16px;
+  background: rgba(20, 26, 60, 0.9);
+  color: #dfe6ff;
   font: 700 15px var(--font);
+  box-shadow: 0 0 10px rgba(80, 120, 255, 0.15);
 }
 .bc-clear-btn:disabled { opacity: 0.45; }
 .bc-clear-btn:active:not(:disabled) { background: rgba(60, 60, 140, 0.5); color: #fff; }
@@ -3840,7 +3868,15 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-chip.chip-purple { --cc: radial-gradient(circle at 35% 30%, #d3b8ff 0 20%, #b48cff 45%, #6a3fd6 100%); }
 .bc-chip.chip-blue { --cc: radial-gradient(circle at 35% 30%, #a6c3ff 0 20%, #6ea0ff 45%, #2540d6 100%); }
 .bc-chip.chip-gold { --cc: radial-gradient(circle at 35% 30%, #ffe9bf 0 20%, #f4d79b 45%, #c9922f 100%); }
-.bc-chip.is-active { transform: scale(1.12); box-shadow: 0 0 0 2.5px #fff, 0 0 12px rgba(255, 255, 255, 0.6), 0 4px 10px rgba(0, 0, 0, 0.5); }
+/* Выбранная фишка — как на макете: не сама фишка светится, а рамка вокруг
+   неё, скруглённый квадрат синим контуром. */
+.bc-chip { position: relative; }
+.bc-chip.is-active::before {
+  content: ''; position: absolute; inset: -6px;
+  border-radius: 11px;
+  border: 2px solid #5a8fff;
+  box-shadow: 0 0 10px rgba(90, 143, 255, 0.65);
+}
 .bc-chip:disabled { opacity: 0.5; }
 
 /* ═══════════════════════════════════════════════════════════════════════

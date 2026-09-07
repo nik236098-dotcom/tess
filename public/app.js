@@ -1396,7 +1396,7 @@ const BC_CHIPS = [
   { value: 10000, label: '100', cls: 'blue' },
   { value: 100000, label: '1K', cls: 'gold' },
 ];
-const BC_HISTORY_SLOTS = 30;
+const BC_HISTORY_SLOTS = 40;
 
 function openBaccarat() {
   state.bc.open = true;
@@ -1495,12 +1495,16 @@ function bcClearTable() {
     const total = $(`bc-${side}-total`);
     total.textContent = '';
     total.classList.remove('is-on');
+    $(`bc-${side}-cards`).className = 'bc-cards-row';
   }
   const result = $('bc-result');
   result.className = 'bc-result';
   result.innerHTML = '';
   document.querySelectorAll('.bc-zone').forEach((z) => z.classList.remove('is-win'));
   $('bc-zones').classList.remove('is-locked');
+  // Пока раунда нет — карт и плашек PLAYER/BANKER на столе тоже нет,
+  // только колода по центру, как на пустом столе в макете.
+  $('bc-table').classList.add('is-idle');
 }
 
 // Карта с двумя гранями: летит из колоды к своему месту в руке и
@@ -1569,6 +1573,7 @@ function startBaccaratDeal(round) {
   bc.dealing = true;
   bc.round = round;
   bcClearTable();
+  $('bc-table').classList.remove('is-idle');
   $('bc-zones').classList.add('is-locked');
   bcShowBalance(state.balance - round.payout);
   renderBaccarat();
@@ -1611,6 +1616,10 @@ function finishBaccaratDeal(round) {
   const view = bcResultView(round);
   result.className = `bc-result is-visible ${view.cls}`;
   result.innerHTML = `<b>${view.line1}</b><span>${view.line2}</span>`;
+  // Карты выигравшей раздачу стороны обводим в цвет исхода — как на макете.
+  if (round.winner === 'player' || round.winner === 'banker') {
+    $(`bc-${round.winner}-cards`).className = `bc-cards-row is-glow-${view.cls}`;
+  }
   const winners = new Set(round.bets.filter((b) => b.won).map((b) => b.zone));
   winners.add(round.winner);
   if (round.playerPair) winners.add('playerPair');
