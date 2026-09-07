@@ -1734,8 +1734,8 @@ function renderBaccarat() {
 // прокручивается. Раунд целиком на сервере: клиент шлёт ставку, клик по
 // клетке и «забрать», а показывает то, что вернулось.
 const MN_SIZE = 25;
-const MN_GEM = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.5 3h11L22 9.2 12 21.5 2 9.2 6.5 3Zm1 2L4.9 8.6h4.2L11 5H7.5Zm5.5 0 1.9 3.6h4.2L16.5 5H13Zm-2.3 5.1H6.1L12 17.6l5.9-7.5h-4.6L12 14.8l-1.3-4.7Zm1.3-2.9-1.5 2.9h3l-1.5-2.9Z"/></svg>';
-const MN_BOMB = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="14" r="7" fill="currentColor"/><path d="M14.5 8.5 17 6c1.2-1.2 3-1 4 .3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="21.5" cy="5.5" r="1.4" fill="currentColor"/></svg>';
+const MN_GEM = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M6.5 4h11l4 5.5L12 20.5 2.5 9.5 6.5 4Z"/><path d="M2.5 9.5h19M9 4l-2.5 5.5L12 20.5 15.5 9.5 15 4M9 4l3 5.5 3-5.5"/></svg>';
+const MN_BOMB = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="14" r="7" fill="currentColor"/><circle cx="8.2" cy="11.6" r="1.6" fill="rgba(255,255,255,0.35)"/><path d="M14.5 8.5 17 6c1.2-1.2 3-1 4 .3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="21.5" cy="5.5" r="1.6" fill="#ffb347"/></svg>';
 
 function buildMinesBoard() {
   const board = $('mn-board');
@@ -1924,10 +1924,10 @@ function renderMines() {
   const overlay = $('mn-overlay');
   if (reveal && reveal.result === 'win') {
     overlay.className = 'mn-overlay is-win';
-    overlay.innerHTML = `<b>x${reveal.multiplier.toFixed(2)}</b><span><i class="mn-coin">$</i>${money(reveal.payout).slice(1)}</span>`;
+    overlay.innerHTML = `<svg class="icon mn-suit-l"><use href="#i-spade"></use></svg><svg class="icon mn-suit-r"><use href="#i-club"></use></svg><i class="mn-spark mn-spark-1">✦</i><i class="mn-spark mn-spark-2">✦</i><b>x${reveal.multiplier.toFixed(2)}</b><span><i class="mn-coin">$</i>${money(reveal.payout).slice(1)}</span>`;
   } else if (reveal) {
     overlay.className = 'mn-overlay is-lose';
-    overlay.innerHTML = '<b>Неудачно</b><span>Удачи в следующий раз!</span><button type="button" class="mn-again">Играть снова</button>';
+    overlay.innerHTML = '<svg class="icon mn-suit-l"><use href="#i-spade"></use></svg><svg class="icon mn-suit-r"><use href="#i-club"></use></svg><b>Неудачно</b><span>Удачи в следующий раз!</span><button type="button" class="mn-again">Играть снова</button>';
     overlay.querySelector('.mn-again').addEventListener('click', () => { mn.reveal = null; haptic('light'); renderMines(); });
   } else {
     overlay.className = 'mn-overlay hidden';
