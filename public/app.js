@@ -1402,7 +1402,7 @@ const BC_CHIPS = [
 const BC_DECK = { x: 478, y: 440 }; // центр колоды на макете
 const BC_HAND_X = { player: 175, banker: 575 }; // первая карта руки
 const BC_HAND_Y = 452;
-const BC_CARD_STEP = { x: 42, y: 9 };
+const BC_CARD_STEP = { x: 42, y: 17 };
 const BC_HISTORY_COLS = 19;
 const BC_HISTORY_ROWS = 6;
 
@@ -1553,8 +1553,8 @@ function bcDealCard(side, index, code) {
   card.innerHTML = `<div class="bc-face front${suitChar === 'h' || suitChar === 'd' ? ' red' : ''}"><span class="bj-rank">${rank}</span><span class="bj-suit-sm">${suit}</span><span class="bj-suit">${suit}</span></div><div class="bc-face back"></div>`;
   $('bc-cards').appendChild(card);
   if (reducedMotion() || typeof card.animate !== 'function') return;
-  const dx = bcX(BC_DECK.x) - (x + 37.3 / 2);
-  const dy = bcY(BC_DECK.y) - (y + 51.8 / 2);
+  const dx = bcX(BC_DECK.x) - (x + 41.4 / 2);
+  const dy = bcY(BC_DECK.y) - (y + 59.7 / 2);
   card.animate([
     { transform: `translate(${(x + dx).toFixed(1)}px, ${(y + dy).toFixed(1)}px) scale(0.8) rotateY(180deg)`, offset: 0 },
     { transform: `translate(${(x + dx * 0.45).toFixed(1)}px, ${(y + dy * 0.45 - 14).toFixed(1)}px) scale(1.06) rotateY(95deg)`, offset: 0.55 },

@@ -3599,10 +3599,10 @@ body:has(#screen-table:not(.hidden)) .toast {
   font: 800 12.5px/1 var(--font); letter-spacing: 0.02em;
   transition: opacity 0.2s;
 }
-.bc-side-player { left: 71px; color: #5f8dff; text-shadow: 0 0 8px rgba(95, 141, 255, 0.55); }
-.bc-side-banker { left: 228.5px; color: #ff5470; text-shadow: 0 0 8px rgba(255, 84, 112, 0.55); }
+.bc-side-player { left: 71px; color: #4f8cff; text-shadow: 0 0 8px rgba(95, 141, 255, 0.55); }
+.bc-side-banker { left: 228.5px; color: #ff4d5a; text-shadow: 0 0 8px rgba(255, 84, 112, 0.55); }
 .bc-score {
-  position: absolute; top: 70.5px; width: 36.5px; height: 18.2px;
+  position: absolute; top: 70.5px; width: 31.5px; height: 17.4px;
   border-radius: 999px;
   display: grid; place-items: center;
   font: 800 11px/1 var(--font); color: #fff;
@@ -3610,14 +3610,14 @@ body:has(#screen-table:not(.hidden)) .toast {
   opacity: 0; transform: scale(0.6); transition: opacity 0.2s, transform 0.25s var(--ease);
 }
 .bc-score.is-on { opacity: 1; transform: none; }
-.bc-score-player { left: 97.8px; border: 1.5px solid #5f8dff; box-shadow: 0 0 8px rgba(95, 141, 255, 0.6); }
-.bc-score-banker { left: 255.3px; border: 1.5px solid #ff5470; box-shadow: 0 0 8px rgba(255, 84, 112, 0.6); }
+.bc-score-player { left: 100.3px; border: 1.5px solid #5f8dff; box-shadow: 0 0 8px rgba(95, 141, 255, 0.6); }
+.bc-score-banker { left: 257.8px; border: 1.5px solid #ff5470; box-shadow: 0 0 8px rgba(255, 84, 112, 0.6); }
 .bc-table.is-idle .bc-side-label { opacity: 0; }
 .bc-shoe { position: absolute; left: 164px; top: 48px; width: 68px; height: 80px; }
 .bc-cards { position: absolute; inset: 0; }
 .bc-card {
   position: absolute; left: 0; top: 0;
-  width: 37.3px; height: 51.8px;
+  width: 41.4px; height: 59.7px;
   transform: translate(var(--x), var(--y));
   transform-style: preserve-3d;
   will-change: transform;
@@ -3625,9 +3625,9 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-face { position: absolute; inset: 0; border-radius: 4px; backface-visibility: hidden; box-shadow: 0 5px 12px rgba(0, 0, 0, 0.6); }
 .bc-face.front { background: linear-gradient(160deg, #ffffff 0%, #f3f4f8 60%, #e3e5ec 100%); color: #101018; box-shadow: 0 5px 12px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.1); }
 .bc-face.front.red { color: #e0202c; }
-.bc-face.front .bj-rank { position: absolute; left: 3px; top: 2px; font: 800 13px/1 var(--font); letter-spacing: -0.03em; }
-.bc-face.front .bj-suit-sm { position: absolute; left: 3.5px; top: 15px; font-size: 8px; line-height: 1; }
-.bc-face.front .bj-suit { position: absolute; left: 50%; top: 60%; transform: translate(-50%, -50%); font-size: 24px; line-height: 1; }
+.bc-face.front .bj-rank { position: absolute; left: 3.5px; top: 2.5px; font: 800 14px/1 var(--font); letter-spacing: -0.03em; }
+.bc-face.front .bj-suit-sm { position: absolute; left: 4px; top: 17px; font-size: 9px; line-height: 1; }
+.bc-face.front .bj-suit { position: absolute; left: 50%; top: 62%; transform: translate(-50%, -50%); font-size: 27px; line-height: 1; }
 .bc-face.back {
   transform: rotateY(180deg);
   background:
@@ -3644,18 +3644,18 @@ body:has(#screen-table:not(.hidden)) .toast {
 
 /* Плашка итога — x 380..563, y 530..632 по макету. */
 .bc-result {
-  position: absolute; left: 157.5px; top: 125.2px; width: 75.8px; height: 42.3px;
-  border-radius: 8px;
+  position: absolute; left: 155.8px; top: 121px; width: 82px; height: 49.7px;
+  border-radius: 9px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   opacity: 0; transform: scale(0.85);
   transition: opacity 0.18s, transform 0.18s var(--ease);
 }
 .bc-result.is-visible { opacity: 1; transform: none; }
-.bc-result.win { background: rgba(8, 26, 30, 0.94); border: 1.5px solid rgba(70, 190, 255, 0.9); box-shadow: 0 0 14px rgba(70, 190, 255, 0.5); color: #3dff7a; }
+.bc-result.win { background: rgba(2, 22, 84, 0.94); border: 1.5px solid #2f9bff; box-shadow: 0 0 14px rgba(47, 155, 255, 0.6); color: #4be39f; }
 .bc-result.push { background: rgba(30, 30, 18, 0.94); border: 1.5px solid rgba(242, 201, 107, 0.8); box-shadow: 0 0 14px rgba(242, 201, 107, 0.35); color: #f2c96b; }
-.bc-result.lose { background: rgba(40, 8, 20, 0.94); border: 1.5px solid rgba(255, 60, 90, 0.9); box-shadow: 0 0 14px rgba(255, 60, 90, 0.5); color: #ff4d6a; }
-.bc-result b { font: 800 14px/1 var(--font); letter-spacing: -0.01em; white-space: nowrap; }
-.bc-result.lose b, .bc-result.push b { font-size: 9.5px; }
+.bc-result.lose { background: rgba(42, 8, 42, 0.94); border: 1.5px solid #ff3b5c; box-shadow: 0 0 14px rgba(255, 59, 92, 0.55); color: #ff4d5a; }
+.bc-result b { font: 700 13.5px/1 var(--font); letter-spacing: -0.01em; white-space: nowrap; }
+.bc-result.lose b, .bc-result.push b { font-size: 10px; }
 .bc-result span { font: 700 10.5px/1 var(--font); }
 
 /* Зоны ставок: нарисованы на фоне; поверх — невидимая область нажатия,
