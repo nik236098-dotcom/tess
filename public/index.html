@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=130" />
+  <link rel="stylesheet" href="/styles.css?v=132" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -142,6 +142,23 @@
                 <span>Блайнды $0.05 / $0.10 · вход $10 · до 8 игроков</span>
                 <span class="lb-play-foot">
                   <span class="lb-game-meta"><svg class="icon icon-sm"><use href="#i-users"></use></svg><em data-online="holdem">—</em></span>
+                  <span class="lb-play-cta">Сесть за стол<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
+                </span>
+              </span>
+            </button>
+
+            <button id="play-omaha" class="lb-play lb-play-poker lb-play-omaha">
+              <span class="lb-play-art" aria-hidden="true">
+                <i class="lb-mini lb-mini-1">K<b>♠</b></i>
+                <i class="lb-mini lb-mini-2 red">K<b>♦</b></i>
+                <i class="lb-chipart lb-chipart-red"></i>
+              </span>
+              <span class="lb-play-body">
+                <span class="lb-hero-kicker">Omaha</span>
+                <b>Омаха</b>
+                <span>4 карты на руках · блайнды $0.05 / $0.10 · вход $10 · до 8 игроков</span>
+                <span class="lb-play-foot">
+                  <span class="lb-game-meta"><svg class="icon icon-sm"><use href="#i-users"></use></svg><em data-online="omaha">—</em></span>
                   <span class="lb-play-cta">Сесть за стол<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
                 </span>
               </span>
@@ -854,6 +871,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=89"></script>
+  <script src="/app.js?v=91"></script>
 </body>
 </html>

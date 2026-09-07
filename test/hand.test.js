@@ -241,3 +241,22 @@ test('фишки сохраняются в двух тысячах случай�
     assert.strictEqual(after, stacks.reduce((a, b) => a + b, 0), `раздача ${seed}: сумма фишек изменилась`);
   }
 });
+
+test('омаха: по четыре карты на руках, шоудаун по правилу 2+3', () => {
+  const hand = new Hand({ players: players(1000, 1000), dealerIndex: 0, smallBlind: 10, bigBlind: 20, variant: 'omaha' });
+  assert.strictEqual(hand.variant, 'omaha');
+  for (const p of hand.players) assert.strictEqual(p.hole.length, 4);
+  // Доигрываем до шоудауна чеками/коллами.
+  let guard = 0;
+  while (!hand.complete && guard++ < 40) {
+    const p = hand.actingPlayer;
+    const legal = hand.legalActions(p.id);
+    hand.act(p.id, legal.canCheck ? 'check' : 'call');
+  }
+  assert.strictEqual(hand.complete, true);
+  assert.strictEqual(hand.result.showdown, true);
+  for (const h of hand.result.hands) {
+    assert.strictEqual(h.cards.filter((c) => h.hole.includes(c)).length, 2);
+    assert.strictEqual(h.cards.filter((c) => hand.board.includes(c)).length, 3);
+  }
+});

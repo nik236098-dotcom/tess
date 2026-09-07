@@ -154,12 +154,13 @@ function createApp(options = {}) {
     const presets = [
       // Блекджек за столом больше не играется — он одиночный, против дилера.
       { game: 'holdem', smallBlind: 5, bigBlind: 10, buyIn: 1000, minBuyIn: 500, maxPlayers: 8, turnSeconds: 45, isPublic: true },
+      { game: 'omaha', smallBlind: 5, bigBlind: 10, buyIn: 1000, minBuyIn: 500, maxPlayers: 8, turnSeconds: 45, isPublic: true },
     ];
     for (const preset of presets) {
       const room = new Room(createRoomCode(), HOUSE, preset, { bank: accounts });
       room.house = true;
       room.autoStart = true;
-      room.title = preset.game === 'blackjack' ? 'Блекджек PokerGena' : 'Стол PokerGena';
+      room.title = preset.game === 'blackjack' ? 'Блекджек PokerGena' : preset.game === 'omaha' ? 'Омаха PokerGena' : 'Стол PokerGena';
       registerRoom(room);
     }
   }

@@ -2319,8 +2319,8 @@ function renderRooms() {
 
 // Сколько людей сейчас за столами каждой игры — для карточек игр.
 function renderOnline() {
-  const count = { holdem: 0, blackjack: 0 };
-  for (const room of state.rooms) count[room.game === 'blackjack' ? 'blackjack' : 'holdem'] += room.players || 0;
+  const count = { holdem: 0, omaha: 0, blackjack: 0 };
+  for (const room of state.rooms) count[room.game === 'blackjack' ? 'blackjack' : room.game === 'omaha' ? 'omaha' : 'holdem'] += room.players || 0;
   for (const game of Object.keys(count)) {
     const text = count[game] >= 1000 ? `${(count[game] / 1000).toFixed(1)}K` : String(count[game]);
     for (const node of document.querySelectorAll(`[data-online="${game}"]`)) node.textContent = text;
@@ -2382,7 +2382,7 @@ function renderWins() {
   list.innerHTML = state.wins.slice(0, 8).map((win, index) => {
     const blackjack = win.game === 'blackjack';
     const icon = icons[blackjack ? 'blackjack' : 'holdem'];
-    const label = { blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti' }[win.game] || 'Poker';
+    const label = { blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti', omaha: 'Omaha' }[win.game] || 'Poker';
     return `
     <div class="mk-win" style="--i:${index}">
       <span class="mk-win-icon" style="background-image:url('/img/lobby/win-${icon}.png')"></span>
@@ -2485,6 +2485,8 @@ function renderTable() {
   if (!room) return;
 
   $('room-title').textContent = room.title || `Стол ${room.code}`;
+  // В омахе по четыре карты на руках — карты героя и соперников ужимаются.
+  $('screen-table').classList.toggle('is-omaha', room.game === 'omaha');
 
   const blackjack = room.game === 'blackjack';
   const phases = blackjack
@@ -2496,9 +2498,10 @@ function renderTable() {
   if (room.status === 'betting') tail = 'Ставка';
   else if (room.status === 'playing' && phases[room.phase]) tail = phases[room.phase];
 
+  const pokerName = room.game === 'omaha' ? 'Омаха' : 'Холдем';
   $('room-subtitle').textContent = blackjack
     ? `Блекджек · ${money(room.settings.minBet)}–${money(room.settings.maxBet)} · ${tail}`
-    : `Холдем · ${money(room.settings.smallBlind)}/${money(room.settings.bigBlind)} · ${tail}`;
+    : `${pokerName} · ${money(room.settings.smallBlind)}/${money(room.settings.bigBlind)} · ${tail}`;
 
   // Комбинацию победителя считаем до отрисовки: её подсвечивают и борд,
   // и карманные карты.
@@ -3910,6 +3913,7 @@ function bindUi() {
     toast('Стол открывается — секунду');
   };
   on('play-holdem', 'click', () => { haptic('light'); openGame('holdem'); });
+  on('play-omaha', 'click', () => { haptic('light'); openGame('omaha'); });
   on('play-blackjack', 'click', () => { haptic('light'); openBlackjack(); });
   on('play-roulette', 'click', () => { haptic('light'); openRoulette(); });
   on('play-baccarat', 'click', () => { haptic('light'); openBaccarat(); });

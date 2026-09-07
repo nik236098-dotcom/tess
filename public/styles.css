@@ -915,6 +915,15 @@ input::placeholder { color: var(--text-muted); }
 .seat.me .seat-cards { gap: 4px; z-index: 3; }
 .seat.me .card-face { --card-w: 44px; border-radius: 5px; }
 
+/* Омаха: четыре карты на руках. Свои — уже и плотнее, чужие рубашки
+   веером с большим перекрытием, чтобы место не разъезжалось. */
+.is-omaha .seat.me .card-face { --card-w: 34px; }
+.is-omaha .seat.me .seat-cards { gap: 2px; z-index: 5; } /* широкий ряд героя лежит поверх веера соседа */
+.is-omaha .seat.me .seat-cards .card-face + .card-face { margin-left: 2px; }
+.is-omaha .seat:not(.me) .seat-cards .card-face + .card-face { margin-left: -9px; }
+.is-omaha .seat[data-side="right"] .seat-cards .card-face + .card-face { margin-left: 0; margin-right: -9px; }
+.is-omaha .seat[data-side="top"] .seat-cards .card-face + .card-face { margin-left: -8px; }
+
 /* Ярлык силы руки: один на весь экран, между своими картами и аватаром. */
 .hand-label {
   transform: translate(-50%, calc(var(--cy, 0px) + 40px));

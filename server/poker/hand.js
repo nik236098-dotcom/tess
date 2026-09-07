@@ -1,19 +1,23 @@
 'use strict';
 
 const { freshDeck, shuffle } = require('./cards');
-const { bestHand, compareScores } = require('./evaluator');
+const { bestHand, bestOmahaHand, compareScores } = require('./evaluator');
 
 const PHASES = ['preflop', 'flop', 'turn', 'river', 'showdown'];
 
-// Одна раздача безлимитного техасского холдема.
+// Одна раздача безлимитного техасского холдема или омахи (variant:
+// 'holdem' | 'omaha' — в омахе четыре карманные карты, в комбинацию идут
+// ровно две из них и три с борда).
 // Класс не знает ничего про сеть и таймеры — только чистая логика,
 // чтобы её было легко покрыть тестами.
 class Hand {
   // players: [{ id, stack }] в порядке посадки, только участники раздачи.
   // dealerIndex — индекс баттона внутри этого массива.
   // deck передаётся только в тестах, чтобы разложить конкретную раздачу.
-  constructor({ players, dealerIndex, smallBlind, bigBlind, rng = Math.random, deck = null }) {
+  constructor({ players, dealerIndex, smallBlind, bigBlind, variant = 'holdem', rng = Math.random, deck = null }) {
     if (players.length < 2) throw new Error('Для раздачи нужно минимум два игрока');
+
+    this.variant = variant === 'omaha' ? 'omaha' : 'holdem';
 
     this.smallBlind = smallBlind;
     this.bigBlind = bigBlind;
@@ -187,8 +191,10 @@ class Hand {
   }
 
   _deal() {
-    // Раздаём по одной карте по кругу, как за живым столом.
-    for (let round = 0; round < 2; round++) {
+    // Раздаём по одной карте по кругу, как за живым столом: две в холдеме,
+    // четыре в омахе.
+    const holeCount = this.variant === 'omaha' ? 4 : 2;
+    for (let round = 0; round < holeCount; round++) {
       for (let i = 1; i <= this.players.length; i++) {
         const p = this.players[(this.dealerIndex + i) % this.players.length];
         p.hole.push(this._draw());
@@ -390,7 +396,7 @@ class Hand {
 
     const evaluated = new Map();
     for (const p of this.activePlayers) {
-      evaluated.set(p.id, bestHand([...p.hole, ...this.board]));
+      evaluated.set(p.id, this.variant === 'omaha' ? bestOmahaHand(p.hole, this.board) : bestHand([...p.hole, ...this.board]));
     }
 
     const pots = this._buildPots();

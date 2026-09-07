@@ -148,4 +148,33 @@ function describe(score) {
   }
 }
 
-module.exports = { CATEGORY, CATEGORY_NAMES, evaluate5, bestHand, compareScores };
+const COMBOS_2_OF_4 = buildCombinations(4, 2);
+const COMBOS_3_OF_5 = buildCombinations(5, 3);
+
+// Омаха: ровно две карманные карты из четырёх и ровно три с борда.
+// На флопе/тёрне борд короче пяти — тогда перебираем все его тройки.
+function bestOmahaHand(hole, board) {
+  if (hole.length !== 4) throw new Error('В омахе у игрока четыре карманные карты');
+  if (board.length < 3) throw new Error('Нужен хотя бы флоп для оценки');
+  const boardCombos = board.length === 5 ? COMBOS_3_OF_5 : buildCombinations(board.length, 3);
+  let bestScore = null;
+  let bestCards = null;
+  const hand = new Array(5);
+  for (const h of COMBOS_2_OF_4) {
+    hand[0] = hole[h[0]];
+    hand[1] = hole[h[1]];
+    for (const b of boardCombos) {
+      hand[2] = board[b[0]];
+      hand[3] = board[b[1]];
+      hand[4] = board[b[2]];
+      const score = evaluate5(hand);
+      if (bestScore === null || compareScores(score, bestScore) > 0) {
+        bestScore = score;
+        bestCards = hand.slice();
+      }
+    }
+  }
+  return { score: bestScore, cards: bestCards, category: bestScore[0], name: describe(bestScore) };
+}
+
+module.exports = { CATEGORY, CATEGORY_NAMES, evaluate5, bestHand, bestOmahaHand, compareScores };

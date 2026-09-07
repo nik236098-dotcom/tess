@@ -54,3 +54,24 @@ test('кикеры сравниваются корректно', () => {
   const b = bestHand(hand('Ac Ad Qh 9s 4c 3d 2h'));
   assert.strictEqual(compareScores(a.score, b.score), 1);
 });
+
+test('омаха: ровно две карманные и три с борда', () => {
+  const { bestOmahaHand } = require('../server/poker/evaluator');
+  const c = (s) => stringToCard(s);
+  // Четыре трефы на руках и одна на борде — «флеш» из холдема здесь не считается:
+  // из руки можно взять только две трефы, на борде треф не хватает.
+  const hole = ['Ac', 'Kc', 'Qc', 'Jc'].map(c);
+  const board = ['2c', '7d', '8h', '3s', '9s'].map(c);
+  const r = bestOmahaHand(hole, board);
+  assert.notStrictEqual(r.category, 5, 'флеша быть не должно');
+  assert.strictEqual(r.cards.filter((x) => hole.includes(x)).length, 2);
+  assert.strictEqual(r.cards.filter((x) => board.includes(x)).length, 3);
+  // Каре на борде не «играет» само по себе: с борда берутся ровно три
+  // девятки, из руки — две свои, итого тройка девяток с тузом и королём.
+  const hole2 = ['Ah', 'Kd', '4s', '5s'].map(c);
+  const board2 = ['9c', '9d', '9h', '9s', '2d'].map(c);
+  const r2 = bestOmahaHand(hole2, board2);
+  assert.strictEqual(r2.category, 3, 'тройка, а не каре');
+  assert.throws(() => bestOmahaHand(hole2.slice(0, 2), board2), /четыре/);
+  assert.throws(() => bestOmahaHand(hole2, board2.slice(0, 2)), /флоп/);
+});

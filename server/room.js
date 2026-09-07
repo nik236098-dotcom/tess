@@ -4,7 +4,7 @@ const { EventEmitter } = require('events');
 const { Hand, ActionError } = require('./poker/hand');
 const { BlackjackDuel, BlackjackError, handValue } = require('./blackjack/round');
 const { cardToString, rankOf, RANK_CHARS } = require('./poker/cards');
-const { bestHand } = require('./poker/evaluator');
+const { bestHand, bestOmahaHand } = require('./poker/evaluator');
 const { formatMoney } = require('./money');
 
 const SUIT_SYMBOLS = { c: '♣', d: '♦', h: '♥', s: '♠' };
@@ -21,7 +21,7 @@ function prettyText(text) {
 }
 
 const DEFAULT_SETTINGS = {
-  game: 'holdem', // holdem | blackjack
+  game: 'holdem', // holdem | omaha | blackjack
   smallBlind: 5,
   bigBlind: 10,
   minBet: 10, // для блекджека
@@ -67,7 +67,7 @@ class Room extends EventEmitter {
     this.hostId = host.id;
     this.hostName = host.name;
     this.settings = normalizeSettings(settings);
-    this.title = `${this.settings.game === 'blackjack' ? 'Блекджек' : 'Стол'} ${host.name}`;
+    this.title = `${this.settings.game === 'blackjack' ? 'Блекджек' : this.settings.game === 'omaha' ? 'Омаха' : 'Стол'} ${host.name}`;
     this.seats = new Array(this.settings.maxPlayers).fill(null);
     this.members = new Map(); // userId -> { id, name, photoUrl, connected }
     this.status = 'waiting';
@@ -413,6 +413,7 @@ class Room extends EventEmitter {
       dealerIndex: dealerIndex < 0 ? 0 : dealerIndex,
       smallBlind: this.settings.smallBlind,
       bigBlind: this.settings.bigBlind,
+      variant: this.settings.game,
     });
     this.hand.handNumber = this.handNumber;
     this.status = 'playing';
@@ -677,7 +678,7 @@ class Room extends EventEmitter {
         userId: winner.userId,
         name: winner.name,
         amount: winner.amount,
-        game: 'holdem',
+        game: this.settings.game,
         code: this.code,
       });
     }
@@ -1030,12 +1031,12 @@ class Room extends EventEmitter {
       if (inHand && inHand.hole.length) {
         if (isMe) {
           cards = inHand.hole.map(cardToString);
-          if (!inHand.folded) combination = describeCombination(inHand.hole, hand.board);
+          if (!inHand.folded) combination = describeCombination(inHand.hole, hand.board, hand.variant);
         } else if (revealed.has(seat.userId)) {
           cards = revealed.get(seat.userId);
           combination = revealedCombination.get(seat.userId) || null;
         } else {
-          cards = ['??', '??'];
+          cards = inHand.hole.map(() => '??');
         }
       }
       return {
@@ -1070,6 +1071,9 @@ class Room extends EventEmitter {
       type: 'state',
       code: this.code,
       title: this.title,
+      // Режим стола: клиент по нему подбирает подпись и раскладку карт
+      // (в омахе на руках четыре карты).
+      game: this.settings.game,
       hostId: this.hostId,
       status: this.status,
       running: this.autoStart,
@@ -1137,7 +1141,7 @@ function normalizeSettings(raw) {
   // Диапазон входа обнимает вход по умолчанию.
   if (settings.minBuyIn > settings.buyIn) settings.minBuyIn = settings.buyIn;
   if (settings.maxBuyIn < settings.buyIn) settings.maxBuyIn = settings.buyIn;
-  const game = settings.game === 'blackjack' ? 'blackjack' : 'holdem';
+  const game = settings.game === 'blackjack' ? 'blackjack' : settings.game === 'omaha' ? 'omaha' : 'holdem';
   if (game === 'blackjack') {
     // Блекджек у нас строго на двоих: один ставит, второй держит банк.
     settings.maxPlayers = 2;
@@ -1170,8 +1174,17 @@ const ACTION_WORDS = {
 
 // Подсказка «что у меня собралось». Считается только по картам,
 // которые смотрящий и так видит, поэтому подсмотреть чужую руку через неё нельзя.
-function describeCombination(hole, board) {
+function describeCombination(hole, board, variant = 'holdem') {
   if (!hole || hole.length < 2) return null;
+  if (variant === 'omaha') {
+    // В омахе комбинация есть только с флопа: ровно 2 своих + 3 с борда.
+    if (board.length >= 3) return bestOmahaHand(hole, board).name;
+    const ranks = hole.map(rankOf);
+    const pair = ranks.find((r, i) => ranks.indexOf(r) !== i);
+    if (pair === undefined) return null;
+    const rank = RANK_CHARS[pair];
+    return `Пара ${rank === 'T' ? '10' : rank}`;
+  }
   if (hole.length + board.length >= 5) return bestHand([...hole, ...board]).name;
   // До флопа подсказываем только карманную пару — остальное было бы шумом.
   if (rankOf(hole[0]) === rankOf(hole[1])) {
