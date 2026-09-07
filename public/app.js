@@ -1392,13 +1392,17 @@ function renderRoulette() {
 
 const BC_K = 390 / 941;
 const BC_TOP = 228; // обрезанная шапка макета
+// Лента фишек: шесть номиналов с шагом 104 по макету (серая $1 добавлена
+// к пяти нарисованным). Спрайты вырезаны из макета, цифры поверх — текстом.
 const BC_CHIPS = [
-  { value: 500, cx: 207 },
-  { value: 1000, cx: 336 },
-  { value: 5000, cx: 466 },
-  { value: 10000, cx: 596 },
-  { value: 100000, cx: 727 },
+  { value: 100, name: '1', label: '1', cx: 207 },
+  { value: 500, name: '5', label: '5', cx: 311 },
+  { value: 1000, name: '10', label: '10', cx: 415 },
+  { value: 5000, name: '50', label: '50', cx: 519 },
+  { value: 10000, name: '100', label: '100', cx: 623 },
+  { value: 100000, name: '1k', label: '1K', cx: 727 },
 ];
+const BC_STACK_MAX = 6; // башенка не выше шести фишек
 const BC_DECK = { x: 478, y: 440 }; // центр колоды на макете
 const BC_HAND_X = { player: 175, banker: 575 }; // первая карта руки
 const BC_HAND_Y = 452;
@@ -1446,7 +1450,7 @@ function closeBaccarat() {
   showLobby();
 }
 
-// Фишки нарисованы на фоне; поверх — круглые области нажатия по центрам.
+// Лента фишек: кнопки со спрайтами по центрам макета.
 function buildBaccaratChips() {
   const row = $('bc-chip-row');
   if (row.children.length) return;
@@ -1455,7 +1459,9 @@ function buildBaccaratChips() {
     button.type = 'button';
     button.className = 'bc-chip';
     button.dataset.value = String(chip.value);
+    button.dataset.chip = chip.name;
     button.style.left = `${bcX(chip.cx).toFixed(1)}px`;
+    button.innerHTML = `<b>${chip.label}</b>`;
     button.setAttribute('aria-label', `Фишка ${money(chip.value)}`);
     button.addEventListener('click', () => {
       if (state.bc.dealing) return;
@@ -1495,8 +1501,6 @@ function placeBcBet(zone, node) {
     return;
   }
   state.bc.bets.set(zone, (state.bc.bets.get(zone) || 0) + amount);
-  node.classList.add('is-hit');
-  setTimeout(() => node.classList.remove('is-hit'), 220);
   haptic('light');
   renderBaccarat();
 }
@@ -1530,7 +1534,6 @@ function bcClearTable() {
   const result = $('bc-result');
   result.className = 'bc-result';
   result.innerHTML = '';
-  document.querySelectorAll('.bc-zone').forEach((z) => z.classList.remove('is-win'));
   $('bc-zones').classList.remove('is-locked');
   // Пока раунда нет — на столе только нарисованная колода, без подписей.
   $('bc-table').classList.add('is-idle');
@@ -1649,21 +1652,33 @@ function finishBaccaratDeal(round) {
   if (round.winner === 'player' || round.winner === 'banker') {
     document.querySelectorAll(`.bc-card[data-side="${round.winner}"]`).forEach((c) => c.classList.add(`is-glow-${view.cls}`));
   }
-  const winners = new Set(round.bets.filter((b) => b.won).map((b) => b.zone));
-  winners.add(round.winner);
-  if (round.playerPair) winners.add('playerPair');
-  if (round.bankerPair) winners.add('bankerPair');
-  if (round.playerPerfectPair) winners.add('playerPerfectPair');
-  if (round.bankerPerfectPair) winners.add('bankerPerfectPair');
-  document.querySelectorAll('.bc-zone').forEach((z) => z.classList.toggle('is-win', winners.has(z.dataset.zone)));
-  bc.timers.push(setTimeout(() => {
-    document.querySelectorAll('.bc-zone').forEach((z) => z.classList.remove('is-win'));
-    result.classList.remove('is-visible');
-  }, 3200));
+  bc.timers.push(setTimeout(() => result.classList.remove('is-visible'), 3200));
   haptic(round.net > 0 ? 'success' : 'light');
   bcShowBalance(state.balance);
   bc.bets.clear();
   renderBaccarat();
+}
+
+// Башенка: сумма ставки раскладывается по номиналам от крупного к мелкому
+// (50+50 становится одной фишкой 100), снизу крупные. Выше шести фишек не
+// растёт — лишние мелкие просто не показываем, сумма написана на верхней.
+function bcStackChips(amount) {
+  const chips = [];
+  let rest = amount;
+  for (const chip of [...BC_CHIPS].reverse()) {
+    while (rest >= chip.value) { chips.push(chip.name); rest -= chip.value; }
+  }
+  return chips.slice(0, BC_STACK_MAX);
+}
+
+// Подпись на фишке: 5, 50, 1K, 1.5K — без знака доллара, как на ленте.
+function bcChipLabel(cents) {
+  const dollars = cents / 100;
+  if (dollars >= 1000) {
+    const k = dollars / 1000;
+    return `${k >= 100 ? Math.round(k) : String(Math.round(k * 10) / 10)}K`;
+  }
+  return String(Math.round(dollars));
 }
 
 function renderBaccarat() {
@@ -1673,11 +1688,16 @@ function renderBaccarat() {
   $('bc-chip-frame').style.left = `${bcX(active.cx).toFixed(1)}px`;
   for (const button of $('bc-chip-row').children) button.disabled = bc.dealing;
   for (const zoneEl of document.querySelectorAll('.bc-zone')) {
-    const amount = bc.bets.get(zoneEl.dataset.zone);
-    let chip = zoneEl.querySelector('.bc-zone-chip');
-    if (!amount) { if (chip) chip.remove(); continue; }
-    if (!chip) { chip = document.createElement('i'); chip.className = 'bc-zone-chip'; zoneEl.appendChild(chip); }
-    chip.textContent = rlChipText(amount);
+    const amount = bc.bets.get(zoneEl.dataset.zone) || 0;
+    let stack = zoneEl.querySelector('.bc-stack');
+    if (!amount) { if (stack) stack.remove(); continue; }
+    if (stack && Number(stack.dataset.amount) === amount) continue;
+    if (!stack) { stack = document.createElement('i'); stack.className = 'bc-stack'; zoneEl.appendChild(stack); }
+    stack.dataset.amount = String(amount);
+    const chips = bcStackChips(amount);
+    stack.style.setProperty('--n', String(chips.length));
+    stack.innerHTML = chips.map((name, i) => `<b data-chip="${name}" style="--i:${i}"></b>`).join('')
+      + `<span>${bcChipLabel(amount)}</span>`;
   }
   const total = bcTotalStaked();
   $('bc-clear').disabled = !total || bc.dealing;

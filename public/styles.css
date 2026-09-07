@@ -3667,8 +3667,9 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-result.lose b, .bc-result.push b { font-size: 10px; }
 .bc-result span { font: 700 10.5px/1 var(--font); }
 
-/* Зоны ставок: нарисованы на фоне; поверх — невидимая область нажатия,
-   подсветка (вспышка при тапе, пульс у выигравшей) и фишка со ставкой. */
+/* Зоны ставок: нарисованы на фоне; поверх — невидимая область нажатия и
+   башенка фишек со ставкой. Никакой подсветки зон: контур нарисован на
+   макете, любое свечение поверх него выглядит чужим квадратом. */
 .bc-zones { position: absolute; inset: 0; pointer-events: none; }
 .bc-zone {
   position: absolute;
@@ -3677,27 +3678,39 @@ body:has(#screen-table:not(.hidden)) .toast {
   transform: rotate(var(--r, 0deg));
   border: 0; padding: 0; border-radius: 10px;
   background: transparent; pointer-events: auto; cursor: pointer;
-  transition: box-shadow 0.15s, background-color 0.15s;
-}
-.bc-zone[data-zone^="player"], .bc-zone[data-zone="player"] { --zc: rgba(95, 141, 255, 0.9); }
-.bc-zone[data-zone^="banker"], .bc-zone[data-zone="banker"] { --zc: rgba(255, 84, 112, 0.9); }
-.bc-zone[data-zone="tie"] { --zc: rgba(92, 255, 106, 0.9); }
-.bc-zone.is-hit { box-shadow: 0 0 16px var(--zc); }
-.bc-zone.is-win { animation: bc-zone-pulse 0.85s ease-in-out infinite alternate; }
-@keyframes bc-zone-pulse {
-  from { box-shadow: 0 0 10px var(--zc); }
-  to { box-shadow: 0 0 24px var(--zc), 0 0 6px #fff; }
+  -webkit-tap-highlight-color: transparent;
 }
 .bc-zones.is-locked .bc-zone { pointer-events: none; }
-.bc-zone-chip {
-  position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%);
-  min-width: 24px; height: 24px; padding: 0 4px;
-  border-radius: 50%;
-  display: grid; place-items: center;
-  font: 800 8px/1 var(--font); color: #fff;
-  background: radial-gradient(circle at 50% 50%, #3b2a86 0 40%, #1f1447 42% 60%, #6e56ff 62% 70%, #1f1447 72%);
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.45), 0 2px 6px rgba(0, 0, 0, 0.6);
+
+/* Спрайты фишек: вырезаны из макета, цифры стёрты — подпись текстом. */
+[data-chip="1"] { background-image: url('/img/bc-chip-1.png'); }
+[data-chip="5"] { background-image: url('/img/bc-chip-5.png'); }
+[data-chip="10"] { background-image: url('/img/bc-chip-10.png'); }
+[data-chip="50"] { background-image: url('/img/bc-chip-50.png'); }
+[data-chip="100"] { background-image: url('/img/bc-chip-100.png'); }
+[data-chip="1k"] { background-image: url('/img/bc-chip-1k.png'); }
+
+/* Башенка в зоне: до шести фишек столбиком со сдвигом вверх, снизу
+   крупные, на верхней — сумма ставки. */
+.bc-stack {
+  --d: 22px; --step: 3.2px;
+  position: absolute; left: 50%; bottom: 6px;
+  width: var(--d); height: calc(var(--d) + (var(--n, 1) - 1) * var(--step));
+  margin-left: calc(var(--d) / -2);
+  pointer-events: none; font-style: normal;
   animation: pop-in 0.18s var(--ease);
+}
+.bc-stack b {
+  position: absolute; left: 0; bottom: calc(var(--i) * var(--step));
+  width: var(--d); height: var(--d);
+  background-size: 100% 100%; background-repeat: no-repeat;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55));
+}
+.bc-stack span {
+  position: absolute; left: 0; top: 0; width: var(--d); height: calc(var(--d) - 1.5px);
+  display: grid; place-items: center;
+  font: 800 7.5px/1 var(--font); color: #fff; letter-spacing: -0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
 }
 
 /* Дорожка истории: точки нарисованы на фоне (19×6, шаг 42.5/42 по макету),
@@ -3712,23 +3725,25 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-history i.banker { opacity: 1; background: #ff5a6e; box-shadow: 0 0 6px rgba(255, 90, 110, 0.9); }
 .bc-history i.tie { opacity: 1; background: #4ade9f; box-shadow: 0 0 6px rgba(74, 222, 159, 0.9); }
 
-/* Фишки: круги нарисованы; поверх — области нажатия. Рамка вокруг «10»
-   нарисована на фоне — гасим её цветом ленты и рисуем свою у выбранной. */
+/* Лента фишек: спрайты по центрам макета, подпись текстом, рамка у
+   выбранной — своя (на фоне лента стёрта). */
 .bc-chip-row { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 .bc-chip {
-  position: absolute; top: calc(525.1px - 19.1px); width: 38.2px; height: 38.2px;
-  margin-left: -19.1px; border-radius: 50%;
-  border: 0; background: transparent; padding: 0; cursor: pointer;
+  position: absolute; top: calc(525.1px - 21.6px); width: 43.1px; height: 43.1px;
+  margin-left: -21.55px; border-radius: 50%;
+  border: 0; background-color: transparent; background-repeat: no-repeat; background-position: center; background-size: 100% 100%;
+  padding: 0; cursor: pointer;
+  display: grid; place-items: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.bc-chip b {
+  font: 800 11.5px/1 var(--font); color: #fff; letter-spacing: -0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  transform: translateY(-0.8px);
 }
 .bc-chip:disabled { cursor: default; }
-.bc-frame-eraser {
-  position: absolute; left: 115.6px; top: 501.5px; width: 46px; height: 47.2px;
-  border: 2.5px solid #0b1327; border-radius: 9px; box-sizing: border-box;
-  box-shadow: 0 0 0 1px #0b1327, inset 0 0 0 1px #0b1327;
-  pointer-events: none;
-}
 .bc-chip-frame {
-  position: absolute; top: 501.5px; width: 46px; height: 47.2px; margin-left: -23px;
+  position: absolute; top: 501.5px; width: 41.5px; height: 47.2px; margin-left: -20.75px;
   border: 2.5px solid #4f6bff; border-radius: 9px; box-sizing: border-box;
   box-shadow: 0 0 8px rgba(79, 107, 255, 0.7);
   pointer-events: none;
