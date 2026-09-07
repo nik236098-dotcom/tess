@@ -38,7 +38,7 @@ const state = {
   buyIn: { open: false, mode: 'sit', seat: null, amount: 0, touched: false },
   bj: { view: null, bet: 500, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null, typing: false, typed: '' },
   rl: { open: false, info: null, amount: 1000, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
-  bc: { open: false, info: null, amount: 2500, bets: new Map(), dealing: false, timers: [], shownBalance: null, typing: false, typed: '', round: null },
+  bc: { open: false, info: null, chip: 1000, bets: new Map(), dealing: false, timers: [], shownBalance: null, round: null },
   mn: { open: false, info: null, amount: 100, mines: 3, busy: false, reveal: null, shownBalance: null },
   nv: { open: false, info: null, amount: 100, target: 75, mode: 'under', busy: false, round: null, shownBalance: null, timer: null },
   unread: 0,
@@ -577,7 +577,6 @@ function watchTableSize() {
   window.addEventListener('resize', fitLobby);
   window.addEventListener('resize', fitBlackjack);
   window.addEventListener('resize', fitRoulette);
-  window.addEventListener('resize', fitBaccarat);
   window.addEventListener('orientationchange', fitTable);
 }
 
@@ -1385,46 +1384,19 @@ function renderRoulette() {
 }
 
 // ——— Баккара ———
-// Фон — макет, живые элементы поверх. Ставки на несколько зон сразу:
-// тап по зоне кладёт фишку текущей суммы. Карты летят из шуза (справа) и
-// переворачиваются в полёте: P1, B1, P2, B2, затем третьи боком.
+// Свой тёмный неоновый стол (тот же язык, что у Mines/Nvuti): карты летят
+// из колоды сверху и переворачиваются в полёте — P1, B1, P2, B2, затем
+// третьи, порядок игрок-банкир, игрок-банкир. Зоны — плоские карточки,
+// фишка выбирается снизу и кладётся тапом по зоне.
 
-const BC_PRESETS = [500, 1000, 2500, 5000, 10000];
-const BC_K = 390 / 941;
-const BC_SLOTS = { player: [74.6, 125.6], banker: [217.6, 268.6] };
-const BC_CARD_Y = 140.5;
-const BC_SHOE = { x: 364.7, y: 155 };
-
-// Области клика зон в координатах макета (941×1672): выпуклая оболочка
-// внутренности каждой рамки, найденной по её нарисованной линии.
-const BC_ZONE_SHAPES = {
-  player: { colour: '#4a78ff', points: [[355.0, 777.0], [328.0, 995.0], [291.0, 998.0], [245.0, 990.0], [207.0, 982.0], [174.0, 974.0], [146.0, 966.0], [81.0, 943.0], [53.0, 931.0], [39.0, 924.0], [9.0, 908.0], [78.0, 760.0], [102.0, 718.0], [106.0, 714.0], [111.0, 714.0]] },
-  banker: { colour: '#ff3b5c', points: [[620.0, 1001.0], [585.0, 820.0], [581.0, 795.0], [580.0, 782.0], [833.0, 713.0], [859.0, 747.0], [879.0, 782.0], [893.0, 807.0], [922.0, 859.0], [939.0, 890.0], [934.0, 907.0], [896.0, 927.0], [869.0, 939.0], [833.0, 953.0], [790.0, 967.0], [761.0, 975.0], [728.0, 983.0], [677.0, 993.0], [646.0, 998.0]] },
-  tie: { colour: '#2ad37f', points: [[374.0, 780.0], [565.0, 779.0], [571.0, 784.0], [584.0, 863.0], [600.0, 966.0], [604.0, 993.0], [599.0, 1003.0], [551.0, 1008.0], [531.0, 1009.0], [423.0, 1010.0], [400.0, 1009.0], [371.0, 1007.0], [338.0, 999.0], [367.0, 801.0]] },
-  playerPair: { colour: '#c47cff', points: [[365.0, 1128.0], [334.0, 1126.0], [310.0, 1123.0], [258.0, 1115.0], [227.0, 1109.0], [204.0, 1104.0], [183.0, 1099.0], [151.0, 1090.0], [111.0, 1077.0], [106.0, 1075.0], [100.0, 1056.0], [125.0, 995.0], [129.0, 986.0], [374.0, 1023.0], [381.0, 1029.0], [380.0, 1059.0], [374.0, 1117.0]] },
-  bankerPair: { colour: '#c47cff', points: [[559.0, 1041.0], [801.0, 980.0], [805.0, 980.0], [839.0, 1051.0], [837.0, 1074.0], [805.0, 1085.0], [788.0, 1090.0], [763.0, 1097.0], [730.0, 1105.0], [707.0, 1110.0], [686.0, 1114.0], [662.0, 1118.0], [635.0, 1122.0], [604.0, 1126.0], [584.0, 1128.0], [567.0, 1115.0], [564.0, 1088.0], [561.0, 1060.0]] },
-};
-
-// Слой подсветки — сама нарисованная линия границы, вырезанная из макета
-// (img/bc-line-*.png): совпадает с контуром и скруглениями по построению.
-const BC_LINE_BOXES = {"player": {"x": 0.0, "y": 254.89, "w": 151.28, "h": 121.85}, "tie": {"x": 138.84, "y": 282.24, "w": 113.15, "h": 98.23}, "banker": {"x": 239.14, "y": 254.89, "w": 150.86, "h": 121.85}, "playerPair": {"x": 39.37, "y": 365.55, "w": 120.61, "h": 63.83}, "bankerPair": {"x": 230.44, "y": 365.13, "w": 120.61, "h": 63.83}};
-
-function bcZones() {
-  return Object.entries(BC_ZONE_SHAPES).map(([key, shape]) => {
-    const xs = shape.points.map((p) => p[0]);
-    const ys = shape.points.map((p) => p[1] - 96);
-    const cx = (xs.reduce((a, b) => a + b, 0) / xs.length) * BC_K;
-    const cy = (ys.reduce((a, b) => a + b, 0) / ys.length) * BC_K;
-    return { key, colour: shape.colour, points: shape.points.map(([x, y]) => `${x},${y - 96}`).join(' '), cx, cy };
-  });
-}
-
-function fitBaccarat() {
-  const screen = $('screen-bc');
-  if (!screen || screen.classList.contains('hidden')) return;
-  const w = screen.clientWidth || window.innerWidth;
-  $('bc-canvas').style.setProperty('--bj', (w / 390).toFixed(4));
-}
+const BC_CHIPS = [
+  { value: 500, label: '5', cls: 'red' },
+  { value: 1000, label: '10', cls: 'green' },
+  { value: 5000, label: '50', cls: 'purple' },
+  { value: 10000, label: '100', cls: 'blue' },
+  { value: 100000, label: '1K', cls: 'gold' },
+];
+const BC_HISTORY_SLOTS = 30;
 
 function openBaccarat() {
   state.bc.open = true;
@@ -1434,19 +1406,18 @@ function openBaccarat() {
   $('screen-table').classList.add('hidden');
   $('screen-bj').classList.add('hidden');
   $('screen-rl').classList.add('hidden');
+  $('screen-mn').classList.add('hidden');
+  $('screen-nv').classList.add('hidden');
   $('screen-bc').classList.remove('hidden');
   if (tg && tg.BackButton) tg.BackButton.show();
   stopRoomsPolling();
-  fitBaccarat();
-  requestAnimationFrame(fitBaccarat);
-  buildBaccaratZones();
+  buildBaccaratChips();
   bcClearTable();
   send({ type: 'bc_open' });
   renderBaccarat();
 }
 
 function closeBaccarat() {
-  closeBcKeypad(false);
   state.bc.timers.forEach(clearTimeout);
   state.bc.timers = [];
   state.bc.dealing = false;
@@ -1455,65 +1426,23 @@ function closeBaccarat() {
   showLobby();
 }
 
-function buildBaccaratZones() {
-  const box = $('bc-zones');
-  if (box.children.length) return;
-  // Один SVG на все зоны: полигоны в координатах макета, масштаб — через viewBox.
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 941 1576');
-  svg.setAttribute('class', 'bc-zone-svg');
-  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  defs.innerHTML = '<filter id="bc-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6"/></filter>';
-  svg.appendChild(defs);
-  for (const zone of bcZones()) {
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    g.setAttribute('class', 'bc-zone');
-    g.dataset.zone = zone.key;
-    g.style.setProperty('--zc', zone.colour);
-    g.innerHTML = `<polygon class="bc-zone-shape" points="${zone.points}"/>`;
-    g.addEventListener('click', () => placeBcBet(zone.key, g));
-    svg.appendChild(g);
-    const lb = BC_LINE_BOXES[zone.key];
-    const line = document.createElement('img');
-    line.className = 'bc-line';
-    line.dataset.zone = zone.key;
-    line.src = `/img/bc-line-${zone.key}.png`;
-    line.alt = '';
-    line.style.cssText = `left:${lb.x}px;top:${lb.y}px;width:${lb.w}px;height:${lb.h}px;--zc:${zone.colour}`;
-    box.appendChild(line);
-    // Фишка — обычный элемент над центром зоны.
-    const chip = document.createElement('div');
-    chip.className = 'bc-chip-slot';
-    chip.dataset.zone = zone.key;
-    chip.style.left = `${zone.cx.toFixed(1)}px`;
-    chip.style.top = `${zone.cy.toFixed(1)}px`;
-    box.appendChild(chip);
+function buildBaccaratChips() {
+  const row = $('bc-chip-row');
+  if (row.children.length) return;
+  for (const chip of BC_CHIPS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `bc-chip chip-${chip.cls}`;
+    button.textContent = chip.label;
+    button.dataset.value = String(chip.value);
+    button.addEventListener('click', () => {
+      if (state.bc.dealing) return;
+      state.bc.chip = chip.value;
+      haptic('light');
+      renderBaccarat();
+    });
+    row.appendChild(button);
   }
-  box.insertBefore(svg, box.firstChild);
-  const presets = $('bc-presets');
-  if (!presets.children.length) {
-    for (const value of BC_PRESETS) {
-      const button = document.createElement('button');
-      button.className = 'bj-preset';
-      button.textContent = `$${value / 100}`;
-      button.dataset.value = String(value);
-      button.addEventListener('click', () => {
-        if (state.bc.dealing) return;
-        const { min, max } = bcRange();
-        state.bc.amount = clamp(value, min, max);
-        haptic('light');
-        renderBaccarat();
-      });
-      presets.appendChild(button);
-    }
-  }
-}
-
-function bcRange() {
-  const info = state.bc.info;
-  const min = info ? info.minBet : 100;
-  const max = Math.min(info ? info.maxBet : 10000000, Math.max(min, state.balance));
-  return { min, max };
 }
 
 function bcTotalStaked() {
@@ -1522,66 +1451,21 @@ function bcTotalStaked() {
   return total;
 }
 
+// Тап по зоне кладёт туда фишку текущего номинала (или добавляет к уже
+// стоящей) — как за настоящим столом: сумма ставки регулируется выбором
+// фишки внизу, а не отдельным полем ввода.
 function placeBcBet(zone, node) {
   if (state.bc.dealing) return;
-  const { min } = bcRange();
-  const amount = Math.max(min, state.bc.amount);
+  const amount = state.bc.chip;
   if (bcTotalStaked() + amount > state.balance) {
     toast('Недостаточно средств');
     haptic('error');
     return;
   }
   state.bc.bets.set(zone, (state.bc.bets.get(zone) || 0) + amount);
-  const line = $('bc-zones').querySelector(`.bc-line[data-zone="${zone}"]`);
-  if (line) { line.classList.add('is-hit'); setTimeout(() => line.classList.remove('is-hit'), 220); }
+  node.classList.add('is-hit');
+  setTimeout(() => node.classList.remove('is-hit'), 220);
   haptic('light');
-  renderBaccarat();
-}
-
-function stepBcAmount(direction) {
-  if (state.bc.dealing) return;
-  const { min, max } = bcRange();
-  state.bc.amount = clamp(state.bc.amount + direction * 100, min, max);
-  haptic('light');
-  renderBaccarat();
-}
-
-function openBcKeypad() {
-  if (state.bc.dealing) return;
-  state.bc.typing = true;
-  state.bc.typed = '';
-  $('bc-keypad').classList.remove('hidden');
-  document.querySelector('.bc-bet').classList.add('is-typing');
-  renderBaccarat();
-}
-
-function bcKey(key) {
-  if (!state.bc.typing) return;
-  haptic('light');
-  if (key === 'ok') { closeBcKeypad(true); return; }
-  let typed = state.bc.typed;
-  if (key === 'back') typed = typed.slice(0, -1);
-  else if (key === '.') { if (!typed.includes('.')) typed = (typed || '0') + '.'; }
-  else {
-    const [whole = '', frac] = typed.split('.');
-    if (frac !== undefined) { if (frac.length >= 2) return; typed += key; }
-    else { if (whole.length >= 5) return; typed = whole === '0' ? key : whole + key; }
-  }
-  state.bc.typed = typed;
-  renderBaccarat();
-}
-
-function closeBcKeypad(apply) {
-  if (!state.bc.typing) return;
-  if (apply && state.bc.typed) {
-    const parsed = Math.round(Number(state.bc.typed) * 100);
-    const { min, max } = bcRange();
-    if (Number.isFinite(parsed) && parsed > 0) state.bc.amount = clamp(parsed, min, max);
-  }
-  state.bc.typing = false;
-  state.bc.typed = '';
-  $('bc-keypad').classList.add('hidden');
-  document.querySelector('.bc-bet').classList.remove('is-typing');
   renderBaccarat();
 }
 
@@ -1605,34 +1489,42 @@ function bcShowBalance(target, immediate = false) {
 }
 
 function bcClearTable() {
-  $('bc-cards').innerHTML = '';
+  $('bc-player-cards').innerHTML = '';
+  $('bc-banker-cards').innerHTML = '';
   for (const side of ['player', 'banker']) {
     const total = $(`bc-${side}-total`);
     total.textContent = '';
     total.classList.remove('is-on');
   }
-  $('bc-result').classList.add('hidden');
-  document.querySelectorAll('.bc-line').forEach((z) => z.classList.remove('is-win'));
+  const result = $('bc-result');
+  result.className = 'bc-result';
+  result.innerHTML = '';
+  document.querySelectorAll('.bc-zone').forEach((z) => z.classList.remove('is-win'));
+  $('bc-zones').classList.remove('is-locked');
 }
 
-// Карта с двумя гранями: летит из шуза рубашкой вверх и переворачивается.
+// Карта с двумя гранями: летит из колоды к своему месту в руке и
+// переворачивается на лету. Старт и цель считаются по фактическому месту
+// в разметке (getBoundingClientRect), не по фиксированным координатам —
+// раскладка гибкая, а не привязана к макету пиксель в пиксель.
 function bcDealCard(side, index, code) {
-  const third = index === 2;
-  const x = third ? (side === 'player' ? 14 : 322) : BC_SLOTS[side][index];
-  const y = third ? BC_CARD_Y + 10 : BC_CARD_Y;
   const rank = code[0] === 'T' ? '10' : code[0];
   const suitChar = code[1];
   const suit = BJ_SUITS[suitChar] || '♠';
   const card = document.createElement('div');
-  card.className = 'bc-card is-flying';
-  card.style.setProperty('--x0', `${BC_SHOE.x - 23}px`);
-  card.style.setProperty('--y0', `${BC_SHOE.y - 33}px`);
-  card.style.setProperty('--x', `${x.toFixed(1)}px`);
-  card.style.setProperty('--y', `${y.toFixed(1)}px`);
-  card.style.setProperty('--r', third ? '90deg' : '0deg');
+  card.className = 'bc-card';
   card.innerHTML = `<div class="bc-face front${suitChar === 'h' || suitChar === 'd' ? ' red' : ''}"><span class="bj-rank">${rank}</span><span class="bj-suit-sm">${suit}</span><span class="bj-suit">${suit}</span></div><div class="bc-face back"></div>`;
-  $('bc-cards').appendChild(card);
-  card.addEventListener('animationend', () => card.classList.remove('is-flying'), { once: true });
+  $(`bc-${side}-cards`).appendChild(card);
+  if (reducedMotion() || typeof card.animate !== 'function') return;
+  const cardRect = card.getBoundingClientRect();
+  const shoeRect = $('bc-shoe').getBoundingClientRect();
+  const dx = shoeRect.left + shoeRect.width / 2 - (cardRect.left + cardRect.width / 2);
+  const dy = shoeRect.top + shoeRect.height / 2 - (cardRect.top + cardRect.height / 2);
+  card.animate([
+    { transform: `translate(${dx}px, ${dy}px) scale(0.7) rotateY(180deg)`, offset: 0 },
+    { transform: `translate(${dx * 0.45}px, ${dy * 0.45 - 20}px) scale(1.06) rotateY(95deg)`, offset: 0.55 },
+    { transform: 'translate(0, 0) scale(1) rotateY(0deg)', offset: 1 },
+  ], { duration: 620, easing: 'cubic-bezier(0.22, 0.8, 0.3, 1)', fill: 'both' });
 }
 
 function bcTotal(codes) {
@@ -1644,10 +1536,24 @@ function bcTotal(codes) {
   return sum % 10;
 }
 
+// Дорожка последних раундов: старые слева, новые справа, пустые слоты —
+// просто тусклые точки (как road map в казино).
+function bcRenderHistory(history) {
+  const box = $('bc-history');
+  if (box.children.length !== BC_HISTORY_SLOTS) {
+    box.innerHTML = '';
+    for (let i = 0; i < BC_HISTORY_SLOTS; i += 1) box.appendChild(document.createElement('i'));
+  }
+  const ordered = history.slice().reverse();
+  const dots = box.children;
+  for (let i = 0; i < BC_HISTORY_SLOTS; i += 1) dots[i].className = ordered[i] || '';
+}
+
 function onBaccaratState(message) {
   state.bc.info = message;
   state.balance = message.balance;
   renderAccount();
+  bcRenderHistory(message.history || []);
   if (message.round) {
     startBaccaratDeal(message.round);
     return;
@@ -1663,7 +1569,7 @@ function startBaccaratDeal(round) {
   bc.dealing = true;
   bc.round = round;
   bcClearTable();
-  $('bc-canvas').classList.add('is-dealing');
+  $('bc-zones').classList.add('is-locked');
   bcShowBalance(state.balance - round.payout);
   renderBaccarat();
   const steps = [['player', 0], ['banker', 0], ['player', 1], ['banker', 1]];
@@ -1679,29 +1585,43 @@ function startBaccaratDeal(round) {
         const total = $(`bc-${side}-total`);
         total.textContent = String(bcTotal(round[side].slice(0, index + 1)));
         total.classList.add('is-on');
-      }, 620));
-      if (i === steps.length - 1) bc.timers.push(setTimeout(() => finishBaccaratDeal(round), 1100));
+      }, 460));
+      if (i === steps.length - 1) bc.timers.push(setTimeout(() => finishBaccaratDeal(round), 900));
     }, delay));
-    delay += index === 2 ? 700 : 560;
+    delay += 560;
   });
+}
+
+function bcResultView(round) {
+  const { stake, payout, net, winner } = round;
+  if (net > 0) {
+    const mult = stake > 0 ? payout / stake : 0;
+    return { cls: 'win', line1: `${mult.toFixed(2)}x`, line2: money(payout) };
+  }
+  const label = winner === 'tie' ? 'TIE' : `${winner === 'player' ? 'PLAYER' : 'BANKER'} WINS`;
+  if (net === 0 && payout > 0) return { cls: 'push', line1: label, line2: 'Ставки возвращены' };
+  return { cls: 'lose', line1: label, line2: money(payout) };
 }
 
 function finishBaccaratDeal(round) {
   const bc = state.bc;
   bc.dealing = false;
-  $('bc-canvas').classList.remove('is-dealing');
+  $('bc-zones').classList.remove('is-locked');
   const result = $('bc-result');
-  const label = round.winner === 'tie' ? 'TIE' : round.winner === 'player' ? 'PLAYER WINS' : 'BANKER WINS';
-  const tail = round.net > 0 ? ` +${money(round.net)}` : round.net < 0 ? ` −${money(-round.net)}` : (round.winner === 'tie' ? ' · ставки возвращены' : ' · $0.00');
-  result.className = `rl-result bc-result${round.net < 0 ? ' lose' : ''}${round.winner === 'tie' ? ' tie' : ''}`;
-  result.textContent = `${label}${tail}`;
-  result.classList.remove('hidden');
+  const view = bcResultView(round);
+  result.className = `bc-result is-visible ${view.cls}`;
+  result.innerHTML = `<b>${view.line1}</b><span>${view.line2}</span>`;
   const winners = new Set(round.bets.filter((b) => b.won).map((b) => b.zone));
   winners.add(round.winner);
   if (round.playerPair) winners.add('playerPair');
   if (round.bankerPair) winners.add('bankerPair');
-  document.querySelectorAll('.bc-line').forEach((z) => z.classList.toggle('is-win', winners.has(z.dataset.zone)));
-  bc.timers.push(setTimeout(() => document.querySelectorAll('.bc-line').forEach((z) => z.classList.remove('is-win')), 3000));
+  if (round.playerPerfectPair) winners.add('playerPerfectPair');
+  if (round.bankerPerfectPair) winners.add('bankerPerfectPair');
+  document.querySelectorAll('.bc-zone').forEach((z) => z.classList.toggle('is-win', winners.has(z.dataset.zone)));
+  bc.timers.push(setTimeout(() => {
+    document.querySelectorAll('.bc-zone').forEach((z) => z.classList.remove('is-win'));
+    result.classList.remove('is-visible');
+  }, 3200));
   haptic(round.net > 0 ? 'success' : 'light');
   bcShowBalance(state.balance);
   bc.bets.clear();
@@ -1711,27 +1631,19 @@ function finishBaccaratDeal(round) {
 function renderBaccarat() {
   if (!state.bc.open) return;
   const bc = state.bc;
-  if (!bc.dealing) {
-    const { min, max } = bcRange();
-    bc.amount = clamp(bc.amount, min, max);
+  for (const button of $('bc-chip-row').children) {
+    button.classList.toggle('is-active', Number(button.dataset.value) === bc.chip);
+    button.disabled = bc.dealing;
   }
-  $('bc-amount').textContent = bc.typing ? (bc.typed ? `$${bc.typed}` : '$') : money(bc.amount);
-  $('bc-minus').disabled = bc.dealing;
-  $('bc-plus').disabled = bc.dealing;
-  for (const button of $('bc-presets').children) button.disabled = bc.dealing;
-  for (const node of $('bc-zones').querySelectorAll('.bc-chip-slot')) {
-    const amount = bc.bets.get(node.dataset.zone);
-    let chip = node.querySelector('.rl-chip');
+  for (const zoneEl of document.querySelectorAll('.bc-zone')) {
+    const amount = bc.bets.get(zoneEl.dataset.zone);
+    let chip = zoneEl.querySelector('.bc-zone-chip');
     if (!amount) { if (chip) chip.remove(); continue; }
-    if (!chip) { chip = document.createElement('i'); chip.className = 'rl-chip'; node.appendChild(chip); }
-    const text = rlChipText(amount);
-    if (chip.textContent !== text) chip.textContent = text;
-    chip.classList.toggle('is-long', text.length === 4);
-    chip.classList.toggle('is-xlong', text.length >= 5);
+    if (!chip) { chip = document.createElement('i'); chip.className = 'bc-zone-chip'; zoneEl.appendChild(chip); }
+    chip.textContent = rlChipText(amount);
   }
   const total = bcTotalStaked();
-  $('bc-total').textContent = bc.dealing ? 'Раздача…' : `На столе ${money(total)}`;
-  $('bc-clear').classList.toggle('hidden', !total || bc.dealing);
+  $('bc-clear').disabled = !total || bc.dealing;
   const place = $('bc-place');
   place.classList.remove('is-loading');
   place.disabled = bc.dealing || !total || total > state.balance;
@@ -3987,18 +3899,12 @@ function bindUi() {
   $('mn-amount').addEventListener('keydown', (event) => { if (event.key === 'Enter') event.currentTarget.blur(); });
   $('mn-mines').addEventListener('change', (event) => { state.mn.mines = Number(event.currentTarget.value); renderMines(); });
   on('bc-back', 'click', closeBaccarat);
-  on('bc-minus', 'click', () => stepBcAmount(-1));
-  on('bc-plus', 'click', () => stepBcAmount(1));
-  on('bc-amount', 'click', () => openBcKeypad());
-  on('bc-clear', 'click', () => { state.bc.bets.clear(); haptic('light'); renderBaccarat(); });
-  document.querySelectorAll('#bc-keypad [data-key]').forEach((button) => {
-    button.addEventListener('click', (event) => { event.stopPropagation(); bcKey(button.dataset.key); });
+  on('bc-clear', 'click', () => { if (state.bc.dealing) return; state.bc.bets.clear(); haptic('light'); renderBaccarat(); });
+  document.querySelectorAll('.bc-zone').forEach((zone) => {
+    zone.addEventListener('click', () => placeBcBet(zone.dataset.zone, zone));
   });
-  $('screen-bc').addEventListener('pointerdown', (event) => {
-    if (!state.bc.typing) return;
-    if (event.target.closest('#bc-keypad') || event.target.closest('#bc-amount')) return;
-    closeBcKeypad(true);
-  });
+  on('bc-chip-prev', 'click', () => $('bc-chip-row').scrollBy({ left: -120, behavior: 'smooth' }));
+  on('bc-chip-next', 'click', () => $('bc-chip-row').scrollBy({ left: 120, behavior: 'smooth' }));
   on('bc-place', 'click', (event) => {
     if (state.bc.dealing || !state.bc.bets.size) return;
     markBusy(event.currentTarget);

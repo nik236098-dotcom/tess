@@ -3556,7 +3556,8 @@ body:has(#screen-table:not(.hidden)) .toast {
 .lb-play-rl .lb-wheel { top: 50%; }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   БАККАРА — по макету 941×1576 → холст 390×653 (k = 0.41445)
+   БАККАРА — тот же тёмно-синий неон, что у Mines/Nvuti: своя карта стола
+   (дракон/тигр фоном), колода сверху, плоские зоны ставок, лента фишек.
    ═══════════════════════════════════════════════════════════════════════ */
 .lb-play-bc {
   border-color: rgba(233, 207, 149, 0.22);
@@ -3570,92 +3571,272 @@ body:has(#screen-table:not(.hidden)) .toast {
 .lb-play-bc .lb-play-cta { background: linear-gradient(180deg, #f0d7a0, #c9a24f); color: #2a1d05; box-shadow: 0 8px 18px rgba(233, 207, 149, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
 .lb-play-bc .lb-bc-tag { background: linear-gradient(180deg, #b48cff, #6a3fd6); color: #fff; font-size: 12px; letter-spacing: 0.08em; }
 
-.bc-canvas { height: 777.5px; background-image: url('/img/bc-bg.webp'); }
-/* Счётчики очков — у правого края плашек PLAYER (200..397 × 371..419) и BANKER (544..741) */
-.bc-total {
-  position: absolute; top: 113px;
-  width: 22px; height: 22px;
+.bc-page-bg .mn-suit-1, .bc-page-bg .mn-suit-2 { fill: rgba(90, 120, 255, 0.08); }
+
+/* Двойной класс — специфичность выше, чем у .mn-board-card ниже по файлу,
+   иначе его padding: 22px перекрыл бы наш более узкий отступ. */
+.mn-board-card.bc-board { padding: 18px 16px 16px; overflow: hidden; }
+/* Дракон/тигр — декоративные силуэты фоном по краям карты, очень тускло. */
+.bc-dragon, .bc-tiger {
+  position: absolute; top: 6px; bottom: 6px;
+  width: auto; pointer-events: none; opacity: 0.16;
+}
+.bc-dragon { left: -6px; height: 96%; color: #5a7bff; fill: #5a7bff; }
+.bc-tiger { right: -10px; bottom: 4px; height: 58%; color: #ff5a6e; fill: #ff5a6e; }
+
+.bc-table { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; min-height: 112px; z-index: 1; }
+.bc-hand { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.bc-hand-player { align-items: flex-start; }
+.bc-hand-banker { align-items: flex-end; }
+.bc-total-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 6px 0 10px;
+  border-radius: 999px;
+  background: rgba(10, 12, 34, 0.85);
+  font: 800 11px/1 var(--font); letter-spacing: 0.04em;
+}
+.bc-total-badge b {
+  min-width: 18px; height: 18px; padding: 0 4px;
   border-radius: 50%;
   display: grid; place-items: center;
-  font: 700 12px/1 var(--font); color: #fff;
+  font: 800 12px/1 var(--font); color: #fff;
   background: #0d0716;
   opacity: 0; transform: scale(0.6); transition: opacity 0.2s, transform 0.25s var(--ease);
-  z-index: 4;
 }
-.bc-total.is-on { opacity: 1; transform: none; }
-.bc-total-player { left: 153px; border: 1.5px solid #7fa8ff; box-shadow: 0 0 10px rgba(120, 160, 255, 0.7); }
-.bc-total-banker { left: 296px; border: 1.5px solid #ff6b8a; box-shadow: 0 0 10px rgba(255, 100, 130, 0.7); }
-/* Карты: слоты нарисованы на фоне — игрок (74.6, 125.6), банкир (217.6, 268.6), y 140.5, 46.4×66.3 */
-.bc-cards { position: absolute; inset: 0; pointer-events: none; }
+.bc-total-badge b.is-on { opacity: 1; transform: none; }
+.bc-total-player { border: 1px solid rgba(120, 160, 255, 0.55); color: #8fb0ff; }
+.bc-total-player b { border: 1.5px solid #7fa8ff; box-shadow: 0 0 10px rgba(120, 160, 255, 0.7); }
+.bc-total-banker { border: 1px solid rgba(255, 100, 130, 0.55); color: #ff9bb0; }
+.bc-total-banker b { border: 1.5px solid #ff6b8a; box-shadow: 0 0 10px rgba(255, 100, 130, 0.7); }
+.bc-cards-row { display: flex; min-height: 54px; }
+.bc-cards-row .bc-card:not(:first-child) { margin-left: -16px; }
+
+.bc-shoe { flex: none; position: relative; width: 40px; height: 54px; margin-top: 2px; }
+.bc-shoe-card {
+  position: absolute; inset: 0;
+  border-radius: 5px;
+  background:
+    repeating-linear-gradient(45deg, rgba(120, 150, 255, 0.14) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(-45deg, rgba(120, 150, 255, 0.14) 0 1px, transparent 1px 5px),
+    linear-gradient(160deg, #1c2050 0%, #10132e 100%);
+  border: 1px solid rgba(140, 160, 255, 0.35);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  transform: translate(calc(var(--o, 0) * -2px), calc(var(--o, 0) * -2px));
+}
+.bc-shoe-top { display: grid; place-items: center; color: #b9c6ff; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.55), 0 0 10px rgba(120, 150, 255, 0.35); }
+.bc-shoe-top .icon { width: 18px; height: 18px; fill: currentColor; stroke: none; }
+
 .bc-card {
-  position: absolute; left: 0; top: 0;
-  width: 46.4px; height: 66.3px;
+  position: relative; flex: none;
+  width: 38px; height: 54px;
   transform-style: preserve-3d;
-  transform: translate(var(--x), var(--y)) rotate(var(--r, 0deg)) rotateY(var(--f, 0deg));
-  will-change: transform;
-}
-.bc-card.is-flying { animation: bc-fly 0.7s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
-@keyframes bc-fly {
-  0% { transform: translate(var(--x0), var(--y0)) rotate(0deg) rotateY(180deg) scale(0.92); }
-  55% { transform: translate(calc((var(--x0) + var(--x)) / 2), calc((var(--y0) + var(--y)) / 2 - 22px)) rotate(calc(var(--r, 0deg) / 2)) rotateY(120deg) scale(1.04); }
-  100% { transform: translate(var(--x), var(--y)) rotate(var(--r, 0deg)) rotateY(0deg) scale(1); }
 }
 .bc-face {
-  position: absolute; inset: 0; border-radius: 4px;
+  position: absolute; inset: 0; border-radius: 5px;
   backface-visibility: hidden;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55);
 }
 .bc-face.front {
   background: linear-gradient(160deg, #ffffff 0%, #f1f2f6 60%, #dfe1e8 100%);
   color: #101018;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 .bc-face.front.red { color: #d8202a; }
-.bc-face.front .bj-rank { position: absolute; left: 4px; top: 3px; font: 700 14px/1 var(--font); letter-spacing: -0.03em; }
-.bc-face.front .bj-suit-sm { position: absolute; left: 4px; top: 17px; font-size: 10px; line-height: 1; }
-.bc-face.front .bj-suit { position: absolute; left: 50%; top: 57%; transform: translate(-50%, -50%); font-size: 30px; line-height: 1; }
+.bc-face.front .bj-rank { position: absolute; left: 3px; top: 2px; font: 700 11px/1 var(--font); letter-spacing: -0.03em; }
+.bc-face.front .bj-suit-sm { position: absolute; left: 3px; top: 13px; font-size: 8px; line-height: 1; }
+.bc-face.front .bj-suit { position: absolute; left: 50%; top: 57%; transform: translate(-50%, -50%); font-size: 22px; line-height: 1; }
 .bc-face.back {
   transform: rotateY(180deg);
   background:
-    radial-gradient(circle at 50% 50%, rgba(226, 189, 120, 0.25) 0, rgba(226, 189, 120, 0) 40%),
-    repeating-linear-gradient(45deg, rgba(226, 189, 120, 0.12) 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(-45deg, rgba(226, 189, 120, 0.12) 0 1px, transparent 1px 5px),
-    linear-gradient(160deg, #1d0f2e 0%, #120820 100%);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.65), inset 0 0 0 1.5px #c9a25a;
+    radial-gradient(circle at 50% 50%, rgba(120, 150, 255, 0.22) 0, rgba(120, 150, 255, 0) 40%),
+    repeating-linear-gradient(45deg, rgba(120, 150, 255, 0.12) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(-45deg, rgba(120, 150, 255, 0.12) 0 1px, transparent 1px 5px),
+    linear-gradient(160deg, #1c2050 0%, #10132e 100%);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55), inset 0 0 0 1.5px rgba(140, 160, 255, 0.5);
 }
-.bc-face.back::after { content: '♠'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 22px; color: #e2bd78; text-shadow: 0 0 6px rgba(226, 189, 120, 0.6); }
-.bc-result { top: 232px; }
-.bc-result.tie { border-color: rgba(120, 220, 160, 0.6); color: #9be8b8; }
-/* Зоны ставок: невидимые полигоны — только область нажатия. Подсветка —
-   сама нарисованная линия границы, вырезанная из макета (bc-line-*.png):
-   совпадает с контуром и скруглениями пиксель в пиксель. */
-.bc-zones { position: absolute; inset: 0; pointer-events: none; }
-.bc-zone-svg { position: absolute; left: 0; top: 0; width: 390px; height: 653px; overflow: visible; }
-.bc-zone { pointer-events: all; cursor: pointer; }
-.bc-zone-shape { fill: rgba(255, 255, 255, 0.001); stroke: none; }
-.bc-line {
-  position: absolute; pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.16s;
+.bc-face.back::after { content: '♠'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 16px; color: #b9c6ff; text-shadow: 0 0 6px rgba(120, 150, 255, 0.6); }
+
+/* Итог раунда — компактный светящийся жетон поверх стола, между руками. */
+.bc-result {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%) scale(0.85);
+  min-width: 118px; padding: 9px 16px 11px;
+  border-radius: 13px;
+  text-align: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s var(--ease);
+  z-index: 3;
 }
-.bc-line.is-hit { opacity: 1; filter: drop-shadow(0 0 4px var(--zc)) drop-shadow(0 0 10px var(--zc)) brightness(1.2); }
-.bc-line.is-win { opacity: 1; animation: bc-line-pulse 0.85s ease-in-out infinite alternate; }
-@keyframes bc-line-pulse {
-  from { filter: drop-shadow(0 0 4px var(--zc)) drop-shadow(0 0 10px var(--zc)) brightness(1.15); }
-  to { filter: drop-shadow(0 0 6px #fff) drop-shadow(0 0 16px var(--zc)) brightness(1.6); }
+.bc-result.is-visible { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.bc-result.win {
+  background: linear-gradient(180deg, rgba(14, 38, 24, 0.94), rgba(9, 24, 17, 0.96));
+  border: 1.5px solid rgba(90, 240, 110, 0.75);
+  box-shadow: 0 0 22px rgba(80, 255, 100, 0.35), 0 12px 26px rgba(0, 0, 0, 0.5);
+  color: #5cff6a;
 }
-.bc-chip-slot { position: absolute; width: 0; height: 0; pointer-events: none; }
-.bc-chip-slot .rl-chip { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); animation: none; }
-.bc-canvas.is-dealing .bc-zone { pointer-events: none; }
-/* Ставка (89..300 × 468..501), пресеты (y 507, как в блекджеке), Place Bet (65..324 × 544..595) */
-.bc-bet { top: 468px; left: 89px; width: 211px; height: 33px; }
-.bc-bet .bj-bet-text b { font: 700 19px/1 var(--font); min-width: 120px; }
-.bc-bet .bj-step { width: 23px; height: 23px; font-size: 17px; }
-.bc-presets { top: 507px; }
-.bc-keypad { bottom: calc(777.5px - 462px); }
-.bc-place { top: 544px; left: 65px; width: 259.4px; height: 50.6px; }
-.bc-place b { font: 500 22px/1 'Playfair Display', Georgia, serif; }
-.bc-foot { top: 602px; }
+.bc-result.push {
+  background: linear-gradient(180deg, rgba(30, 30, 20, 0.94), rgba(18, 18, 12, 0.96));
+  border: 1.5px solid rgba(242, 201, 107, 0.6);
+  box-shadow: 0 0 18px rgba(242, 201, 107, 0.28), 0 12px 26px rgba(0, 0, 0, 0.5);
+  color: #f2c96b;
+}
+.bc-result.lose {
+  background: radial-gradient(70% 70% at 50% 40%, rgba(150, 40, 60, 0.4), transparent 100%), linear-gradient(180deg, rgba(34, 18, 30, 0.94), rgba(18, 12, 26, 0.96));
+  border: 1.5px solid rgba(255, 90, 110, 0.7);
+  box-shadow: 0 0 22px rgba(255, 70, 90, 0.3), 0 12px 26px rgba(0, 0, 0, 0.5);
+  color: #ff6b7a;
+}
+.bc-result b { display: block; font: 800 24px/1 var(--font-display); letter-spacing: -0.02em; white-space: nowrap; }
+.bc-result span { display: block; margin-top: 4px; font: 700 14px var(--font); }
+
+.bc-tie-caption {
+  margin-top: 10px; text-align: center;
+  font: 600 10.5px/1 var(--font); letter-spacing: 0.14em; color: #8fe0b0;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.bc-tie-caption i { font-style: normal; color: #5cd68a; opacity: 0.8; font-size: 9px; }
+
+/* Зоны ставок: плоская сетка карточек 5×2 по образцу макета — Perfect Pair
+   и Pair стопкой по бокам, Player/Banker во всю высоту, Tie посередине
+   короче остальных. */
+.bc-zones-grid {
+  position: relative; z-index: 1;
+  display: grid;
+  grid-template-columns: 0.82fr 1.32fr 1fr 1.32fr 0.82fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 7px;
+  margin-top: 14px;
+}
+.bc-zone {
+  position: relative;
+  border-radius: 12px;
+  border: 1.5px solid;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  padding: 6px 4px;
+  cursor: pointer;
+  transition: transform 0.12s var(--ease), filter 0.15s, box-shadow 0.2s;
+}
+.bc-zone:active { transform: scale(0.96); }
+.bc-zone span { font: 700 9.5px/1.15 var(--font); letter-spacing: 0.03em; text-align: center; }
+.bc-zone b { font: 800 13px/1 var(--font); letter-spacing: -0.01em; }
+.bc-zone[data-zone="playerPerfectPair"] { grid-column: 1; grid-row: 1; }
+.bc-zone[data-zone="playerPair"] { grid-column: 1; grid-row: 2; }
+.bc-zone[data-zone="player"] { grid-column: 2; grid-row: 1 / span 2; }
+.bc-zone[data-zone="tie"] { grid-column: 3; grid-row: 1 / span 2; align-self: center; height: 76%; }
+.bc-zone[data-zone="banker"] { grid-column: 4; grid-row: 1 / span 2; }
+.bc-zone[data-zone="bankerPerfectPair"] { grid-column: 5; grid-row: 1; }
+.bc-zone[data-zone="bankerPair"] { grid-column: 5; grid-row: 2; }
+.bc-zone.side-player {
+  border-color: rgba(90, 130, 255, 0.4);
+  background: linear-gradient(180deg, rgba(40, 55, 130, 0.4), rgba(20, 26, 66, 0.5));
+  color: #a9c0ff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.bc-zone.side-banker {
+  border-color: rgba(255, 90, 110, 0.4);
+  background: linear-gradient(180deg, rgba(130, 45, 60, 0.4), rgba(66, 20, 28, 0.5));
+  color: #ffb0bd;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.bc-zone-tie {
+  border-color: rgba(80, 240, 150, 0.45);
+  background: linear-gradient(180deg, rgba(30, 110, 75, 0.4), rgba(14, 50, 36, 0.5));
+  color: #8fe0b0;
+}
+.bc-zone-main { font-size: 0; }
+.bc-zone-main span { font: 800 14px/1 var(--font); letter-spacing: 0.02em; }
+.bc-zone-main b { margin-top: 2px; font-size: 12px; opacity: 0.85; }
+.bc-zone-tie span { font: 800 13px/1 var(--font); }
+.bc-zone-tie b { margin-top: 1px; font-size: 11px; opacity: 0.85; }
+.bc-zone.is-hit { filter: brightness(1.35); box-shadow: 0 0 14px currentColor; }
+.bc-zone.is-win { animation: bc-zone-pulse 0.85s ease-in-out infinite alternate; }
+@keyframes bc-zone-pulse {
+  from { filter: brightness(1.15); box-shadow: 0 0 10px currentColor; }
+  to { filter: brightness(1.55); box-shadow: 0 0 20px currentColor; }
+}
+.bc-zones-grid.is-locked .bc-zone { pointer-events: none; opacity: 0.75; }
+.bc-zone-chip {
+  position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%);
+  min-width: 26px; height: 26px; padding: 0 4px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  font: 800 8.5px/1 var(--font); color: #fff;
+  background: radial-gradient(circle at 50% 50%, #3b2a86 0 40%, #1f1447 42% 60%, #6e56ff 62% 70%, #1f1447 72%);
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.4), 0 2px 6px rgba(0, 0, 0, 0.6);
+  animation: pop-in 0.18s var(--ease);
+}
+/* Perfect Pair / Pair — низкие коробки, текст занимает почти всю высоту:
+   фишку ставим в угол, а не поверх номинала снизу. */
+.bc-zone-pp .bc-zone-chip, .bc-zone-pair .bc-zone-chip {
+  left: auto; right: -6px; top: -6px; bottom: auto; transform: none;
+  min-width: 20px; height: 20px; font-size: 7px;
+}
+
+/* Лента истории — «дорожка» последних раундов, как road map в казино. */
+.bc-history {
+  margin-top: 14px;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(150, 130, 255, 0.22);
+  background: linear-gradient(180deg, rgba(18, 20, 48, 0.7), rgba(12, 13, 34, 0.7));
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 6px;
+  min-height: 64px;
+}
+.bc-history i {
+  aspect-ratio: 1 / 1; border-radius: 50%; font-style: normal;
+  background: rgba(140, 150, 220, 0.16);
+}
+.bc-history i.player { background: #5a82ff; box-shadow: 0 0 6px rgba(90, 130, 255, 0.7); }
+.bc-history i.banker { background: #ff5a6e; box-shadow: 0 0 6px rgba(255, 90, 110, 0.7); }
+.bc-history i.tie { background: #4ade9f; box-shadow: 0 0 6px rgba(74, 222, 159, 0.7); }
+
+.bc-actions { display: flex; gap: 10px; }
+/* Двойной класс — специфичность выше, чем у .mn-main ниже по файлу, иначе
+   его фиолетовый градиент и width:100% перекрыли бы синий вид и flex. */
+.mn-main.bc-deal { flex: 1; width: auto; background: linear-gradient(180deg, #6e8bff 0%, #3b5bfe 55%, #2540d6 100%); box-shadow: 0 0 20px rgba(70, 100, 255, 0.5), 0 10px 24px rgba(30, 50, 160, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
+.bc-clear-btn {
+  flex: none; width: 84px;
+  border: 1.5px solid rgba(150, 130, 255, 0.4); border-radius: 16px;
+  background: rgba(20, 22, 54, 0.9);
+  color: #b9bde0;
+  font: 700 15px var(--font);
+}
+.bc-clear-btn:disabled { opacity: 0.45; }
+.bc-clear-btn:active:not(:disabled) { background: rgba(60, 60, 140, 0.5); color: #fff; }
+.bc-chips { display: flex; align-items: center; gap: 8px; }
+.bc-chip-nav {
+  flex: none; width: 30px; height: 44px;
+  border: 1px solid rgba(150, 130, 255, 0.3); border-radius: 10px;
+  background: rgba(23, 26, 58, 0.9); color: #b9bde0;
+  display: grid; place-items: center;
+}
+.bc-chip-nav:active { background: rgba(60, 60, 140, 0.5); }
+.bc-chip-row { flex: 1; min-width: 0; display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding: 4px 2px; }
+.bc-chip-row::-webkit-scrollbar { display: none; }
+/* Фишка: сплошной цветной круг + пунктирное кольцо у края (как настоящая
+   казинная фишка), номинал текстом в центре. */
+.bc-chip {
+  flex: none; width: 46px; height: 46px;
+  border-radius: 50%;
+  border: 3px dashed rgba(255, 255, 255, 0.55);
+  padding: 0;
+  display: grid; place-items: center;
+  font: 800 12px/1 var(--font); color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  background: var(--cc, #888);
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.28), inset 0 2px 4px rgba(255, 255, 255, 0.25), 0 4px 10px rgba(0, 0, 0, 0.5);
+  transition: transform 0.12s var(--ease);
+}
+.bc-chip.chip-red { --cc: radial-gradient(circle at 35% 30%, #ff8189 0 20%, #ff5a63 45%, #c21f2b 100%); }
+.bc-chip.chip-green { --cc: radial-gradient(circle at 35% 30%, #7df0bd 0 20%, #4ade9f 45%, #1a9c66 100%); }
+.bc-chip.chip-purple { --cc: radial-gradient(circle at 35% 30%, #d3b8ff 0 20%, #b48cff 45%, #6a3fd6 100%); }
+.bc-chip.chip-blue { --cc: radial-gradient(circle at 35% 30%, #a6c3ff 0 20%, #6ea0ff 45%, #2540d6 100%); }
+.bc-chip.chip-gold { --cc: radial-gradient(circle at 35% 30%, #ffe9bf 0 20%, #f4d79b 45%, #c9922f 100%); }
+.bc-chip.is-active { transform: scale(1.12); box-shadow: 0 0 0 2.5px #fff, 0 0 12px rgba(255, 255, 255, 0.6), 0 4px 10px rgba(0, 0, 0, 0.5); }
+.bc-chip:disabled { opacity: 0.5; }
 
 /* ═══════════════════════════════════════════════════════════════════════
    MINES — тёмно-синий неон: поле 5×5 со свечением, фиолетовые рамки,

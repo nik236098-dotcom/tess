@@ -2,16 +2,37 @@
 
 // Баккара (пунто банко) против заведения. Игрок ставит на PLAYER, BANKER
 // или TIE, карты раздаются по фиксированным правилам третьей карты.
-// Выплаты по макету: PLAYER 1:1, BANKER 1:1, TIE 8:1; при ничьей ставки
-// на PLAYER/BANKER возвращаются.
+// Выплаты по макету: PLAYER 1:1, BANKER 0.95:1 (комиссия казино), TIE 8:1;
+// при ничьей ставки на PLAYER/BANKER возвращаются. Плюс пары (11:1) и
+// Perfect Pair (50:1, те же две карты — совпадают и ранг, и масть).
 
-const { freshDeck, shuffle, cardToString, rankOf } = require('../poker/cards');
+const { shuffle, cardToString, rankOf } = require('../poker/cards');
 
 class BaccaratError extends Error {}
 
-// Выплаты по макету: стороны 1:1, ничья 8:1, пара (первые две карты стороны
-// одного достоинства) 11:1.
-const ZONES = { player: 1, banker: 1, tie: 8, playerPair: 11, bankerPair: 11 };
+// Сколько стандартных 52-карточных колод в башмаке. Perfect Pair (две
+// совершенно одинаковые карты подряд) физически невозможен из одной
+// колоды — нужен многоколодный башмак, как в настоящей баккаре.
+const DECKS = 8;
+
+// Выплаты по макету: PLAYER 1:1, BANKER 0.95:1 (5% комиссия), ничья 8:1,
+// обычная пара (совпадение только ранга) 11:1, Perfect Pair (совпадение
+// ранга и масти) 50:1 — бонусные ставки друг другу не мешают.
+const ZONES = {
+  player: 1,
+  banker: 0.95,
+  tie: 8,
+  playerPair: 11,
+  bankerPair: 11,
+  playerPerfectPair: 50,
+  bankerPerfectPair: 50,
+};
+
+function freshShoe(decks = DECKS) {
+  const shoe = [];
+  for (let d = 0; d < decks; d += 1) for (let card = 0; card < 52; card += 1) shoe.push(card);
+  return shoe;
+}
 
 // Достоинство: туз 1, двойка–девятка по номиналу, десятки и картинки 0.
 function cardPoints(card) {
@@ -41,6 +62,12 @@ function isPair(cards) {
   return cards.length >= 2 && rankOf(cards[0]) === rankOf(cards[1]);
 }
 
+// Perfect Pair: первые две карты стороны — буквально одна и та же карта
+// (совпадают и ранг, и масть). Возможно только из многоколодного башмака.
+function isPerfectPair(cards) {
+  return cards.length >= 2 && cards[0] === cards[1];
+}
+
 // Ставки списком: { zone, amount }. Одна и та же зона может встречаться
 // один раз — клиент складывает фишки сам.
 function normalizeBets(raw, { minBet, maxBet, maxTotal }) {
@@ -66,7 +93,7 @@ function normalizeBets(raw, { minBet, maxBet, maxTotal }) {
 function deal({ bets, zone, amount, deck = null, rng = Math.random }) {
   const list = bets || [{ zone, amount }];
   for (const b of list) if (!ZONES[b.zone]) throw new BaccaratError('Неизвестная ставка');
-  const shoe = deck ? deck.slice() : shuffle(freshDeck(), rng);
+  const shoe = deck ? deck.slice() : shuffle(freshShoe(), rng);
   const draw = () => shoe.pop();
   const player = [draw()];
   const banker = [draw()];
@@ -88,13 +115,23 @@ function deal({ bets, zone, amount, deck = null, rng = Math.random }) {
   const winner = p > b ? 'player' : b > p ? 'banker' : 'tie';
   const playerPair = isPair(player);
   const bankerPair = isPair(banker);
-  const wins = { player: winner === 'player', banker: winner === 'banker', tie: winner === 'tie', playerPair, bankerPair };
+  const playerPerfectPair = isPerfectPair(player);
+  const bankerPerfectPair = isPerfectPair(banker);
+  const wins = {
+    player: winner === 'player',
+    banker: winner === 'banker',
+    tie: winner === 'tie',
+    playerPair,
+    bankerPair,
+    playerPerfectPair,
+    bankerPerfectPair,
+  };
 
   let payout = 0;
   let stake = 0;
   const results = list.map((bet) => {
     let win = 0;
-    if (wins[bet.zone]) win = bet.amount * (ZONES[bet.zone] + 1);
+    if (wins[bet.zone]) win = Math.round(bet.amount * (ZONES[bet.zone] + 1));
     else if (winner === 'tie' && (bet.zone === 'player' || bet.zone === 'banker')) win = bet.amount; // ничья возвращает ставки на стороны
     payout += win;
     stake += bet.amount;
@@ -109,6 +146,8 @@ function deal({ bets, zone, amount, deck = null, rng = Math.random }) {
     natural,
     playerPair,
     bankerPair,
+    playerPerfectPair,
+    bankerPerfectPair,
     bets: results,
     payout,
     stake,
@@ -119,4 +158,4 @@ function deal({ bets, zone, amount, deck = null, rng = Math.random }) {
   };
 }
 
-module.exports = { deal, total, cardPoints, bankerDraws, normalizeBets, isPair, BaccaratError, ZONES };
+module.exports = { deal, total, cardPoints, bankerDraws, normalizeBets, isPair, isPerfectPair, freshShoe, BaccaratError, ZONES, DECKS };

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { deal, total, cardPoints, bankerDraws, normalizeBets, BaccaratError } = require('../server/baccarat/game');
+const { deal, total, cardPoints, bankerDraws, normalizeBets, isPerfectPair, freshShoe, BaccaratError, DECKS } = require('../server/baccarat/game');
 const { stringToCard } = require('../server/poker/cards');
 
 // Колода задаётся в порядке раздачи: P1 B1 P2 B2 P3 B3.
@@ -50,7 +50,7 @@ test('правило третьей карты банкира', () => {
   assert.strictEqual(bankerDraws(6, null), false);
 });
 
-test('выплаты: сторона 1:1, ничья 8:1, при ничьей ставка на сторону возвращается', () => {
+test('выплаты: игрок 1:1, банкир 0.95:1 (комиссия), ничья 8:1, при ничьей ставка на сторону возвращается', () => {
   // игрок 9+7=6, банкир K+4=4; игрок стоит (6), банкир берёт (4, игрок не брал) → 4+2=6 → ничья
   const tie = deal({ zone: 'player', amount: 100, deck: deck('9h Kd 7c 4s 2d') });
   assert.strictEqual(tie.winner, 'tie');
@@ -60,7 +60,7 @@ test('выплаты: сторона 1:1, ничья 8:1, при ничьей с
   // игрок 9+7=6, банкир K+5=5 → банкир берёт 3 → 8; банкир выиграл
   const banker = deal({ zone: 'banker', amount: 100, deck: deck('9h Kd 7c 5s 3d') });
   assert.strictEqual(banker.winner, 'banker');
-  assert.strictEqual(banker.payout, 200);
+  assert.strictEqual(banker.payout, 195, '100 · 1.95 — 5 % комиссии казино');
   assert.strictEqual(deal({ zone: 'player', amount: 100, deck: deck('9h Kd 7c 5s 3d') }).payout, 0);
 });
 
@@ -75,6 +75,45 @@ test('пара: первые две карты стороны одного до�
   assert.strictEqual(r.bankerPair, false);
   assert.deepStrictEqual(r.bets.map((b) => b.payout), [1200, 0, 200]);
   assert.strictEqual(r.net, 1400 - 300);
+});
+
+test('Perfect Pair: совпадают ранг и масть, платит 50:1, обычную пару не отменяет', () => {
+  // игрок 9h 9h — буквально одна и та же карта дважды (возможно только из
+  // многоколодного башмака); банкир Kd 4s — обычная пара, не идеальная.
+  const r = deal({
+    bets: [
+      { zone: 'playerPerfectPair', amount: 100 },
+      { zone: 'playerPair', amount: 100 },
+      { zone: 'bankerPerfectPair', amount: 100 },
+    ],
+    deck: deck('9h Kd 9h 4s'),
+  });
+  assert.strictEqual(r.playerPerfectPair, true);
+  assert.strictEqual(r.playerPair, true, 'идеальная пара — тоже пара по рангу');
+  assert.strictEqual(r.bankerPerfectPair, false);
+  assert.deepStrictEqual(r.bets.map((b) => b.payout), [5100, 1200, 0]);
+});
+
+test('isPerfectPair: та же карта дважды — идеальная пара, разная масть — нет', () => {
+  assert.strictEqual(isPerfectPair([stringToCard('9h'), stringToCard('9h')]), true);
+  assert.strictEqual(isPerfectPair([stringToCard('9h'), stringToCard('9c')]), false);
+  assert.strictEqual(isPerfectPair([stringToCard('9h')]), false);
+});
+
+test('башмак: 8 колод по 52 карты, каждая карта встречается 8 раз', () => {
+  const shoe = freshShoe();
+  assert.strictEqual(shoe.length, 52 * DECKS);
+  const counts = new Map();
+  for (const card of shoe) counts.set(card, (counts.get(card) || 0) + 1);
+  assert.strictEqual(counts.size, 52);
+  for (const count of counts.values()) assert.strictEqual(count, DECKS);
+});
+
+test('без переданной колоды раздача берёт карты из многоколодного башмака', () => {
+  // Тасуем реальным rng — просто проверяем, что игра не падает и карты валидны.
+  const r = deal({ zone: 'player', amount: 100 });
+  assert.strictEqual(r.player.length >= 2, true);
+  assert.strictEqual(r.banker.length >= 2, true);
 });
 
 test('несколько ставок: проверка зон, повторов и общей суммы', () => {
