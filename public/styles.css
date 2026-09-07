@@ -3785,7 +3785,12 @@ body:has(#screen-table:not(.hidden)) .toast {
   z-index: 3;
   overflow: hidden;
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-  animation: pop-in 0.25s var(--ease);
+  /* Своя анимация: общая pop-in сбрасывает transform и ломает центрирование. */
+  animation: mn-pop-in 0.25s var(--ease);
+}
+@keyframes mn-pop-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 .mn-overlay .icon { position: absolute; stroke: none; pointer-events: none; }
 .mn-overlay .mn-suit-l { width: 96px; height: 96px; left: -6px; top: 50%; transform: translateY(-50%) rotate(-10deg); }
