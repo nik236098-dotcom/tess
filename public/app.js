@@ -40,6 +40,7 @@ const state = {
   rl: { open: false, info: null, amount: 1000, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
   bc: { open: false, info: null, amount: 2500, bets: new Map(), dealing: false, timers: [], shownBalance: null, typing: false, typed: '', round: null },
   mn: { open: false, info: null, amount: 100, mines: 3, busy: false, reveal: null, shownBalance: null },
+  nv: { open: false, info: null, amount: 100, target: 75, mode: 'under', busy: false, round: null, shownBalance: null, timer: null },
   unread: 0,
   tab: 'home', // главная | игры | турниры | бонусы | профиль
   wins: [], // лента последних выигрышей
@@ -263,7 +264,7 @@ async function boot() {
     applyTelegramTheme();
     tg.onEvent('themeChanged', applyTelegramTheme);
     // Обработчик системной кнопки «назад» регистрируем один раз.
-    if (tg.BackButton) tg.BackButton.onClick(() => (state.mn.open ? closeMines() : state.bc.open ? closeBaccarat() : state.rl.open ? closeRoulette() : state.bj.open ? closeBlackjack() : leaveRoom()));
+    if (tg.BackButton) tg.BackButton.onClick(() => (state.nv.open ? closeNvuti() : state.mn.open ? closeMines() : state.bc.open ? closeBaccarat() : state.rl.open ? closeRoulette() : state.bj.open ? closeBlackjack() : leaveRoom()));
   }
 
   try {
@@ -423,6 +424,9 @@ function handleMessage(message) {
     case 'mn':
       onMinesState(message);
       break;
+    case 'nv':
+      onNvutiState(message);
+      break;
     case 'topup_invoice':
       state.topup.busy = false;
       state.topup.invoice = message.invoice;
@@ -495,6 +499,8 @@ function handleMessage(message) {
       state.payout.busy = false;
       state.mn.busy = false;
       if (state.mn.open) renderMines();
+      state.nv.busy = false;
+      if (state.nv.open) renderNvuti();
       renderTopUpControls();
       renderPayoutControls();
       toast(message.message);
@@ -516,10 +522,12 @@ function showLobby() {
   $('screen-rl').classList.add('hidden');
   $('screen-bc').classList.add('hidden');
   $('screen-mn').classList.add('hidden');
+  $('screen-nv').classList.add('hidden');
   state.bj.open = false;
   state.rl.open = false;
   state.bc.open = false;
   state.mn.open = false;
+  state.nv.open = false;
   $('screen-lobby').classList.remove('hidden');
   if (tg && tg.BackButton) tg.BackButton.hide();
   startRoomsPolling();
@@ -1961,6 +1969,235 @@ function renderMines() {
   else if (!live && select.value !== String(mn.mines)) select.value = String(mn.mines);
 }
 
+// ——— Nvuti ———
+// Экран и панель ставки — те же компоненты, что у Mines. Своё — шкала
+// 1–100: курсор цели тянется пальцем, после броска к выпавшему числу
+// подъезжает маркер результата. Розыгрыш мгновенный, на сервере.
+const NV_MIN_TARGET = 5;
+const NV_MAX_TARGET = 95;
+
+function nvPos(value) {
+  return ((value - 1) / 99) * 100; // позиция на шкале, %
+}
+
+function nvChance() {
+  return state.nv.mode === 'under' ? state.nv.target : 100 - state.nv.target;
+}
+
+function nvMultiplier() {
+  return Math.floor((97 / nvChance()) * 100 + 1e-9) / 100;
+}
+
+function buildNvutiScale() {
+  const ticks = $('nv-ticks');
+  if (ticks.children.length) return;
+  for (let v = 1; v <= 100; v += 3) {
+    const tick = document.createElement('i');
+    const major = v === 1 || v === 25 || v === 49 || v === 73 || v === 100;
+    if (major) tick.className = 'major';
+    tick.style.left = `${nvPos(v)}%`;
+    ticks.appendChild(tick);
+  }
+}
+
+function bindNvutiScale() {
+  const scale = $('nv-scale');
+  let dragging = false;
+  const valueAt = (clientX) => {
+    const rect = $('nv-scale').querySelector('.nv-track').getBoundingClientRect();
+    const ratio = clamp((clientX - rect.left) / rect.width, 0, 1);
+    return clamp(Math.round(1 + ratio * 99), NV_MIN_TARGET, NV_MAX_TARGET);
+  };
+  scale.addEventListener('pointerdown', (event) => {
+    if (state.nv.busy) return;
+    if (event.target.closest('.nv-marker')) return;
+    dragging = true;
+    scale.classList.add('is-dragging');
+    scale.setPointerCapture(event.pointerId);
+    nvSetTarget(valueAt(event.clientX));
+    event.preventDefault();
+  });
+  scale.addEventListener('pointermove', (event) => {
+    if (!dragging) return;
+    nvSetTarget(valueAt(event.clientX));
+  });
+  const stop = () => { if (!dragging) return; dragging = false; scale.classList.remove('is-dragging'); };
+  scale.addEventListener('pointerup', stop);
+  scale.addEventListener('pointercancel', stop);
+}
+
+function nvSetTarget(value) {
+  if (value === state.nv.target) return;
+  state.nv.target = value;
+  renderNvuti();
+}
+
+function nvSetMode(mode) {
+  if (state.nv.busy || (mode !== 'under' && mode !== 'over')) return;
+  state.nv.mode = mode;
+  haptic('light');
+  renderNvuti();
+}
+
+function openNvuti() {
+  const nv = state.nv;
+  nv.open = true;
+  nv.busy = false;
+  nv.round = null;
+  nv.shownBalance = null;
+  $('screen-lobby').classList.add('hidden');
+  $('screen-table').classList.add('hidden');
+  $('screen-bj').classList.add('hidden');
+  $('screen-rl').classList.add('hidden');
+  $('screen-bc').classList.add('hidden');
+  $('screen-mn').classList.add('hidden');
+  $('screen-nv').classList.remove('hidden');
+  $('screen-nv').scrollTop = 0;
+  if (tg && tg.BackButton) tg.BackButton.show();
+  stopRoomsPolling();
+  buildNvutiScale();
+  $('nv-marker').classList.add('hidden');
+  $('nv-outcome').classList.add('hidden');
+  nvWriteAmount();
+  send({ type: 'nv_open' });
+  renderNvuti();
+}
+
+function closeNvuti() {
+  clearTimeout(state.nv.timer);
+  state.nv.open = false;
+  state.nv.busy = false;
+  $('screen-nv').classList.add('hidden');
+  showLobby();
+}
+
+function nvRange() {
+  const info = state.nv.info;
+  const min = info ? info.minBet : 10;
+  const max = Math.min(info ? info.maxBet : 1000000, Math.max(min, state.balance));
+  return { min, max };
+}
+
+function nvReadAmount() {
+  const cents = toCents($('nv-amount').value);
+  state.nv.amount = cents !== null && cents > 0 ? cents : null;
+  renderNvuti();
+}
+
+function nvWriteAmount() {
+  if (state.nv.amount === null) return;
+  const input = $('nv-amount');
+  input.value = (state.nv.amount / 100).toFixed(2).replace('.', ',');
+  input.closest('.mn-input').classList.remove('is-bad');
+}
+
+function nvAdjust(change) {
+  if (state.nv.busy) return;
+  const { min, max } = nvRange();
+  const current = state.nv.amount ?? min;
+  state.nv.amount = clamp(Math.round(change(current)), min, max);
+  haptic('light');
+  nvWriteAmount();
+  renderNvuti();
+}
+
+function onNvutiMain() {
+  const nv = state.nv;
+  if (nv.busy) return;
+  const { min, max } = nvRange();
+  if (nv.amount === null || nv.amount < min) { toast(`Минимальная ставка ${money(min)}`); return; }
+  if (nv.amount > state.balance) { toast('Недостаточно средств'); haptic('error'); return; }
+  if (nv.amount > max) { toast(`Максимальная ставка ${money(max)}`); return; }
+  nv.busy = true;
+  haptic('light');
+  send({ type: 'nv_bet', amount: nv.amount, target: nv.target, mode: nv.mode });
+  renderNvuti();
+}
+
+function nvShowBalance(value, silent) {
+  const nv = state.nv;
+  const node = $('nv-balance');
+  $('nv-balance-value').textContent = money(value);
+  if (!silent && nv.shownBalance !== null && value !== nv.shownBalance) {
+    node.classList.remove('is-up', 'is-down');
+    void node.offsetWidth;
+    node.classList.add(value > nv.shownBalance ? 'is-up' : 'is-down');
+    setTimeout(() => node.classList.remove('is-up', 'is-down'), 1400);
+  }
+  nv.shownBalance = value;
+}
+
+function onNvutiState(message) {
+  const nv = state.nv;
+  const first = !nv.info;
+  nv.info = message;
+  state.balance = message.balance;
+  renderAccount();
+  if (message.round) {
+    nvPlayRound(message.round);
+    return;
+  }
+  nv.busy = false;
+  renderNvuti();
+  nvShowBalance(message.balance, first);
+}
+
+// Маркер выезжает к выпавшему числу; итог и баланс показываем, когда доехал.
+function nvPlayRound(round) {
+  const nv = state.nv;
+  nv.round = round;
+  const marker = $('nv-marker');
+  const outcome = $('nv-outcome');
+  outcome.classList.add('hidden');
+  marker.className = 'nv-marker';
+  $('nv-marker-value').textContent = String(round.roll);
+  const from = marker.dataset.at ? Number(marker.dataset.at) : (round.mode === 'under' ? 100 : 1);
+  marker.style.setProperty('--p', nvPos(from).toFixed(2));
+  void marker.offsetWidth;
+  marker.style.setProperty('--p', nvPos(round.roll).toFixed(2));
+  marker.dataset.at = String(round.roll);
+  nvShowBalance(state.balance - round.payout, true);
+  clearTimeout(nv.timer);
+  nv.timer = setTimeout(() => {
+    marker.classList.add(round.won ? 'is-win' : 'is-lose');
+    outcome.className = `nv-outcome ${round.won ? 'is-win' : 'is-lose'}`;
+    outcome.textContent = round.won ? `Выпало ${round.roll} · +${money(round.net)}` : `Выпало ${round.roll} · −${money(round.bet)}`;
+    haptic(round.won ? 'success' : 'error');
+    nvShowBalance(state.balance);
+    nv.busy = false;
+    renderNvuti();
+  }, 950);
+}
+
+function renderNvuti() {
+  const nv = state.nv;
+  if (!nv.open) return;
+  const under = nv.mode === 'under';
+  const chance = nvChance();
+  const multiplier = nvMultiplier();
+  $('nv-thumb').style.setProperty('--p', nvPos(nv.target).toFixed(2));
+  $('nv-thumb-value').textContent = String(nv.target);
+  const fill = $('nv-fill');
+  fill.style.setProperty('--from', under ? '0' : nvPos(nv.target).toFixed(2));
+  fill.style.setProperty('--to', under ? nvPos(nv.target).toFixed(2) : '100');
+  $('nv-mult').textContent = multiplier.toFixed(2);
+  $('nv-target').textContent = String(nv.target);
+  $('nv-mode-label').textContent = under ? 'Ролл ниже' : 'Ролл выше';
+  $('nv-chance').textContent = chance.toFixed(2);
+  $('nv-swap').disabled = nv.busy;
+  const select = $('nv-mode');
+  if (select.value !== nv.mode) select.value = nv.mode;
+  select.disabled = nv.busy;
+  const main = $('nv-main');
+  const { min } = nvRange();
+  main.textContent = nv.busy ? 'Бросок…' : 'Сделать ставку';
+  main.disabled = nv.busy || nv.amount === null || nv.amount < min || nv.amount > state.balance;
+  const bad = nv.amount === null || nv.amount > state.balance;
+  $('nv-amount').closest('.mn-input').classList.toggle('is-bad', bad);
+  $('nv-amount').disabled = nv.busy;
+  for (const id of ['nv-half', 'nv-double', 'nv-max']) $(id).disabled = nv.busy;
+}
+
 // Главная и Игры — это две панели одного экрана лобби: столы и лента
 // выигрышей приходят одним и тем же сообщением, переключение ничего не грузит.
 const TABS = ['home', 'games', 'tournaments', 'bonuses', 'profile'];
@@ -2196,7 +2433,7 @@ function renderWins() {
   list.innerHTML = state.wins.slice(0, 8).map((win, index) => {
     const blackjack = win.game === 'blackjack';
     const icon = icons[blackjack ? 'blackjack' : 'holdem'];
-    const label = { blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines' }[win.game] || 'Poker';
+    const label = { blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti' }[win.game] || 'Poker';
     return `
     <div class="mk-win" style="--i:${index}">
       <span class="mk-win-icon" style="background-image:url('/img/lobby/win-${icon}.png')"></span>
@@ -3728,6 +3965,18 @@ function bindUi() {
   on('play-roulette', 'click', () => { haptic('light'); openRoulette(); });
   on('play-baccarat', 'click', () => { haptic('light'); openBaccarat(); });
   on('play-mines', 'click', () => { haptic('light'); openMines(); });
+  on('play-nvuti', 'click', () => { haptic('light'); openNvuti(); });
+  on('nv-back', 'click', closeNvuti);
+  on('nv-main', 'click', onNvutiMain);
+  on('nv-swap', 'click', () => nvSetMode(state.nv.mode === 'under' ? 'over' : 'under'));
+  on('nv-half', 'click', () => nvAdjust((amount) => Math.floor(amount / 2)));
+  on('nv-double', 'click', () => nvAdjust((amount) => amount * 2));
+  on('nv-max', 'click', () => nvAdjust(() => Infinity));
+  $('nv-amount').addEventListener('input', () => nvReadAmount());
+  $('nv-amount').addEventListener('blur', () => { nvReadAmount(); nvWriteAmount(); });
+  $('nv-amount').addEventListener('keydown', (event) => { if (event.key === 'Enter') event.currentTarget.blur(); });
+  $('nv-mode').addEventListener('change', (event) => nvSetMode(event.currentTarget.value));
+  bindNvutiScale();
   on('mn-back', 'click', closeMines);
   on('mn-main', 'click', onMinesMain);
   on('mn-half', 'click', () => mnAdjust((amount) => Math.floor(amount / 2)));

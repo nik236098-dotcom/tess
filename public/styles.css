@@ -3948,3 +3948,138 @@ body:has(#screen-table:not(.hidden)) .toast {
 .lb-mn-grid b.gem::after { content: ''; position: absolute; inset: 7px; background: #3f8a36; clip-path: polygon(25% 0, 75% 0, 100% 35%, 50% 100%, 0 35%); }
 .lb-mn-grid b.mine { background: #4a2a2c; box-shadow: inset 0 -3px 0 #3a1d20; }
 .lb-mn-grid b.mine::after { content: ''; position: absolute; left: 7px; top: 8px; width: 12px; height: 12px; border-radius: 50%; background: #2b1416; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   NVUTI — на компонентах Mines; своё только шкала 1–100 и плитки статов
+   ═══════════════════════════════════════════════════════════════════════ */
+.nv-card { padding: 22px 20px 20px; }
+.nv-card-head { display: flex; align-items: center; justify-content: space-between; min-height: 28px; }
+.nv-caption { margin-top: 0; font-size: 16px; }
+.nv-outcome {
+  padding: 4px 10px; border-radius: 999px;
+  font: 700 13px var(--font);
+  animation: pop-in 0.25s var(--ease);
+}
+.nv-outcome.is-win { background: rgba(80, 255, 100, 0.14); color: #5cff6a; border: 1px solid rgba(80, 255, 100, 0.4); }
+.nv-outcome.is-lose { background: rgba(255, 90, 110, 0.12); color: #ff8a9a; border: 1px solid rgba(255, 90, 110, 0.4); }
+
+/* Шкала: дорожка, заливка выигрышной зоны, курсор цели, маркер результата.
+   Позиция значения v по ширине — (v − 1) / 99 через --p. */
+.nv-scale { position: relative; margin: 54px 0 0; padding: 0 0 104px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.nv-track {
+  position: relative; height: 18px; border-radius: 999px;
+  background: linear-gradient(180deg, #1a1d40, #12143a);
+  border: 1px solid rgba(120, 110, 220, 0.25);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.55), 0 0 0 4px rgba(20, 22, 58, 0.6);
+  overflow: hidden;
+}
+.nv-fill {
+  position: absolute; top: 0; bottom: 0;
+  left: calc(var(--from, 0) * 1%); width: calc((var(--to, 75) - var(--from, 0)) * 1%);
+  border-radius: 999px;
+  background: linear-gradient(90deg, #8a8cff 0%, #4a4dff 100%);
+  box-shadow: 0 0 16px rgba(90, 100, 255, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: left 0.12s, width 0.12s;
+}
+.nv-thumb {
+  position: absolute; top: 9px; left: calc(var(--p, 75) * 1%);
+  width: 34px; height: 34px; margin-left: -17px; margin-top: -17px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #ffffff 0 36%, #6a72ff 38% 100%);
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 3px #4a4dff, 0 0 20px rgba(110, 120, 255, 0.85);
+  cursor: grab;
+  z-index: 3;
+  transition: left 0.12s;
+}
+.nv-scale.is-dragging .nv-thumb { transition: none; cursor: grabbing; }
+.nv-scale.is-dragging .nv-fill { transition: none; }
+.nv-bubble {
+  position: absolute; left: 50%; bottom: calc(100% + 12px);
+  transform: translateX(-50%);
+  min-width: 46px; padding: 7px 10px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(150, 160, 255, 0.8);
+  background: linear-gradient(180deg, #1d2050, #14163d);
+  color: #fff; font: 800 18px/1 var(--font); text-align: center;
+  box-shadow: 0 0 16px rgba(110, 120, 255, 0.45);
+}
+.nv-bubble::after {
+  content: ''; position: absolute; left: 50%; top: 100%;
+  width: 10px; height: 10px; margin-left: -5px; margin-top: -5px;
+  background: #14163d; border-right: 1.5px solid rgba(150, 160, 255, 0.8); border-bottom: 1.5px solid rgba(150, 160, 255, 0.8);
+  transform: rotate(45deg);
+}
+.nv-marker {
+  position: absolute; top: -2px; left: calc(var(--p, 50) * 1%);
+  width: 0; height: 0; z-index: 4;
+  transition: left 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.nv-marker i {
+  position: absolute; left: -2px; top: 0; width: 4px; height: 22px; border-radius: 2px;
+  background: #fff; box-shadow: 0 0 10px rgba(255, 255, 255, 0.9);
+}
+.nv-marker .nv-bubble { bottom: auto; top: 70px; }
+.nv-marker .nv-bubble::after { top: auto; bottom: 100%; margin-top: 0; margin-bottom: -5px; transform: rotate(-135deg); }
+.nv-marker.is-win .nv-bubble { border-color: rgba(80, 255, 100, 0.8); color: #5cff6a; box-shadow: 0 0 16px rgba(80, 255, 100, 0.4); }
+.nv-marker.is-win i { background: #5cff6a; box-shadow: 0 0 10px rgba(92, 255, 106, 0.9); }
+.nv-marker.is-lose .nv-bubble { border-color: rgba(255, 90, 110, 0.8); color: #ff8a9a; box-shadow: 0 0 16px rgba(255, 90, 110, 0.4); }
+.nv-marker.is-lose i { background: #ff6b7a; box-shadow: 0 0 10px rgba(255, 107, 122, 0.9); }
+.nv-ticks { position: absolute; left: 0; right: 0; top: 30px; height: 12px; pointer-events: none; }
+.nv-ticks i { position: absolute; top: 0; width: 2px; height: 7px; margin-left: -1px; border-radius: 1px; background: rgba(160, 170, 255, 0.35); }
+.nv-ticks i.major { height: 12px; background: rgba(190, 200, 255, 0.7); }
+.nv-legend { position: absolute; left: 0; right: 0; top: 48px; height: 18px; pointer-events: none; }
+.nv-legend span { position: absolute; transform: translateX(-50%); font: 600 14px var(--font); color: #b9bde0; }
+.nv-legend span:nth-child(1) { left: 0; transform: none; }
+.nv-legend span:nth-child(2) { left: calc(24 / 99 * 100%); }
+.nv-legend span:nth-child(3) { left: calc(49 / 99 * 100%); }
+.nv-legend span:nth-child(4) { left: calc(74 / 99 * 100%); }
+.nv-legend span:nth-child(5) { left: 100%; transform: translateX(-100%); }
+
+.nv-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 0; }
+.nv-stat {
+  padding: 10px 8px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(150, 130, 255, 0.28);
+  background: linear-gradient(180deg, rgba(28, 31, 70, 0.9), rgba(18, 20, 52, 0.9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  min-width: 0;
+}
+.nv-stat > span { display: block; font: 600 12px var(--font); letter-spacing: -0.01em; color: #b9bde0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nv-stat > b {
+  margin-top: 8px; height: 40px; padding: 0 6px 0 8px;
+  border-radius: 10px;
+  background: rgba(10, 12, 34, 0.8);
+  border: 1px solid rgba(120, 110, 220, 0.2);
+  display: flex; align-items: center; justify-content: space-between; gap: 4px;
+}
+.nv-stat em { font: 800 16px/1 var(--font); letter-spacing: -0.02em; font-style: normal; color: #fff; font-variant-numeric: tabular-nums; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nv-stat i { font: 600 13px var(--font); font-style: normal; color: #b9bde0; }
+.nv-swap {
+  width: 28px; height: 28px; flex: none;
+  border-radius: 8px; border: 1px solid rgba(150, 130, 255, 0.35);
+  background: rgba(60, 60, 140, 0.45); color: #d9d4ff;
+  display: grid; place-items: center;
+}
+.nv-swap:active { background: rgba(123, 108, 246, 0.6); }
+.nv-swap:disabled { opacity: 0.5; }
+
+/* Карточка Nvuti в «Играх» — синяя, с мини-шкалой */
+.lb-play-nv {
+  border-color: rgba(110, 120, 255, 0.28);
+  background:
+    radial-gradient(70% 90% at 0% 50%, rgba(90, 100, 255, 0.38), rgba(90, 100, 255, 0) 60%),
+    radial-gradient(60% 60% at 100% 100%, rgba(40, 50, 160, 0.55), rgba(40, 50, 160, 0) 60%),
+    linear-gradient(170deg, #12163a 0%, #0b0e24 100%);
+}
+.lb-play-nv .lb-hero-kicker { color: #9aa3ff; }
+.lb-play-nv .lb-play-cta { background: linear-gradient(180deg, #8d8fff, #4a4dff); box-shadow: 0 8px 18px rgba(90, 100, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.lb-nv-art { display: grid; place-items: center; }
+.lb-nv-scale {
+  position: relative; width: 90px; height: 12px; border-radius: 999px;
+  background: #1a1d40; box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.6), 0 0 0 3px rgba(20, 22, 58, 0.6);
+  transform: rotate(-8deg);
+}
+.lb-nv-scale b { position: absolute; left: 0; top: 0; bottom: 0; width: 70%; border-radius: 999px; background: linear-gradient(90deg, #8a8cff, #4a4dff); box-shadow: 0 0 12px rgba(90, 100, 255, 0.7); }
+.lb-nv-scale b::after { content: ''; position: absolute; right: -10px; top: 50%; width: 20px; height: 20px; margin-top: -10px; border-radius: 50%; background: radial-gradient(circle, #fff 0 36%, #6a72ff 38% 100%); border: 2px solid #fff; box-shadow: 0 0 0 2px #4a4dff, 0 0 12px rgba(110, 120, 255, 0.9); }
+.lb-nv-scale em { position: absolute; left: 70%; bottom: 22px; transform: translateX(-50%); padding: 3px 7px; border-radius: 6px; border: 1px solid rgba(150, 160, 255, 0.8); background: #14163d; color: #fff; font: 800 11px/1 var(--font); font-style: normal; }

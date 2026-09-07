@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=120" />
+  <link rel="stylesheet" href="/styles.css?v=121" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -27,6 +27,7 @@
     <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M5.5 3.5h13v17l-2.2-1.5-2.1 1.5-2.2-1.5-2.2 1.5-2.1-1.5-2.2 1.5v-17Z"/><path d="M9 8.5h6M9 12.5h6"/></symbol>
     <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
     <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"/></symbol>
     <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20.5 12.2a7.7 7.7 0 0 1-8.3 7.7c-.9 0-1.8-.2-2.6-.5L4 21l1.6-4.4a7.6 7.6 0 0 1-.9-3.6 7.7 7.7 0 0 1 7.8-7.7h.5a7.7 7.7 0 0 1 7.5 7.4v.5Z"/></symbol>
     <symbol id="i-more" viewBox="0 0 24 24"><path d="M6 12h.01M12 12h.01M18 12h.01"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
@@ -202,6 +203,20 @@
                 <span class="lb-hero-kicker">Mines</span>
                 <b>Мины</b>
                 <span>Поле 5×5 · от 1 до 24 мин · забери выигрыш вовремя</span>
+                <span class="lb-play-foot">
+                  <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
+                </span>
+              </span>
+            </button>
+
+            <button id="play-nvuti" class="lb-play lb-play-nv">
+              <span class="lb-play-art lb-nv-art" aria-hidden="true">
+                <i class="lb-nv-scale"><b></b><em>75</em></i>
+              </span>
+              <span class="lb-play-body">
+                <span class="lb-hero-kicker">Nvuti</span>
+                <b>Nvuti</b>
+                <span>Шкала 1–100 · меньше или больше · до x19.4</span>
                 <span class="lb-play-foot">
                   <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
                 </span>
@@ -774,9 +789,65 @@
       </div>
     </section>
 
+    <!-- Nvuti: те же компоненты, что у Mines (экран, шапка, панель ставки);
+         своё — шкала 1–100 с курсором цели и маркером результата. -->
+    <section id="screen-nv" class="screen mn-screen hidden">
+      <div class="mn-bg" aria-hidden="true">
+        <svg class="icon mn-suit-1"><use href="#i-spade"></use></svg>
+        <svg class="icon mn-suit-2"><use href="#i-club"></use></svg>
+        <svg class="icon mn-suit-3"><use href="#i-diamond"></use></svg>
+        <svg class="icon mn-suit-4"><use href="#i-spade"></use></svg>
+      </div>
+      <div class="mn-page">
+        <header class="mn-head">
+          <button id="nv-back" class="mn-iconbtn" title="В лобби">
+            <svg class="icon"><use href="#i-chevron-left"></use></svg>
+          </button>
+          <b class="mn-title">Nvuti</b>
+          <div id="nv-balance" class="mn-balance"><span>Баланс</span><b id="nv-balance-value">$0.00</b></div>
+        </header>
+        <div class="mn-board-card nv-card">
+          <div class="nv-card-head">
+            <span class="mn-label nv-caption">Результат</span>
+            <b id="nv-outcome" class="nv-outcome hidden"></b>
+          </div>
+          <div id="nv-scale" class="nv-scale">
+            <div class="nv-track"><i id="nv-fill" class="nv-fill"></i></div>
+            <div id="nv-thumb" class="nv-thumb"><b id="nv-thumb-value" class="nv-bubble">75</b></div>
+            <div id="nv-marker" class="nv-marker hidden"><b id="nv-marker-value" class="nv-bubble nv-bubble-result">0</b><i></i></div>
+            <div class="nv-ticks" id="nv-ticks"></div>
+            <div class="nv-legend"><span>1</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+          </div>
+          <div class="nv-stats">
+            <div class="nv-stat"><span>Выплата</span><b><em id="nv-mult">1.29</em><i>X</i></b></div>
+            <div class="nv-stat"><span id="nv-mode-label">Ролл ниже</span><b><em id="nv-target">75</em><button id="nv-swap" class="nv-swap" type="button" aria-label="Сменить режим"><svg class="icon icon-sm"><use href="#i-swap"></use></svg></button></b></div>
+            <div class="nv-stat"><span>Шанс победы</span><b><em id="nv-chance">75.00</em><i>%</i></b></div>
+          </div>
+        </div>
+        <div class="mn-panel">
+          <button id="nv-main" class="mn-main">Сделать ставку</button>
+          <div class="mn-label">Сумма ставки</div>
+          <div class="mn-row">
+            <label class="mn-input">
+              <i class="mn-coin">$</i>
+              <input id="nv-amount" type="text" inputmode="decimal" autocomplete="off" value="1,00" />
+            </label>
+            <button id="nv-half" class="mn-mod">1/2</button>
+            <button id="nv-double" class="mn-mod">2x</button>
+            <button id="nv-max" class="mn-mod">Max</button>
+          </div>
+          <div class="mn-label">Режим</div>
+          <label class="mn-select">
+            <select id="nv-mode"><option value="under">Меньше</option><option value="over">Больше</option></select>
+            <svg class="icon mn-select-chevron"><use href="#i-chevron-right"></use></svg>
+          </label>
+        </div>
+      </div>
+    </section>
+
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=82"></script>
+  <script src="/app.js?v=83"></script>
 </body>
 </html>

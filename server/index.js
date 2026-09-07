@@ -12,6 +12,7 @@ const { SoloBlackjack, SoloError } = require('./blackjack/solo');
 const roulette = require('./roulette/wheel');
 const baccarat = require('./baccarat/game');
 const { MinesGame, MinesError } = require('./mines/game');
+const nvuti = require('./nvuti/game');
 const { Accounts, AccountError, DEFAULT_START_BALANCE } = require('./accounts');
 const { createPayments, PaymentError } = require('./payments');
 const { formatMoney, parseMoney } = require('./money');
@@ -325,7 +326,7 @@ function createApp(options = {}) {
       try {
         handleMessage(client, message);
       } catch (error) {
-        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError || error instanceof MinesError) {
+        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError || error instanceof MinesError || error instanceof nvuti.NvutiError) {
           client.fail(error.message);
         } else {
           console.error('Ошибка обработки сообщения:', error);
@@ -472,6 +473,12 @@ function createApp(options = {}) {
         break;
       case 'mn_cashout':
         minesCashout(client);
+        break;
+      case 'nv_open':
+        client.send({ type: 'nv', ...nvutiInfo(client) });
+        break;
+      case 'nv_bet':
+        nvutiBet(client, Number(message.amount), Number(message.target), String(message.mode || ''));
         break;
       case 'ping':
         client.send({ type: 'pong', at: Date.now() });
@@ -916,6 +923,38 @@ function createApp(options = {}) {
       if (net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: net, game: 'mines', code: 'MN' });
     }
     sendMines(client);
+  }
+
+  // ——— Nvuti ———
+  // Как рулетка: ставка списывается, бросок мгновенный, выплата сразу.
+  const NV_MIN_BET = 10;
+  const NV_MAX_BET = 1000000;
+  const nvutiHistory = new Map(); // userId → последние броски
+
+  function nvutiInfo(client) {
+    return {
+      minBet: NV_MIN_BET,
+      maxBet: NV_MAX_BET,
+      minTarget: nvuti.MIN_TARGET,
+      maxTarget: nvuti.MAX_TARGET,
+      balance: accounts.balanceOf(client.user.id),
+      history: nvutiHistory.get(client.user.id) || [],
+    };
+  }
+
+  function nvutiBet(client, amount, target, mode) {
+    const bet = Math.round(amount);
+    if (!Number.isFinite(bet) || bet < NV_MIN_BET) throw new nvuti.NvutiError(`Минимальная ставка ${formatMoney(NV_MIN_BET)}`);
+    if (bet > NV_MAX_BET) throw new nvuti.NvutiError(`Максимальная ставка ${formatMoney(NV_MAX_BET)}`);
+    nvuti.normalize(target, mode);
+    if (accounts.balanceOf(client.user.id) < bet) throw new nvuti.NvutiError('Недостаточно средств');
+    accounts.withdraw(client.user.id, bet);
+    const round = nvuti.play({ bet, target, mode });
+    if (round.payout > 0) accounts.deposit(client.user.id, round.payout);
+    if (round.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: round.net, game: 'nvuti', code: 'NV' });
+    const history = [{ roll: round.roll, won: round.won }, ...(nvutiHistory.get(client.user.id) || [])].slice(0, 12);
+    nvutiHistory.set(client.user.id, history);
+    client.send({ type: 'nv', round, ...nvutiInfo(client) });
   }
 
   function withRoom(client, action) {
