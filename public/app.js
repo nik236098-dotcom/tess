@@ -1463,7 +1463,7 @@ function buildBaccaratZones() {
     line.dataset.zone = zone.key;
     line.src = `/img/bc-line-${zone.key}.png`;
     line.alt = '';
-    line.style.cssText = `left:${lb.x}px;top:${lb.y}px;width:${lb.w}px;height:${lb.h}px`;
+    line.style.cssText = `left:${lb.x}px;top:${lb.y}px;width:${lb.w}px;height:${lb.h}px;--zc:${zone.colour}`;
     box.appendChild(line);
     // Фишка — обычный элемент над центром зоны.
     const chip = document.createElement('div');

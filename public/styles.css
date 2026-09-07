@@ -3638,11 +3638,11 @@ body:has(#screen-table:not(.hidden)) .toast {
   opacity: 0;
   transition: opacity 0.16s;
 }
-.bc-line.is-hit { opacity: 1; filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.5)); }
+.bc-line.is-hit { opacity: 1; filter: drop-shadow(0 0 4px var(--zc)) drop-shadow(0 0 10px var(--zc)) brightness(1.2); }
 .bc-line.is-win { opacity: 1; animation: bc-line-pulse 0.85s ease-in-out infinite alternate; }
 @keyframes bc-line-pulse {
-  from { filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.4)) brightness(1); }
-  to { filter: drop-shadow(0 0 9px rgba(255, 255, 255, 0.75)) brightness(1.35); }
+  from { filter: drop-shadow(0 0 4px var(--zc)) drop-shadow(0 0 10px var(--zc)) brightness(1.15); }
+  to { filter: drop-shadow(0 0 6px #fff) drop-shadow(0 0 16px var(--zc)) brightness(1.6); }
 }
 .bc-chip-slot { position: absolute; width: 0; height: 0; pointer-events: none; }
 .bc-chip-slot .rl-chip { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); animation: none; }
