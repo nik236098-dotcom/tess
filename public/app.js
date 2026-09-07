@@ -1379,16 +1379,24 @@ const BC_SLOTS = { player: [74.6, 125.6], banker: [217.6, 268.6] };
 const BC_CARD_Y = 140.5;
 const BC_SHOE = { x: 364.7, y: 155 };
 
+// Контуры зон в координатах макета (941×1576, без шапки): подсветка
+// повторяет форму нарисованных трапеций, а не прямоугольник.
+const BC_ZONE_SHAPES = {
+  player: { colour: '#4a78ff', points: [[102, 714], [358, 782], [330, 1000], [46, 1000], [36, 900]] },
+  tie: { colour: '#2ad37f', points: [[366, 783], [598, 783], [604, 1005], [340, 1005]] },
+  banker: { colour: '#ff3b5c', points: [[605, 782], [860, 714], [922, 900], [912, 1000], [612, 1000]] },
+  playerPair: { colour: '#c47cff', points: [[126, 999], [377, 1026], [370, 1123], [101, 1071]] },
+  bankerPair: { colour: '#c47cff', points: [[565, 1025], [816, 999], [841, 1069], [571, 1123]] },
+};
+
 function bcZones() {
-  const X = (x) => x * BC_K;
-  const Y = (y) => (y - 96) * BC_K;
-  return [
-    { key: 'player', x: X(42), y: Y(715), w: X(357) - X(42), h: Y(1001) - Y(715) },
-    { key: 'tie', x: X(365), y: Y(780), w: X(600) - X(365), h: Y(1005) - Y(780) },
-    { key: 'banker', x: X(609), y: Y(715), w: X(917) - X(609), h: Y(1001) - Y(715) },
-    { key: 'playerPair', x: X(99), y: Y(1002), w: X(381) - X(99), h: Y(1127) - Y(1002) },
-    { key: 'bankerPair', x: X(560), y: Y(1002), w: X(842) - X(560), h: Y(1126) - Y(1002) },
-  ];
+  return Object.entries(BC_ZONE_SHAPES).map(([key, shape]) => {
+    const xs = shape.points.map((p) => p[0]);
+    const ys = shape.points.map((p) => p[1] - 96);
+    const cx = (xs.reduce((a, b) => a + b, 0) / xs.length) * BC_K;
+    const cy = (ys.reduce((a, b) => a + b, 0) / ys.length) * BC_K;
+    return { key, colour: shape.colour, points: shape.points.map(([x, y]) => `${x},${y - 96}`).join(' '), cx, cy };
+  });
 }
 
 function fitBaccarat() {
@@ -1430,14 +1438,30 @@ function closeBaccarat() {
 function buildBaccaratZones() {
   const box = $('bc-zones');
   if (box.children.length) return;
+  // Один SVG на все зоны: полигоны в координатах макета, масштаб — через viewBox.
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 941 1576');
+  svg.setAttribute('class', 'bc-zone-svg');
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  defs.innerHTML = '<filter id="bc-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6"/></filter>';
+  svg.appendChild(defs);
   for (const zone of bcZones()) {
-    const node = document.createElement('button');
-    node.className = 'bc-zone';
-    node.dataset.zone = zone.key;
-    node.style.cssText = `left:${zone.x.toFixed(2)}px;top:${zone.y.toFixed(2)}px;width:${zone.w.toFixed(2)}px;height:${zone.h.toFixed(2)}px`;
-    node.addEventListener('click', () => placeBcBet(zone.key, node));
-    box.appendChild(node);
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'bc-zone');
+    g.dataset.zone = zone.key;
+    g.style.setProperty('--zc', zone.colour);
+    g.innerHTML = `<polygon class="bc-zone-glow" points="${zone.points}" filter="url(#bc-glow)"/><polygon class="bc-zone-shape" points="${zone.points}"/>`;
+    g.addEventListener('click', () => placeBcBet(zone.key, g));
+    svg.appendChild(g);
+    // Фишка — обычный элемент над центром зоны.
+    const chip = document.createElement('div');
+    chip.className = 'bc-chip-slot';
+    chip.dataset.zone = zone.key;
+    chip.style.left = `${zone.cx.toFixed(1)}px`;
+    chip.style.top = `${zone.cy.toFixed(1)}px`;
+    box.appendChild(chip);
   }
+  box.insertBefore(svg, box.firstChild);
   const presets = $('bc-presets');
   if (!presets.children.length) {
     for (const value of BC_PRESETS) {
@@ -1667,7 +1691,7 @@ function renderBaccarat() {
   $('bc-minus').disabled = bc.dealing;
   $('bc-plus').disabled = bc.dealing;
   for (const button of $('bc-presets').children) button.disabled = bc.dealing;
-  for (const node of $('bc-zones').children) {
+  for (const node of $('bc-zones').querySelectorAll('.bc-chip-slot')) {
     const amount = bc.bets.get(node.dataset.zone);
     let chip = node.querySelector('.rl-chip');
     if (!amount) { if (chip) chip.remove(); continue; }

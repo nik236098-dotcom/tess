@@ -3626,16 +3626,19 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-face.back::after { content: '♠'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 22px; color: #e2bd78; text-shadow: 0 0 6px rgba(226, 189, 120, 0.6); }
 .bc-result { top: 232px; }
 .bc-result.tie { border-color: rgba(120, 220, 160, 0.6); color: #9be8b8; }
-/* Зоны ставок — прозрачные области по нарисованным, при выборе свечение */
+/* Зоны ставок: полигоны по контурам нарисованных трапеций. Тап — вспышка
+   заливкой цвета зоны, выигрыш — пульс контура тем же цветом. */
 .bc-zones { position: absolute; inset: 0; pointer-events: none; }
-.bc-zone {
-  position: absolute; pointer-events: auto;
-  border-radius: 10px; border: 0; background: transparent;
-  transition: box-shadow 0.15s, background 0.15s;
-}
-.bc-zone.is-hit { background: rgba(255, 255, 255, 0.14); }
-.bc-zone.is-win { box-shadow: inset 0 0 0 2px #f2c667, 0 0 16px rgba(242, 198, 103, 0.75); }
-.bc-zone .rl-chip { left: 50%; top: 58%; }
+.bc-zone-svg { position: absolute; left: 0; top: 0; width: 390px; height: 653px; overflow: visible; }
+.bc-zone { pointer-events: all; cursor: pointer; }
+.bc-zone-shape { fill: rgba(255, 255, 255, 0.001); stroke: var(--zc); stroke-width: 0; transition: fill 0.18s, stroke-width 0.18s; }
+.bc-zone-glow { fill: none; stroke: var(--zc); stroke-width: 0; opacity: 0; transition: opacity 0.2s; }
+.bc-zone.is-hit .bc-zone-shape { fill: color-mix(in srgb, var(--zc) 28%, transparent); }
+.bc-zone.is-win .bc-zone-shape { stroke-width: 5; animation: bc-win-stroke 0.9s ease-in-out infinite alternate; }
+.bc-zone.is-win .bc-zone-glow { stroke-width: 14; opacity: 0.75; }
+@keyframes bc-win-stroke { from { stroke-width: 4; } to { stroke-width: 7; } }
+.bc-chip-slot { position: absolute; width: 0; height: 0; pointer-events: none; }
+.bc-chip-slot .rl-chip { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); animation: none; }
 .bc-canvas.is-dealing .bc-zone { pointer-events: none; }
 /* Ставка (89..300 × 468..501), пресеты (y 507, как в блекджеке), Place Bet (65..324 × 544..595) */
 .bc-bet { top: 468px; left: 89px; width: 211px; height: 33px; }
