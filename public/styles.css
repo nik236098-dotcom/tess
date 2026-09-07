@@ -3779,6 +3779,9 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-zone-main span { font: 800 14px/1 var(--font); letter-spacing: 0.02em; }
 .bc-zone-main b { margin-top: 2px; font-size: 12px; opacity: 0.85; }
 .bc-zone-tie span { font: 800 13px/1 var(--font); }
+/* Иконка над названием зоны — человечек/трилистник/корона, как в макете. */
+.bc-zone-icon { width: 22px; height: 22px; margin-bottom: 2px; fill: currentColor; stroke: none; }
+.bc-zone-tie .bc-zone-icon { width: 20px; height: 20px; }
 .bc-zone-tie b { margin-top: 1px; font-size: 11px; opacity: 0.85; }
 .bc-zone.is-hit { filter: brightness(1.35); box-shadow: 0 0 14px currentColor; }
 .bc-zone.is-win { animation: bc-zone-pulse 0.85s ease-in-out infinite alternate; }
