@@ -1390,6 +1390,10 @@ const BC_ZONE_SHAPES = {
   bankerPair: { colour: '#c47cff', points: [[572.3, 1030.0], [613.6, 1023.0], [654.5, 1016.6], [694.0, 1010.0], [733.6, 1002.1], [774.5, 994.0], [815.7, 986.1], [821.9, 1017.8], [828.2, 1049.3], [834.7, 1080.9], [789.2, 1088.6], [744.0, 1096.0], [700.4, 1103.2], [656.8, 1112.0], [611.7, 1120.9], [566.2, 1129.4], [568.4, 1096.2], [570.4, 1063.1]] },
 };
 
+// Слой подсветки — сама нарисованная линия границы, вырезанная из макета
+// (img/bc-line-*.png): совпадает с контуром и скруглениями по построению.
+const BC_LINE_BOXES = {"player": {"x": 32.33, "y": 254.89, "w": 119.36, "h": 120.19}, "banker": {"x": 242.87, "y": 254.89, "w": 122.68, "h": 122.26}, "tie": {"x": 138.84, "y": 281.83, "w": 112.73, "h": 98.64}, "playerPair": {"x": 39.37, "y": 365.55, "w": 119.78, "h": 63.83}, "bankerPair": {"x": 231.26, "y": 365.13, "w": 119.36, "h": 64.24}};
+
 function bcZones() {
   return Object.entries(BC_ZONE_SHAPES).map(([key, shape]) => {
     const xs = shape.points.map((p) => p[0]);
@@ -1451,9 +1455,17 @@ function buildBaccaratZones() {
     g.setAttribute('class', 'bc-zone');
     g.dataset.zone = zone.key;
     g.style.setProperty('--zc', zone.colour);
-    g.innerHTML = `<polygon class="bc-zone-glow" points="${zone.points}" filter="url(#bc-glow)"/><polygon class="bc-zone-shape" points="${zone.points}"/>`;
+    g.innerHTML = `<polygon class="bc-zone-shape" points="${zone.points}"/>`;
     g.addEventListener('click', () => placeBcBet(zone.key, g));
     svg.appendChild(g);
+    const lb = BC_LINE_BOXES[zone.key];
+    const line = document.createElement('img');
+    line.className = 'bc-line';
+    line.dataset.zone = zone.key;
+    line.src = `/img/bc-line-${zone.key}.png`;
+    line.alt = '';
+    line.style.cssText = `left:${lb.x}px;top:${lb.y}px;width:${lb.w}px;height:${lb.h}px`;
+    box.appendChild(line);
     // Фишка — обычный элемент над центром зоны.
     const chip = document.createElement('div');
     chip.className = 'bc-chip-slot';
@@ -1505,8 +1517,8 @@ function placeBcBet(zone, node) {
     return;
   }
   state.bc.bets.set(zone, (state.bc.bets.get(zone) || 0) + amount);
-  node.classList.add('is-hit');
-  setTimeout(() => node.classList.remove('is-hit'), 160);
+  const line = $('bc-zones').querySelector(`.bc-line[data-zone="${zone}"]`);
+  if (line) { line.classList.add('is-hit'); setTimeout(() => line.classList.remove('is-hit'), 220); }
   haptic('light');
   renderBaccarat();
 }
@@ -1585,7 +1597,7 @@ function bcClearTable() {
     total.classList.remove('is-on');
   }
   $('bc-result').classList.add('hidden');
-  document.querySelectorAll('.bc-zone').forEach((z) => z.classList.remove('is-win'));
+  document.querySelectorAll('.bc-line').forEach((z) => z.classList.remove('is-win'));
 }
 
 // Карта с двумя гранями: летит из шуза рубашкой вверх и переворачивается.
@@ -1673,8 +1685,8 @@ function finishBaccaratDeal(round) {
   winners.add(round.winner);
   if (round.playerPair) winners.add('playerPair');
   if (round.bankerPair) winners.add('bankerPair');
-  document.querySelectorAll('.bc-zone').forEach((z) => z.classList.toggle('is-win', winners.has(z.dataset.zone)));
-  bc.timers.push(setTimeout(() => document.querySelectorAll('.bc-zone').forEach((z) => z.classList.remove('is-win')), 3000));
+  document.querySelectorAll('.bc-line').forEach((z) => z.classList.toggle('is-win', winners.has(z.dataset.zone)));
+  bc.timers.push(setTimeout(() => document.querySelectorAll('.bc-line').forEach((z) => z.classList.remove('is-win')), 3000));
   haptic(round.net > 0 ? 'success' : 'light');
   bcShowBalance(state.balance);
   bc.bets.clear();
