@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=117" />
+  <link rel="stylesheet" href="/styles.css?v=118" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -184,6 +184,24 @@
                 <span class="lb-hero-kicker">Roulette</span>
                 <b>Рулетка</b>
                 <span>Европейская · одно зеро · ставки $1 – $10 000</span>
+                <span class="lb-play-foot">
+                  <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
+                </span>
+              </span>
+            </button>
+
+            <button id="play-mines" class="lb-play lb-play-mn">
+              <span class="lb-play-art lb-mn-art" aria-hidden="true">
+                <i class="lb-mn-grid">
+                  <b></b><b></b><b></b>
+                  <b></b><b class="gem"></b><b></b>
+                  <b></b><b></b><b class="mine"></b>
+                </i>
+              </span>
+              <span class="lb-play-body">
+                <span class="lb-hero-kicker">Mines</span>
+                <b>Мины</b>
+                <span>Поле 5×5 · от 1 до 24 мин · забери выигрыш вовремя</span>
                 <span class="lb-play-foot">
                   <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
                 </span>
@@ -713,9 +731,46 @@
       </div>
     </section>
 
+    <!-- Mines: обычный прокручиваемый экран — поле сверху, параметры ставки
+         ниже; раунд целиком на сервере, клиент только показывает состояние. -->
+    <section id="screen-mn" class="screen mn-screen hidden">
+      <div class="mn-page">
+        <header class="mn-head">
+          <button id="mn-back" class="mn-iconbtn" title="В лобби">
+            <svg class="icon"><use href="#i-chevron-left"></use></svg>
+          </button>
+          <b class="mn-title">Mines</b>
+          <div id="mn-balance" class="mn-balance"><span>Баланс</span><b id="mn-balance-value">$0.00</b></div>
+        </header>
+        <div class="mn-board-card">
+          <div id="mn-board" class="mn-board"></div>
+          <div id="mn-overlay" class="mn-overlay hidden"></div>
+        </div>
+        <div class="mn-panel">
+          <button id="mn-main" class="mn-main">Ставка</button>
+          <div class="mn-label">Сумма ставки</div>
+          <div class="mn-row">
+            <label class="mn-input">
+              <i class="mn-coin">$</i>
+              <input id="mn-amount" type="text" inputmode="decimal" autocomplete="off" value="1,00" />
+            </label>
+            <button id="mn-half" class="mn-mod">1/2</button>
+            <button id="mn-double" class="mn-mod">2x</button>
+            <button id="mn-max" class="mn-mod">Max</button>
+          </div>
+          <div class="mn-label">Мины</div>
+          <label class="mn-select">
+            <i class="mn-bomb-ico"></i>
+            <select id="mn-mines"></select>
+            <svg class="icon mn-select-chevron"><use href="#i-chevron-right"></use></svg>
+          </label>
+        </div>
+      </div>
+    </section>
+
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=80"></script>
+  <script src="/app.js?v=81"></script>
 </body>
 </html>

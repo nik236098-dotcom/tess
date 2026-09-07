@@ -3656,3 +3656,216 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-place { top: 544px; left: 65px; width: 259.4px; height: 50.6px; }
 .bc-place b { font: 500 22px/1 'Playfair Display', Georgia, serif; }
 .bc-foot { top: 602px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MINES — поле 5×5 и панель ставки; экран обычный, прокручивается вниз
+   ═══════════════════════════════════════════════════════════════════════ */
+.mn-screen {
+  position: fixed; inset: 0;
+  overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  background: #151921;
+  color: #eef2f7;
+}
+.mn-page {
+  max-width: 560px; margin: 0 auto;
+  padding: calc(var(--safe-top) + 10px) 14px 28px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.mn-head { display: flex; align-items: center; gap: 10px; min-height: 36px; }
+.mn-title { flex: 1; font: 800 18px/1 var(--font-display); letter-spacing: -0.01em; }
+.mn-iconbtn {
+  width: 36px; height: 36px; border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1e232c; color: #c9d1de;
+  display: grid; place-items: center;
+}
+.mn-balance {
+  height: 34px; padding: 0 12px 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1e232c;
+  display: flex; align-items: center; gap: 7px;
+}
+.mn-balance span { font: 500 10.5px var(--font); color: #8e95a3; }
+.mn-balance b { font: 700 13.5px/1 var(--font); color: #f2c96b; font-variant-numeric: tabular-nums; transition: color 0.3s; }
+.mn-balance.is-up b { color: #7ed36b; text-shadow: 0 0 8px rgba(126, 211, 107, 0.6); }
+.mn-balance.is-down b { color: #e8695e; }
+
+/* Поле */
+.mn-board-card {
+  position: relative;
+  padding: 22px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: #181c25;
+}
+.mn-board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.mn-cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: 0; padding: 0;
+  border-radius: 10px;
+  background: #2c3340;
+  box-shadow: inset 0 -4px 0 #232a35;
+  display: grid; place-items: center;
+  color: transparent;
+  transition: transform 0.12s var(--ease), background-color 0.15s, box-shadow 0.15s, opacity 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.mn-cell svg { width: 52%; height: 52%; display: block; }
+.mn-cell:disabled { cursor: default; }
+.mn-board.is-live .mn-cell:not(.is-open):not(:disabled):active { transform: translateY(2px); box-shadow: inset 0 -2px 0 #232a35; background: #333b49; }
+.mn-cell.is-open { background: #7ed36b; box-shadow: inset 0 -4px 0 #5cae4c; color: #3f8a36; animation: mn-pop 0.28s var(--ease); }
+.mn-cell.is-gem { background: #1f2530; box-shadow: inset 0 -4px 0 #1a1f29; color: #275a30; }
+.mn-cell.is-mine { background: #4a2a2c; box-shadow: inset 0 -4px 0 #3a1d20; color: #2b1416; }
+.mn-cell.is-boom { background: #6b2f31; box-shadow: inset 0 -4px 0 #4a1e21, 0 0 18px rgba(232, 105, 94, 0.55); color: #f0a49c; animation: mn-shake 0.4s var(--ease); }
+.mn-board.is-done .mn-cell:not(.is-open):not(.is-boom) { opacity: 0.85; }
+@keyframes mn-pop { 0% { transform: scale(0.82); } 60% { transform: scale(1.06); } 100% { transform: scale(1); } }
+@keyframes mn-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+
+/* Итог раунда — карточка поверх поля */
+.mn-overlay {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 44px); max-width: 320px;
+  padding: 26px 20px;
+  border-radius: 16px;
+  text-align: center;
+  z-index: 3;
+  animation: pop-in 0.25s var(--ease);
+}
+.mn-overlay.is-win {
+  background: #1b2029;
+  border: 1.5px solid #6ab35a;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  color: #7ed36b;
+}
+.mn-overlay.is-win b { display: block; font: 800 40px/1 var(--font-display); letter-spacing: -0.02em; }
+.mn-overlay.is-win span { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; font: 700 22px/1 var(--font); }
+.mn-overlay.is-win .mn-coin { width: 20px; height: 20px; font-size: 12px; background: #7ed36b; color: #1b2029; }
+.mn-overlay.is-lose {
+  background: radial-gradient(70% 70% at 50% 45%, rgba(120, 44, 40, 0.55), rgba(120, 44, 40, 0) 100%), #21262f;
+  border: 1.5px solid #b2554f;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  color: #e8695e;
+}
+.mn-overlay.is-lose b { display: block; font: 800 34px/1.1 var(--font-display); letter-spacing: -0.01em; }
+.mn-overlay.is-lose span { display: block; margin-top: 12px; font: 600 14px/1.3 var(--font); }
+.mn-again {
+  margin-top: 16px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1.5px solid #6d78f0;
+  background: rgba(20, 24, 32, 0.6);
+  color: #e8695e;
+  font: 700 15px var(--font);
+}
+.mn-again:active { background: rgba(109, 120, 240, 0.2); }
+
+/* Панель ставки */
+.mn-panel {
+  padding: 16px 14px 18px;
+  border-radius: 18px;
+  background: #1e232c;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.mn-main {
+  width: 100%; min-height: 50px;
+  border: 0; border-radius: 12px;
+  background: linear-gradient(90deg, #6d78f0 0%, #838cf5 50%, #6d78f0 100%);
+  color: #fff;
+  font: 700 16px var(--font);
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 10px 24px rgba(109, 120, 240, 0.3);
+  transition: transform 0.12s var(--ease), opacity 0.15s;
+}
+.mn-main:active:not(:disabled) { transform: scale(0.98); }
+.mn-main:disabled { opacity: 0.45; box-shadow: none; }
+.mn-main.is-cash { background: linear-gradient(90deg, #5cae4c 0%, #7ed36b 50%, #5cae4c 100%); box-shadow: 0 10px 24px rgba(126, 211, 107, 0.3); }
+.mn-main.is-cash small { font: 600 13px var(--font); opacity: 0.85; }
+.mn-label { margin-top: 4px; font: 600 15px var(--font); color: #8e95a3; }
+.mn-row { display: flex; gap: 8px; }
+.mn-input {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; height: 48px;
+  border-radius: 12px;
+  background: #2c3340;
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+.mn-input:focus-within { border-color: rgba(109, 120, 240, 0.7); }
+.mn-input.is-bad { border-color: rgba(232, 105, 94, 0.7); }
+.mn-input input {
+  flex: 1; min-width: 0; width: 100%;
+  border: 0; padding: 0; background: none;
+  color: #fff;
+  font: 600 18px var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.mn-input input:focus { outline: none; }
+.mn-input input:disabled { color: #8e95a3; }
+.mn-coin {
+  flex: none; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: #8e95a3; color: #2c3340;
+  font: 800 14px/1 var(--font); font-style: normal;
+}
+.mn-mod {
+  flex: none; width: 52px; height: 48px;
+  border: 0; border-radius: 12px;
+  background: #2c3340; color: #8e95a3;
+  font: 700 15px var(--font);
+}
+.mn-mod:active:not(:disabled) { background: #333b49; color: #fff; }
+.mn-mod:disabled { opacity: 0.5; }
+.mn-select {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  height: 52px; padding: 0 14px;
+  border-radius: 12px;
+  background: #2c3340;
+}
+.mn-select select {
+  flex: 1; min-width: 0;
+  appearance: none; -webkit-appearance: none;
+  border: 0; padding: 0; background: none;
+  color: #fff; font: 600 18px var(--font);
+}
+.mn-select select:focus { outline: none; }
+.mn-select select:disabled { color: #8e95a3; }
+.mn-select-chevron { transform: rotate(90deg); color: #8e95a3; pointer-events: none; }
+.mn-bomb-ico {
+  flex: none; width: 22px; height: 22px; position: relative;
+}
+.mn-bomb-ico::before {
+  content: ''; position: absolute; left: 1px; top: 5px; width: 16px; height: 16px; border-radius: 50%;
+  background: #8e95a3; box-shadow: inset -3px -3px 0 #6b7280;
+}
+.mn-bomb-ico::after {
+  content: ''; position: absolute; left: 12px; top: 1px; width: 7px; height: 7px;
+  border: 2px solid #8e95a3; border-color: #8e95a3 #8e95a3 transparent transparent; border-radius: 0 6px 0 0;
+}
+
+/* Карточка Mines в «Играх» — зелёная, с мини-полем */
+.lb-play-mn {
+  border-color: rgba(126, 211, 107, 0.22);
+  background:
+    radial-gradient(70% 90% at 0% 50%, rgba(126, 211, 107, 0.32), rgba(126, 211, 107, 0) 60%),
+    radial-gradient(60% 60% at 100% 100%, rgba(40, 90, 50, 0.55), rgba(40, 90, 50, 0) 60%),
+    linear-gradient(170deg, #142219 0%, #0c1510 100%);
+}
+.lb-play-mn .lb-hero-kicker { color: #8fe07c; }
+.lb-play-mn .lb-play-cta { background: linear-gradient(180deg, #8fe07c, #4f9e41); color: #0b1a0e; box-shadow: 0 8px 18px rgba(126, 211, 107, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.lb-mn-art { display: grid; place-items: center; }
+.lb-mn-grid {
+  display: grid; grid-template-columns: repeat(3, 26px); gap: 5px;
+  transform: rotate(-8deg);
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5));
+}
+.lb-mn-grid b { width: 26px; height: 26px; border-radius: 6px; background: #2c3340; box-shadow: inset 0 -3px 0 #232a35; position: relative; }
+.lb-mn-grid b.gem { background: #7ed36b; box-shadow: inset 0 -3px 0 #5cae4c; }
+.lb-mn-grid b.gem::after { content: ''; position: absolute; inset: 7px; background: #3f8a36; clip-path: polygon(25% 0, 75% 0, 100% 35%, 50% 100%, 0 35%); }
+.lb-mn-grid b.mine { background: #4a2a2c; box-shadow: inset 0 -3px 0 #3a1d20; }
+.lb-mn-grid b.mine::after { content: ''; position: absolute; left: 7px; top: 8px; width: 12px; height: 12px; border-radius: 50%; background: #2b1416; }

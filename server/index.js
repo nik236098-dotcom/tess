@@ -11,6 +11,7 @@ const { Room, RoomError, normalizeSettings } = require('./room');
 const { SoloBlackjack, SoloError } = require('./blackjack/solo');
 const roulette = require('./roulette/wheel');
 const baccarat = require('./baccarat/game');
+const { MinesGame, MinesError } = require('./mines/game');
 const { Accounts, AccountError, DEFAULT_START_BALANCE } = require('./accounts');
 const { createPayments, PaymentError } = require('./payments');
 const { formatMoney, parseMoney } = require('./money');
@@ -324,7 +325,7 @@ function createApp(options = {}) {
       try {
         handleMessage(client, message);
       } catch (error) {
-        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError) {
+        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError || error instanceof MinesError) {
           client.fail(error.message);
         } else {
           console.error('Ошибка обработки сообщения:', error);
@@ -459,6 +460,18 @@ function createApp(options = {}) {
         break;
       case 'bc_bet':
         baccaratDeal(client, message.bets || (message.zone ? [{ zone: message.zone, amount: message.amount }] : []));
+        break;
+      case 'mn_open':
+        sendMines(client);
+        break;
+      case 'mn_start':
+        minesStart(client, Number(message.amount), Number(message.mines));
+        break;
+      case 'mn_pick':
+        minesPick(client, Number(message.index));
+        break;
+      case 'mn_cashout':
+        minesCashout(client);
         break;
       case 'ping':
         client.send({ type: 'pong', at: Date.now() });
@@ -843,6 +856,66 @@ function createApp(options = {}) {
     const history = [result.winner, ...(baccaratHistory.get(client.user.id) || [])].slice(0, 12);
     baccaratHistory.set(client.user.id, history);
     client.send({ type: 'bc', round: result, ...baccaratInfo(client) });
+  }
+
+  // ——— Mines ———
+  // Раунд живёт на сервере между сообщениями: ставка списывается на старте,
+  // выплата — когда игрок забрал или открыл все безопасные клетки.
+  const MN_MIN_BET = 10;
+  const MN_MAX_BET = 1000000;
+  const minesGames = new Map(); // userId → MinesGame
+
+  function minesGame(client) {
+    let game = minesGames.get(client.user.id);
+    if (!game) {
+      game = new MinesGame({ minBet: MN_MIN_BET, maxBet: MN_MAX_BET });
+      minesGames.set(client.user.id, game);
+    }
+    return game;
+  }
+
+  function sendMines(client) {
+    const game = minesGame(client);
+    client.send({ type: 'mn', ...game.state(), minBet: MN_MIN_BET, maxBet: MN_MAX_BET, balance: accounts.balanceOf(client.user.id) });
+  }
+
+  function minesStart(client, amount, mines) {
+    const game = minesGame(client);
+    if (game.phase === 'play') throw new MinesError('Раунд уже идёт');
+    const bet = Math.round(amount);
+    if (!Number.isFinite(bet) || bet < MN_MIN_BET) throw new MinesError(`Минимальная ставка ${formatMoney(MN_MIN_BET)}`);
+    if (bet > MN_MAX_BET) throw new MinesError(`Максимальная ставка ${formatMoney(MN_MAX_BET)}`);
+    if (accounts.balanceOf(client.user.id) < bet) throw new MinesError('Недостаточно средств');
+    accounts.withdraw(client.user.id, bet);
+    try {
+      game.start(bet, mines);
+    } catch (error) {
+      accounts.deposit(client.user.id, bet);
+      throw error;
+    }
+    sendMines(client);
+  }
+
+  function minesPick(client, index) {
+    const game = minesGame(client);
+    game.open(index);
+    settleMines(client, game);
+  }
+
+  function minesCashout(client) {
+    const game = minesGame(client);
+    game.cashout();
+    settleMines(client, game);
+  }
+
+  function settleMines(client, game) {
+    if (game.phase === 'done' && !game.settled) {
+      game.settled = true;
+      if (game.payout > 0) accounts.deposit(client.user.id, game.payout);
+      const net = game.payout - game.bet;
+      if (net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: net, game: 'mines', code: 'MN' });
+    }
+    sendMines(client);
   }
 
   function withRoom(client, action) {

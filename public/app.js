@@ -39,6 +39,7 @@ const state = {
   bj: { view: null, bet: 500, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null, typing: false, typed: '' },
   rl: { open: false, info: null, amount: 1000, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
   bc: { open: false, info: null, amount: 2500, bets: new Map(), dealing: false, timers: [], shownBalance: null, typing: false, typed: '', round: null },
+  mn: { open: false, info: null, amount: 100, mines: 3, busy: false, reveal: null, shownBalance: null },
   unread: 0,
   tab: 'home', // главная | игры | турниры | бонусы | профиль
   wins: [], // лента последних выигрышей
@@ -262,7 +263,7 @@ async function boot() {
     applyTelegramTheme();
     tg.onEvent('themeChanged', applyTelegramTheme);
     // Обработчик системной кнопки «назад» регистрируем один раз.
-    if (tg.BackButton) tg.BackButton.onClick(() => (state.bc.open ? closeBaccarat() : state.rl.open ? closeRoulette() : state.bj.open ? closeBlackjack() : leaveRoom()));
+    if (tg.BackButton) tg.BackButton.onClick(() => (state.mn.open ? closeMines() : state.bc.open ? closeBaccarat() : state.rl.open ? closeRoulette() : state.bj.open ? closeBlackjack() : leaveRoom()));
   }
 
   try {
@@ -419,6 +420,9 @@ function handleMessage(message) {
     case 'bc':
       onBaccaratState(message);
       break;
+    case 'mn':
+      onMinesState(message);
+      break;
     case 'topup_invoice':
       state.topup.busy = false;
       state.topup.invoice = message.invoice;
@@ -489,6 +493,8 @@ function handleMessage(message) {
     case 'error':
       state.topup.busy = false;
       state.payout.busy = false;
+      state.mn.busy = false;
+      if (state.mn.open) renderMines();
       renderTopUpControls();
       renderPayoutControls();
       toast(message.message);
@@ -509,9 +515,11 @@ function showLobby() {
   $('screen-bj').classList.add('hidden');
   $('screen-rl').classList.add('hidden');
   $('screen-bc').classList.add('hidden');
+  $('screen-mn').classList.add('hidden');
   state.bj.open = false;
   state.rl.open = false;
   state.bc.open = false;
+  state.mn.open = false;
   $('screen-lobby').classList.remove('hidden');
   if (tg && tg.BackButton) tg.BackButton.hide();
   startRoomsPolling();
@@ -1721,6 +1729,238 @@ function renderBaccarat() {
   place.disabled = bc.dealing || !total || total > state.balance;
 }
 
+// ——— Mines ———
+// Экран обычный (не холст): поле сверху, параметры ставки ниже, страница
+// прокручивается. Раунд целиком на сервере: клиент шлёт ставку, клик по
+// клетке и «забрать», а показывает то, что вернулось.
+const MN_SIZE = 25;
+const MN_GEM = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.5 3h11L22 9.2 12 21.5 2 9.2 6.5 3Zm1 2L4.9 8.6h4.2L11 5H7.5Zm5.5 0 1.9 3.6h4.2L16.5 5H13Zm-2.3 5.1H6.1L12 17.6l5.9-7.5h-4.6L12 14.8l-1.3-4.7Zm1.3-2.9-1.5 2.9h3l-1.5-2.9Z"/></svg>';
+const MN_BOMB = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="14" r="7" fill="currentColor"/><path d="M14.5 8.5 17 6c1.2-1.2 3-1 4 .3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="21.5" cy="5.5" r="1.4" fill="currentColor"/></svg>';
+
+function buildMinesBoard() {
+  const board = $('mn-board');
+  if (board.children.length) return;
+  for (let i = 0; i < MN_SIZE; i += 1) {
+    const cell = document.createElement('button');
+    cell.className = 'mn-cell';
+    cell.type = 'button';
+    cell.dataset.index = String(i);
+    cell.setAttribute('aria-label', `Клетка ${i + 1}`);
+    cell.addEventListener('click', () => pickMinesCell(i));
+    board.appendChild(cell);
+  }
+  const select = $('mn-mines');
+  for (let n = 1; n <= 24; n += 1) {
+    const option = document.createElement('option');
+    option.value = String(n);
+    option.textContent = String(n);
+    select.appendChild(option);
+  }
+  select.value = String(state.mn.mines);
+}
+
+function openMines() {
+  state.mn.open = true;
+  state.mn.busy = false;
+  state.mn.reveal = null;
+  state.mn.shownBalance = null;
+  $('screen-lobby').classList.add('hidden');
+  $('screen-table').classList.add('hidden');
+  $('screen-bj').classList.add('hidden');
+  $('screen-rl').classList.add('hidden');
+  $('screen-bc').classList.add('hidden');
+  $('screen-mn').classList.remove('hidden');
+  $('screen-mn').scrollTop = 0;
+  if (tg && tg.BackButton) tg.BackButton.show();
+  stopRoomsPolling();
+  buildMinesBoard();
+  mnWriteAmount();
+  send({ type: 'mn_open' });
+  renderMines();
+}
+
+function closeMines() {
+  state.mn.open = false;
+  state.mn.busy = false;
+  $('screen-mn').classList.add('hidden');
+  showLobby();
+}
+
+function mnRange() {
+  const info = state.mn.info;
+  const min = info ? info.minBet : 10;
+  const max = Math.min(info ? info.maxBet : 1000000, Math.max(min, state.balance));
+  return { min, max };
+}
+
+// Сумма в поле — как пишет игрок; в state — центы (или null, если не число).
+function mnReadAmount() {
+  const input = $('mn-amount');
+  const cents = toCents(input.value);
+  state.mn.amount = cents !== null && cents > 0 ? cents : null;
+  renderMines();
+}
+
+function mnWriteAmount() {
+  const input = $('mn-amount');
+  if (state.mn.amount === null) return;
+  input.value = (state.mn.amount / 100).toFixed(2).replace('.', ',');
+  input.closest('.mn-input').classList.remove('is-bad');
+}
+
+function mnAdjust(change) {
+  if (mnPhase() === 'play') return;
+  const { min, max } = mnRange();
+  const current = state.mn.amount ?? min;
+  state.mn.amount = clamp(Math.round(change(current)), min, max);
+  haptic('light');
+  mnWriteAmount();
+  renderMines();
+}
+
+function mnPhase() {
+  const info = state.mn.info;
+  if (!info) return 'bet';
+  if (info.phase === 'done' && !state.mn.reveal) return 'bet';
+  return info.phase;
+}
+
+function onMinesMain() {
+  const mn = state.mn;
+  if (mn.busy) return;
+  const phase = mnPhase();
+  if (phase === 'play') {
+    if (!mn.info.opened.length) return;
+    mn.busy = true;
+    haptic('light');
+    send({ type: 'mn_cashout' });
+  } else {
+    const { min, max } = mnRange();
+    if (mn.amount === null || mn.amount < min) { toast(`Минимальная ставка ${money(min)}`); return; }
+    if (mn.amount > state.balance) { toast('Недостаточно средств'); haptic('error'); return; }
+    if (mn.amount > max) { toast(`Максимальная ставка ${money(max)}`); return; }
+    mn.busy = true;
+    mn.reveal = null;
+    haptic('light');
+    send({ type: 'mn_start', amount: mn.amount, mines: mn.mines });
+  }
+  renderMines();
+}
+
+function pickMinesCell(index) {
+  const mn = state.mn;
+  if (mn.busy || mnPhase() !== 'play') return;
+  if (mn.info.opened.includes(index)) return;
+  mn.busy = true;
+  haptic('light');
+  send({ type: 'mn_pick', index });
+  renderMines();
+}
+
+function mnShowBalance(value, silent) {
+  const mn = state.mn;
+  const node = $('mn-balance');
+  $('mn-balance-value').textContent = money(value);
+  if (!silent && mn.shownBalance !== null && value !== mn.shownBalance) {
+    node.classList.remove('is-up', 'is-down');
+    void node.offsetWidth;
+    node.classList.add(value > mn.shownBalance ? 'is-up' : 'is-down');
+    setTimeout(() => node.classList.remove('is-up', 'is-down'), 1400);
+  }
+  mn.shownBalance = value;
+}
+
+function onMinesState(message) {
+  const mn = state.mn;
+  const previous = mn.info;
+  mn.info = message;
+  mn.busy = false;
+  state.balance = message.balance;
+  renderAccount();
+  if (message.phase === 'done' && previous && previous.phase === 'play') {
+    // Раунд только что закончился — показываем итог поверх поля.
+    mn.reveal = message;
+    haptic(message.result === 'win' ? 'success' : 'error');
+  } else if (message.phase !== 'done') {
+    mn.reveal = null;
+  }
+  renderMines();
+  mnShowBalance(message.balance, !previous);
+}
+
+function renderMines() {
+  const mn = state.mn;
+  if (!mn.open) return;
+  const info = mn.info;
+  const phase = mnPhase();
+  const live = phase === 'play';
+  const board = $('mn-board');
+  const opened = new Set(info ? info.opened : []);
+  const reveal = mn.reveal;
+  board.classList.toggle('is-live', live && !mn.busy);
+  board.classList.toggle('is-done', Boolean(reveal));
+  for (const cell of board.children) {
+    const index = Number(cell.dataset.index);
+    let kind = '';
+    if (reveal) {
+      if (reveal.boom === index) kind = 'boom';
+      else if (opened.has(index)) kind = 'open';
+      else kind = reveal.field[index] === 'mine' ? 'mine' : 'gem';
+    } else if (live && opened.has(index)) {
+      kind = 'open';
+    }
+    const html = kind === 'open' || kind === 'gem' ? MN_GEM : kind === 'mine' || kind === 'boom' ? MN_BOMB : '';
+    if (cell.dataset.kind !== kind) {
+      cell.dataset.kind = kind;
+      cell.innerHTML = html;
+      cell.classList.toggle('is-open', kind === 'open');
+      cell.classList.toggle('is-gem', kind === 'gem');
+      cell.classList.toggle('is-mine', kind === 'mine');
+      cell.classList.toggle('is-boom', kind === 'boom');
+    }
+    cell.disabled = !live || mn.busy || kind !== '';
+  }
+
+  const overlay = $('mn-overlay');
+  if (reveal && reveal.result === 'win') {
+    overlay.className = 'mn-overlay is-win';
+    overlay.innerHTML = `<b>x${reveal.multiplier.toFixed(2)}</b><span><i class="mn-coin">$</i>${money(reveal.payout).slice(1)}</span>`;
+  } else if (reveal) {
+    overlay.className = 'mn-overlay is-lose';
+    overlay.innerHTML = '<b>Неудачно</b><span>Удачи в следующий раз!</span><button type="button" class="mn-again">Играть снова</button>';
+    overlay.querySelector('.mn-again').addEventListener('click', () => { mn.reveal = null; haptic('light'); renderMines(); });
+  } else {
+    overlay.className = 'mn-overlay hidden';
+    overlay.innerHTML = '';
+  }
+
+  const main = $('mn-main');
+  main.classList.toggle('is-cash', live);
+  if (live) {
+    const count = info.opened.length;
+    if (count) {
+      const payout = Math.floor(info.bet * info.multiplier);
+      main.innerHTML = `Забрать ${money(payout)} <small>x${info.multiplier.toFixed(2)}</small>`;
+      main.disabled = mn.busy;
+    } else {
+      main.innerHTML = `Откройте клетку <small>след. x${info.next.toFixed(2)}</small>`;
+      main.disabled = true;
+    }
+  } else {
+    main.textContent = 'Ставка';
+    const { min } = mnRange();
+    main.disabled = mn.busy || mn.amount === null || mn.amount < min || mn.amount > state.balance;
+  }
+  const bad = mn.amount === null || mn.amount > state.balance;
+  $('mn-amount').closest('.mn-input').classList.toggle('is-bad', !live && bad);
+  $('mn-amount').disabled = live;
+  for (const id of ['mn-half', 'mn-double', 'mn-max']) $(id).disabled = live;
+  const select = $('mn-mines');
+  select.disabled = live;
+  if (live && String(info.mines) !== select.value) select.value = String(info.mines);
+  else if (!live && select.value !== String(mn.mines)) select.value = String(mn.mines);
+}
+
 // Главная и Игры — это две панели одного экрана лобби: столы и лента
 // выигрышей приходят одним и тем же сообщением, переключение ничего не грузит.
 const TABS = ['home', 'games', 'tournaments', 'bonuses', 'profile'];
@@ -1956,11 +2196,12 @@ function renderWins() {
   list.innerHTML = state.wins.slice(0, 8).map((win, index) => {
     const blackjack = win.game === 'blackjack';
     const icon = icons[blackjack ? 'blackjack' : 'holdem'];
+    const label = { blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines' }[win.game] || 'Poker';
     return `
     <div class="mk-win" style="--i:${index}">
       <span class="mk-win-icon" style="background-image:url('/img/lobby/win-${icon}.png')"></span>
       <span class="mk-win-sum">${money(win.amount)}</span>
-      <span class="mk-win-game">${blackjack ? 'Blackjack' : 'Poker'}</span>
+      <span class="mk-win-game">${label}</span>
       <span class="mk-win-time">${win.at ? timeAgo(win.at) : escapeHtml(win.name)}</span>
     </div>`;
   }).join('');
@@ -3486,6 +3727,16 @@ function bindUi() {
   on('play-blackjack', 'click', () => { haptic('light'); openBlackjack(); });
   on('play-roulette', 'click', () => { haptic('light'); openRoulette(); });
   on('play-baccarat', 'click', () => { haptic('light'); openBaccarat(); });
+  on('play-mines', 'click', () => { haptic('light'); openMines(); });
+  on('mn-back', 'click', closeMines);
+  on('mn-main', 'click', onMinesMain);
+  on('mn-half', 'click', () => mnAdjust((amount) => Math.floor(amount / 2)));
+  on('mn-double', 'click', () => mnAdjust((amount) => amount * 2));
+  on('mn-max', 'click', () => mnAdjust(() => Infinity));
+  $('mn-amount').addEventListener('input', () => mnReadAmount());
+  $('mn-amount').addEventListener('blur', () => { mnReadAmount(); mnWriteAmount(); });
+  $('mn-amount').addEventListener('keydown', (event) => { if (event.key === 'Enter') event.currentTarget.blur(); });
+  $('mn-mines').addEventListener('change', (event) => { state.mn.mines = Number(event.currentTarget.value); renderMines(); });
   on('bc-back', 'click', closeBaccarat);
   on('bc-minus', 'click', () => stepBcAmount(-1));
   on('bc-plus', 'click', () => stepBcAmount(1));
