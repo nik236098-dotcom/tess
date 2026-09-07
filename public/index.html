@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=125" />
+  <link rel="stylesheet" href="/styles.css?v=126" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -746,27 +746,27 @@
 
           <div id="bc-table" class="bc-table">
             <div class="bc-hand bc-hand-player">
-              <div class="bc-total-badge bc-total-player"><span>PLAYER</span><b id="bc-player-total"></b></div>
+              <span class="bc-side-label bc-side-player">PLAYER</span>
+              <b id="bc-player-total" class="bc-score bc-score-player"></b>
               <div id="bc-player-cards" class="bc-cards-row"></div>
             </div>
-            <div id="bc-shoe" class="bc-shoe" aria-hidden="true">
-              <i class="bc-shoe-card" style="--o:3"></i>
-              <i class="bc-shoe-card" style="--o:2"></i>
-              <i class="bc-shoe-card" style="--o:1"></i>
-              <i class="bc-shoe-card bc-shoe-top"><svg class="icon"><use href="#i-spade"></use></svg></i>
+            <div class="bc-center">
+              <div id="bc-shoe" class="bc-shoe" aria-hidden="true">
+                <i class="bc-shoe-card" style="--o:3"></i>
+                <i class="bc-shoe-card" style="--o:2"></i>
+                <i class="bc-shoe-card" style="--o:1"></i>
+                <i class="bc-shoe-card bc-shoe-top"><svg class="icon"><use href="#i-spade"></use></svg></i>
+              </div>
+              <div id="bc-result" class="bc-result"></div>
             </div>
             <div class="bc-hand bc-hand-banker">
-              <div class="bc-total-badge bc-total-banker"><span>BANKER</span><b id="bc-banker-total"></b></div>
+              <span class="bc-side-label bc-side-banker">BANKER</span>
+              <b id="bc-banker-total" class="bc-score bc-score-banker"></b>
               <div id="bc-banker-cards" class="bc-cards-row"></div>
             </div>
           </div>
 
-          <!-- Итог раунда всплывает ровно на месте этой подписи, ниже карт —
-               руки остаются полностью видны, ничего не закрывается. -->
-          <div class="bc-caption-row">
-            <div class="bc-tie-caption"><i>♦</i>TIE PAYS 8:1<i>♦</i></div>
-            <div id="bc-result" class="bc-result"></div>
-          </div>
+          <div class="bc-tie-caption"><i></i><em>♦</em>TIE PAYS 8:1<em>♦</em><i></i></div>
 
           <div id="bc-zones" class="bc-zones-grid">
             <button type="button" class="bc-zone bc-zone-pp side-player" data-zone="playerPerfectPair"><span>PERFECT PAIR</span><b>50:1</b></button>
@@ -787,9 +787,9 @@
             <button id="bc-clear" type="button" class="bc-clear-btn">Clear</button>
           </div>
           <div class="bc-chips">
-            <button id="bc-chip-prev" type="button" class="bc-chip-nav" aria-label="Прокрутить фишки влево"><svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg></button>
+            <button id="bc-chip-prev" type="button" class="bc-chip-nav" aria-label="Прокрутить фишки влево">◀</button>
             <div id="bc-chip-row" class="bc-chip-row"></div>
-            <button id="bc-chip-next" type="button" class="bc-chip-nav" aria-label="Прокрутить фишки вправо"><svg class="icon icon-sm"><use href="#i-chevron-right"></use></svg></button>
+            <button id="bc-chip-next" type="button" class="bc-chip-nav" aria-label="Прокрутить фишки вправо">▶</button>
           </div>
         </div>
       </div>
@@ -897,6 +897,6 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=86"></script>
+  <script src="/app.js?v=87"></script>
 </body>
 </html>

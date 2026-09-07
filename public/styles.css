@@ -3596,67 +3596,61 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-dragon { left: -8px; height: 62%; color: #5a7bff; fill: #5a7bff; }
 .bc-tiger { right: -10px; height: 50%; color: #ff5a6e; fill: #ff5a6e; }
 
-.bc-table { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; min-height: 112px; z-index: 1; }
-.bc-hand { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.bc-hand-player { align-items: flex-start; }
-.bc-hand-banker { align-items: flex-end; }
-.bc-total-badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 24px; padding: 0 6px 0 10px;
+.bc-table { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; min-height: 150px; z-index: 1; }
+.bc-hand { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 4px; }
+/* Подпись стороны — просто цветной текст, счёт — отдельная пилюля под ним. */
+.bc-side-label { font: 800 15px/1 var(--font); letter-spacing: 0.02em; }
+.bc-side-player { color: #5f8dff; text-shadow: 0 0 8px rgba(95, 141, 255, 0.55); }
+.bc-side-banker { color: #ff5470; text-shadow: 0 0 8px rgba(255, 84, 112, 0.55); }
+.bc-score {
+  min-width: 34px; height: 22px; padding: 0 10px;
   border-radius: 999px;
-  background: rgba(10, 12, 34, 0.85);
-  font: 800 11px/1 var(--font); letter-spacing: 0.04em;
-}
-.bc-total-badge b {
-  min-width: 18px; height: 18px; padding: 0 4px;
-  border-radius: 50%;
   display: grid; place-items: center;
-  font: 800 12px/1 var(--font); color: #fff;
-  background: #0d0716;
+  font: 800 13px/1 var(--font); color: #fff;
+  background: rgba(8, 10, 30, 0.9);
   opacity: 0; transform: scale(0.6); transition: opacity 0.2s, transform 0.25s var(--ease);
 }
-.bc-total-badge b.is-on { opacity: 1; transform: none; }
-.bc-total-player { border: 1px solid rgba(120, 160, 255, 0.55); color: #8fb0ff; }
-.bc-total-player b { border: 1.5px solid #7fa8ff; box-shadow: 0 0 10px rgba(120, 160, 255, 0.7); }
-.bc-total-banker { border: 1px solid rgba(255, 100, 130, 0.55); color: #ff9bb0; }
-.bc-total-banker b { border: 1.5px solid #ff6b8a; box-shadow: 0 0 10px rgba(255, 100, 130, 0.7); }
-.bc-cards-row { display: flex; min-height: 54px; }
-.bc-cards-row .bc-card:not(:first-child) { margin-left: -16px; }
+.bc-score.is-on { opacity: 1; transform: none; }
+.bc-score-player { border: 1.5px solid #5f8dff; box-shadow: 0 0 10px rgba(95, 141, 255, 0.55); }
+.bc-score-banker { border: 1.5px solid #ff5470; box-shadow: 0 0 10px rgba(255, 84, 112, 0.55); }
+.bc-cards-row { display: flex; min-height: 54px; margin-top: 4px; }
+.bc-cards-row .bc-card:not(:first-child) { margin-left: -14px; }
+.bc-cards-row .bc-card:nth-child(2) { transform: translateY(2px); }
+.bc-cards-row .bc-card:nth-child(3) { transform: translateY(4px); }
 /* Карты выигравшей раздачу стороны обводим в цвет исхода — как на макете. */
-.bc-cards-row.is-glow-win .bc-card { box-shadow: 0 0 0 2px rgba(92, 255, 106, 0.85), 0 0 14px rgba(92, 255, 106, 0.55); border-radius: 5px; }
-.bc-cards-row.is-glow-lose .bc-card { box-shadow: 0 0 0 2px rgba(255, 90, 110, 0.85), 0 0 14px rgba(255, 90, 110, 0.55); border-radius: 5px; }
-.bc-cards-row.is-glow-push .bc-card { box-shadow: 0 0 0 2px rgba(242, 201, 107, 0.85), 0 0 14px rgba(242, 201, 107, 0.55); border-radius: 5px; }
+.bc-cards-row.is-glow-win .bc-card { box-shadow: 0 0 0 2px rgba(92, 255, 106, 0.9), 0 0 16px rgba(92, 255, 106, 0.65); border-radius: 5px; }
+.bc-cards-row.is-glow-lose .bc-card { box-shadow: 0 0 0 2px rgba(255, 90, 110, 0.9), 0 0 16px rgba(255, 90, 110, 0.65); border-radius: 5px; }
+.bc-cards-row.is-glow-push .bc-card { box-shadow: 0 0 0 2px rgba(242, 201, 107, 0.9), 0 0 16px rgba(242, 201, 107, 0.6); border-radius: 5px; }
 
-/* Пустой стол: ни рук, ни плашек — только колода по центру, крупнее, со
-   световым конусом под ней, как в исходном макете. */
-.bc-table.is-idle { min-height: 132px; align-items: center; justify-content: center; }
-.bc-table.is-idle .bc-hand { display: none; }
-.bc-table.is-idle .bc-shoe { transform: scale(1.55); }
+/* Центр: колода сверху, под ней плашка итога. Пустой стол — без рук,
+   только колода со световым конусом. */
+.bc-center { flex: none; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.bc-table.is-idle .bc-hand { visibility: hidden; }
 .bc-table.is-idle .bc-shoe::after {
-  content: ''; position: absolute; left: 50%; top: 100%; width: 150px; height: 90px;
+  content: ''; position: absolute; left: 50%; top: 100%; width: 170px; height: 110px;
   transform: translateX(-50%);
-  background: radial-gradient(ellipse at top, rgba(120, 150, 255, 0.22), transparent 70%);
+  background: radial-gradient(ellipse at top, rgba(120, 150, 255, 0.24), transparent 68%);
   pointer-events: none;
 }
 
-.bc-shoe { flex: none; position: relative; width: 40px; height: 54px; margin-top: 2px; }
+.bc-shoe { flex: none; position: relative; width: 62px; height: 78px; }
 .bc-shoe-card {
   position: absolute; inset: 0;
-  border-radius: 5px;
+  border-radius: 7px;
   background:
-    repeating-linear-gradient(45deg, rgba(120, 150, 255, 0.14) 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(-45deg, rgba(120, 150, 255, 0.14) 0 1px, transparent 1px 5px),
-    linear-gradient(160deg, #1c2050 0%, #10132e 100%);
-  border: 1px solid rgba(140, 160, 255, 0.35);
+    repeating-linear-gradient(45deg, rgba(120, 150, 255, 0.16) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(-45deg, rgba(120, 150, 255, 0.16) 0 1px, transparent 1px 6px),
+    linear-gradient(160deg, #1a2160 0%, #0e1236 100%);
+  border: 1.5px solid rgba(150, 175, 255, 0.55);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-  transform: translate(calc(var(--o, 0) * -2px), calc(var(--o, 0) * -2px));
+  transform: translate(calc(var(--o, 0) * 3px), calc(var(--o, 0) * -3px));
 }
-.bc-shoe-top { display: grid; place-items: center; color: #b9c6ff; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.55), 0 0 10px rgba(120, 150, 255, 0.35); }
-.bc-shoe-top .icon { width: 18px; height: 18px; fill: currentColor; stroke: none; }
+.bc-shoe-top { display: grid; place-items: center; color: #6f8dff; box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55), 0 0 14px rgba(120, 150, 255, 0.55); }
+.bc-shoe-top .icon { width: 28px; height: 28px; fill: currentColor; stroke: none; filter: drop-shadow(0 0 6px rgba(110, 140, 255, 0.8)); }
 
 .bc-card {
   position: relative; flex: none;
-  width: 38px; height: 54px;
+  width: 36px; height: 52px;
   transform-style: preserve-3d;
 }
 .bc-face {
@@ -3670,62 +3664,58 @@ body:has(#screen-table:not(.hidden)) .toast {
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 .bc-face.front.red { color: #d8202a; }
-.bc-face.front .bj-rank { position: absolute; left: 3px; top: 2px; font: 700 11px/1 var(--font); letter-spacing: -0.03em; }
-.bc-face.front .bj-suit-sm { position: absolute; left: 3px; top: 13px; font-size: 8px; line-height: 1; }
-.bc-face.front .bj-suit { position: absolute; left: 50%; top: 57%; transform: translate(-50%, -50%); font-size: 22px; line-height: 1; }
+.bc-face.front .bj-rank { position: absolute; left: 3px; top: 2px; font: 700 12px/1 var(--font); letter-spacing: -0.03em; }
+.bc-face.front .bj-suit-sm { position: absolute; left: 3px; top: 14px; font-size: 8px; line-height: 1; }
+.bc-face.front .bj-suit { position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%); font-size: 22px; line-height: 1; }
 .bc-face.back {
   transform: rotateY(180deg);
   background:
-    radial-gradient(circle at 50% 50%, rgba(120, 150, 255, 0.22) 0, rgba(120, 150, 255, 0) 40%),
-    repeating-linear-gradient(45deg, rgba(120, 150, 255, 0.12) 0 1px, transparent 1px 5px),
-    repeating-linear-gradient(-45deg, rgba(120, 150, 255, 0.12) 0 1px, transparent 1px 5px),
-    linear-gradient(160deg, #1c2050 0%, #10132e 100%);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55), inset 0 0 0 1.5px rgba(140, 160, 255, 0.5);
+    repeating-linear-gradient(45deg, rgba(120, 150, 255, 0.14) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(-45deg, rgba(120, 150, 255, 0.14) 0 1px, transparent 1px 6px),
+    linear-gradient(160deg, #1a2160 0%, #0e1236 100%);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55), inset 0 0 0 1.5px rgba(150, 175, 255, 0.55);
 }
-.bc-face.back::after { content: '♠'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 16px; color: #b9c6ff; text-shadow: 0 0 6px rgba(120, 150, 255, 0.6); }
+.bc-face.back::after { content: '♠'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 16px; color: #6f8dff; }
 
-/* Строка с подписью TIE PAYS: итог раунда всплывает ровно на её месте,
-   руки с картами выше остаются полностью открыты и ничем не закрыты. */
-.bc-caption-row { position: relative; min-height: 22px; z-index: 2; }
+/* Плашка итога — в центре под колодой, между руками. */
 .bc-result {
-  position: absolute; left: 50%; top: 50%;
-  transform: translate(-50%, -50%) scale(0.85);
-  min-width: 118px; padding: 9px 16px 11px;
-  border-radius: 13px;
+  min-width: 112px; padding: 8px 14px 10px;
+  border-radius: 12px;
   text-align: center;
-  opacity: 0; pointer-events: none;
+  opacity: 0; transform: scale(0.85); pointer-events: none;
   transition: opacity 0.18s, transform 0.18s var(--ease);
-  z-index: 3;
 }
-.bc-result.is-visible { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.bc-result.is-visible { opacity: 1; transform: none; }
 .bc-result.win {
-  background: linear-gradient(180deg, rgba(14, 38, 24, 0.94), rgba(9, 24, 17, 0.96));
-  border: 1.5px solid rgba(90, 240, 110, 0.75);
-  box-shadow: 0 0 22px rgba(80, 255, 100, 0.35), 0 12px 26px rgba(0, 0, 0, 0.5);
-  color: #5cff6a;
+  background: rgba(10, 30, 26, 0.92);
+  border: 1.5px solid rgba(80, 200, 255, 0.85);
+  box-shadow: 0 0 18px rgba(80, 200, 255, 0.4), 0 0 8px rgba(92, 255, 106, 0.3);
+  color: #3dff7a;
 }
 .bc-result.push {
-  background: linear-gradient(180deg, rgba(30, 30, 20, 0.94), rgba(18, 18, 12, 0.96));
-  border: 1.5px solid rgba(242, 201, 107, 0.6);
-  box-shadow: 0 0 18px rgba(242, 201, 107, 0.28), 0 12px 26px rgba(0, 0, 0, 0.5);
+  background: rgba(30, 30, 18, 0.92);
+  border: 1.5px solid rgba(242, 201, 107, 0.7);
+  box-shadow: 0 0 18px rgba(242, 201, 107, 0.3);
   color: #f2c96b;
 }
 .bc-result.lose {
-  background: radial-gradient(70% 70% at 50% 40%, rgba(150, 40, 60, 0.4), transparent 100%), linear-gradient(180deg, rgba(34, 18, 30, 0.94), rgba(18, 12, 26, 0.96));
-  border: 1.5px solid rgba(255, 90, 110, 0.7);
-  box-shadow: 0 0 22px rgba(255, 70, 90, 0.3), 0 12px 26px rgba(0, 0, 0, 0.5);
-  color: #ff6b7a;
+  background: rgba(40, 10, 22, 0.92);
+  border: 1.5px solid rgba(255, 70, 100, 0.85);
+  box-shadow: 0 0 18px rgba(255, 70, 100, 0.45);
+  color: #ff4d6a;
 }
-.bc-result b { display: block; font: 800 24px/1 var(--font-display); letter-spacing: -0.02em; white-space: nowrap; }
-.bc-result span { display: block; margin-top: 4px; font: 700 14px var(--font); }
+.bc-result b { display: block; font: 800 20px/1.05 var(--font); letter-spacing: -0.01em; white-space: nowrap; }
+.bc-result span { display: block; margin-top: 3px; font: 700 14px var(--font); }
 
-.bc-caption-row { margin-top: 10px; }
+/* Подпись TIE PAYS — с тонкими линиями и ромбами по бокам, как в макете. */
 .bc-tie-caption {
-  text-align: center;
-  font: 600 10.5px/1 var(--font); letter-spacing: 0.14em; color: rgba(190, 182, 224, 0.65);
+  margin-top: 6px; text-align: center;
+  font: 600 10.5px/1 var(--font); letter-spacing: 0.16em; color: rgba(150, 160, 210, 0.75);
   display: flex; align-items: center; justify-content: center; gap: 8px;
 }
-.bc-tie-caption i { font-style: normal; color: rgba(200, 175, 255, 0.55); font-size: 9px; }
+.bc-tie-caption i { width: 34px; height: 1px; background: linear-gradient(90deg, transparent, rgba(150, 160, 230, 0.6)); }
+.bc-tie-caption i:last-child { background: linear-gradient(90deg, rgba(150, 160, 230, 0.6), transparent); }
+.bc-tie-caption em { font-style: normal; color: rgba(150, 160, 230, 0.7); font-size: 9px; }
 
 /* Зоны ставок: плоская сетка карточек 5×2 по образцу макета — Perfect Pair
    и Pair стопкой по бокам, Player/Banker во всю высоту, Tie посередине
@@ -3733,10 +3723,11 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-zones-grid {
   position: relative; z-index: 1;
   display: grid;
-  grid-template-columns: 0.82fr 1.32fr 1fr 1.32fr 0.82fr;
+  grid-template-columns: 0.86fr 1.28fr 1fr 1.28fr 0.86fr;
   grid-template-rows: 1fr 1fr;
-  gap: 7px;
-  margin-top: 14px;
+  gap: 8px 6px;
+  margin-top: 12px;
+  padding: 0 2px;
 }
 .bc-zone {
   position: relative;
@@ -3747,7 +3738,12 @@ body:has(#screen-table:not(.hidden)) .toast {
   cursor: pointer;
   transition: transform 0.12s var(--ease), filter 0.15s, box-shadow 0.2s;
 }
-.bc-zone:active { transform: scale(0.96); }
+.bc-zone:active { filter: brightness(1.25); }
+/* Веер: боковые зоны слегка повёрнуты наружу, как на макете. */
+.bc-zone[data-zone="playerPerfectPair"], .bc-zone[data-zone="playerPair"] { transform: rotate(-5deg); transform-origin: 100% 50%; }
+.bc-zone[data-zone="player"] { transform: rotate(-2.5deg); transform-origin: 100% 50%; }
+.bc-zone[data-zone="banker"] { transform: rotate(2.5deg); transform-origin: 0 50%; }
+.bc-zone[data-zone="bankerPerfectPair"], .bc-zone[data-zone="bankerPair"] { transform: rotate(5deg); transform-origin: 0 50%; }
 .bc-zone span { font: 700 9.5px/1.15 var(--font); letter-spacing: 0.03em; text-align: center; }
 .bc-zone b { font: 800 13px/1 var(--font); letter-spacing: -0.01em; }
 .bc-zone[data-zone="playerPerfectPair"] { grid-column: 1; grid-row: 1; }
@@ -3810,22 +3806,24 @@ body:has(#screen-table:not(.hidden)) .toast {
 /* Лента истории — «дорожка» последних раундов, как road map в казино. */
 .bc-history {
   margin-top: 14px;
-  padding: 10px;
-  border-radius: 16px;
-  border: 1px solid rgba(150, 130, 255, 0.22);
-  background: linear-gradient(180deg, rgba(18, 20, 48, 0.7), rgba(12, 13, 34, 0.7));
+  padding: 14px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(110, 150, 255, 0.28);
+  background: linear-gradient(180deg, rgba(14, 18, 44, 0.85), rgba(9, 11, 32, 0.85));
+  box-shadow: 0 0 18px rgba(80, 120, 255, 0.12);
   display: grid;
   grid-template-columns: repeat(10, 1fr);
-  gap: 6px;
-  min-height: 64px;
+  grid-auto-rows: 22px;
+  place-items: center;
+  min-height: 116px;
 }
 .bc-history i {
-  aspect-ratio: 1 / 1; border-radius: 50%; font-style: normal;
-  background: rgba(140, 150, 220, 0.16);
+  width: 6px; height: 6px; border-radius: 50%; font-style: normal;
+  background: rgba(140, 150, 220, 0.35);
 }
-.bc-history i.player { background: #5a82ff; box-shadow: 0 0 6px rgba(90, 130, 255, 0.7); }
-.bc-history i.banker { background: #ff5a6e; box-shadow: 0 0 6px rgba(255, 90, 110, 0.7); }
-.bc-history i.tie { background: #4ade9f; box-shadow: 0 0 6px rgba(74, 222, 159, 0.7); }
+.bc-history i.player { width: 9px; height: 9px; background: #5a82ff; box-shadow: 0 0 6px rgba(90, 130, 255, 0.8); }
+.bc-history i.banker { width: 9px; height: 9px; background: #ff5a6e; box-shadow: 0 0 6px rgba(255, 90, 110, 0.8); }
+.bc-history i.tie { width: 9px; height: 9px; background: #4ade9f; box-shadow: 0 0 6px rgba(74, 222, 159, 0.8); }
 
 .bc-actions { display: flex; gap: 10px; }
 /* Двойной класс — специфичность выше, чем у .mn-main ниже по файлу, иначе
@@ -3843,12 +3841,12 @@ body:has(#screen-table:not(.hidden)) .toast {
 .bc-clear-btn:active:not(:disabled) { background: rgba(60, 60, 140, 0.5); color: #fff; }
 .bc-chips { display: flex; align-items: center; gap: 8px; }
 .bc-chip-nav {
-  flex: none; width: 30px; height: 44px;
-  border: 1px solid rgba(150, 130, 255, 0.3); border-radius: 10px;
-  background: rgba(23, 26, 58, 0.9); color: #b9bde0;
+  flex: none; width: 22px; height: 44px;
+  border: 0; background: none; padding: 0;
+  color: #4f6bd9; font-size: 14px;
   display: grid; place-items: center;
 }
-.bc-chip-nav:active { background: rgba(60, 60, 140, 0.5); }
+.bc-chip-nav:active { color: #8fa6ff; }
 .bc-chip-row { flex: 1; min-width: 0; display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding: 4px 2px; }
 .bc-chip-row::-webkit-scrollbar { display: none; }
 /* Фишка: сплошной цветной круг + пунктирное кольцо у края (как настоящая
