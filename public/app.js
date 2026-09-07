@@ -38,7 +38,7 @@ const state = {
   buyIn: { open: false, mode: 'sit', seat: null, amount: 0, touched: false },
   bj: { view: null, bet: 500, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null, typing: false, typed: '' },
   rl: { open: false, info: null, amount: 1000, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
-  bc: { open: false, info: null, chip: 1000, bets: new Map(), dealing: false, timers: [], shownBalance: null, round: null },
+  bc: { open: false, info: null, chip: 1000, bets: new Map(), dealing: false, timers: [], shownBalance: null, round: null, pendingHistory: null },
   mn: { open: false, info: null, amount: 100, mines: 3, busy: false, reveal: null, shownBalance: null },
   nv: { open: false, info: null, amount: 100, target: 75, mode: 'under', busy: false, round: null, shownBalance: null, timer: null },
   unread: 0,
@@ -1424,6 +1424,7 @@ function openBaccarat() {
   state.bc.open = true;
   state.bc.shownBalance = null;
   state.bc.round = null;
+  state.bc.pendingHistory = null;
   $('screen-lobby').classList.add('hidden');
   $('screen-table').classList.add('hidden');
   $('screen-bj').classList.add('hidden');
@@ -1587,11 +1588,14 @@ function onBaccaratState(message) {
   state.bc.info = message;
   state.balance = message.balance;
   renderAccount();
-  bcRenderHistory(message.history || []);
   if (message.round) {
+    // Точка в дорожке появляется только после того, как карты сыграли:
+    // историю с результатом придерживаем до конца раздачи.
+    state.bc.pendingHistory = message.history || [];
     startBaccaratDeal(message.round);
     return;
   }
+  bcRenderHistory(message.history || []);
   bcShowBalance(message.balance, true);
   renderBaccarat();
 }
@@ -1644,6 +1648,10 @@ function finishBaccaratDeal(round) {
   bc.dealing = false;
   $('bc-zones').classList.remove('is-locked');
   $('bc-canvas').classList.remove('is-dealing');
+  if (bc.pendingHistory) {
+    bcRenderHistory(bc.pendingHistory);
+    bc.pendingHistory = null;
+  }
   const result = $('bc-result');
   const view = bcResultView(round);
   result.className = `bc-result is-visible ${view.cls}`;
