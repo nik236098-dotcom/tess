@@ -748,7 +748,7 @@ function createApp(options = {}) {
   // Игра живёт у пользователя, а не в комнате: стола и мест нет, ставка
   // списывается с баланса, выигрыш возвращается на баланс.
   const BJ_MIN_BET = 100;      // $1
-  const BJ_MAX_BET = 1000000;  // $10 000
+  const BJ_MAX_BET = 10000000; // $100 000
   const blackjackGames = new Map();
 
   function blackjackGame(client) {
@@ -815,7 +815,7 @@ function createApp(options = {}) {
   // Ставки списываются с баланса разом, розыгрыш мгновенный, выплата сразу
   // на баланс; анимацию колеса клиент крутит уже зная число.
   const RL_MIN_BET = 100;
-  const RL_MAX_BET = 1000000;
+  const RL_MAX_BET = 10000000; // $100 000
   const rouletteHistory = new Map(); // userId → последние числа
 
   function rouletteInfo(client) {
@@ -841,7 +841,7 @@ function createApp(options = {}) {
 
   // ——— Баккара ———
   const BC_MIN_BET = 100;
-  const BC_MAX_BET = 1000000;
+  const BC_MAX_BET = 10000000; // $100 000
   const baccaratHistory = new Map();
 
   function baccaratInfo(client) {
@@ -869,7 +869,7 @@ function createApp(options = {}) {
   // Раунд живёт на сервере между сообщениями: ставка списывается на старте,
   // выплата — когда игрок забрал или открыл все безопасные клетки.
   const MN_MIN_BET = 10;
-  const MN_MAX_BET = 1000000;
+  const MN_MAX_BET = 10000000; // $100 000
   const minesGames = new Map(); // userId → MinesGame
 
   function minesGame(client) {
@@ -928,7 +928,7 @@ function createApp(options = {}) {
   // ——— Nvuti ———
   // Как рулетка: ставка списывается, бросок мгновенный, выплата сразу.
   const NV_MIN_BET = 10;
-  const NV_MAX_BET = 1000000;
+  const NV_MAX_BET = 10000000; // $100 000
   const nvutiHistory = new Map(); // userId → последние броски
 
   function nvutiInfo(client) {

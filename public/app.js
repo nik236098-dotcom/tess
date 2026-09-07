@@ -656,7 +656,7 @@ function bjCard(code) {
 function bjBetRange() {
   const view = state.bj.view;
   const min = view ? view.minBet : 100;
-  const max = Math.min(view ? view.maxBet : 1000000, Math.max(min, state.balance));
+  const max = Math.min(view ? view.maxBet : 10000000, Math.max(min, state.balance));
   return { min, max };
 }
 
@@ -1128,7 +1128,7 @@ function buildRouletteCells() {
 function rlRange() {
   const info = state.rl.info;
   const min = info ? info.minBet : 100;
-  const max = Math.min(info ? info.maxBet : 1000000, Math.max(min, state.balance));
+  const max = Math.min(info ? info.maxBet : 10000000, Math.max(min, state.balance));
   return { min, max };
 }
 
@@ -1512,7 +1512,7 @@ function buildBaccaratZones() {
 function bcRange() {
   const info = state.bc.info;
   const min = info ? info.minBet : 100;
-  const max = Math.min(info ? info.maxBet : 1000000, Math.max(min, state.balance));
+  const max = Math.min(info ? info.maxBet : 10000000, Math.max(min, state.balance));
   return { min, max };
 }
 
@@ -1797,7 +1797,7 @@ function closeMines() {
 function mnRange() {
   const info = state.mn.info;
   const min = info ? info.minBet : 10;
-  const max = Math.min(info ? info.maxBet : 1000000, Math.max(min, state.balance));
+  const max = Math.min(info ? info.maxBet : 10000000, Math.max(min, state.balance));
   return { min, max };
 }
 
@@ -2074,7 +2074,7 @@ function closeNvuti() {
 function nvRange() {
   const info = state.nv.info;
   const min = info ? info.minBet : 10;
-  const max = Math.min(info ? info.maxBet : 1000000, Math.max(min, state.balance));
+  const max = Math.min(info ? info.maxBet : 10000000, Math.max(min, state.balance));
   return { min, max };
 }
 
