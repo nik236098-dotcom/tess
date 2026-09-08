@@ -21,6 +21,9 @@ const state = {
   pendingRoom: null,
   raiseTo: 0,
   raiseTouched: false,
+  raiseOpen: false,
+  raiseContext: null,
+  botSeat: null,
   reconnectDelay: 500,
   chat: [],
   rooms: [],
@@ -518,6 +521,8 @@ function handleMessage(message) {
 // ——— Экраны ———
 
 function showLobby() {
+  $('bot-sheet').classList.add('hidden');
+  closeRaisePanel();
   $('screen-table').classList.add('hidden');
   $('screen-bj').classList.add('hidden');
   $('screen-rl').classList.add('hidden');
@@ -547,6 +552,7 @@ const STAGE = {
 
 function fitTable() {
   syncCrocTheme();
+  if (amethystActive()) { fitAmethyst(); return; }
   const viewport = $('table-viewport');
   const canvas = $('table-canvas');
   if (!viewport || !canvas) return;
@@ -584,6 +590,8 @@ function watchTableSize() {
 }
 
 function showTable() {
+  $('bot-sheet').classList.add('hidden');
+  closeRaisePanel();
   $('screen-lobby').classList.add('hidden');
   $('screen-table').classList.remove('hidden');
   // Новый стол — новая история анимаций: иначе чужие ставки прилетят
@@ -2549,8 +2557,7 @@ function renderTable() {
 
   // Векторы прилёта меряем сразу после сборки DOM, до первой отрисовки:
   // так карта не успевает мигнуть на своём месте.
-  primeDealAnimations();
-  runTableFx(room);
+  if (!amethystActive()) { primeDealAnimations(); runTableFx(room); }
 }
 
 function renderFeed(room) {
@@ -2640,6 +2647,7 @@ function cardNode(code, small = false, animate = true) {
   node.dataset.rank = code[0];
   // deal-in — карта прилетает из центра стола; вектор и очередь проставит
   // primeDealAnimations() после того, как всё окажется в DOM.
+  if (amethystActive()) animate = false;
   node.className = `card-face${small ? ' small' : ''}${animate ? ' deal-in is-priming' : ' no-anim'}`;
   if (code === '??') {
     node.classList.add('back');
@@ -2703,6 +2711,7 @@ function buildSeatCards(seat, position, count) {
 }
 
 function renderSeats(room) {
+  if (amethystActive()) { renderAmethystSeats(room); return; }
   if (state.shownHand !== room.handNumber) {
     state.shownHand = room.handNumber;
     state.shownCards.clear();
@@ -2760,14 +2769,14 @@ function renderSeats(room) {
       // Кружок с плюсом уже нарисован на ассете — своего не рисуем,
       // кладём только прозрачную область нажатия ровно по нему.
       node.classList.add('empty');
-      const free = room.you.seatIndex === null;
+      const free = room.you.seatIndex === null || state.isAdmin;
       if (free) node.classList.add('joinable');
       const slot = document.createElement('div');
       slot.className = 'seat-empty-slot';
       if (free) {
         slot.addEventListener('click', () => {
           haptic('light');
-          openBuyIn(seat.index);
+          if (state.isAdmin) openBotSheet(seat.index); else openBuyIn(seat.index);
         });
       }
       node.appendChild(slot);
@@ -2838,7 +2847,7 @@ function renderSeats(room) {
     plate.innerHTML = `<div class="seat-name">${escapeHtml(seat.name)}</div>${stack}`;
     if (state.isAdmin) {
       node.classList.add('clickable');
-      plate.addEventListener('click', () => openChipsSheet(seat));
+      plate.addEventListener('click', () => seat.isBot ? openBotSheet(seat.index) : openChipsSheet(seat));
     }
     node.appendChild(plate);
 
@@ -3351,12 +3360,14 @@ function renderControls(room) {
   callBtn.classList.toggle('hidden', !legal.canCall);
   $('call-amount').textContent = money(legal.callAmount);
 
-  // Слайдер размера ставки живёт над кнопками: «Рейз» сразу ставит то,
-  // что на слайдере, крайнее правое положение — олл-ин.
-  const raiseBtn = $('btn-raise');
-  raiseBtn.classList.toggle('hidden', !legal.canRaise);
-  $('bet-row').classList.toggle('hidden', !legal.canRaise);
-
+  const context = `${room.code}:${room.handNumber}:${room.phase}:${room.turnDeadline}`;
+  if (state.raiseContext !== context) closeRaisePanel();
+  state.raiseContext = context;
+  $('btn-raise').classList.remove('hidden');
+  $('btn-raise').disabled = !legal.canRaise;
+  $('btn-allin').classList.remove('hidden');
+  $('btn-allin').disabled = !legal.canAllIn;
+  $('allin-amount').textContent = money(you.stack);
   if (legal.canRaise) {
     const range = $('raise-range');
     range.min = String(legal.minRaiseTo);
@@ -3366,9 +3377,9 @@ function renderControls(room) {
     state.raiseTo = clamp(state.raiseTo, legal.minRaiseTo, legal.maxRaiseTo);
     range.value = String(state.raiseTo);
     renderRaiseValue(legal);
-  } else {
-    closeRaisePanel();
-  }
+  } else closeRaisePanel();
+  $('bet-row').classList.toggle('hidden', !state.raiseOpen || !legal.canRaise);
+  $('btn-raise').setAttribute('aria-expanded', String(state.raiseOpen));
 
   startTurnTimer(room);
   syncControls();
@@ -3481,29 +3492,27 @@ function syncControls() {
 }
 
 function renderRaiseValue(legal) {
-  const value = money(state.raiseTo);
-  $('raise-value').textContent = value;
-  $('raise-amount').textContent = value;
-  const allIn = legal && state.raiseTo >= legal.maxRaiseTo;
-  // Нечего уравнивать — это бет, а не рейз.
-  const opening = legal && legal.canCheck;
-  $('btn-raise').classList.toggle('is-allin', Boolean(allIn));
-  $('raise-label').textContent = allIn ? 'ОЛЛ-ИН' : opening ? 'БЕТ' : 'РЕЙЗ';
-  $('raise-sub').textContent = allIn ? 'All-in' : opening ? 'Bet' : 'Raise';
-  // Пузырь с суммой едет над ползунком.
-  const range = $('raise-range');
-  const lo = Number(range.min);
-  const hi = Number(range.max);
-  const t = hi > lo ? (state.raiseTo - lo) / (hi - lo) : 0;
-  $('bet-slider').style.setProperty('--t', t.toFixed(4));
-  if (!state.raisePreset) {
-    for (const button of document.querySelectorAll('[data-preset]')) button.classList.remove('is-active');
+  if (!legal) return;
+  $('raise-confirm').disabled = false;
+  $('raise-value').textContent = money(state.raiseTo);
+  $('raise-confirm').textContent = `Рейз до ${money(state.raiseTo)}`;
+  $('raise-label').textContent = 'Raise';
+  if (document.activeElement !== $('raise-input')) $('raise-input').value = (state.raiseTo / 100).toFixed(2);
+  const lo = legal.minRaiseTo, hi = legal.maxRaiseTo;
+  $('bet-slider').style.setProperty('--t', String(hi > lo ? (state.raiseTo - lo) / (hi - lo) : 0));
+  for (const button of document.querySelectorAll('[data-preset]')) {
+    button.classList.toggle('is-active', button.dataset.preset === state.raisePreset);
+    const label = button.querySelector('strong');
+    if (label) label.textContent = money(presetRaiseTo(button.dataset.preset));
   }
 }
 
 function closeRaisePanel() {
+  state.raiseOpen = false;
   state.raiseTouched = false;
   state.raisePreset = null;
+  $('bet-row').classList.add('hidden');
+  $('btn-raise').setAttribute('aria-expanded', 'false');
 }
 
 // Шаг кнопок −/+ — большой блайнд.
@@ -4172,15 +4181,35 @@ function bindUi() {
   on('btn-call', 'click', (event) => act('call', undefined, event.currentTarget));
   on('btn-raise', 'click', (event) => {
     const legal = state.room && state.room.you.legal;
-    if (legal && legal.canRaise) act('raise', state.raiseTo, event.currentTarget);
+    if (!legal?.canRaise) return;
+    state.raiseOpen = !state.raiseOpen;
+    renderControls(state.room);
+    haptic('light');
   });
   on('raise-minus', 'click', () => stepRaise(-1));
   on('raise-plus', 'click', () => stepRaise(1));
-  on('btn-more', 'click', () => {
-    $('log-panel').classList.remove('hidden');
-    state.unread = 0;
-    renderUnread();
+  on('raise-cancel', 'click', closeRaisePanel);
+  on('raise-confirm', 'click', event => {
+    if (state.raiseOpen && state.room?.you.legal?.canRaise) act('raise', state.raiseTo, event.currentTarget);
   });
+  on('btn-allin', 'click', event => {
+    if (state.room?.you.legal?.canAllIn) act('allin', undefined, event.currentTarget);
+  });
+  on('raise-input', 'input', event => {
+    const legal = state.room?.you.legal;
+    const raw = event.target.value.trim().replace(',', '.');
+    if (!legal?.canRaise) return;
+    const valid = /^\d+(?:\.\d{0,2})?$/.test(raw);
+    $('raise-confirm').disabled = !valid;
+    if (!valid) return;
+    state.raiseTouched = true;
+    state.raisePreset = null;
+    state.raiseTo = clamp(Math.round(Number(raw) * 100), legal.minRaiseTo, legal.maxRaiseTo);
+    $('raise-range').value = String(state.raiseTo);
+    renderRaiseValue(legal);
+  });
+  on('raise-input', 'blur', () => { $('raise-input').value = (state.raiseTo / 100).toFixed(2); $('raise-confirm').disabled = false; });
+  bindBotControls();
 
   on('raise-range', 'input', (event) => {
     state.raiseTouched = true;
@@ -4238,10 +4267,10 @@ function grantChips(amount, mode = 'add') {
   closeChipsSheet();
 }
 
-function applyPreset(preset) {
+function presetRaiseTo(preset) {
   const room = state.room;
   const legal = room && room.you.legal;
-  if (!legal || !legal.canRaise) return;
+  if (!legal || !legal.canRaise) return 0;
 
   const mySeat = room.seats[room.you.seatIndex];
   const myBet = mySeat ? mySeat.bet : 0;
@@ -4256,6 +4285,13 @@ function applyPreset(preset) {
   else if (preset === 'double') value = myBet + legal.callAmount + potAfterCall * 2;
   else value = myBet + legal.callAmount + potAfterCall;
 
+  return clamp(value, legal.minRaiseTo, legal.maxRaiseTo);
+}
+
+function applyPreset(preset) {
+  const legal = state.room?.you.legal;
+  if (!legal?.canRaise) return;
+  const value = presetRaiseTo(preset);
   state.raiseTouched = true;
   state.raisePreset = preset;
   state.raiseTo = clamp(value, legal.minRaiseTo, legal.maxRaiseTo);
@@ -4272,6 +4308,8 @@ function applyPreset(preset) {
 // мгновенно, а после короткой паузы, иначе состояние «отправляем» никто
 // не успевает увидеть.
 function act(action, amount, button) {
+  if ($('action-bar').classList.contains('is-sending')) return;
+  closeRaisePanel();
   haptic(action === 'fold' ? 'light' : 'success');
   state.raiseTouched = false;
   const bar = (button && button.closest('.action-bar')) || $('action-bar');
@@ -4359,12 +4397,13 @@ function crocActive() {
   return crocEnabled && (!state.room || ['holdem','omaha'].includes(state.room.game));
 }
 function syncCrocTheme() {
-  const enabled = crocActive();
+  const enabled = crocActive() && !amethystActive();
+  syncAmethyst();
   $('screen-table').classList.toggle('croc-theme', enabled);
-  Object.assign(TABLE, enabled ? {width:390,height:600,focusX:.5,focusY:248.5/600} : crocOriginalTable);
+  Object.assign(TABLE, amethystActive() ? {width:768,height:1536,focusX:.5,focusY:.42} : enabled ? {width:390,height:600,focusX:.5,focusY:248.5/600} : crocOriginalTable);
   Object.assign(STAGE, enabled ? {sidePad:0,panelReserve:120,topGap:6} : crocOriginalStage);
   const button=$('btn-croc-theme');
-  if(button){button.textContent=crocEnabled?'Дизайн: новый':'Дизайн: прежний';button.setAttribute('aria-pressed',String(crocEnabled));}
+  if(button){button.textContent=amethystActive()?'Прежний дизайн':'Новый дизайн';button.setAttribute('aria-pressed',String(amethystActive()));}
 }
 function crocAnchor(index,count) {
   const at=(SEAT_SETS[count]||SEAT_SETS[8])[index % (SEAT_SETS[count]||SEAT_SETS[8]).length];
@@ -4376,8 +4415,9 @@ function crocAnchor(index,count) {
 const crocButton=document.createElement('button');
 crocButton.id='btn-croc-theme';crocButton.type='button';
 crocButton.addEventListener('click',()=>{
-  crocEnabled=!crocEnabled;
-  try {localStorage.setItem('poker-croc-theme-v1',crocEnabled?'on':'off');}catch{}
+  amethystEnabled=!amethystEnabled;
+  try {localStorage.setItem('poker-amethyst-v1',amethystEnabled?'on':'off');}catch{}
+  $('board').dataset.cards = '__theme_changed__';
   syncCrocTheme();
   if(state.room) renderTable();
   fitTable();

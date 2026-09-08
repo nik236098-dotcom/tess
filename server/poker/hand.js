@@ -86,6 +86,7 @@ class Hand {
       canCall: !canCheck && toCall > 0,
       callAmount: toCall,
       canRaise,
+      canAllIn: canRaise || (toCall > 0 && toCall === p.stack),
       minRaiseTo: Math.min(minRaiseTo, maxRaiseTo),
       maxRaiseTo,
       isAllInRaise: minRaiseTo >= maxRaiseTo,
@@ -131,13 +132,14 @@ class Hand {
       }
       case 'allin':
       case 'raise': {
+        if (type === 'allin' && !legal.canAllIn) throw new ActionError('Олл-ин сейчас недоступен');
         let raiseTo = type === 'allin' ? legal.maxRaiseTo : Math.floor(Number(amount));
         if (type === 'allin' && !legal.canRaise) {
           // Фишек не хватает даже на минимальный рейз — это просто колл олл-ин.
           this._put(p, Math.min(p.stack, legal.callAmount));
           p.acted = true;
           p.lastAction = 'call';
-          this._log({ type: 'action', playerId, action: 'call', amount: p.total, allIn: true });
+          this._log({ type: 'action', playerId, action: 'call', amount: legal.callAmount, allIn: true });
           break;
         }
         if (!legal.canRaise) throw new ActionError('Рейз сейчас недоступен');

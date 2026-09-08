@@ -343,3 +343,30 @@ test('посадка за стол списывает вход с баланса
   const stood = await client.wait((m) => m.type === 'state' && m.you.seatIndex === null);
   assert.strictEqual(stood.you.balance, auth.balance, 'фишки вернулись на баланс');
 });
+
+test('добавление и удаление ботов разрешено только администратору', { timeout: 8000 }, async t => {
+  const port = await startServer(t, { devAdmin: false, adminIds: ['dev:admin-bots'] });
+  const admin = connect(port), user = connect(port);
+  await Promise.all([once(admin.socket, 'open'), once(user.socket, 'open')]);
+  t.after(() => { admin.close(); user.close(); });
+  admin.send({ type: 'auth', name: 'Admin', devId: 'admin-bots' });
+  user.send({ type: 'auth', name: 'Player', devId: 'user-bots' });
+  assert.equal((await admin.wait(byType('auth_ok'))).isAdmin, true);
+  assert.equal((await user.wait(byType('auth_ok'))).isAdmin, false);
+  admin.send({ type: 'create_room', settings: { buyIn: 500, minBuyIn: 100, maxPlayers: 8 } });
+  const { code } = await admin.wait(byType('joined'));
+  user.send({ type: 'join_room', code }); await user.wait(byType('joined'));
+  admin.send({ type: 'admin_grant', target: 'dev:admin-bots', amount: 10000, mode: 'set' });
+  await admin.wait(m => m.type === 'balance' && m.balance === 10000);
+  user.send({ type: 'admin_add_bot', seat: 2, amount: 500, isAdmin: true });
+  assert.match((await user.wait(byType('error'))).message, /админ/);
+  admin.send({ type: 'admin_add_bot', seat: 2, amount: 500 });
+  const added = await admin.wait(m => m.type === 'state' && m.seats[2]?.isBot);
+  assert.equal(added.you.balance, 9500);
+  assert.match(added.seats[2].name, /^Бот /);
+  user.send({ type: 'admin_remove_bot', seat: 2 });
+  assert.match((await user.wait(byType('error'))).message, /админ/);
+  admin.send({ type: 'admin_remove_bot', seat: 2 });
+  const removed = await admin.wait(m => m.type === 'state' && m.seats[2].empty && m.you.balance === 10000);
+  assert.equal(removed.seats[2].empty, true);
+});

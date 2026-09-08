@@ -35,6 +35,8 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.ico': 'image/x-icon',
   '.json': 'application/json; charset=utf-8',
@@ -185,7 +187,7 @@ function createApp(options = {}) {
         }
         continue;
       }
-      const someoneOnline = [...room.members.values()].some((member) => member.connected);
+      const someoneOnline = [...room.members.values()].some((member) => member.connected && !member.isBot);
       if (someoneOnline) {
         room.emptyAt = null;
         continue;
@@ -382,6 +384,14 @@ function createApp(options = {}) {
       case 'sit':
         withRoom(client, (room) => room.sit(client.user.id, Number(message.seat), message.amount === undefined ? undefined : Number(message.amount)));
         break;
+      case 'admin_add_bot':
+        if (!isAdmin(client.user)) throw new RoomError('Ботов добавляет только админ');
+        withRoom(client, room => room.addBot(client.user.id, message.seat, message.amount));
+        break;
+      case 'admin_remove_bot':
+        if (!isAdmin(client.user)) throw new RoomError('Ботов удаляет только админ');
+        withRoom(client, room => room.removeBot(message.seat));
+        break;
       case 'stand':
         withRoom(client, (room) => room.stand(client.user.id));
         break;
@@ -492,7 +502,7 @@ function createApp(options = {}) {
   // Открытые столы: их видно всем, чтобы друзья заходили без кода.
   function publicRooms() {
     return [...rooms.values()]
-      .filter((room) => room.house || (room.settings.isPublic && [...room.members.values()].some((m) => m.connected)))
+      .filter((room) => room.house || (room.settings.isPublic && [...room.members.values()].some((m) => m.connected && !m.isBot)))
       .map((room) => room.summary())
       .sort((a, b) => b.players - a.players || a.code.localeCompare(b.code))
       .slice(0, 30);
@@ -1135,8 +1145,9 @@ function serveStatic(pathname, res) {
 }
 
 if (require.main === module) {
-  const port = Number(process.env.PORT || 3000);
-  const host = process.env.HOST || '0.0.0.0';
+  const arg = name => { const at = process.argv.indexOf(name); return at >= 0 ? process.argv[at + 1] : undefined; };
+  const port = Number(arg('--port') || process.env.PORT || 3000);
+  const host = arg('--host') || process.env.HOST || '0.0.0.0';
   const server = createApp();
 
   server.listen(port, host, () => {

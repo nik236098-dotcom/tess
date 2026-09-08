@@ -1,6 +1,9 @@
 'use strict';
 
 const { EventEmitter } = require('events');
+const { randomUUID } = require('node:crypto');
+const { observe } = require('./poker/bot');
+const { runBot } = require('./poker/bot-runner');
 const { Hand, ActionError } = require('./poker/hand');
 const { BlackjackDuel, BlackjackError, handValue } = require('./blackjack/round');
 const { cardToString, rankOf, RANK_CHARS } = require('./poker/cards');
@@ -60,9 +63,15 @@ const MAX_LOG = 60;
 class Room extends EventEmitter {
   // bank — интерфейс балансов: { balanceOf, withdraw, deposit }.
   // Комната сама фишки не создаёт: они приходят с баланса и уходят обратно.
-  constructor(code, host, settings = {}, { bank = null } = {}) {
+  constructor(code, host, settings = {}, { bank = null, botDelay = 900, botRunner = runBot } = {}) {
     super();
     this.bank = bank;
+    this.botDelay = botDelay;
+    this.botRunner = botRunner;
+    this.botHistory = [];
+    this.botAbort = null;
+    this.botTimer = null;
+    this.botOwnerTimers = new Map();
     this.code = code;
     this.hostId = host.id;
     this.hostName = host.name;
@@ -90,6 +99,8 @@ class Room extends EventEmitter {
   // ——— Участники ———
 
   addMember(user) {
+    clearTimeout(this.botOwnerTimers.get(user.id));
+    this.botOwnerTimers.delete(user.id);
     const existing = this.members.get(user.id);
     if (existing) {
       existing.connected = true;
@@ -120,6 +131,15 @@ class Room extends EventEmitter {
   }
 
   setDisconnected(userId) {
+    if (this.seats.some(s => s?.botOwnerId === userId)) {
+      clearTimeout(this.botOwnerTimers.get(userId));
+      const timer = setTimeout(() => {
+        this.botOwnerTimers.delete(userId);
+        if (!this.members.get(userId)?.connected) this.removeOwnedBots(userId);
+      }, OFFLINE_GRACE_MS);
+      timer.unref?.();
+      this.botOwnerTimers.set(userId, timer);
+    }
     const member = this.members.get(userId);
     if (member) member.connected = false;
     const seat = this.seatOf(userId);
@@ -152,20 +172,21 @@ class Room extends EventEmitter {
   }
 
   removeMember(userId) {
+    this.removeOwnedBots(userId);
     const member = this.members.get(userId);
     this.stand(userId, { silent: true });
     this.members.delete(userId);
     if (member) this.pushLog(`${member.name} покидает стол`);
     if (userId === this.hostId) {
       // Хозяином становится следующий по времени присоединения.
-      const next = [...this.members.values()][0];
+      const next = [...this.members.values()].find(m => !m.isBot);
       if (next) this.hostId = next.id;
     }
     this.touch();
   }
 
   get isEmpty() {
-    return this.members.size === 0;
+    return ![...this.members.values()].some(m => !m.isBot);
   }
 
   // Участвует ли игрок прямо сейчас в незавершённой раздаче.
@@ -192,7 +213,8 @@ class Room extends EventEmitter {
   buyInRange(userId) {
     const min = this.settings.minBuyIn;
     const max = Math.max(min, this.settings.maxBuyIn);
-    const balance = this.bank ? this.bank.balanceOf(userId) : max;
+    const fundingId = this.members.get(userId)?.botOwnerId || userId;
+    const balance = this.bank ? this.bank.balanceOf(fundingId) : max;
     return { min, max: Math.min(max, balance), enough: balance >= min, default: Math.min(this.settings.buyIn, Math.min(max, balance)) };
   }
 
@@ -200,7 +222,7 @@ class Room extends EventEmitter {
     const member = this.members.get(userId);
     if (!member) throw new RoomError('Вы не в этой комнате');
     if (this.seatOf(userId)) throw new RoomError('Вы уже за столом');
-    if (seatIndex < 0 || seatIndex >= this.seats.length) throw new RoomError('Такого места нет');
+    if (!Number.isInteger(seatIndex) || seatIndex < 0 || seatIndex >= this.seats.length) throw new RoomError('Такого места нет');
     if (this.seats[seatIndex]) throw new RoomError('Место занято');
 
     const range = this.buyInRange(userId);
@@ -213,7 +235,7 @@ class Room extends EventEmitter {
     if (buyIn > range.max) throw new RoomError('Недостаточно средств');
     if (this.bank) {
       try {
-        this.bank.withdraw(userId, buyIn);
+        this.bank.withdraw(member.botOwnerId || userId, buyIn);
       } catch (error) {
         throw new RoomError(error.message);
       }
@@ -223,6 +245,8 @@ class Room extends EventEmitter {
       userId,
       name: member.name,
       photoUrl: member.photoUrl,
+      isBot: Boolean(member.isBot),
+      botOwnerId: member.botOwnerId || null,
       stack: buyIn,
       sittingOut: false,
       autoSitOut: false,
@@ -254,6 +278,7 @@ class Room extends EventEmitter {
     if (inHand && !inHand.folded) {
       // Нельзя просто исчезнуть посреди раздачи — рука сбрасывается сразу,
       // даже не в свою очередь; остальные продолжают без него.
+      this.botPhase = this.hand.phase;
       this.hand.leave(userId);
       this.afterHandProgress();
     }
@@ -275,7 +300,8 @@ class Room extends EventEmitter {
     if (!seat) return;
     if (seat.offlineTimer) clearTimeout(seat.offlineTimer);
     this.seats[index] = null;
-    if (this.bank && seat.stack > 0) this.bank.deposit(seat.userId, seat.stack);
+    if (seat.isBot) this.members.delete(seat.userId);
+    if (this.bank && seat.stack > 0) this.bank.deposit(seat.botOwnerId || seat.userId, seat.stack);
     if (!silent) {
       this.pushLog(`${seat.name} освобождает место, ${formatMoney(seat.stack)} ушли на баланс`);
     }
@@ -341,6 +367,55 @@ class Room extends EventEmitter {
     this.touch();
   }
 
+  // Permission is checked by the authenticated WebSocket handler, never by
+  // a client-supplied role. Funding always belongs to the creating admin.
+  addBot(ownerId, seatIndex, amount) {
+    if (!this.members.has(ownerId)) throw new RoomError('Вы не в этой комнате');
+    if (this.isBlackjack) throw new RoomError('Бот доступен в холдеме и омахе');
+    const id = `bot:${randomUUID()}`;
+    const names = ['Вектор', 'Атлас', 'Орион', 'Норд', 'Вега', 'Фокс', 'Ривер', 'Спектр', 'Зенит'];
+    const name = `Бот ${names[seatIndex] || 'Покер'}`;
+    this.members.set(id, { id, name, isBot: true, botOwnerId: ownerId, connected: true,
+      photoUrl: `/img/amethyst/bot-${Number.isInteger(seatIndex) ? seatIndex % 4 : 0}.svg` });
+    try { this.sit(id, seatIndex, amount); }
+    catch (error) { this.members.delete(id); throw error; }
+    return id;
+  }
+
+  removeBot(seatIndex) {
+    if (!Number.isInteger(seatIndex) || !this.seats[seatIndex]?.isBot) throw new RoomError('На этом месте нет бота');
+    this.stand(this.seats[seatIndex].userId);
+  }
+
+  removeOwnedBots(ownerId) {
+    clearTimeout(this.botOwnerTimers.get(ownerId));
+    this.botOwnerTimers.delete(ownerId);
+    for (const seat of [...this.seats]) {
+      if (seat?.botOwnerId === ownerId) this.stand(seat.userId, { silent: true });
+    }
+  }
+
+  scheduleBot() {
+    const hand = this.hand, id = hand.actingPlayer.id;
+    const abort = this.botAbort = new AbortController();
+    const stillCurrent = () => !abort.signal.aborted && this.hand === hand && !hand.complete
+      && hand.actingPlayer?.id === id;
+    const observation = observe(hand, id, this.botHistory);
+    const started = Date.now();
+    this.botRunner(observation, abort.signal).catch(() => ({ action: observation.legal.canCheck ? 'check' : 'fold' }))
+      .then(decision => {
+        if (!stillCurrent()) return;
+        this.botTimer = setTimeout(() => {
+          if (!stillCurrent()) return;
+          try { this.applyAction(id, decision.action, decision.amount); }
+          catch {
+            if (stillCurrent()) this.applyAction(id, hand.legalActions(id).canCheck ? 'check' : 'fold');
+          }
+        }, Math.max(0, this.botDelay - (Date.now() - started)));
+        this.botTimer.unref?.();
+      });
+  }
+
   // ——— Раздачи ———
 
   eligibleSeats() {
@@ -364,7 +439,7 @@ class Room extends EventEmitter {
     if (this.isBlackjack && (this.status === 'betting' || (this.round && !this.round.complete))) return;
     if (this.nextHandTimer) return;
     const eligible = this.eligibleSeats();
-    if (eligible.length < 2) {
+    if (eligible.length < 2 || !eligible.some(({ seat }) => !seat.isBot && seat.connected)) {
       this.status = 'waiting';
       // Раздачи не будет — прошлую не показываем: пустой борд, без карт и
       // без карточки победителя, иначе одинокий игрок видит чужую руку.
@@ -396,7 +471,7 @@ class Room extends EventEmitter {
     this.lastResult = null;
 
     const eligible = this.eligibleSeats();
-    if (eligible.length < 2) {
+    if (eligible.length < 2 || !eligible.some(({ seat }) => !seat.isBot && seat.connected)) {
       this.status = 'waiting';
       this.hand = null;
       this.touch();
@@ -408,6 +483,8 @@ class Room extends EventEmitter {
     const dealerIndex = eligible.findIndex((e) => e.index === this.dealerSeat);
 
     this.handNumber += 1;
+    this.botHistory = [];
+    this.botPhase = 'preflop';
     this.hand = new Hand({
       players: eligible.map(({ seat, index }) => ({ id: seat.userId, stack: seat.stack, seatIndex: index })),
       dealerIndex: dealerIndex < 0 ? 0 : dealerIndex,
@@ -624,6 +701,7 @@ class Room extends EventEmitter {
     const actor = this.hand.actingPlayer;
     if (!actor || actor.id !== userId) throw new RoomError('Сейчас не ваш ход');
     try {
+      this.botPhase = this.hand.phase;
       this.hand.act(userId, action, amount);
     } catch (error) {
       if (error instanceof ActionError) throw new RoomError(error.message);
@@ -727,12 +805,14 @@ class Room extends EventEmitter {
       const current = this.hand.actingPlayer;
       if (!current || current.id !== playerId) return;
       // Время вышло — пас (даже если можно было чек) и место освобождается.
+      this.botPhase = this.hand.phase;
       this.hand.act(playerId, 'fold');
       this.pushLog(`${this.nameOf(playerId)} не успевает походить — пас`);
       this.noteTimeout(playerId);
       this.afterHandProgress();
     }, seconds * 1000);
     this.turnTimer.unref?.();
+    if (seat?.isBot) this.scheduleBot();
   }
 
   // В блекджеке просрочивший ход просто останавливается.
@@ -758,6 +838,10 @@ class Room extends EventEmitter {
   }
 
   clearTurnTimer() {
+    this.botAbort?.abort();
+    this.botAbort = null;
+    clearTimeout(this.botTimer);
+    this.botTimer = null;
     if (this.turnTimer) clearTimeout(this.turnTimer);
     this.turnTimer = null;
     this.turnDeadline = null;
@@ -770,6 +854,8 @@ class Room extends EventEmitter {
   }
 
   dispose() {
+    for (const timer of this.botOwnerTimers.values()) clearTimeout(timer);
+    this.botOwnerTimers.clear();
     this.clearTurnTimer();
     this.clearNextHandTimer();
     for (const seat of this.seats) {
@@ -808,6 +894,8 @@ class Room extends EventEmitter {
     const events = this.hand.events.splice(0);
     for (const event of events) {
       if (event.type === 'action') {
+        this.botHistory.push({ id: event.playerId, phase: event.phase || this.botPhase || 'preflop', action: event.action, amount: event.amount });
+        if (this.botHistory.length > 120) this.botHistory.shift();
         const name = this.nameOf(event.playerId);
         const words = {
           fold: 'фолд',
@@ -1045,6 +1133,7 @@ class Room extends EventEmitter {
         userId: seat.userId,
         name: seat.name,
         photoUrl: seat.photoUrl,
+        isBot: Boolean(seat.isBot),
         // Во время раздачи актуальный стек живёт в движке.
         stack: inHand ? inHand.stack : seat.stack,
         sittingOut: seat.sittingOut,
@@ -1112,6 +1201,7 @@ class Room extends EventEmitter {
           canCall: legal.canCall,
           callAmount: legal.callAmount,
           canRaise: legal.canRaise,
+          canAllIn: legal.canAllIn,
           minRaiseTo: legal.minRaiseTo,
           maxRaiseTo: legal.maxRaiseTo,
           isAllInRaise: legal.isAllInRaise,

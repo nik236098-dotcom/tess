@@ -260,3 +260,26 @@ test('омаха: по четыре карты на руках, шоудаун �
     assert.strictEqual(h.cards.filter((c) => hand.board.includes(c)).length, 3);
   }
 });
+
+test('короткий олл-ин не открывает повторный рейз уже ходившему игроку', () => {
+  const hand = new Hand({ players: players(1000, 130, 1000), dealerIndex: 0, smallBlind: 10, bigBlind: 20 });
+  hand.act('p0', 'raise', 100);
+  hand.act('p1', 'allin');
+  hand.act('p2', 'call');
+  const legal = hand.legalActions('p0');
+  assert.equal(legal.canRaise, false);
+  assert.equal(legal.canAllIn, false);
+  assert.equal(legal.callAmount, 30);
+  assert.throws(() => hand.act('p0', 'allin'), /недоступен/);
+  hand.act('p0', 'call');
+  assert.equal(hand.phase, 'flop');
+});
+
+test('олл-ин против короткого стека не выдаётся за частичный колл', () => {
+  const hand = new Hand({ players: players(100, 1000), dealerIndex: 0, smallBlind: 10, bigBlind: 20 });
+  hand.act('p0', 'allin');
+  assert.equal(hand.legalActions('p1').canAllIn, false);
+  assert.throws(() => hand.act('p1', 'allin'), /недоступен/);
+  hand.act('p1', 'call');
+  assert.ok(hand.complete);
+});

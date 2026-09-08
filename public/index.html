@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/styles.css?v=133" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/croc-theme.css?v=1" />
+  <link rel="stylesheet" href="/amethyst.css?v=1" />
 </head>
 <body>
   <!-- Один набор иконок на всё приложение: контурные, 24×24, currentColor.
@@ -546,44 +547,53 @@
         <div id="wait-line" class="wait-line hidden">Ожидаем игроков…</div>
 
         <div id="action-bar" class="action-bar hidden">
-          <div id="bet-row" class="bet-row hidden">
-            <button id="btn-more" class="ab-more" title="История и чат"><i></i><i></i><i></i></button>
-            <div id="bet-slider" class="bet-slider">
-              <output id="raise-value" class="bet-bubble">$0.00</output>
-              <button id="raise-minus" class="ab-step" aria-label="Меньше">−</button>
-              <input id="raise-range" type="range" min="0" max="100" value="0" />
-              <button id="raise-plus" class="ab-step" aria-label="Больше">+</button>
-            </div>
+          <div id="bet-row" class="bet-row raise-panel hidden" aria-label="Размер рейза">
             <div class="bet-presets">
-              <button class="ab-preset" data-preset="half">1/2</button>
-              <button class="ab-preset" data-preset="twothirds">2/3</button>
-              <button class="ab-preset" data-preset="pot">POT</button>
-              <button class="ab-preset" data-preset="max">MAX</button>
+              <button class="ab-preset" data-preset="half">½ банка<strong></strong></button>
+              <button class="ab-preset" data-preset="pot">Банк<strong></strong></button>
+              <button class="ab-preset" data-preset="double">2× банк<strong></strong></button>
+            </div>
+            <div id="bet-slider" class="bet-slider">
+              <output id="raise-value" class="hidden">$0.00</output>
+              <button id="raise-minus" class="ab-step" aria-label="Уменьшить рейз">−</button>
+              <input id="raise-range" aria-label="Размер рейза" type="range" min="0" max="100" value="0" />
+              <button id="raise-plus" class="ab-step" aria-label="Увеличить рейз">+</button>
+              <label class="raise-input-label">$<input id="raise-input" type="text" inputmode="decimal" aria-label="Рейз до, в долларах" autocomplete="off" /></label>
+            </div>
+            <div class="raise-confirm-row">
+              <button id="raise-cancel">Отмена</button>
+              <button id="raise-confirm">Рейз до $0.00</button>
             </div>
           </div>
           <div class="action-buttons">
-            <button id="btn-fold" class="act act-fold">
-              <i class="act-icon"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></i>
-              <span class="act-text"><b>ФОЛД</b><small>Fold</small></span>
-            </button>
-            <button id="btn-check" class="act act-call">
-              <i class="act-icon"><svg viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5"/></svg></i>
-              <span class="act-text"><b>ЧЕК</b><small>Check</small></span>
-            </button>
-            <button id="btn-call" class="act act-call">
-              <i class="act-icon"><svg viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5"/></svg></i>
-              <span class="act-text"><b>КОЛЛ</b><small>Call</small><em id="call-amount">$0.00</em></span>
-            </button>
-            <button id="btn-raise" class="act act-raise">
-              <i class="act-icon"><svg viewBox="0 0 16 16"><path d="M8 13V3.5M3.5 8L8 3.5 12.5 8"/></svg></i>
-              <span class="act-text"><b id="raise-label">РЕЙЗ</b><small id="raise-sub">Raise</small><em id="raise-amount">$0.00</em></span>
-            </button>
+            <button id="btn-fold" class="act act-fold"><span class="act-text"><b>Fold</b></span></button>
+            <button id="btn-check" class="act act-call"><span class="act-text"><b>Check</b></span></button>
+            <button id="btn-call" class="act act-call"><span class="act-text"><b>Call</b><em id="call-amount">$0.00</em></span></button>
+            <button id="btn-raise" class="act act-raise" aria-expanded="false" aria-controls="bet-row"><span class="act-text"><b id="raise-label">Raise</b><small id="raise-sub" class="hidden"></small><em id="raise-amount" class="hidden"></em></span></button>
+            <button id="btn-allin" class="act act-allin"><span class="act-text"><b>All-in</b><em id="allin-amount">$0.00</em></span></button>
           </div>
           <div id="turn-timer" class="turn-timer"><i></i></div>
         </div>
 
       </footer>
 
+      <aside id="bot-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="bot-title">
+        <div class="sheet-body">
+          <div class="sheet-head"><h3 id="bot-title">Свободное место</h3><button id="bot-close" class="round-btn" aria-label="Закрыть">×</button></div>
+          <div id="bot-add-options">
+            <p class="hint">Бот играет сам: оценивает шансы, выбирает ставки и иногда блефует. Он видит только свои карты и общий борд.</p>
+            <label for="bot-buyin">Стек бота, $</label>
+            <input id="bot-buyin" type="text" inputmode="decimal" autocomplete="off" />
+            <p id="bot-funds" class="hint"></p>
+            <button id="bot-add" class="act act-raise solo">Посадить бота</button>
+            <button id="bot-sit-self" class="act act-call solo">Сесть самому</button>
+          </div>
+          <div id="bot-remove-options" class="hidden">
+            <p class="hint">Бот сбросит карты. После завершения раздачи оставшийся стек вернётся на баланс администратора, который его посадил.</p>
+            <button id="bot-remove" class="act act-fold solo">Убрать бота</button>
+          </div>
+        </div>
+      </aside>
       <aside id="chips-sheet" class="sheet hidden">
         <div class="sheet-body">
           <div class="sheet-head">
@@ -871,6 +881,7 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/app.js?v=94"></script>
+  <script src="/amethyst.js?v=1"></script>
+  <script src="/app.js?v=95"></script>
 </body>
 </html>
