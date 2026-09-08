@@ -136,6 +136,7 @@ const SEAT_SETS = {
 };
 
 function seatAnchor(index, count) {
+  if (crocActive()) return crocAnchor(index, count);
   const set = SEAT_SETS[count] || SEAT_SETS[8];
   const at = set[index % set.length];
   const circle = SEAT_CIRCLES[at];
@@ -545,6 +546,7 @@ const STAGE = {
 };
 
 function fitTable() {
+  syncCrocTheme();
   const viewport = $('table-viewport');
   const canvas = $('table-canvas');
   if (!viewport || !canvas) return;
@@ -2509,6 +2511,7 @@ const normalizeCode = (value) => String(value || '').toUpperCase().replace(/[^A-
 // ——— Отрисовка стола ———
 
 function renderTable() {
+  syncCrocTheme();
   const room = state.room;
   if (!room) return;
 
@@ -2633,6 +2636,8 @@ function renderBoard(room) {
 
 function cardNode(code, small = false, animate = true) {
   const node = document.createElement('div');
+  node.dataset.card = code;
+  node.dataset.rank = code[0];
   // deal-in — карта прилетает из центра стола; вектор и очередь проставит
   // primeDealAnimations() после того, как всё окажется в DOM.
   node.className = `card-face${small ? ' small' : ''}${animate ? ' deal-in is-priming' : ' no-anim'}`;
@@ -2648,6 +2653,10 @@ function cardNode(code, small = false, animate = true) {
   // Два угла, как на настоящей карте: второй перевёрнут.
   const corner = (position) => `<span class="corner ${position}"><b>${rank}</b><i>${suit.symbol}</i></span>`;
   node.innerHTML = corner('tl') + corner('br');
+  const symbol = document.createElement('span');
+  symbol.className = 'croc-card-symbol';
+  symbol.textContent = suit.symbol;
+  node.appendChild(symbol);
   return node;
 }
 
@@ -2815,7 +2824,7 @@ function renderSeats(room) {
     if (seat.inHand && !seat.folded && !seat.isActing && seat.lastAction) node.classList.add('acted');
     if (winnerIds.has(seat.userId)) node.classList.add('winner');
 
-    room.__rout = SEAT_CIRCLES[anchor.at].rout;
+    room.__rout = crocActive() ? 17 : SEAT_CIRCLES[anchor.at].rout;
     const avatarEl = avatarNode(seat, room);
     node.appendChild(avatarEl);
     if (avatarEl.__turnRing) node.appendChild(avatarEl.__turnRing);
@@ -4340,5 +4349,40 @@ function escapeHtml(text) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[ch]));
 }
+
+// Isolated visual experiment. No server/game state is changed by this toggle.
+const crocOriginalTable = {...TABLE};
+const crocOriginalStage = {...STAGE};
+let crocEnabled = true;
+try { crocEnabled = localStorage.getItem('poker-croc-theme-v1') !== 'off'; } catch {}
+function crocActive() {
+  return crocEnabled && (!state.room || ['holdem','omaha'].includes(state.room.game));
+}
+function syncCrocTheme() {
+  const enabled = crocActive();
+  $('screen-table').classList.toggle('croc-theme', enabled);
+  Object.assign(TABLE, enabled ? {width:390,height:600,focusX:.5,focusY:248.5/600} : crocOriginalTable);
+  Object.assign(STAGE, enabled ? {sidePad:0,panelReserve:120,topGap:6} : crocOriginalStage);
+  const button=$('btn-croc-theme');
+  if(button){button.textContent=crocEnabled?'Дизайн: новый':'Дизайн: прежний';button.setAttribute('aria-pressed',String(crocEnabled));}
+}
+function crocAnchor(index,count) {
+  const at=(SEAT_SETS[count]||SEAT_SETS[8])[index % (SEAT_SETS[count]||SEAT_SETS[8]).length];
+  const centers=[[195,477],[69,416],[35,277],[69,125],[195,42],[321,125],[355,277],[321,416]];
+  const bets=[[195,368],[103,379],[112,310],[139,168],[195,148],[251,168],[278,310],[287,379]];
+  const [x,y]=centers[at], [bx,by]=bets[at];
+  return {at,seat:[x/390,y/600],avatar:34,cards:[0,at===0?-53.5:67],bet:[bx-x,by-y],side:'center',betFrac:[bx/390,by/600]};
+}
+const crocButton=document.createElement('button');
+crocButton.id='btn-croc-theme';crocButton.type='button';
+crocButton.addEventListener('click',()=>{
+  crocEnabled=!crocEnabled;
+  try {localStorage.setItem('poker-croc-theme-v1',crocEnabled?'on':'off');}catch{}
+  syncCrocTheme();
+  if(state.room) renderTable();
+  fitTable();
+});
+$('screen-table').appendChild(crocButton);
+syncCrocTheme();
 
 boot();

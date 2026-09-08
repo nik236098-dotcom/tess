@@ -1,0 +1,70 @@
+/* Opt-in visual test; every game style is scoped to the poker screen. */
+.croc-card-symbol{display:none}
+#btn-croc-theme{position:absolute;right:10px;bottom:126px;z-index:15;border:1px solid #a677ca;background:#20112deb;color:#eedcff;border-radius:12px;padding:4px 8px;font:10px sans-serif;cursor:pointer}
+#screen-table.croc-theme{background:#09050f;--table-w:390px;--table-h:600px}
+#screen-table.croc-theme::before,#screen-table.croc-theme::after{display:none}
+#screen-table.croc-theme .table-canvas{background:url('/img/croc-test/table.webp') center top/390px 550px no-repeat}
+#screen-table.croc-theme .seat .seat-avatar{width:34px;height:34px;font-size:14px;background:radial-gradient(circle at 35% 25%,#38333e,#15101c);border:0;color:#efdfb9;transform:translate(-50%,-50%)}
+#screen-table.croc-theme .seat .seat-ring{width:34px;height:34px;transform:translate(-50%,-50%);border:1px solid #ce8bff;border-radius:50%;background:none;box-shadow:0 0 0 1px #48235f,0 0 4px #b348ef88}
+#screen-table.croc-theme .seat.acting .seat-ring{border-color:#8cf2ad;filter:drop-shadow(0 0 3px #65d98e)}
+#screen-table.croc-theme .seat.winner .seat-ring{border-color:#ffe588;filter:drop-shadow(0 0 4px #eac367)}
+#screen-table.croc-theme .seat .seat-badge{display:none}
+#screen-table.croc-theme .seat .seat-plate{width:56px;min-width:56px;max-width:56px;min-height:23px;transform:translate(-50%,21px);padding:0 2px;background:#140b20e6;border:0;border-radius:4px;clip-path:none;filter:none;box-shadow:none}
+#screen-table.croc-theme .seat .seat-plate::after{display:none}
+#screen-table.croc-theme .seat .seat-name{font-size:9px;line-height:10px}
+#screen-table.croc-theme .seat .seat-stack{font-size:10px;line-height:11px}
+#screen-table.croc-theme .seat .pos-badge{width:12px;height:12px;font-size:6px;--rout:17px}
+#screen-table.croc-theme .seat .seat-cards{transform:translate(-50%,48px);gap:0;filter:none;z-index:4}
+#screen-table.croc-theme .seat .seat-cards .card-face{--card-w:26px!important;--card-h:38px!important;rotate:none!important;translate:none!important;margin:0}
+#screen-table.croc-theme .seat .seat-cards .card-face + .card-face{margin:0 0 0 -13px}
+#screen-table.croc-theme .seat.me .seat-cards{transform:translate(-50%,-81px);gap:4px}
+#screen-table.croc-theme .seat.me .seat-cards .card-face{--card-w:39px!important;--card-h:55px!important;margin:0}
+#screen-table.croc-theme .seat.me .seat-cards .card-face + .card-face{margin:0}
+#screen-table.croc-theme .seat .hand-label{transform:translate(-50%,46px);font-size:8px;max-width:112px;background:#190d24;border-color:#804fa6;color:#ebd9ff}
+#screen-table.croc-theme .seat-empty-slot{width:44px;height:44px;transform:translate(-50%,-50%);border:1px dashed #c28bed88;border-radius:50%;background:#26133580;display:grid;place-items:center}
+#screen-table.croc-theme .seat-empty-slot::after{content:'+';font:24px sans-serif;color:#d5a6ef}
+#screen-table.croc-theme .board{left:195px;top:248.5px;gap:4px;transform:translate(-50%,-50%)}
+#screen-table.croc-theme .card-slot{width:39.6px;height:55px;border:1px solid #9c67be55;border-radius:4px;box-sizing:border-box}
+#screen-table.croc-theme .card-slot.filled{border:0}
+#screen-table.croc-theme .board .card-face{--card-w:39.6px;--card-h:55px}
+#screen-table.croc-theme .pot{left:195px;top:306px;width:82px;height:36px;transform:translate(-50%,-50%);background:#130a1c;border:1px solid #c7a962;border-radius:8px;clip-path:none;display:flex;flex-direction:column;justify-content:center;gap:3px;box-sizing:border-box}
+#screen-table.croc-theme .pot::before{content:'БАНК';font:9px sans-serif;color:#d8bf7f}
+#screen-table.croc-theme .pot b{font-size:15px;color:#f2d390}
+#screen-table.croc-theme .seat-bet{transform:translate(calc(-50% + var(--bx)),calc(-50% + var(--by)));animation:none;transition:none;gap:0;font-size:9px;text-shadow:none}
+#screen-table.croc-theme .seat-bet .chips{display:none}
+#screen-table.croc-theme .seat-bet b{position:relative;overflow:hidden;min-width:32px;padding:2px 4px;font:600 9px/12px sans-serif;color:#151828;border:1px solid #dcc876aa;border-radius:999px;background:linear-gradient(115deg,#fff2b3,#f8df80 42%,#e9c84e);box-shadow:inset 0 1px 0 #fffce9cc,0 1px 2px #0003;text-align:center}
+#screen-table.croc-theme .seat-bet b::after{content:'';position:absolute;left:8%;right:8%;top:1px;height:35%;border-radius:999px;background:linear-gradient(#fff9,#fff0)}
+#screen-table.croc-theme .card-face{background:#fff;box-shadow:0 1px 3px #0008,inset 0 0 0 .6px #d5b85f;overflow:hidden;color:#15141b}
+#screen-table.croc-theme .card-face.red{color:#bc1027}
+#screen-table.croc-theme .card-face .corner.br{display:none}
+#screen-table.croc-theme .card-face .corner.tl{left:2px;top:2px;z-index:2;background:#fff;min-width:26%;padding:0 1px 1px 0}
+#screen-table.croc-theme .card-face .corner b{font:700 calc(var(--card-w)*.32)/1 Georgia,serif}
+#screen-table.croc-theme .card-face .corner i{font-size:calc(var(--card-w)*.24);line-height:1}
+#screen-table.croc-theme .card-face .croc-card-symbol{display:grid;position:absolute;inset:26% 8% 5%;place-items:center;font:calc(var(--card-w)*.65)/1 Georgia,serif}
+#screen-table.croc-theme .card-face[data-rank="K"] .croc-card-symbol,#screen-table.croc-theme .card-face[data-rank="Q"] .croc-card-symbol,#screen-table.croc-theme .card-face[data-rank="J"] .croc-card-symbol,#screen-table.croc-theme .card-face[data-card="As"] .croc-card-symbol{display:none}
+#screen-table.croc-theme .card-face.back{box-shadow:0 0 3px #c36bffbb,0 0 6px #a447ed66;border:1px solid #be87e2}
+#screen-table.croc-theme .card-face.back::before,#screen-table.croc-theme .card-face.back::after{display:none}
+#screen-table.croc-theme .controls{background:#100917;border-top:1px solid #9770b1;padding:8px 10px;gap:6px}
+#screen-table.croc-theme .controls .act{min-height:48px;border-radius:9px;border-color:#d5b25c}
+#screen-table.croc-theme .act-fold{background:linear-gradient(#531316,#2b070b)}
+#screen-table.croc-theme .act-call,#screen-table.croc-theme .act-check{background:linear-gradient(#17502a,#082b13)}
+#screen-table.croc-theme .act-raise{background:linear-gradient(#765010,#452a08)}
+#screen-table.croc-theme .act-icon,#screen-table.croc-theme .act-text small{display:none}
+#screen-table.croc-theme .act-text{align-items:center;text-align:center}
+
+#screen-table.croc-theme .card-face[data-card="As"]{background-image:url(/img/croc-test/deck.webp);background-repeat:no-repeat;background-size:557.0224719101124% 121.4395099540582%;background-position:1.5365703749231714% 57.14285714285714%;}
+
+#screen-table.croc-theme .card-face[data-rank="K"]{background-image:url(/img/croc-test/deck.webp);background-repeat:no-repeat;background-size:541.8032786885246% 121.4395099540582%;background-position:24.242424242424242% 57.14285714285714%;}
+
+#screen-table.croc-theme .card-face[data-rank="Q"]{background-image:url(/img/croc-test/deck.webp);background-repeat:no-repeat;background-size:520.4724409448819% 121.4395099540582%;background-position:48.064918851435706% 57.14285714285714%;}
+
+#screen-table.croc-theme .card-face[data-rank="J"]{background-image:url(/img/croc-test/deck.webp);background-repeat:no-repeat;background-size:517.7545691906006% 121.4395099540582%;background-position:72.75% 57.14285714285714%;}
+
+#screen-table.croc-theme .card-face.back{background-image:url(/img/croc-test/deck.webp);background-repeat:no-repeat;background-size:496.9924812030075% 121.4395099540582%;background-position:98.5479797979798% 57.14285714285714%;}
+/* Override legacy directional/fold selectors without altering their fallback. */
+#screen-table.croc-theme .seat .seat-cards{transform:translate(-50%,48px)!important;gap:0!important}
+#screen-table.croc-theme .seat .seat-cards .card-face{margin:0!important}
+#screen-table.croc-theme .seat .seat-cards .card-face + .card-face{margin:0 0 0 -13px!important}
+#screen-table.croc-theme .seat.me .seat-cards{transform:translate(-50%,-81px)!important;gap:4px!important}
+#screen-table.croc-theme .seat.me .seat-cards .card-face{margin:0!important}
+#screen-table.croc-theme .card-face[data-rank="K"]::before,#screen-table.croc-theme .card-face[data-rank="Q"]::before,#screen-table.croc-theme .card-face[data-rank="J"]::before,#screen-table.croc-theme .card-face[data-card="As"]::before{content:'';position:absolute;left:2%;top:1%;width:25%;height:29%;background:#fff;border:0;border-radius:0;z-index:1}
