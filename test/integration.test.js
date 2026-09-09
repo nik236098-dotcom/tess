@@ -431,7 +431,7 @@ test('Crash: offline auto-stop and reconnect credit the wallet exactly once over
 });
 
 
-test('Catalog: all 19 games complete through WebSocket and credit once', { timeout:20000 }, async t => {
+test('Catalog: all 16 games complete through WebSocket and credit once', { timeout:20000 }, async t => {
   const port = await startServer(t, { paymentsFile:null, promoFile:null });
   const { games } = require('../public/casino-rules');
   for (const [game, definition] of Object.entries(games)) {

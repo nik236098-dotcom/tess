@@ -30,6 +30,7 @@ node --check server/arcade/catalog.js
 node --check public/casino-rules.js
 node --check public/casino-art.js
 node --check public/casino-ui.js
+node --check public/casino-motion.js
 systemctl start poker
 systemctl is-active --quiet poker
 trap - ERR

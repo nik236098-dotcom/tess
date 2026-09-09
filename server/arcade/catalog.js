@@ -30,7 +30,6 @@ function validate(game,o){
 }
 function seriesSpec(game,options){
  if(game==='chicken'||game==='balloon'){const size=game==='chicken'?21:25,bad={easy:1,medium:3,hard:5}[options.level];return {size,bad,max:size-bad};}
- if(game==='collection')return {size:12,bad:3,max:9};
  return {max:game==='penalty'?5:game==='pinball'?10:20,p:game==='coin'||game==='rps'?.5:.8};
 }
 function coefficients(game,options){const s=seriesSpec(game,options);let p=1;return Array.from({length:s.max},(_,i)=>{p*=s.size?(s.size-s.bad-i)/(s.size-i):s.p;return rounded(.98/p);});}
@@ -43,10 +42,7 @@ function start(game,previous,amount,options,revision,rng=randomInt){
  const selected=validate(game,options),r={version:1,revision:revision+1,phase:'play',settled:false,bet:amount,payout:0,multiplier:0,result:null,history:previous.history||[],options:selected,game};
  if(games[game].series){r.step=0;r.events=[];r.coefficients=coefficients(game,selected);const spec=seriesSpec(game,selected);if(spec.size)r.order=shuffle(spec.size,rng).map(n=>n<spec.bad?0:1);return r;}
  if(game==='videopoker'){r.deck=shuffle(52,rng);r.cards=r.deck.slice(0,5).map(card);return r;}
- if(game==='scratch'){
-  r.prize=prize(game,rng);const base=r.prize?['win','win','win','a','a','b','b','c','c']:['a','a','b','b','c','c','d','d','e'];
-  r.grid=shuffle(9,rng).map(n=>base[n]);r.revealed=[];return r;
- }
+
  let m=0;r.detail={};
  if(game==='diamonds'){const gems=Array.from({length:5},()=>rng(7)),key=multiplicities(gems).join(',');const values={'5':50,'4,1':5,'3,2':4,'3,1,1':3,'2,2,1':2,'2,1,1,1':.1};m=values[key]||0;r.detail={gems};}
  else if(game==='limbo'){const u=(rng(2**32)+1)/2**32;const value=Math.max(1,Math.min(1000000,rounded(.99/u)));m=value>=selected.target?selected.target:0;r.detail={value,target:selected.target};}
@@ -55,7 +51,7 @@ function start(game,previous,amount,options,revision,rng=randomInt){
  else if(game==='andar'){const deck=shuffle(52,rng),center=card(deck.shift()),dealt=[];for(const id of deck){const c=card(id);dealt.push(c);if(c.rank===center.rank)break;}const winner=dealt.length%2?'andar':'bahar';m=selected.side===winner?(winner==='andar'?1.9:2):0;r.detail={center,dealt,winner};}
  else if(game==='darts'){const area=rng(1000000)/1000000,angle=rng(1000000)/1000000*Math.PI*2;m=area<.01?20:area<.09?5:area<.36?1:.17;r.detail={radius:Math.sqrt(area),angle};}
  else if(game==='bowling'){const fallen=Array.from({length:10},()=>rng(2)===1),count=fallen.filter(Boolean).length;m=({6:.5,7:1,8:3,9:20,10:443})[count]||0;r.detail={fallen,count};}
- else if(game==='cases'||game==='fishing'){m=prize(game,rng);r.detail={prize:m};}
+ else if(game==='fishing'){m=prize(game,rng);r.detail={prize:m};}
  else if(game==='race'){const order=shuffle(4,rng);m=order[0]===selected.side?3.92:0;r.detail={order,winner:order[0]};}
  else fail('Игра не поддерживается');
  return finish(r,m);
@@ -70,12 +66,9 @@ function act(game,previous,action,index,revision,rng=randomInt){
   if(!Array.isArray(index)||index.length>5||new Set(index).size!==index.length||index.some(n=>!integer(n,0,4)))fail('Отметьте карты, которые нужно оставить');
   let next=5;r.cards=r.cards.map((c,i)=>index.includes(i)?c:card(r.deck[next++]));r.held=index;const [name,m]=evaluate(r.cards);r.detail={combination:name};return finish(r,m);
  }
- if(game==='scratch'){
-  if(!integer(index,0,8)||r.revealed.includes(index))fail('Эта ячейка уже открыта');r.revealed.push(index);r.revision++;return r.revealed.length===9?finish(r,r.prize):r;
- }
  if(!g.series)fail('Действие не поддерживается');
  let safe=true,event={};
- if(r.order){if(index!==0)fail('Нажмите следующий шаг');safe=Boolean(r.order[r.step]);event={safe,symbol:game==='collection'?r.step%7:null};}
+ if(r.order){if(index!==0)fail('Нажмите следующий шаг');safe=Boolean(r.order[r.step]);event={safe};}
  else if(game==='coin'){if(!integer(index,0,1))fail('Выберите сторону');const opponent=rng(2);safe=index===opponent;event={choice:index,opponent,safe};}
  else if(game==='rps'){if(!integer(index,0,2))fail('Выберите жест');const opponent=rng(3);if(index===opponent){r.last={choice:index,opponent,tie:true};r.revision++;return r;}safe=(index-opponent+3)%3===1;event={choice:index,opponent,safe};}
  else if(game==='penalty'){if(!integer(index,0,4))fail('Выберите угол');const opponent=rng(5);safe=opponent!==index;event={choice:index,opponent,safe};}
@@ -90,7 +83,6 @@ function publicState(game,r){
  if(r.phase==='bet')return out;
  if(games[game].series)Object.assign(out,{step:r.step,events:r.events,last:r.last,coefficients:r.coefficients,available:r.phase==='play'?cents(r.bet,r.step?r.coefficients[r.step-1]:1):r.payout});
  if(game==='videopoker')Object.assign(out,{cards:r.cards,held:r.held||[]});
- if(game==='scratch')Object.assign(out,{revealed:r.revealed,grid:r.grid.map((n,i)=>r.revealed.includes(i)?n:null),prize:r.phase==='done'?r.prize:undefined});
  if(r.phase==='done')out.detail=r.detail||null;
  return out;
 }

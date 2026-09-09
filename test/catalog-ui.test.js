@@ -9,10 +9,10 @@ function harness(id){
  const ctx=vm.createContext({state,$,document:{querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},performance:{now:()=>0},structuredClone,
  send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),haptic(){},toast(){},
  requestAnimationFrame:f=>{const id=++next;frames.set(id,f);return id;},cancelAnimationFrame:id=>frames.delete(id)});
- for(const file of ['casino-rules','casino-art','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
+ for(const file of ['casino-rules','casino-art','casino-motion','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
  vm.runInContext(`CasinoUI.prepare('${id}');`,ctx);ctx.bindArcade();
  const deliver=round=>ctx.onArcadeState({game:id,config:game.config(id),balance:100000,...game.publicState(id,round),requestId:state.ag.pending?.id});
- const advance=()=>{const list=[...frames.values()];frames.clear();for(const f of list)f(10000);};
+ const advance=(now=10000)=>{const list=[...frames.values()];frames.clear();for(const f of list)f(now);};
  const click=(container,key,value)=>{const target={dataset:{[key]:value},disabled:false,closest:selector=>selector===`[data-${key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())}]`?target:null};$(container).dispatch('click',target);};
  return {ctx,state,$,sent,deliver,advance,frames,click};
 }
@@ -47,7 +47,25 @@ test('game choices preserve native inputs and map numeric values to numbers',()=
  }
  const h=harness('limbo');h.deliver(game.initial());h.$('ag-settings').dispatch('change',{id:'cg-target',value:'3,50'});h.ctx.agRequest('start');assert.equal(h.sent.at(-1).options.target,3.5);
 });
-test('catalog launchers contain all 19 distinct games and no baccarat duplicate',()=>{
+test('catalog launchers contain all 16 distinct games and no baccarat duplicate',()=>{
  const h=harness('diamonds'),html=h.$('casino-catalog').innerHTML;
- const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,ids);assert.equal(new Set(idsInHtml).size,19);assert.ok(!html.includes('data-arcade="baccarat"'));
+ const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,ids);assert.equal(new Set(idsInHtml).size,16);assert.ok(!html.includes('data-arcade="baccarat"'));
+});
+
+test('active animations lock clicks and stop permanently when leaving any game',()=>{
+ for(const id of ids){
+  const h=harness(id);h.deliver(game.initial());h.ctx.agRequest('start');
+  let r=game.start(id,game.initial(),100,structuredClone(games[id].defaults),0,n=>n-1);r.settled=r.phase==='done';h.deliver(r);
+  if(games[id].series){h.ctx.agRequest('pick',{index:0});r=game.actGame(id,r,'ag_pick',0,r.revision,n=>n-1);r.settled=r.phase==='done';h.deliver(r);}
+  h.advance(100);assert.equal(h.state.ag.animating,true,id);assert.equal(h.$('ag-main').disabled,true,id);assert.equal(h.frames.size,1,id);
+  const count=h.sent.length;h.$('ag-main').dispatch('click',{});h.click('ag-stage','cgPick','0');assert.equal(h.sent.length,count,id);
+  h.ctx.stopArcade();h.advance(10000);assert.equal(h.state.ag.animating,false,id);assert.equal(h.frames.size,0,id);
+ }
+});
+test('scene markup uses project textures and generated assets rather than placeholder drawings',()=>{
+ const h=harness('diamonds');h.deliver(game.initial());
+ assert.match(h.$('casino-catalog').innerHTML,/cg-sprite/);
+ for(const id of ['cases','collection','scratch'])assert.ok(!h.$('casino-catalog').innerHTML.includes(`data-arcade="${id}"`));
+ assert.match(fs.readFileSync('public/casino-ui.css','utf8'),/img\/catalog\/objects.webp/);
+ for(const asset of ['objects','environments'])assert.ok(fs.statSync(`public/img/catalog/${asset}.webp`).size>10000);
 });

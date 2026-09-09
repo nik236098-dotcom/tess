@@ -109,7 +109,40 @@ class Accounts {
       account.username = user.username || null;
       this.scheduleSave();
     }
+    this.settleRemovedGames(account);
     return account;
+  }
+
+  // Retired games cannot strand a stake. Keep a settled audit record, including
+  // the old round, and persist the credit and marker in the same atomic write.
+  settleRemovedGames(account) {
+    const oldRounds = account.arcadeRounds;
+    if (!oldRounds) return;
+    let balance = account.balance;
+    const rounds = { ...oldRounds };
+    let changed = false;
+    for (const game of ['cases', 'collection', 'scratch']) {
+      const r = oldRounds[game];
+      if (!r || r.settled || r.retired || !['play', 'done'].includes(r.phase)) continue;
+      const credit = r.phase === 'play' ? r.bet : r.payout;
+      if (!Number.isSafeInteger(credit) || credit < 0 || balance + credit > MAX_BALANCE) continue;
+      balance += credit;
+      rounds[game] = { ...r, retired: true, retiredFrom: r.phase, phase: 'done', settled: true,
+        payout: credit, multiplier: r.bet ? credit / r.bet : 0,
+        result: credit > r.bet ? 'win' : credit === r.bet ? 'push' : 'lose', revision: r.revision + 1 };
+      changed = true;
+    }
+    if (!changed) return;
+    const before = account.balance;
+    account.balance = balance;
+    account.arcadeRounds = rounds;
+    try { this.flush({ strict: true }); }
+    catch (error) {
+      account.balance = before;
+      account.arcadeRounds = oldRounds;
+      throw new AccountError('Не удалось сохранить возврат ставки. Попробуйте войти снова.');
+    }
+    this.onChange?.(account);
   }
 
   get(userId) {

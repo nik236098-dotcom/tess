@@ -64,7 +64,7 @@ function onArcadeState(message) {
   if(action==='open'&&message.options) a.options[a.game]=structuredClone(message.options);
   const changed=!previous||previous.revision!==message.revision;
   if(agCatalog()&&changed){a.cgPrevious=previous;CasinoUI.changed();}
-  if(changed&&((message.phase==='done'&&(action==='start'||(agCatalog()&&action==='pick')))||(agCatalog()&&message.phase==='play'&&((action==='pick'&&a.game!=='scratch')||(action==='start'&&a.game==='videopoker'))))) {
+  if(changed&&((message.phase==='done'&&(action==='start'||(agCatalog()&&action==='pick')))||(agCatalog()&&message.phase==='play'&&(action==='pick'||(action==='start'&&a.game==='videopoker'))))) {
     a.animating=true; renderArcade(); agAnimateResult(message); return;
   }
   renderArcade();
