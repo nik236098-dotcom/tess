@@ -33,6 +33,7 @@ function afterRender(){
  $('screen-ag').classList.toggle('is-slots',a.game==='slots');
  $('screen-ag').classList.toggle('is-andar',a.game==='andar');
  $('screen-ag').classList.toggle('is-darts',a.game==='darts');
+ $('screen-ag').classList.toggle('is-bowling',a.game==='bowling');
  $('ag-chicken-step').hidden=a.game!=='chicken'||!live;
  $('screen-ag').classList.toggle('vp-is-live',a.game==='videopoker'&&live);
  if(a.game==='videopoker')$('ag-subtitle').textContent='Jacks or Better';
@@ -48,6 +49,7 @@ function afterRender(){
  }
  if(a.game==='andar'&&!pending)main.textContent=a.animating?'Раздаём карты…':'Раздать карты';
  if(a.game==='darts')DartsGame.controls();
+ if(a.game==='bowling'&&!pending){main.disabled=agLocked()||!BowlingScene.ready();main.textContent=a.animating?'Шар на дорожке…':a.pending?'Подождите…':BowlingScene.ready()?'Бросить шар':'Загружаем 3D…';}
  if(a.game==='slots'&&!pending)main.textContent=a.animating?'Барабаны крутятся…':'Крутить';
  if(a.game==='coin'&&!live&&!pending)main.textContent=a.animating?'Монета в воздухе…':'Начать раунд';
  if(!live)return;
@@ -60,6 +62,7 @@ function afterRender(){
 function main(){
  const a=state.ag;if(!isGame(a.game))return false;
  if(a.game==='darts')return DartsGame.enqueue();
+ if(a.game==='bowling'&&!BowlingScene.ready()&&!(a.info?.phase==='done'&&!a.info.settled)){toast('Дождись загрузки 3D-сцены');return true;}
  if(a.info?.phase==='play'&&a.game==='videopoker'){agRequest('pick',{index:[...(a.held||[])]});return true;}
  return false;
 }
@@ -170,13 +173,14 @@ function board(){
  }
  else if(a.game==='andar')html=andarBoard(info,a.animating);
  else if(a.game==='darts')html=DartsGame.board();
- else if(a.game==='bowling')html=`<div class="cg-scene cg-bowling">${plaque('BOWLING')}<div class="cg-pins">${Array.from({length:10},(_,i)=>`<div class="cg-pin" data-cg-pin="${i}" style="left:${[36,45,54,63,41,50,59,45,54,50][i]}%;top:${[22,22,22,22,28,28,28,34,34,40][i]}%">${art('pin')}</div>`).join('')}</div><div id="cg-bowling-ball" class="cg-bowling-ball">${art('bowling')}</div></div>${caption(done?`Сбито ${d.count} из 10${d.count===10?' · СТРАЙК':''}`:'Шар · дорожка · десять кеглей')}`;
+ else if(a.game==='bowling')html=BowlingScene.board(info,a.animating);
  else if(a.game==='balloon')html=`<div class="cg-scene cg-balloon-scene">${plaque('PUMP')}<div class="cg-balloon" id="cg-balloon">${art('balloon')}<i class="cg-balloon-string"></i></div><div class="cg-pump"><i id="cg-pump-handle"></i><b></b><span></span></div><div class="cg-balloon-value">${agNumber(visual?.multiplier||1)}×</div>${particles()}</div>${caption(last?.safe===false?'Шар лопнул':`Успешных качков: ${visibleStep}`)}${live?button('Надуть ещё',0,locked):''}`;
  else if(a.game==='race')html=`<div class="cg-scene cg-race">${plaque('NIGHT RACE')}<div class="cg-race-finish"></div>${Array.from({length:4},(_,i)=>`<div class="cg-race-lane ${done&&d.winner===i?'is-winner':''}" style="--lane:${i}"><div class="cg-racer" data-cg-racer="${i}">${art('race')}<small>${i+1}</small></div></div>`).join('')}</div>${caption(done?`Первым финишировал №${d.winner+1}`:'Четыре участника · один финиш')}`;
  else if(a.game==='pinball')html=`<div class="cg-scene cg-pinball-scene"><div class="cg-pinball">${plaque('AMETHYST')}<div class="cg-pinball-rail"></div>${CasinoMotion.bumpers.map(([x,y],i)=>`<div class="cg-bumper" data-cg-bumper="${i}" style="left:${x}%;top:${y}%">${art('pinball')}</div>`).join('')}<i class="cg-flipper cg-flipper-left"></i><i class="cg-flipper cg-flipper-right"></i><div class="cg-pinball-ball" id="cg-pinball-ball"></div><div class="cg-drain"></div></div></div>${caption(`Отскоков: ${visibleStep}`)}${live?`<div class="cg-choices">${button('Левая лопатка',0,locked)}${button('Правая лопатка',1,locked)}</div>`:''}`;
  else if(a.game==='fishing')html=`<div class="cg-scene cg-fishing">${plaque('DEEP WATER')}<div class="cg-fishing-line" id="cg-fishing-line"><i></i></div><div id="cg-fish" class="cg-fish">${art('fish')}</div><div class="cg-bubbles"><i></i><i></i><i></i></div><b class="cg-fishing-prize">${done?d.prize?agNumber(d.prize)+'×':'Пусто':''}</b></div>${caption(done?'Улов поднят':'Забрось удочку и открой свой улов')}`;
  $('ag-stage').innerHTML=`<div class="cg-board cg-game-${g.kind} ${a.animating?'is-animating':''}">${html}</div>`;
  if(a.game==='darts'){DartsGame.paint();return;}
+ if(a.game==='bowling'){paint(info||{},a.animating?a.cgTime||0:done?1:0);return;}
  if(a.game==='sicbo'||a.game==='chicken')paint(info||{},a.animating?a.cgTime||0:1);
  else if(!a.animating&&info&&info.phase!=='bet'&&(info.last||done))paint(info,1);
  else if(a.animating)paint(info,a.cgTime||0);
@@ -205,7 +209,7 @@ function paint(info,t){
  }
 
  if(game==='darts')DartsScene.paint(stage,f,info);
- if(game==='bowling'){style('#cg-bowling-ball','top',f.y+'%');transform('#cg-bowling-ball',`translate(-50%,-50%) scale(${f.scale}) rotate(${f.rotation}deg)`);style('#cg-bowling-ball','opacity',t>.85?Math.max(0,(1-t)/.15):1);f.pins.forEach((p,i)=>{transform(`[data-cg-pin="${i}"]`,`translate(-50%,-100%) translate(${(i%2?1:-1)*p.fall*20}px,${-p.fall*15}px) rotate(${p.angle}deg)`);style(`[data-cg-pin="${i}"]`,'opacity',1-p.fall*.9);});}
+ if(game==='bowling')BowlingScene.render(el('.bw-viewport'),info,t);
  if(game==='balloon'){transform('#cg-balloon',`translateX(-50%) scale(${f.scale})`);style('#cg-balloon','opacity',f.burst?0:1);transform('#cg-pump-handle',`translateY(${f.pump*16}px)`);toggle('.cg-balloon-scene','is-burst',f.burst);style('.cg-particles','--burst',f.burstProgress);}
  if(game==='race')f.cars.forEach((c,i)=>{style(`[data-cg-racer="${i}"]`,'top',c.y+'%');transform(`[data-cg-racer="${i}"]`,`translate(-50%,-50%) rotate(${t<1?Math.sin(t*20+i)*1.2:0}deg)`);});
  if(game==='pinball'){style('#cg-pinball-ball','left',f.x+'%');style('#cg-pinball-ball','top',f.y+'%');CasinoMotion.bumpers.forEach((_,i)=>toggle(`[data-cg-bumper="${i}"]`,'is-impact',f.impact&&i===last.bumper));transform(last.choice?'.cg-flipper-right':'.cg-flipper-left',`rotate(${t<.25?(last.choice?-1:1)*28*Math.sin(t/.25*Math.PI):0}deg)`);}
@@ -256,6 +260,7 @@ function boardEvent(event){
 
 }
 function bind(){
+ $('ag-stage').addEventListener('bowlingready',()=>{if(state.ag.game==='bowling')afterRender();});
  $('ag-chicken-step').addEventListener('click',()=>{if(state.ag.game==='chicken'&&state.ag.info?.phase==='play'&&!agLocked())agRequest('pick',{index:0});});
  $('ag-settings').addEventListener('click',settingEvent);
  $('ag-stage').addEventListener('click',boardEvent);

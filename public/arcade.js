@@ -32,6 +32,7 @@ function openArcade(game) {
   $('screen-ag').classList.toggle('is-slots',game==='slots');
   $('screen-ag').classList.toggle('is-andar',game==='andar');
   $('screen-ag').classList.toggle('is-darts',game==='darts');
+  $('screen-ag').classList.toggle('is-bowling',game==='bowling');
   $('ag-chicken-step').hidden=true;
   $('screen-ag').classList.remove('vp-is-live');
   if(agCatalog())CasinoUI.prepare(game);

@@ -30,7 +30,7 @@ test('held video cards never flip or move during an exchange',()=>{
 test('bowling collision happens before pins fall, and standing pins stay upright',()=>{
  const info={detail:{fallen:[true,false,true,false,false,false,false,false,false,false]}};
  assert.equal(motion.frame('bowling',info,null,.5).pins[0].fall,0);
- const end=motion.frame('bowling',info,null,1);assert.equal(end.pins[0].fall,1);assert.equal(end.pins[1].fall,0);assert.equal(end.y,20);
+ const end=motion.frame('bowling',info,null,1);assert.equal(end.pins[0].fall,1);assert.equal(end.pins[1].fall,0);assert.equal(end.z,require('../public/bowling-scene').END);
 });
 test('pinball paths stay outside all bumper interiors and reach the selected bumper surface',()=>{
  for(let choice=0;choice<2;choice++)for(let bumper=0;bumper<3;bumper++)for(const safe of [true,false]){

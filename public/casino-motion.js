@@ -6,7 +6,7 @@
  const out=n=>1-(1-clamp(n))**3;
  const phase=(t,a,b)=>clamp((t-a)/(b-a));
  const dartsTiming={launch:.12,impact:.64};
- const durations={diamonds:1900,videopoker:1400,sicbo:2700,chicken:1450,coin:2100,rps:1600,slots:3200,andar:3200,darts:1400,bowling:2600,balloon:1450,race:3800,pinball:2100,fishing:2800};
+ const durations={diamonds:1900,videopoker:1400,sicbo:2700,chicken:1450,coin:2100,rps:1600,slots:3200,andar:3200,darts:1400,bowling:3300,balloon:1450,race:3800,pinball:2100,fishing:2800};
  function duration(game,info){return game==='andar'?Math.min(18000,1500+(info.detail?.dealt.length||0)*420):durations[game]||1600;}
  // Paths approach a bumper tangentially, reverse at its surface, and return to a flipper.
  // Bumper centers: [30,24], [70,35], [44,54]; radius 9 scene units.
@@ -33,7 +33,7 @@
     const x=150+119*radius*Math.sin(angle),y=151-119*radius*Math.cos(angle);
     return {x,y:y+(370-y)*(1-travel),scale:.72+1.1*(1-travel),opacity:t<dartsTiming.launch?0:Math.min(1,u*12),hit:t>=dartsTiming.impact,rotation:0,ripple:phase(t,dartsTiming.impact,.88)};
    }
-   case 'bowling':{const u=ease(phase(t,0,.6)),travel=phase(t,.6,.93),rows=[22,22,22,22,28,28,28,34,34,40];return {y:90-50*u-20*travel,scale:1-.65*u,rotation:540*(u+travel*.3),pins:Array.from({length:10},(_,i)=>{const hit=.6+(40-rows[i])/20*.33,v=phase(t,hit,Math.min(1,hit+.12));return {fall:d.fallen?.[i]?ease(v):0,angle:(i%2?1:-1)*75*ease(v)};})};}
+   case 'bowling':return (typeof module==='object'&&module.exports?require('./bowling-scene'):root.BowlingScene).frame(info,t);
    case 'balloon':{const old=previous?.step||0,now=info.step||old;return {scale:1+.018*(old+(now-old)*out(phase(t,0,.7))),pump:Math.sin(phase(t,0,.55)*Math.PI),burst:last.safe===false&&t>.68,burstProgress:phase(t,.68,1)};}
    case 'race':return {cars:[0,1,2,3].map(i=>{const rank=d.order?.indexOf(i)??i;return {y:85-(70-rank*7)*ease(t)+(t===1?0:Math.sin(t*9+i)*4*Math.sin(t*Math.PI)),finished:t===1};})};
    case 'pinball':return pinball(last,t,previous);
