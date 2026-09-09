@@ -144,3 +144,18 @@
 #screen-bj.premium-table > .g-result,#screen-rl.premium-table > .g-result {
   top:var(--pt-result-y,38%)!important;
 }
+
+/* Card motion is sequenced from the deck by Web Animations, never on render. */
+#screen-bj .bj-card { animation:none!important; }
+#screen-bj .pt-card-face { display:none; }
+.bj-classic-ready #screen-bj .pt-card-face { display:block; }
+.bj-classic-ready #screen-bj .pt-card-fallback { display:none; }
+#screen-bj .pt-card-fallback { position:absolute; inset:5px; font:700 17px/1 Georgia,serif; }
+#screen-bj .pt-card-fallback b { position:absolute; top:0; left:0; }
+#screen-bj .pt-card-fallback b:last-child { top:auto; left:auto; bottom:0; right:0; transform:rotate(180deg); }
+#screen-bj .pt-card-fallback small { display:block; font-size:13px; }
+#screen-bj .pt-card-fallback i { position:absolute; inset:0; display:grid; place-items:center; font:30px Georgia,serif; }
+#screen-rl .rl-clear { display:grid; place-items:center; }
+#screen-rl .rl-clear svg { display:block; width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; transform:translateY(-1px); }
+
+#screen-bj .bj-card.is-slot { visibility:hidden; pointer-events:none; }

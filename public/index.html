@@ -23,8 +23,10 @@
   <link rel="stylesheet" href="/amethyst.css?v=1" />
   <link rel="stylesheet" href="/game-standard.css?v=5" />
   <script src="/game-result.js?v=3"></script>
-  <link rel="stylesheet" href="/premium-tables.css?v=1" />
+  <link rel="stylesheet" href="/premium-tables.css?v=2" />
   <script src="/roulette-view.js?v=1"></script>
+  <script src="/classic-cards.js?v=1"></script>
+  <script src="/blackjack-deal.js?v=1"></script>
   <script defer src="/game-layout.js?v=2"></script>
 </head>
 <body>
@@ -707,7 +709,7 @@
         <div id="rl-cells" class="rl-cells" role="group" aria-label="Поле ставок"></div>
         <div class="pt-controls">
           <button id="rl-spin" class="bj-bet-btn rl-spin"><b>Крутить</b></button>
-          <div class="pt-stake-label"><span>Размер фишки</span><span id="rl-total">На поле $0.00</span><button id="rl-clear" class="rl-clear hidden" aria-label="Очистить ставки">↶</button></div>
+          <div class="pt-stake-label"><span>Размер фишки</span><span id="rl-total">На поле $0.00</span><button id="rl-clear" class="rl-clear hidden" aria-label="Очистить ставки"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h10a6 6 0 0 1 0 12M4 9l5-5M4 9l5 5"/></svg></button></div>
     <div class="bj-bet rl-bet"><div class="bj-bet-text"><span class="pt-currency" aria-hidden="true">$</span><button type="button" id="rl-amount" aria-label="Размер фишки">$1.00</button></div><button id="rl-minus" class="bj-step" aria-label="Уменьшить вдвое">½</button><button id="rl-plus" class="bj-step" aria-label="Увеличить вдвое">2×</button><button id="rl-max" class="bj-step">Max</button></div>
         </div>
         <div id="rl-keypad" class="bj-keypad rl-keypad hidden">
@@ -950,6 +952,6 @@
   <script src="/hilo.js?v=4"></script>
   <script src="/client-connection.js?v=1"></script>
   <script src="/telegram-display.js?v=1"></script>
-  <script src="/app.js?v=108"></script>
+  <script src="/app.js?v=109"></script>
 </body>
 </html>

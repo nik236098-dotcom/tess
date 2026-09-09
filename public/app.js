@@ -508,7 +508,7 @@ function handleMessage(message) {
       }
       break;
     case 'error':
-      state.rl.pending=false;state.bj.pending=false;
+      state.rl.pending=false;state.bj.pending=false;state.bj.starting=false;
       if(state.rl.open)renderRoulette();
       if(state.bj.open)renderBlackjack();
       state.topup.busy = false;
@@ -649,6 +649,8 @@ function fitBlackjack() {
 
 function openBlackjack() {
   state.bj.open = true;
+  ClassicCards.load();
+  state.bj.playerShown=null;
   state.bj.dealerShown = null;
   state.bj.shownBalance = null;
   bjShowBalance(state.balance, true);
@@ -665,6 +667,7 @@ function openBlackjack() {
 
 function closeBlackjack() {
   closeBjKeypad(false);
+  stopBjDeal();
   state.bj.open = false;
   $('screen-bj').classList.add('hidden');
   showLobby();
@@ -677,16 +680,14 @@ function bjCard(code) {
     node.innerHTML = '<span class="bj-suit">♠</span>';
     return node;
   }
-  const rank=({A:'1',T:'10',J:'jack',Q:'queen',K:'king'})[code[0]]||code[0];
-  const suit=({s:'spade',h:'heart',d:'diamond',c:'club'})[code[1]];
   node.className='bj-card'+(['h','d'].includes(code[1])?' red':'');
-  node.innerHTML=`<svg class="pt-card-face" viewBox="0 0 169.075 244.64" role="img" aria-label="${code}"><use href="/img/classic/deck.svg#${suit}_${rank}"></use></svg>`;
+  node.innerHTML=ClassicCards.face(code);
   return node;
 }
 
 function submitBjBet() {
   if(state.bj.pending||state.bj.revealing||state.bj.view?.phase==='play'||!state.connected)return;
-  state.bj.pending=true;GameResult.hide($('bj-result'));renderBlackjack();
+  state.bj.pending=true;state.bj.starting=true;GameResult.hide($('bj-result'));renderBlackjack();
   send({type:'bj_bet',amount:state.bj.bet});
 }
 
@@ -759,45 +760,56 @@ function closeBjKeypad(apply) {
 // Новое состояние от сервера. Карты дилера открываем по одной: сначала
 // переворот закрытой, потом каждая добранная с паузой — как за живым
 // столом, а не всё сразу. Итог и баланс показываем после последней.
-function onBlackjackState(message) {
-  const prev = state.bj.view;
-  state.bj.pending=false;
-  state.bj.view = message;
-  if (message.phase !== 'bet') state.bj.bet = message.bet;
-  state.balance = message.balance;
-  renderAccount();
+function stopBjDeal() {
+  state.bj.dealToken=(state.bj.dealToken||0)+1;
+  if(state.bj.dealAnimation){state.bj.dealAnimation.cancel();state.bj.dealAnimation=null;}
+  state.bj.revealing=false;
+}
 
-  const bj = state.bj;
-  bj.timers.forEach(clearTimeout);
-  bj.timers = [];
-  bj.revealing = false;
-
-  const target = message.dealer.cards;
-  const shown = bj.dealerShown || [];
-  const needsReveal = message.phase === 'done' && prev && prev.phase === 'play'
-    && (shown.length < target.length || shown.some((c, i) => c !== target[i]));
-  if (needsReveal) {
-    bj.revealing = true;
-    // Шаг 1: переворачиваем закрытую карту, дальше — по одной добранной.
-    const steps = [];
-    steps.push(target.slice(0, Math.max(2, shown.length)));
-    for (let n = steps[0].length + 1; n <= target.length; n++) steps.push(target.slice(0, n));
-    let delay = 450;
-    steps.forEach((cards, i) => {
-      bj.timers.push(setTimeout(() => {
-        bj.dealerShown = cards;
-        if (i === steps.length - 1) bj.revealing = false;
-        renderBlackjack();
-      }, delay));
-      delay += 700;
-    });
-    // Пока карты не открыты, ставка уже списана, а выигрыш ещё не пришёл.
-    renderBlackjack();
-    return;
-  }
-  bj.dealerShown = target.slice();
-  if (message.phase === 'bet') bj.dealerShown = [];
+async function onBlackjackState(message) {
+  const bj=state.bj,prev=bj.view;
+  const fresh=bj.starting||Boolean(prev&&((prev.phase==='bet'&&message.phase!=='bet')||(prev.phase==='done'&&message.phase==='play')));
+  const oldDealer=bj.dealerShown||prev?.dealer.cards||[];
+  const oldHands=bj.playerShown||prev?.hands.map(h=>h.cards)||[];
+  stopBjDeal();const token=bj.dealToken;
+  bj.pending=false;bj.starting=false;bj.view=message;
+  if(message.phase!=='bet')bj.bet=message.bet;
+  state.balance=message.balance;renderAccount();
+  const targetHands=message.hands.map(h=>h.cards);
+  const sequence=BlackjackDeal.plan(oldDealer,oldHands,message.dealer.cards,targetHands,fresh);
+  const animate=bj.open&&!reducedMotion()&&Boolean(prev||fresh)&&message.phase!=='bet';
+  bj.revealing=animate&&sequence.steps.length>0;
+  bj.dealerShown=animate?sequence.initial.dealer:message.dealer.cards.slice();
+  bj.playerShown=animate?sequence.initial.hands:targetHands.map(h=>h.slice());
   renderBlackjack();
+  await ClassicCards.load();
+  if(token!==bj.dealToken)return;
+  if(!animate){bj.revealing=false;renderBlackjack();return;}
+  for(const step of sequence.steps){
+    if(token!==bj.dealToken||!bj.open)return;
+    bj.dealerShown=step.dealer;bj.playerShown=step.hands;renderBlackjack();
+    const container=step.side==='dealer'?$('bj-dealer-cards'):$('bj-hands').children[step.hand];
+    const card=container?.querySelectorAll('.bj-card')[step.index];
+    if(card&&typeof card.animate==='function'){
+      const to=card.getBoundingClientRect(),from=document.querySelector('#screen-bj .pt-deck').getBoundingClientRect();
+      const dx=from.left+from.width/2-to.left-to.width/2,dy=from.top+from.height/2-to.top-to.height/2;
+      const frames=step.kind==='flip'?[{transform:'rotateY(90deg)'},{transform:'rotateY(0deg)'}]:[
+        {transform:`translate(${dx}px,${dy}px) rotate(-12deg) scale(${from.width/to.width})`,opacity:1},
+        {transform:'translate(0,0) rotate(0deg) scale(1)',opacity:1}
+      ];
+      card.style.zIndex='10';
+      try{
+        const animation=card.animate(frames,{duration:step.kind==='flip'?340:520,easing:'cubic-bezier(.22,.65,.3,1)',fill:'both'});
+        bj.dealAnimation=animation;await animation.finished;
+        animation.cancel();if(bj.dealAnimation===animation)bj.dealAnimation=null;
+      }catch{/* Closing the game cancels the active flight. */}
+      card.style.zIndex='';
+    }
+    if(token!==bj.dealToken)return;
+    await new Promise(resolve=>setTimeout(resolve,65));
+  }
+  if(token!==bj.dealToken)return;
+  bj.revealing=false;renderBlackjack();
 }
 
 // Сумма руки по кодам карт — для плашки дилера во время открытия.
@@ -838,26 +850,26 @@ function bjShowBalance(target, immediate = false) {
 }
 
 // Добавляем только новые карты: старые не перерисовываем и не анимируем заново.
-function bjSync(container, cards, flipFirstHidden = false) {
-  const existing = Array.from(container.children);
+function bjSync(container, cards, flipFirstHidden = false, slots = cards.length) {
+  for(const slot of container.querySelectorAll('.is-slot'))slot.remove();
+  const existing = Array.from(container.querySelectorAll('.bj-card'));
   const samePrefix = existing.length <= cards.length
     && existing.every((node, i) => node.dataset.code === cards[i] || (node.dataset.code === '??' && flipFirstHidden));
   if (!samePrefix) container.innerHTML = '';
-  const nodes = Array.from(container.children);
+  const nodes = Array.from(container.querySelectorAll('.bj-card'));
   cards.forEach((code, i) => {
     const node = nodes[i];
     if (node && node.dataset.code === code) return;
     const card = bjCard(code);
     card.dataset.code = code;
     if (node) {
-      card.classList.add('flip-in');
       node.replaceWith(card);
     } else {
-      card.style.animationDelay = `${(i - nodes.length) * 90}ms`;
       container.appendChild(card);
     }
   });
-  container.classList.toggle('is-many', cards.length > 2);
+  for(let i=cards.length;i<slots;i++){const slot=document.createElement('div');slot.className='bj-card is-slot';slot.setAttribute('aria-hidden','true');container.appendChild(slot);}
+  container.classList.toggle('is-many', slots > 2);
 }
 
 function renderBlackjack() {
@@ -871,7 +883,7 @@ function renderBlackjack() {
   // после — карты открываются по одной (state.bj.dealerShown).
   const revealing = state.bj.revealing;
   const dealerCards = state.bj.dealerShown || view.dealer.cards;
-  bjSync($('bj-dealer-cards'), dealerCards, true);
+  bjSync($('bj-dealer-cards'), dealerCards, true, view.dealer.cards.length);
   const dealerPill = $('bj-dealer-total');
   dealerPill.classList.toggle('hidden', !dealerCards.length);
   if (dealerCards.length) dealerPill.textContent = String(bjTotal(dealerCards));
@@ -887,7 +899,7 @@ function renderBlackjack() {
       hands.appendChild(node);
     });
   }
-  view.hands.forEach((hand, i) => bjSync(hands.children[i], hand.cards));
+  view.hands.forEach((hand, i) => bjSync(hands.children[i], state.bj.playerShown?.[i]??hand.cards, false, hand.cards.length));
   Array.from(hands.children).forEach((node, i) => {
     const hand = view.hands[i];
     if (!hand) return;
@@ -895,13 +907,14 @@ function renderBlackjack() {
     let tag = node.querySelector('.bj-hand-tag');
     if (view.hands.length > 1) {
       if (!tag) { tag = document.createElement('div'); tag.className = 'bj-hand-tag'; node.appendChild(tag); }
-      tag.textContent = `${hand.total}${hand.result ? ' · ' + bjOutcome(hand.result.outcome) : ''}`;
+      tag.textContent = `${bjTotal(state.bj.playerShown?.[i]??hand.cards)}${hand.result&&!revealing ? ' · ' + bjOutcome(hand.result.outcome) : ''}`;
     } else if (tag) tag.remove();
   });
   const active = view.hands[view.active] || view.hands[0];
   const handPill = $('bj-hand-total');
-  handPill.classList.toggle('hidden', !active);
-  if (active) handPill.textContent = String(active.total);
+  const visibleHand=state.bj.playerShown?.[view.active]??state.bj.playerShown?.[0]??active?.cards??[];
+  handPill.classList.toggle('hidden', !visibleHand.length);
+  if (visibleHand.length) handPill.textContent = String(bjTotal(visibleHand));
 
   // Ставка: во время раздачи заперта, в остальное время — из состояния клиента.
   // Ставка никогда не больше баланса и границ стола — даже если баланс
