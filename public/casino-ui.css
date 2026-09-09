@@ -216,3 +216,27 @@
 #screen-ag.is-coin .ag-choice.is-selected{background:linear-gradient(#5288ef,#345ac4);border-color:#8cafff}
 #screen-ag.is-coin .mn-main:not(.is-cash){background:linear-gradient(#5896ff,#285ae0);box-shadow:inset 0 2px 2px #cee3ff66}
 @media(max-width:360px){#screen-ag.is-coin .cg-coin-scene{height:265px}#screen-ag.is-coin .cg-coin-lift{top:75px}.cf-result b{font-size:20px}.cf-pick svg{width:36px;height:36px}}
+/* Croc Slots: continuous ivory reels and blue cabinet; shared stake panel. */
+.cs-symbol{display:block;width:100%;height:100%;background-image:url('/img/catalog/slots-symbols.webp');background-size:300% 200%;background-repeat:no-repeat;mix-blend-mode:multiply}
+.cs-symbol-0{background-position:0 0}.cs-symbol-1{background-position:50% 0}.cs-symbol-2{background-position:100% 0}.cs-symbol-3{background-position:0 100%}.cs-symbol-4{background-position:100% 100%}.cs-symbol-5{background-position:50% 100%}
+.cg-launch-art>.cs-symbol{width:115px;height:115px;mix-blend-mode:normal;clip-path:polygon(4% 45%,8% 23%,19% 17%,24% 9%,31% 10%,40% 4%,49% 5%,58% 10%,66% 7%,73% 12%,74% 26%,80% 35%,91% 35%,98% 42%,100% 54%,94% 67%,89% 72%,77% 74%,62% 72%,50% 80%,37% 82%,23% 77%,12% 69%,3% 56%)}
+#screen-ag.is-slots{background:radial-gradient(ellipse at 50% 10%,#26396b,#10152d 65%)}
+#screen-ag.is-slots .ag-board{padding:0;background:transparent;border:0;box-shadow:none}
+#screen-ag.is-slots .ag-status,#screen-ag.is-slots .ag-stats{display:none}
+.cs-mascot{height:80px;position:relative;z-index:1;pointer-events:none}
+.cs-mascot .cs-symbol{width:136px;height:136px;position:absolute;left:calc(50% - 68px);top:-7px;mix-blend-mode:normal;clip-path:polygon(4% 45%,8% 23%,19% 17%,24% 9%,31% 10%,40% 4%,49% 5%,58% 10%,66% 7%,73% 12%,74% 26%,80% 35%,91% 35%,98% 42%,100% 54%,94% 67%,89% 72%,77% 74%,62% 72%,50% 80%,37% 82%,23% 77%,12% 69%,3% 56%)}
+#screen-ag.is-slots .cg-slots-scene{height:auto;padding:15px 10px 0;background:linear-gradient(130deg,#34479a,#162142 26%,#141e3c 74%,#3e49a0);border:2px solid #718cf0;border-radius:27px;box-shadow:inset 0 3px 3px #b8c9ff80,0 5px 14px #080e24}
+#screen-ag.is-slots .cg-slots-scene:before{content:none}
+#screen-ag.is-slots .cg-slot-machine{height:270px;border:5px solid #0e1934;border-radius:17px;gap:5px;background:#101b37;box-shadow:0 0 0 1px #789af188,inset 0 0 12px #09142e}
+#screen-ag.is-slots .cg-reel{height:260px;background:linear-gradient(90deg,#b7cbed,#eef4ff 40%,#dce8fb 80%,#a9bfe3);border-radius:10px}
+#screen-ag.is-slots .cg-reel-strip{height:calc(var(--symbols)*86.666667px)}
+#screen-ag.is-slots .cg-slot-cell{height:86.666667px;border:0;padding:4px}
+#screen-ag.is-slots .cg-slot-cell .cs-symbol{width:79px;height:79px;max-width:100%;flex-shrink:1}
+#screen-ag.is-slots .cg-reel-shade{background:linear-gradient(#27417766,transparent 16%,transparent 84%,#27417766);box-shadow:inset 0 0 9px #15274c66}
+#screen-ag.is-slots .cg-slot-cell.is-line-win{background:#ffdc7c88;box-shadow:inset 0 0 0 2px #ffcd4b;animation:cs-line 1.2s ease-in-out 3}
+#screen-ag.is-slots .cg-slot-footer{margin:10px 0;color:#a8bbf2;font:600 11px var(--font)}
+.cs-result{display:grid;grid-template-columns:1fr 1fr;text-align:center;background:linear-gradient(#14203b,#10172e);border-radius:16px 16px 0 0;padding:13px 6px;margin:0 -4px}
+.cs-result>div+div{border-left:1px solid #677bb655}.cs-result small{display:block;color:#acbde0;font-size:12px;margin-bottom:4px}.cs-result b{font-size:23px;color:#f1f5ff}.cs-result>div+div b{color:#7aebb3}
+#screen-ag.is-slots .mn-main{background:linear-gradient(#5b9dff,#2657e3);box-shadow:inset 0 2px 2px #d3e5ff77}
+@keyframes cs-line{50%{box-shadow:inset 0 0 0 2px #fff4ad,inset 0 0 20px #ffd55788}}
+@media(prefers-reduced-motion:reduce){#screen-ag.is-slots .cg-slot-cell.is-line-win{animation:none}}

@@ -5,7 +5,7 @@
  const ease=n=>{n=clamp(n);return n*n*(3-2*n);};
  const out=n=>1-(1-clamp(n))**3;
  const phase=(t,a,b)=>clamp((t-a)/(b-a));
- const durations={diamonds:1900,videopoker:1400,sicbo:2700,chicken:1450,coin:2100,rps:1600,slots:2800,andar:3200,penalty:1800,darts:1400,bowling:2600,balloon:1450,race:3800,pinball:2100,fishing:2800};
+ const durations={diamonds:1900,videopoker:1400,sicbo:2700,chicken:1450,coin:2100,rps:1600,slots:3200,andar:3200,penalty:1800,darts:1400,bowling:2600,balloon:1450,race:3800,pinball:2100,fishing:2800};
  function duration(game,info){return game==='andar'?Math.min(6500,1100+(info.detail?.dealt.length||0)*125):durations[game]||1600;}
  // Paths approach a bumper tangentially, reverse at its surface, and return to a flipper.
  // Bumper centers: [30,24], [70,35], [44,54]; radius 9 scene units.
