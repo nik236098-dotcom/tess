@@ -3,17 +3,21 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const rules=require('../public/darts-rules');
 const motion=require('../public/casino-motion'),scene=require('../public/darts-scene'),audio=require('../public/darts-audio'),engine=require('../server/arcade/game');
 
-test('dart tip reaches the server point and remains anchored throughout the impact wobble',()=>{
+test('dart tip reaches the server point and remains anchored without rotation or penetration after impact',()=>{
  for(const area of [0,.009999,.01,.089999,.09,.359999,.36,.999999])for(let i=0;i<24;i++){
   const angle=i/24*Math.PI*2,info={detail:{radius:Math.sqrt(area),angle}};
   const end=motion.frame('darts',info,null,1);
   assert.ok(Math.abs(end.x-(150+119*Math.sqrt(area)*Math.sin(angle)))<1e-9);
   assert.ok(Math.abs(end.y-(151-119*Math.sqrt(area)*Math.cos(angle)))<1e-9);
   for(let t=motion.dartsTiming.impact;t<=1;t+=.01){const f=motion.frame('darts',info,null,t);assert.equal(f.x,end.x);assert.equal(f.y,end.y);assert.equal(f.scale,.72);assert.equal(f.hit,true);}
+  for(let t=motion.dartsTiming.launch;t<=1;t+=.01){
+   const f=motion.frame('darts',info,null,t);
+   assert.equal(f.x,end.x);assert.equal(f.rotation,0);assert.ok(f.y>=end.y);
+  }
   assert.equal(motion.frame('darts',info,null,motion.dartsTiming.launch-.01).opacity,0);
   // Settled fins remain above the payout row and left of the history column.
   const radians=end.rotation*Math.PI/180;
-  for(const [x,y]of [[0,0],[31,61],[43,60],[48,49],[54,61]]){
+  for(const [x,y]of [[0,0],[-12,46],[-10,58],[12,46],[10,58]]){
    const px=end.x+.72*(x*Math.cos(radians)-y*Math.sin(radians)),py=end.y+.72*(x*Math.sin(radians)+y*Math.cos(radians));
    assert.ok(px>12&&px<292&&py>18&&py<328,`${px}/${py}`);
   }

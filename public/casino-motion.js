@@ -29,9 +29,9 @@
    case 'andar':{const n=d.dealt?.length||0,progress=phase(t,.15,.95)*n;return {count:Math.min(n,Math.floor(progress)),flight:progress%1,index:Math.min(n-1,Math.floor(progress)),complete:t>=.95};}
 
    case 'darts':{
-    const u=phase(t,dartsTiming.launch,dartsTiming.impact),travel=u*u,rest=phase(t,dartsTiming.impact,1),radius=clamp(d.radius||0),angle=d.angle||0;
-    const x=150+119*radius*Math.sin(angle),y=151-119*radius*Math.cos(angle),heading=Math.atan2(370-y,180-x)*180/Math.PI-56;
-    return {x:x+(180-x)*(1-travel),y:y+(370-y)*(1-travel),scale:.72+1.1*(1-travel),opacity:t<dartsTiming.launch?0:Math.min(1,u*12),hit:t>=dartsTiming.impact,rotation:heading+5*Math.sin(rest*Math.PI*6)*(1-rest)**3,ripple:phase(t,dartsTiming.impact,.88)};
+    const u=phase(t,dartsTiming.launch,dartsTiming.impact),travel=u*u,radius=clamp(d.radius||0),angle=d.angle||0;
+    const x=150+119*radius*Math.sin(angle),y=151-119*radius*Math.cos(angle);
+    return {x,y:y+(370-y)*(1-travel),scale:.72+1.1*(1-travel),opacity:t<dartsTiming.launch?0:Math.min(1,u*12),hit:t>=dartsTiming.impact,rotation:0,ripple:phase(t,dartsTiming.impact,.88)};
    }
    case 'bowling':{const u=ease(phase(t,0,.6)),travel=phase(t,.6,.93),rows=[22,22,22,22,28,28,28,34,34,40];return {y:90-50*u-20*travel,scale:1-.65*u,rotation:540*(u+travel*.3),pins:Array.from({length:10},(_,i)=>{const hit=.6+(40-rows[i])/20*.33,v=phase(t,hit,Math.min(1,hit+.12));return {fall:d.fallen?.[i]?ease(v):0,angle:(i%2?1:-1)*75*ease(v)};})};}
    case 'balloon':{const old=previous?.step||0,now=info.step||old;return {scale:1+.018*(old+(now-old)*out(phase(t,0,.7))),pump:Math.sin(phase(t,0,.55)*Math.PI),burst:last.safe===false&&t>.68,burstProgress:phase(t,.68,1)};}
