@@ -18,6 +18,7 @@ function agMaxBet() {
 function stopArcade() {
   if(typeof DartsGame!=='undefined')DartsGame.stop();
   if(typeof DartsAudio!=='undefined')DartsAudio.stop();
+  if(typeof BowlingAudio!=='undefined')BowlingAudio.stop();
   const a=state.ag; a.token++; cancelAnimationFrame(a.raf); a.animating=false; a.game=null; a.info=null; a.pending=null;
   $('screen-ag').classList.add('hidden');
 }

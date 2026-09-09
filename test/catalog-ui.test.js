@@ -27,7 +27,7 @@ function harness(id){
  const ctx=vm.createContext({state,$,document:{querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},performance:{now:()=>0},structuredClone,
  send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),haptic(){},toast(){},
  requestAnimationFrame:f=>{const id=++next;frames.set(id,f);return id;},cancelAnimationFrame:id=>frames.delete(id)});
- for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
+ for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-physics','bowling-scene','bowling-audio','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
  // DOM harness has no graphics context; GPU rendering is checked separately.
  vm.runInContext('BowlingScene.render=()=>true;BowlingScene.ready=()=>true;',ctx);
  vm.runInContext(`CasinoUI.prepare('${id}');`,ctx);ctx.bindArcade();

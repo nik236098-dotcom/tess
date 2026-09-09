@@ -30,3 +30,7 @@
 #screen-ag.is-bowling .cg-board{gap:0}
 
 .bw-viewport:not(.is-rendered) .bw-webgl{visibility:hidden}
+
+.bw-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;color:#a9bbd9;font:11px/1.4 var(--font)}
+.bw-toolbar button{min-height:40px;padding:8px 10px;border-radius:11px;border:1px solid #566b92;background:#24324e;color:#d7e3ff;font:600 11px var(--font);cursor:pointer}
+.bw-toolbar button:focus-visible{outline:2px solid #abbdff;outline-offset:2px}

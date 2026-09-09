@@ -1,8 +1,8 @@
 'use strict';
 /* Real meshes, drilled ball geometry and distance-driven rolling. No moving sprites. */
 (function(root){
- const R=.42,START=5.8,END=-6.7,DURATION=3300;
- const pins=[[-.9,-4.95],[-.3,-4.95],[.3,-4.95],[.9,-4.95],[-.6,-4.25],[0,-4.25],[.6,-4.25],[-.3,-3.55],[.3,-3.55],[0,-2.85]];
+ const physics=typeof module==='object'&&module.exports?require('./bowling-physics'):root.BowlingPhysics;
+ const {R,START,DURATION}=physics,END=-6.7,pins=physics.rack;
  const clamp=n=>Math.max(0,Math.min(1,n)),phase=(t,a,b)=>clamp((t-a)/(b-a));
  const sub=(a,b)=>a.map((v,i)=>v-b[i]),dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0),cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
  const unit=a=>{const l=Math.hypot(...a)||1;return a.map(v=>v/l);};
@@ -11,14 +11,7 @@
  function rotate(axis,t){const [x,y,z]=unit(axis),c=Math.cos(t),s=Math.sin(t),v=1-c;return [x*x*v+c,y*x*v+z*s,z*x*v-y*s,0,x*y*v-z*s,y*y*v+c,z*y*v+x*s,0,x*z*v+y*s,y*z*v-x*s,z*z*v+c,0,0,0,0,1];}
  function model(x,y,z,sx=1,sy=sx,sz=sx,rotation=identity()){const m=rotation.slice();for(let i=0;i<3;i++){m[i]*=sx;m[4+i]*=sy;m[8+i]*=sz;}m[12]=x;m[13]=y;m[14]=z;return m;}
  const holes=[[-.25,.6,.76],[.19,.71,.68],[.07,.29,.95]].map(unit);
- function frame(info,t){
-  t=clamp(t);const u=phase(t,.04,.81),z=START+(END-START)*u;
-  const miss=info?.detail?.fallen?.length===10&&info.detail.fallen.every(v=>!v),side=miss?1.82:0,turnZ=2.0,along=START-z,first=Math.min(along,START-turnZ),x=side*first/(START-turnZ),travel=Math.hypot(first,x)+Math.max(0,turnZ-z),initial=rotate([turnZ-START,0,-side],Math.hypot(first,x)/R),orientation=mul(rotate([1,0,0],Math.min(0,z-turnZ)/R),initial);
-  return {x,y:R-(miss?.16*phase(x,1.55,1.82):0)-.6*phase(-z,5.8,6.5),z,travel,orientation,roll:-(travel/R),visible:z>-6.5,pins:pins.map(([x,pz],i)=>{
-   const impact=.04+((START-(pz+.5))/(START-END))*.77,u=phase(t,impact,Math.min(1,impact+.17)),fall=info?.detail?.fallen?.[i]?u*u*(3-2*u):0;
-   return {fall,angle:fall*1.48,dx:fall*(x<0?-1:1)*(.2+(i%3)*.09),dz:-fall*(.27+(i%4)*.12)};
-  })};
- }
+ const frame=(info,t)=>physics.frame(info,t);
  // Clip the sphere at each drill opening; bevels, inner walls and well bottoms are meshes.
  function ballGeometry(){
   const shell=[],well=[],hr=.078,h=Math.sqrt(R*R-hr*hr),slices=96,rows=64;
@@ -37,8 +30,7 @@
   return {ball:shell,well};
  }
  function lathe(){
-  const profile=[[.12,0],[.153,.025],[.18,.12],[.2,.26],[.186,.37],[.15,.48],[.095,.63],[.063,.76],[.063,.87],[.095,.97],[.105,1.04],[.089,1.1],[.041,1.135],[0,1.14]],mesh=[];
-  const sample=t=>{const i=Math.min(profile.length-2,Math.floor(t)),u=t-i,p0=profile[Math.max(0,i-1)],p1=profile[i],p2=profile[i+1],p3=profile[Math.min(profile.length-1,i+2)];return [0,1].map(k=>.5*((2*p1[k])+(-p0[k]+p2[k])*u+(2*p0[k]-5*p1[k]+4*p2[k]-p3[k])*u*u+(-p0[k]+3*p1[k]-3*p2[k]+p3[k])*u*u*u));};
+  const profile=physics.profile,mesh=[],sample=physics.sampleProfile;
   const at=(i,j)=>{const t=j/78*(profile.length-1),[r,y]=sample(t),lo=sample(Math.max(0,t-.01)),hi=sample(Math.min(profile.length-1,t+.01)),a=i/48*2*Math.PI;return [r*Math.cos(a),y,r*Math.sin(a),...unit([(hi[1]-lo[1])*Math.cos(a),lo[0]-hi[0],(hi[1]-lo[1])*Math.sin(a)])];};
   for(let j=0;j<78;j++)for(let i=0;i<48;i++){const a=at(i,j),b=at(i+1,j),c=at(i+1,j+1),d=at(i,j+1);mesh.push(...a,...b,...c,...a,...c,...d);}return mesh;
  }
@@ -76,14 +68,20 @@
  gl_FragColor=vec4(uKind<.5?lit:pow(max(lit,vec3(0.)),vec3(.82)),uAlpha);
  }`;
  function scene(info,t,aspect){
-  const f=frame(info,t),pinModels=pins.map(([x,z],i)=>{const p=f.pins[i],r=rotate([-.8,0,x<0?.65:-.65],p.angle);return model(x+p.dx,.20*Math.sin(p.angle)+.023*p.fall,z+p.dz,1.25,1.25,1.25,r);}),ball=model(f.x,f.y,f.z,1,1,1,f.orientation),calls=[];
+  const f=frame(info,t),pinModels=f.pins.map(p=>model(p.x,p.y,p.z,1.25,1.25,1.25,rotate([p.dirZ,0,-p.dirX],p.angle))),ball=model(f.x,f.y,f.z,1,1,1,f.orientation),calls=[];
   const add=(mesh,m,kind,color=[.1,.16,.26],alpha=1,mirror=0)=>calls.push({mesh,model:m,kind,color,alpha,mirror});
   add('screen',identity(),6);
   // Draw mirrored meshes before the translucent varnished lane; the lane writes depth.
   const mirror=model(0,0,0,1,-1,1);
   for(const m of pinModels)add('pin',mul(mirror,m),3,[1,1,1],1,1);
   if(f.visible){add('ball',mul(mirror,ball),1,[1,1,1],1,1);add('well',mul(mirror,ball),2,[1,1,1],1,1);}
-  add('floor',model(0,0,1,1.58,1,10),0,[1,1,1],.73);
+  add('floor',model(0,0,(11+physics.EDGE)/2,1.58,1,(11-physics.EDGE)/2),0,[1,1,1],.73);
+  for(const side of [-1,1]){add('floor',model(side*1.82,-.16,(11+physics.EDGE)/2,.24,1,(11-physics.EDGE)/2),0,[1,1,1],1);add('floor',model(side*2.23,0,(11+physics.EDGE)/2,.18,1,(11-physics.EDGE)/2),0,[1,1,1],1);}
+  // A real recessed collector, with floor and front lip occluding the ball below the lane.
+  add('box',model(0,physics.PIT-.06,physics.EDGE-.7,4.25,.12,1.2),4,[.012,.019,.03]);
+  add('box',model(0,-.55,physics.EDGE-.02,4.25,1.1,.055),4,[.033,.04,.06]);
+  add('box',model(0,-.43,physics.EDGE-1.4,4.25,1.35,.12),4,[.012,.019,.03]);
+  for(const x of [-2.12,2.12])add('box',model(x,-.52,physics.EDGE-.7,.10,1.15,1.2),4,[.015,.025,.04]);
   for(const m of pinModels)add('pin',m,3);
   if(f.visible){add('ball',ball,1);add('well',ball,2);}
   return {calls,camera:camera(aspect),ball:[f.x,f.y,f.z],pins:pinModels.flatMap(m=>[m[12],m[13],m[14]])};
@@ -101,6 +99,6 @@
  }catch(e){failed=true;if(root.console)root.console.error('Bowling renderer:',e);hostState(false);return false;}}
  function hostState(ready){const host=canvas?.parentElement;if(host){const message=host.querySelector('.bw-fallback');if(message)message.textContent=failed?'Не удалось загрузить 3D. Закрой и снова открой приложение.':lost?'Восстанавливаем 3D…':'Загружаем дорожку…';host.classList.toggle('is-rendered',ready);if(host.dataset.ready!==String(ready)){host.dataset.ready=String(ready);host.dispatchEvent(new root.Event('bowlingready',{bubbles:true}));}}}
  function ready(){return Boolean(gl&&imageReady&&!lost&&!failed);}
- function board(info,animating){const done=info?.phase==='done'&&!animating,count=done?info.detail?.count:null;return `<div class="bw-panel"><div class="bw-viewport"><p class="bw-fallback">Загружаем дорожку…</p></div><div class="bw-result" role="status" aria-live="polite"><div><small>Сбито кеглей</small><b>${done?count+' / 10':'— / 10'}</b></div><strong class="${done&&count===10?'is-strike':''}">${animating?'Шар на дорожке…':done?count===10?'СТРАЙК!':count===0?'Мимо':info.payout?'Есть попадание!':'Бросок завершён':'Готов к броску'}</strong></div></div><div class="bw-payouts" aria-label="Коэффициенты за сбитые кегли">${[[6,'0,5'],[7,'1'],[8,'3'],[9,'20'],[10,'443']].map(([n,m])=>`<div class="${done&&count===n?'is-active':''}"><small>${n===10?'Страйк':n+' кеглей'}</small><b>${m}×</b></div>`).join('')}</div>`;}
- const api={render,ready,board,frame,scene,geometry,vertex,fragment,R,START,END,DURATION,pins,holes};if(typeof module==='object'&&module.exports)module.exports=api;else root.BowlingScene=api;
+ function board(info,animating){const done=info?.phase==='done'&&!animating,count=done?info.detail?.count:null;return `<div class="bw-panel"><div class="bw-toolbar"><span>Один бросок · десять кеглей</span><button type="button" data-bw-sound aria-label="Звук боулинга" aria-pressed="${root.BowlingAudio?.isEnabled()!==false}">${root.BowlingAudio?.isEnabled()!==false?'Звук: вкл':'Звук: выкл'}</button></div><div class="bw-viewport"><p class="bw-fallback">Загружаем дорожку…</p></div><div class="bw-result" role="status" aria-live="polite"><div><small>Сбито кеглей</small><b>${done?count+' / 10':'— / 10'}</b></div><strong class="${done&&count===10?'is-strike':''}">${animating?'Шар на дорожке…':done?count===10?'СТРАЙК!':count===0?'Мимо':info.payout?'Есть попадание!':'Бросок завершён':'Готов к броску'}</strong></div></div><div class="bw-payouts" aria-label="Коэффициенты за сбитые кегли">${[[6,'0,5'],[7,'1'],[8,'3'],[9,'20'],[10,'443']].map(([n,m])=>`<div class="${done&&count===n?'is-active':''}"><small>${n===10?'Страйк':n+' кеглей'}</small><b>${m}×</b></div>`).join('')}</div>`;}
+ const api={render,ready,board,frame,physics,scene,geometry,vertex,fragment,R,START,END,DURATION,pins,holes};if(typeof module==='object'&&module.exports)module.exports=api;else root.BowlingScene=api;
 })(globalThis);
