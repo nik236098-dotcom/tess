@@ -17,7 +17,9 @@
   }
   function markup(value){
     const n=value.multiplier===0?'0':value.multiplier.toFixed(2);
-    return `<button type="button" class="g-result-close" aria-label="Закрыть результат">×</button><div class="g-result-title">${value.title}</div>${value.description?`<div class="g-result-description">${escape(value.description)}</div>`:''}<div class="g-result-label">Выплата</div><div class="g-result-amount">$${(value.payout/100).toFixed(2)}</div><div class="g-result-multiplier">${n}×</div>`;
+    const amount='$'+(value.payout/100).toFixed(2);
+    const amountSize=Math.min(28,Math.floor(310/amount.length));
+    return `<button type="button" class="g-result-close" aria-label="Закрыть результат">×</button><div class="g-result-title">${value.title}</div><div class="g-result-amount" style="font-size:${amountSize}px">${amount}</div><div class="g-result-multiplier">${n}×</div>${value.description?`<span class="g-result-context">${escape(value.description)}</span>`:''}`;
   }
   function hide(node,reset=true){
     if(!node)return;
