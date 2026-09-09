@@ -152,13 +152,8 @@
 .g-result.hidden { display:none!important; }
 @keyframes game-result-in { from { opacity:0; } to { opacity:1; } }
 /* Artwork-backed card tables keep their game-specific chip controls. */
-#screen-bj.game-standard,#screen-bc.game-standard { box-sizing:border-box; padding:calc(var(--safe-top) + 12px) 0 calc(var(--safe-bottom) + 8px); }
-#screen-bj.game-standard .bj-canvas,#screen-bc.game-standard .bc-canvas { top:calc(var(--safe-top) + 12px); }
-#screen-bc.game-standard { background:linear-gradient(#11142b,#060b15); }
-#screen-bc.game-standard #bc-place { background:var(--g-primary)!important; color:#fff; font:700 16px var(--font); }
-#screen-bc.game-standard #bc-place::after { content:'Раздать карты'; }
-#screen-bc.game-standard #bc-clear { background:#171a3a; border:1px solid var(--g-border); color:var(--g-label); font:600 12px var(--font); }
-#screen-bc.game-standard #bc-clear::after { content:'Сбросить'; }
+#screen-bj.game-standard,#screen-bc { box-sizing:border-box; padding:calc(var(--safe-top) + 12px) 0 calc(var(--safe-bottom) + 8px); }
+#screen-bj.game-standard .bj-canvas,#screen-bc .bc-canvas { top:calc(var(--safe-top) + 12px); }
 .game-standard .bj-bet-btn .bj-spade { color:#d9d4ff; }
 @media(max-height:700px) {
   .game-standard.mn-screen .mn-page { gap:6px; }
@@ -176,7 +171,7 @@
 /* Stronger than the old table's winner-pop coordinates, including its scaled theme. */
 .screen > .g-result {
   position:fixed!important; left:50%!important;
-  top:calc((100% + var(--safe-top,0px) - var(--safe-bottom,0px)) / 2)!important;
+  top:calc((100% + var(--safe-top,0px) - var(--safe-bottom,0px)) / 2 - 40px)!important;
   transform:translate(-50%,-50%)!important; margin:0!important;
   width:calc(100% - 40px)!important; min-width:0!important; max-width:340px!important;
   max-height:calc(100% - var(--safe-top,0px) - var(--safe-bottom,0px) - 24px);
