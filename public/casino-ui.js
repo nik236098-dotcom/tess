@@ -12,7 +12,7 @@ function setup(){
 }
 function settings(){
  const a=state.ag,g=current(),options=a.options[a.game],disabled=agLocked()||a.info?.phase==='play',attr=disabled?'disabled':'';
- if(g.choices){const key=a.game==='chicken'||a.game==='balloon'?'level':'side';return `<span class="mn-label">${key==='level'?'Сложность':'Выбор до ставки'}</span><div class="cg-choices">${g.choices.map(([name,value])=>`<button type="button" class="ag-choice ${options[key]===value?'is-selected':''}" data-cg-option="${value}" data-cg-key="${key}" ${attr} aria-pressed="${options[key]===value}">${name}</button>`).join('')}</div>`;}
+ if(g.choices){const key=a.game==='chicken'||a.game==='balloon'?'level':'side';return `<span class="mn-label">${key==='level'?'Сложность':'Выбор до ставки'}</span><div class="cg-choices">${g.choices.map(([name,value])=>`<button type="button" class="ag-choice ${options[key]===value?'is-selected':''}" data-cg-option="${value}" data-cg-key="${key}" ${attr} aria-pressed="${options[key]===value}">${a.game==='race'?Number(value)+1:name}</button>`).join('')}</div>`;}
  return `<p class="ag-note">${g.tag}</p>`;
 }
 function seriesTable(game,options){
@@ -21,7 +21,7 @@ function seriesTable(game,options){
  else max=game==='pinball'?10:20;
  return Array.from({length:max},(_,i)=>{p*=size?(size-bad-i)/(size-i):game==='coin'||game==='rps'?.5:.8;return Math.floor((.98/p+1e-10)*100)/100;});
 }
-function paytable(){const a=state.ag,g=current();const table=g.series?seriesTable(a.game,a.options[a.game]).map((n,i)=>[`${i+1} шаг`,n]):g.table;return (table||[]).map(([label,value])=>`<span class="ag-pay is-positive"><small>${label}</small><b>${agNumber(value)}×</b></span>`).join('');}
+function paytable(){const a=state.ag,g=current();if(a.game==='race')return '<span>Коэффициент <b>3,92×</b></span>';const table=g.series?seriesTable(a.game,a.options[a.game]).map((n,i)=>[`${i+1} шаг`,n]):g.table;return (table||[]).map(([label,value])=>`<span class="ag-pay is-positive"><small>${label}</small><b>${agNumber(value)}×</b></span>`).join('');}
 function afterRender(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',pending=info?.phase==='done'&&!info.settled,main=$('ag-main');
  $('ag-title').classList.toggle('ag-long-title',g.name.length>15);
@@ -35,6 +35,7 @@ function afterRender(){
  $('screen-ag').classList.toggle('is-darts',a.game==='darts');
  $('screen-ag').classList.toggle('is-bowling',a.game==='bowling');
  $('screen-ag').classList.toggle('is-balloon',a.game==='balloon');
+ $('screen-ag').classList.toggle('is-race',a.game==='race');
  $('ag-balloon-pump').hidden=a.game!=='balloon';
  $('ag-chicken-step').hidden=a.game!=='chicken'||!live;
  $('screen-ag').classList.toggle('vp-is-live',a.game==='videopoker'&&live);
@@ -60,6 +61,7 @@ function afterRender(){
   $('ag-note').textContent=pending?'Выплата сохранена. Нажми «Получить выплату».':'Надувай шар или забирай выигрыш';
   return;
  }
+ if(a.game==='race'&&!pending){main.disabled=agLocked()||!RaceScene.ready();main.textContent=a.animating?'Заезд идёт…':a.pending?'Подождите…':RaceScene.ready()?'Начать гонку ⚑':RaceScene.loadingLabel();}
  if(a.game==='slots'&&!pending)main.textContent=a.animating?'Барабаны крутятся…':'Крутить';
  if(a.game==='coin'&&!live&&!pending)main.textContent=a.animating?'Монета в воздухе…':'Начать раунд';
  if(!live)return;
@@ -71,6 +73,7 @@ function afterRender(){
 }
 function main(){
  const a=state.ag;if(!isGame(a.game))return false;
+ if(a.game==='race'&&!RaceScene.ready())return true;
  if(a.game==='balloon'&&a.info?.phase!=='play')return true;
  if(a.game==='darts')return DartsGame.enqueue();
  if(a.game==='bowling'&&!BowlingScene.ready()&&!(a.info?.phase==='done'&&!a.info.settled)){toast('Дождись загрузки 3D-сцены');return true;}
@@ -186,11 +189,12 @@ function board(){
  else if(a.game==='darts')html=DartsGame.board();
  else if(a.game==='bowling')html=BowlingScene.board(info,a.animating);
  else if(a.game==='balloon')html=BalloonScene.board(info,a.animating,locked,seriesTable('balloon',a.options.balloon),a.cgPrevious);
- else if(a.game==='race')html=`<div class="cg-scene cg-race">${plaque('NIGHT RACE')}<div class="cg-race-finish"></div>${Array.from({length:4},(_,i)=>`<div class="cg-race-lane ${done&&d.winner===i?'is-winner':''}" style="--lane:${i}"><div class="cg-racer" data-cg-racer="${i}">${art('race')}<small>${i+1}</small></div></div>`).join('')}</div>${caption(done?`Первым финишировал №${d.winner+1}`:'Четыре участника · один финиш')}`;
+ else if(a.game==='race')html=RaceScene.board(info,a.animating,a.options.race.side);
  else if(a.game==='pinball')html=`<div class="cg-scene cg-pinball-scene"><div class="cg-pinball">${plaque('AMETHYST')}<div class="cg-pinball-rail"></div>${CasinoMotion.bumpers.map(([x,y],i)=>`<div class="cg-bumper" data-cg-bumper="${i}" style="left:${x}%;top:${y}%">${art('pinball')}</div>`).join('')}<i class="cg-flipper cg-flipper-left"></i><i class="cg-flipper cg-flipper-right"></i><div class="cg-pinball-ball" id="cg-pinball-ball"></div><div class="cg-drain"></div></div></div>${caption(`Отскоков: ${visibleStep}`)}${live?`<div class="cg-choices">${button('Левая лопатка',0,locked)}${button('Правая лопатка',1,locked)}</div>`:''}`;
  else if(a.game==='fishing')html=`<div class="cg-scene cg-fishing">${plaque('DEEP WATER')}<div class="cg-fishing-line" id="cg-fishing-line"><i></i></div><div id="cg-fish" class="cg-fish">${art('fish')}</div><div class="cg-bubbles"><i></i><i></i><i></i></div><b class="cg-fishing-prize">${done?d.prize?agNumber(d.prize)+'×':'Пусто':''}</b></div>${caption(done?'Улов поднят':'Забрось удочку и открой свой улов')}`;
  $('ag-stage').innerHTML=`<div class="cg-board cg-game-${g.kind} ${a.animating?'is-animating':''}">${html}</div>`;
  if(a.game==='darts'){DartsGame.paint();return;}
+ if(a.game==='race'){paint(info||{},a.animating?a.cgTime||0:done?1:0);return;}
  if(a.game==='balloon'){paint(info||{},a.animating?a.cgTime||0:1);const track=$('ag-stage').querySelector('.bl-steps'),active=track?.querySelector('.is-lost,.is-current');if(active)track.scrollLeft=Math.max(0,active.offsetLeft-track.offsetLeft-(track.clientWidth-active.clientWidth)/2);return;}
  if(a.game==='bowling'){paint(info||{},a.animating?a.cgTime||0:done?1:0);return;}
  if(a.game==='sicbo'||a.game==='chicken')paint(info||{},a.animating?a.cgTime||0:1);
@@ -223,7 +227,7 @@ function paint(info,t){
  if(game==='darts')DartsScene.paint(stage,f,info);
  if(game==='bowling')BowlingScene.render(el('.bw-viewport'),info,t);
  if(game==='balloon')BalloonScene.paint(stage,info,a.cgPrevious,t);
- if(game==='race')f.cars.forEach((c,i)=>{style(`[data-cg-racer="${i}"]`,'top',c.y+'%');transform(`[data-cg-racer="${i}"]`,`translate(-50%,-50%) rotate(${t<1?Math.sin(t*20+i)*1.2:0}deg)`);});
+ if(game==='race')RaceScene.paint(stage,info,t);
  if(game==='pinball'){style('#cg-pinball-ball','left',f.x+'%');style('#cg-pinball-ball','top',f.y+'%');CasinoMotion.bumpers.forEach((_,i)=>toggle(`[data-cg-bumper="${i}"]`,'is-impact',f.impact&&i===last.bumper));transform(last.choice?'.cg-flipper-right':'.cg-flipper-left',`rotate(${t<.25?(last.choice?-1:1)*28*Math.sin(t/.25*Math.PI):0}deg)`);}
  if(game==='fishing'){style('#cg-fishing-line','height',f.hookY+'%');style('#cg-fish','left',f.fishX+'%');style('#cg-fish','top',f.fishY+'%');style('#cg-fish','opacity',f.reveal?1:0);transform('#cg-fish',`translate(-50%,-50%) rotate(${f.caught?-30:Math.sin(t*16)*5}deg)`);}
 }
@@ -272,6 +276,7 @@ function boardEvent(event){
 
 }
 function bind(){
+ $('ag-stage').addEventListener('raceready',()=>{if(state.ag.game==='race')afterRender();});
  $('ag-balloon-pump').addEventListener('click',()=>{
   const a=state.ag;if(a.game!=='balloon'||!a.info||agLocked()||(a.info.phase==='done'&&!a.info.settled))return;
   agRequest(a.info.phase==='play'?'pick':'start',a.info.phase==='play'?{index:0}:{});

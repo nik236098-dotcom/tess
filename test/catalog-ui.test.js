@@ -27,9 +27,9 @@ function harness(id){
  const ctx=vm.createContext({state,$,document:{querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},performance:{now:()=>0},structuredClone,
  send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),haptic(){},toast(){},
  requestAnimationFrame:f=>{const id=++next;frames.set(id,f);return id;},cancelAnimationFrame:id=>frames.delete(id)});
- for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-physics','bowling-scene','balloon-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
+ for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-physics','bowling-scene','balloon-scene','race-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
  // DOM harness has no graphics context; GPU rendering is checked separately.
- vm.runInContext('BowlingScene.render=()=>true;BowlingScene.ready=()=>true;',ctx);
+ vm.runInContext('BowlingScene.render=()=>true;BowlingScene.ready=()=>true;RaceScene.ready=()=>true;',ctx);
  vm.runInContext(`CasinoUI.prepare('${id}');`,ctx);ctx.bindArcade();
  const deliver=round=>ctx.onArcadeState({game:id,accepted:true,config:game.config(id),balance:100000,...game.publicState(id,round),requestId:state.ag.pending?.id});
  const advance=(now=10000)=>{const list=[...frames.values()];frames.clear();for(const f of list)f(now);};
@@ -312,7 +312,7 @@ test('Bowling blocks new stakes until 3D is ready but keeps saved payouts access
  vm.runInContext('BowlingScene.ready=()=>false;CasinoUI.afterRender();',h.ctx);
  assert.equal(h.$('ag-main').disabled,true);
  vm.runInContext('CasinoUI.main();',h.ctx);assert.equal(h.sent.length,0);
- vm.runInContext('BowlingScene.ready=()=>true;CasinoUI.afterRender();',h.ctx);
+ vm.runInContext('BowlingScene.ready=()=>true;RaceScene.ready=()=>true;CasinoUI.afterRender();',h.ctx);
  assert.equal(h.$('ag-main').disabled,false);assert.equal(h.$('ag-main').textContent,'Бросить шар');
  const r=game.start('bowling',game.initial(),100,{},0,n=>n-1);r.settled=false;
  vm.runInContext('BowlingScene.ready=()=>false;',h.ctx);h.deliver(r);h.advance();
@@ -367,4 +367,11 @@ test('balloon two-button panel keeps cashout inactive before start and preserved
  assert.equal(h.$('ag-balloon-pump').disabled,true);assert.equal(h.$('ag-main').disabled,false);
  const before=h.sent.length;h.$('ag-balloon-pump').dispatch('click',{});assert.equal(h.sent.length,before);
  h.$('ag-main').dispatch('click',{});assert.equal(h.sent.at(-1).type,'ag_open');
+});
+
+test('race waits for assets before accepting a stake, but saved payments remain accessible',()=>{
+ const h=harness('race');vm.runInContext('RaceScene.ready=()=>false;',h.ctx);h.deliver(game.initial());
+ assert.equal(h.$('ag-main').disabled,true);h.$('ag-main').dispatch('click',{});assert.equal(h.sent.length,0);
+ const r=game.start('race',game.initial(),100,{side:0},0,n=>n-1);r.settled=false;h.deliver(r);
+ assert.equal(h.$('ag-main').disabled,false);h.$('ag-main').dispatch('click',{});assert.equal(h.sent.at(-1).type,'ag_open');
 });

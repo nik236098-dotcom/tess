@@ -40,6 +40,7 @@ node --check public/darts-game.js
 node --check public/bowling-physics.js
 node --check public/bowling-scene.js
 node --check public/balloon-scene.js
+node --check public/race-scene.js
 systemctl start poker
 systemctl is-active --quiet poker
 trap - ERR
