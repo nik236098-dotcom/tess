@@ -2,8 +2,8 @@
 // The server owns the outcome. This shared geometry animates its ten decisions
 // with gravity between surface contacts; it never rolls a second result.
 (function(root) {
-  const geometry = Object.freeze({ width:360, height:350, rows:10, spacing:28, rowGap:23,
-    center:180, firstY:48, startY:16, pinRadius:3, ballRadius:5.5, pocketTop:285, pocketFloor:316 });
+  const geometry = Object.freeze({ width:360, height:310, rows:10, spacing:28, rowGap:23,
+    center:180, firstY:48, startY:16, pinRadius:3, ballRadius:5.5, pocketTop:270, pocketFloor:290 });
   const g=geometry, contact=g.pinRadius+g.ballRadius;
   const slotX=slot=>g.center+(slot-g.rows/2)*g.spacing;
   const restY=g.pocketFloor-g.ballRadius;

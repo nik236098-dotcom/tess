@@ -29,6 +29,7 @@ const LEVELS = { easy:{safe:3,columns:4}, medium:{safe:2,columns:3}, hard:{safe:
 const TOWER = Object.fromEntries(Object.entries(LEVELS).map(([key, {safe,columns}]) =>
   [key, Array.from({ length:FLOORS }, (_,i) => Math.round(.98 * (columns/safe) ** (i+1) * 100) / 100)]));
 function maxBet(game, level) {
+  if (game === 'tower') return 100000;
   const max = game === 'plinko' ? Math.max(...Object.values(PLINKO).flat())
     : game === 'tower' ? Math.max(...(TOWER[level] || Object.values(TOWER).flat()))
       : game === 'keno' ? Math.max(...Object.values(KENO).flat()) : 12;
@@ -36,9 +37,9 @@ function maxBet(game, level) {
 }
 function config(game) {
   if (!GAMES.includes(game)) throw new ArcadeError('Игра не найдена');
-  const base = { minBet: MIN_BET, maxBet: maxBet(game) };
-  if (game === 'plinko') return { ...base, rows: ROWS, tables: PLINKO, probabilities: plinkoProbabilities };
-  // Keep maxBet conservative for old clients; current clients use the selected level.
+  const base = { minBet: game === 'tower' ? 100 : MIN_BET, maxBet: maxBet(game) };
+  if (game === 'plinko') return { ...base, rows: ROWS, maxBalls: 25, tables: PLINKO, probabilities: plinkoProbabilities };
+  // All five Tower difficulties share the same $1–$1000 range.
   if (game === 'tower') return { ...base, maxBets: Object.fromEntries(Object.keys(LEVELS).map(level => [level, maxBet(game, level)])), floors: FLOORS, levels: LEVELS, tables: TOWER };
   if (game === 'keno') return { ...base, size: 40, drawCount: 10, maxPicks: 10, tables: KENO };
   return { ...base, table: { dragon: 2, tiger: 2, tie: 12 }, tieReturn: .5 };
@@ -53,7 +54,9 @@ function optionsFor(game, options = {}) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) throw new ArcadeError('Некорректные настройки');
   if (game === 'plinko') {
     if (!Object.hasOwn(PLINKO, options.risk)) throw new ArcadeError('Выберите риск');
-    return { risk: options.risk };
+    const count = options.count ?? 1;
+    if (!Number.isInteger(count) || count < 1 || count > 25) throw new ArcadeError('Выберите от 1 до 25 шариков');
+    return { risk: options.risk, count };
   }
   if (game === 'tower') {
     if (!Object.hasOwn(TOWER, options.level)) throw new ArcadeError('Выберите сложность');
@@ -75,8 +78,8 @@ function sample(count, size, rng) {
   }
   return pool.slice(0, count);
 }
-function finish(round, multiplier) {
-  round.phase = 'done'; round.multiplier = multiplier; round.payout = moneyAt(round.bet, multiplier);
+function finish(round, multiplier, payout = moneyAt(round.bet, multiplier)) {
+  round.phase = 'done'; round.multiplier = multiplier; round.payout = payout;
   round.result = round.payout > round.bet ? 'win' : round.payout === round.bet ? 'push' : 'lose';
   round.revision++;
   round.history = [{ multiplier, payout: round.payout, result: round.result }, ...round.history].slice(0, 15);
@@ -86,13 +89,20 @@ function start(game, previous, amount, options, revision, rng = randomInt) {
   if (previous.phase === 'play' || !previous.settled) throw new ArcadeError('Сначала завершите предыдущий раунд');
   const selected = optionsFor(game, options);
   const limit = maxBet(game, selected.level);
-  if (!Number.isSafeInteger(amount) || amount < MIN_BET || amount > limit) throw new ArcadeError(`Ставка от $0.10 до $${(limit / 100).toFixed(2)}`);
+  if (!Number.isSafeInteger(amount) || amount < config(game).minBet || amount > limit) throw new ArcadeError(`Ставка от $${(config(game).minBet / 100).toFixed(2)} до $${(limit / 100).toFixed(2)}`);
   const round = { ...initial(), revision: previous.revision + 1, phase: 'play', settled: false,
     history: previous.history, bet: amount, options: selected };
   if (game === 'plinko') {
-    round.path = Array.from({ length: ROWS }, () => rng(2));
-    round.slot = round.path.reduce((sum, n) => sum + n, 0);
-    finish(round, PLINKO[selected.risk][round.slot]);
+    round.unitBet = amount;
+    round.bet = amount * selected.count;
+    round.balls = Array.from({length:selected.count}, () => {
+      const path = Array.from({length:ROWS}, () => rng(2));
+      const slot = path.reduce((sum,n) => sum+n,0), multiplier = PLINKO[selected.risk][slot];
+      return {path,slot,multiplier,payout:moneyAt(amount,multiplier)};
+    });
+    round.path = round.balls[0].path; round.slot = round.balls[0].slot;
+    const payout = round.balls.reduce((sum,ball) => sum+ball.payout,0);
+    finish(round, payout / round.bet, payout);
   } else if (game === 'keno') {
     round.drawn = sample(10, 40, rng).map(n => n + 1);
     round.hits = round.drawn.filter(n => selected.picks.includes(n));
@@ -139,7 +149,7 @@ function publicState(game, round) {
     // Future floors stay secret even on a loss; only completed floors may be shown.
     out.revealed = round.traps.slice(0, round.steps.length);
   }
-  if (round.phase === 'done') for (const key of ['path', 'slot', 'drawn', 'hits', 'cards', 'winner']) if (round[key] !== undefined) out[key] = round[key];
+  if (round.phase === 'done') for (const key of ['unitBet', 'balls', 'path', 'slot', 'drawn', 'hits', 'cards', 'winner']) if (round[key] !== undefined) out[key] = round[key];
   return out;
 }
 module.exports = { ArcadeError, GAMES, PLINKO, KENO, TOWER, LEVELS, ROWS, FLOORS, config, initial, start, actTower, publicState, choose, moneyAt };

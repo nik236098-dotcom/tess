@@ -88,5 +88,22 @@ test('Plinko shows each contact and leaves the ball inside its actual winning po
   h.advance(3000);assert.equal(h.state.ag.animating,true,'fall should not race through the board');
   h.advance(6000);assert.equal(h.state.ag.animating,false);
   assert.match(h.$('ag-stage').innerHTML,/data-ag-slot="10"/);
-  assert.match(h.$('ag-stage').innerHTML,/id="ag-ball" cx="320" cy="310.5"/);
+  assert.match(h.$('ag-stage').innerHTML,/id="ag-ball" cx="320" cy="284.5"/);
+});
+test('Plinko launches a chosen batch, shows running totals, then one combined result',()=>{
+  const h=harness('plinko');h.deliver(initial());h.ctx.bindArcade();
+  const count={dataset:{agCount:'5'}};
+  h.$('ag-settings').listeners.click({target:{closest:selector=>selector==='[data-ag-count]'?count:null}});
+  assert.equal(h.state.ag.options.plinko.count,5);assert.match(h.$('ag-note').textContent,/5 × \$1.00 = \$5.00/);
+  h.ctx.agRequest('start');assert.equal(h.sent.at(-1).options.count,5);
+  const round=start('plinko',initial(),100,{risk:'medium',count:5},0,()=>0);round.settled=true;h.deliver(round);
+  assert.equal((h.$('ag-stage').innerHTML.match(/id="ag-ball(?:-\d+)?"/g)||[]).length,5);
+  h.advance(4400);assert.equal(h.state.ag.animating,true);assert.match(h.$('ag-note').textContent,/1\/5/);
+  h.advance(6000);assert.equal(h.state.ag.animating,false);
+  assert.equal(h.$('ag-payout').textContent,'$110.00');assert.match(h.$('ag-note').textContent,/5\/5.*Ставки \$5.00.*Выплата \$110.00.*Итог \$105.00/);
+});
+test('Plinko MAX divides the balance across all balls and manual oversized batches are blocked',()=>{
+  const h=harness('plinko');h.deliver(initial());h.ctx.bindArcade();h.state.ag.options.plinko.count=25;
+  h.maxButton.listeners.click();assert.equal(h.$('ag-amount').value,'4,00');
+  h.$('ag-amount').value='5,00';h.ctx.agRequest('start');assert.equal(h.sent.length,0);
 });

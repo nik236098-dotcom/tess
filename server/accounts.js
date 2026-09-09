@@ -11,7 +11,7 @@ const { formatMoney } = require('./money');
 // Все суммы здесь — целые центы (см. money.js): $100.00 хранится как 10000.
 
 const DEFAULT_START_BALANCE = 10000; // $100.00
-const MAX_BALANCE = 1000000000; // $10 000 000.00
+const MAX_BALANCE = 1000000000000; // $10 000 000 000.00; covers Tower Master at a $1000 stake
 
 class AccountError extends Error {}
 

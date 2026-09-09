@@ -66,7 +66,9 @@ test('Tower trap loses, early cashout succeeds and cannot pay twice',()=>{
 test('Tower accepts larger stakes by difficulty and every maximum can pay the final floor in full',()=>{
   const cfg=config('tower');
   for(const level of ['easy','medium','hard'])assert.equal(cfg.maxBets[level],100000);
-  assert.ok(cfg.maxBets.expert>cfg.maxBets.master);
+  assert.equal(cfg.minBet,100);
+  assert.equal(cfg.maxBets.expert,100000);assert.equal(cfg.maxBets.master,100000);
+  for(const level of Object.keys(cfg.levels))assert.throws(()=>start('tower',initial(),99,{level},0));
   for(const [level,limit] of Object.entries(cfg.maxBets)){
     let round=start('tower',initial(),limit,{level},0,()=>0);
     assert.throws(()=>start('tower',initial(),limit+1,{level},0));
@@ -122,4 +124,34 @@ test('wallet cap keeps the complete payout pending; reopen pays exactly once aft
   accounts.grant('a',10000,'set');service.handle(client,{type:'ag_open',game:'plinko'});
   const paid=accounts.balanceOf('a');assert.equal(paid,10000+messages.at(-1).payout);
   service.handle(client,{type:'ag_open',game:'plinko'});assert.equal(accounts.balanceOf('a'),paid);
+});
+test('Plinko batch rounds each ball separately, totals stakes, and rejects invalid counts',()=>{
+  let i=0;const turns=[...Array(10).fill(0),...Array(10).fill(1),...Array.from({length:10},(_,n)=>n%2)];
+  const round=start('plinko',initial(),101,{risk:'low',count:3},0,()=>turns[i++]);
+  assert.equal(i,30);assert.equal(round.unitBet,101);assert.equal(round.bet,303);
+  assert.deepEqual(round.balls.map(b=>b.payout),[898,898,50]);assert.equal(round.payout,1846);
+  assert.equal(publicState('plinko',round).balls.length,3);
+  for(const count of [0,-1,26,1.5,'5',Infinity])assert.throws(()=>start('plinko',initial(),100,{risk:'low',count},0));
+});
+test('Plinko batch debits the complete stake and credits the combined payout once; insufficient funds debit nothing',()=>{
+  const accounts=new Accounts();const account=accounts.ensure({id:'batch'}), messages=[];
+  const client={user:{id:'batch'},send:m=>messages.push(m)};
+  const service=createArcadeService({accounts,noteWin(){},rng:()=>0});
+  const request={type:'ag_start',game:'plinko',amount:100,options:{risk:'high',count:25},revision:0};
+  accounts.grant('batch',100,'set');assert.throws(()=>service.handle(client,request));
+  assert.equal(account.balance,100);assert.equal(account.arcadeRounds,undefined);
+  accounts.grant('batch',10000,'set');service.handle(client,request);
+  assert.equal(account.balance,10000-2500+190000);assert.equal(messages.at(-1).balls.length,25);
+  assert.throws(()=>service.handle(client,request));assert.equal(account.balance,197500);
+  service.handle(client,{type:'ag_open',game:'plinko'});assert.equal(account.balance,197500);assert.equal(messages.at(-1).payout,190000);
+});
+test('Tower Master pays a $1000 final-floor win in full to the wallet',()=>{
+  const accounts=new Accounts();accounts.ensure({id:'master'});accounts.grant('master',100000,'set');
+  const messages=[],client={user:{id:'master'},send:m=>messages.push(m)};
+  const service=createArcadeService({accounts,noteWin(){},rng:()=>0});
+  service.handle(client,{type:'ag_start',game:'tower',amount:100000,options:{level:'master'},revision:0});
+  for(let i=0;i<9;i++)service.handle(client,{type:'ag_pick',game:'tower',index:3,revision:messages.at(-1).revision});
+  const result=messages.at(-1);assert.equal(result.settled,true);
+  assert.equal(accounts.balanceOf('master'),moneyAt(100000,TOWER.master[8]));
+  assert.ok(result.payout>1000000000);
 });

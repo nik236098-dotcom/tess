@@ -16,7 +16,8 @@ function createArcadeService({ accounts, noteWin, rng }) {
       if (message.type === 'ag_start') {
         if (!Number.isSafeInteger(message.amount) || balance < message.amount) throw new ArcadeError('Недостаточно средств или неверная сумма');
         next = start(game, previous, message.amount, message.options, message.revision, rng);
-        balance -= message.amount;
+        if (balance < next.bet) throw new ArcadeError('Недостаточно средств на все шарики');
+        balance -= next.bet;
       } else if (message.type === 'ag_pick' || message.type === 'ag_cashout') {
         if (game !== 'tower') throw new ArcadeError('Это действие доступно только в Башне');
         next = actTower(previous, message.type, message.index, message.revision);
