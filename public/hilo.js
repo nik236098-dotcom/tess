@@ -26,6 +26,7 @@ function hlRequest(action, extra = {}) {
     if (amount > state.balance) { toast('Недостаточно средств'); return; }
     hl.amount = amount; extra.amount = amount;
   }
+  hl.pendingAction = action;
   hl.busy = true; haptic('light'); renderHilo();
   send({ type: `hl_${action}`, revision: hl.info.revision, ...extra });
 }
@@ -33,11 +34,12 @@ async function onHiloState(message) {
   const hl = state.hl;
   const previous = hl.info;
   const token = ++hl.token;
-  const animate = hl.open && previous && message.revision > previous.revision &&
-    (message.card.rank !== previous.card.rank || message.card.suit !== previous.card.suit ||
-    message.history.length !== previous.history.length) && message.phase !== 'bet';
-  const skipAnimate = hl.open && previous && message.revision > previous.revision && message.phase === 'bet';
-  hl.busy = false; hl.animating = Boolean(animate || skipAnimate);
+  const requested = hl.pendingAction;
+  hl.pendingAction = null;
+  const changed = previous && message.revision > previous.revision;
+  const cardChanged = previous && (message.card.rank !== previous.card.rank || message.card.suit !== previous.card.suit);
+  hl.busy = false;
+  hl.animating = Boolean(hl.open && changed && (cardChanged || requested === 'pick' || requested === 'skip'));
   state.balance = message.balance;
   // Keep odds and cashout locked to the old visible card until the transition ends.
   renderHilo();
@@ -45,15 +47,22 @@ async function onHiloState(message) {
   if (hl.animating && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const old = deck.querySelector('.hl-face');
     const next = document.createElement('div'); next.className = 'hl-incoming'; next.innerHTML = hlCard(message.card);
-    deck.append(next);
-    const timing = { duration: 480, easing: 'cubic-bezier(.22,.7,.2,1)', fill: 'both' };
-    const animations = [next.animate([{ opacity: 0, transform: 'translate(22px, 12px) rotateY(-75deg) scale(.96)' }, { opacity: 1, transform: 'translate(0,0) rotateY(0) scale(1)' }], timing)];
-    if (old) animations.push(old.animate([{ opacity: 1, transform: 'translateX(0) rotate(0)' }, { opacity: 0, transform: 'translateX(-65%) rotate(-10deg)' }], timing));
-    await Promise.all(animations.map(a => a.finished.catch(() => {})));
-    animations.forEach(a => a.cancel()); next.remove();
+    const animations = [];
+    try {
+      deck.append(next);
+      const timing = { duration: 480, easing: 'cubic-bezier(.22,.7,.2,1)', fill: 'both' };
+      animations.push(next.animate([{ opacity: 0, transform: 'translate(22px, 12px) rotateY(-75deg) scale(.96)' }, { opacity: 1, transform: 'translate(0,0) rotateY(0) scale(1)' }], timing));
+      if (old) animations.push(old.animate([{ opacity: 1, transform: 'translateX(0) rotate(0)' }, { opacity: 0, transform: 'translateX(-65%) rotate(-10deg)' }], timing));
+      await Promise.all(animations.map(a => a.finished.catch(() => {})));
+    } catch {
+      // A cancelled/unsupported animation must not leave controls locked.
+    } finally {
+      animations.forEach(a => a.cancel()); next.remove();
+    }
   }
   if (token !== hl.token) return;
   hl.info = message; hl.animating = false;
+  hl.reveal = message.phase === 'done' && message.result === 'win' && message.payout > message.bet ? message : null;
   renderHilo();
   if (hl.open && message.phase === 'done' && previous?.phase === 'play') haptic(message.result === 'win' ? 'success' : 'error');
 }
@@ -79,6 +88,17 @@ function renderHilo() {
   $('hl-result').textContent = info?.phase === 'done' ? (info.result === 'win' ? `Забрано ${money(info.payout)}` : 'Не угадали. Попробуйте ещё раз') : (live ? 'Выберите направление следующей карты' : 'Сделайте ставку, чтобы начать');
   $('hl-result').classList.toggle('is-win', info?.result === 'win');
   for (const el of document.querySelectorAll('#hl-panel input, #hl-panel .mn-mod')) el.disabled = locked || live;
+  const overlay = $('hl-overlay');
+  const reveal = hl.reveal;
+  $('hl-game').classList.toggle('has-result', Boolean(reveal));
+  if (reveal && overlay.dataset.revision !== String(reveal.revision)) {
+    overlay.dataset.revision = String(reveal.revision);
+    overlay.className = 'mn-overlay hl-win-overlay is-win';
+    overlay.innerHTML = `<svg class="icon mn-suit-l"><use href="#i-spade"></use></svg><svg class="icon mn-suit-r"><use href="#i-club"></use></svg><i class="mn-spark mn-spark-1">✦</i><i class="mn-spark mn-spark-2">✦</i><b>×${reveal.multiplier.toFixed(2)}</b><span><i class="mn-coin">$</i>${money(reveal.payout).slice(1)}</span>`;
+  } else if (!reveal) {
+    overlay.className = 'mn-overlay hl-win-overlay hidden';
+    overlay.innerHTML = ''; delete overlay.dataset.revision;
+  }
   const history = $('hl-history');
   history.innerHTML = (info?.history || []).map(item => `<div class="hl-history-item ${item.won === false ? 'is-loss' : ''}"><span class="hl-history-arrow">${({high:'↑',low:'↓',skip:'»',start:'•'})[item.direction]}</span>${hlCard(item.card)}<small>${item.direction === 'skip' ? 'Пропуск' : item.multiplier.toFixed(2) + '×'}</small></div>`).join('') || '<span class="hl-empty">Здесь появятся ваши карты</span>';
   history.scrollLeft = history.scrollWidth;
