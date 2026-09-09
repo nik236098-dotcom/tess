@@ -19,6 +19,7 @@ trap recover ERR
 pgit checkout --detach "$target"
 node --check server/index.js
 node --check public/app.js
+node --check public/client-connection.js
 node --check public/crash.js
 node --check server/crash/game.js
 node --check server/crash/service.js

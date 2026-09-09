@@ -318,39 +318,23 @@ function applyTelegramTheme() {
 
 // ——— Соединение ———
 
+let connection;
 function connect() {
-  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  const socket = new WebSocket(`${protocol}://${location.host}/ws`);
-  state.socket = socket;
-
-  socket.addEventListener('open', () => {
-    state.connected = true;
-    state.reconnectDelay = 500;
-    setStatus('Авторизуемся…');
-    authenticate();
-  });
-
-  socket.addEventListener('message', (event) => {
-    let message;
-    try {
-      message = JSON.parse(event.data);
-    } catch {
-      return;
+  connection ??= ClientConnection.create({
+    url:()=>`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
+    onSocket:socket=>{state.socket=socket;state.connected=false;},
+    onOpen:()=>{setStatus('Авторизуемся…');authenticate();},
+    onMessage:handleMessage,
+    onDisconnect:event=>{
+      state.connected=false;
+      if(state.ag.game==='darts')DartsGame.stop();
+      if(state.hl.open)renderHilo();
+      if(state.ag.game)renderArcade();
+      if(state.cr.open)renderCrash();
+      setStatus(event.code===4000?'Сессия заменена. Закрой и снова открой приложение.':'Соединение потеряно, переподключаемся…');
     }
-    handleMessage(message);
   });
-
-  socket.addEventListener('close', () => {
-    state.connected = false;
-    if(state.ag.game==='darts')DartsGame.stop();
-    if (state.hl.open) renderHilo();
-    if (state.ag.game) renderArcade();
-    if (state.cr.open) renderCrash();
-    setStatus('Соединение потеряно, переподключаемся…');
-    // Экспоненциальная пауза, чтобы не долбить сервер при обрыве связи.
-    setTimeout(connect, state.reconnectDelay);
-    state.reconnectDelay = Math.min(state.reconnectDelay * 2, 10000);
-  });
+  connection.connect();
 }
 
 function send(message) {
@@ -389,6 +373,7 @@ function deviceId() {
 function handleMessage(message) {
   switch (message.type) {
     case 'auth_ok':
+      state.connected = true;
       state.user = message.user;
       if (state.hl.open) send({ type: 'hl_open' });
       if (state.cr.open) send({type:'cr_open'});
@@ -4266,9 +4251,7 @@ function bindUi() {
 
   // Не даём экрану засыпать посреди раздачи.
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && state.socket && state.socket.readyState === WebSocket.OPEN) {
-      send({ type: 'ping' });
-    }
+    if (!document.hidden) connection?.resume();
   });
 }
 
