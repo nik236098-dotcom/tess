@@ -56,17 +56,19 @@ const diamondPatterns=[[0,0,0,0,0],[0,0,0,0,1],[0,0,0,1,1],[0,0,0,1,2],[0,0,1,1,
 const diamondLabels=['Пять одинаковых','Четыре одинаковых','Фулл-хаус','Три одинаковых','Две пары','Пара','Нет совпадений'];
 const diamondPays=[50,5,4,3,2,.1,0];
 function flatDiamond(n){
+ if(n==null)return '<svg class="dm-gem dm-gem-empty" viewBox="0 0 100 88" aria-hidden="true"><path d="M22 8H78L98 37 50 86 2 37Z M2 37H98 M22 8L32 37 50 86 68 37 78 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>';
  const palette=['#a547f5','#32d5ca','#f5c840','#ef456b','#71d841','#528ff3','#ee85d3'];
  return `<svg class="dm-gem" viewBox="0 0 100 88" aria-hidden="true" style="color:${palette[n%7]}"><path d="M22 8H78L98 37 50 86 2 37Z" fill="currentColor"/><path d="M22 8L32 37H2Z" fill="#fff" opacity=".22"/><path d="M22 8H50L32 37Z" fill="#fff" opacity=".55"/><path d="M50 8H78L68 37Z" fill="#fff" opacity=".24"/><path d="M50 8L68 37H32Z" fill="#fff" opacity=".1"/><path d="M78 8L98 37H68Z" fill="#180632" opacity=".19"/><path d="M2 37H32L50 86Z" fill="#17052c" opacity=".25"/><path d="M68 37H98L50 86Z" fill="#18052f" opacity=".35"/><path d="M32 37H68L50 86Z" fill="#fff" opacity=".08"/></svg>`;
 }
 function diamondResult(info){
  const gems=info?.detail?.gems||[];
  const counts=new Map();for(const n of gems)counts.set(n,(counts.get(n)||0)+1);
- return {row:diamondPays.indexOf(info?.multiplier),matched:gems.map(n=>(counts.get(n)||0)>1)};
+ const example=[...counts.entries()].sort((a,b)=>b[1]-a[1]).flatMap(([color,count])=>Array(count).fill(count>1?color:null));
+ return {row:diamondPays.indexOf(info?.multiplier),matched:gems.map(n=>(counts.get(n)||0)>1),example};
 }
 function diamondBoard(info,animating){
  const done=info?.phase==='done'&&!animating,result=diamondResult(info),gems=info?.detail?.gems;
- return `<div class="dm-panel"><div class="dm-gems">${Array.from({length:5},(_,i)=>`<div class="dm-tile ${done&&result.matched[i]?'is-match':''}"><div class="dm-gem-motion" data-cg-gem="${i}">${flatDiamond(gems?.[i]??i)}</div></div>`).join('')}</div><div class="dm-result" role="status" aria-live="polite"><span class="dm-combination">${done?`${diamondLabels[result.row]} · ${agNumber(info.multiplier)}×`:animating?'Открываем кристаллы…':'Собери одинаковые кристаллы'}</span><b>${done?money(info.payout):'—'}</b><small>${done?'Выплата':'Результат раунда'}</small></div><div class="dm-paytable" role="table" aria-label="Комбинации и коэффициенты">${diamondPatterns.map((pattern,i)=>`<div class="dm-pay-row ${done&&result.row===i?'is-selected':''}" role="row" ${done&&result.row===i?'aria-current="true"':''}><span role="cell">${diamondLabels[i]}</span><span class="dm-example" role="cell" aria-label="Пример комбинации">${pattern.map(flatDiamond).join('')}</span><b role="cell">${diamondPays[i]}×</b></div>`).join('')}</div></div>`;
+ return `<div class="dm-panel"><div class="dm-gems">${Array.from({length:5},(_,i)=>`<div class="dm-tile ${done&&result.matched[i]?'is-match':''}"><div class="dm-gem-motion" data-cg-gem="${i}">${flatDiamond(gems?.[i]??i)}</div></div>`).join('')}</div><div class="dm-result" role="status" aria-live="polite"><span class="dm-combination">${done?`${diamondLabels[result.row]} · ${agNumber(info.multiplier)}×`:animating?'Открываем кристаллы…':'Собери одинаковые кристаллы'}</span><b>${done?money(info.payout):'—'}</b><small>${done?'Выплата':'Результат раунда'}</small></div><div class="dm-paytable" role="table" aria-label="Комбинации и коэффициенты">${diamondPatterns.map((pattern,i)=>`<div class="dm-pay-row ${done&&result.row===i?'is-selected':''}" role="row" ${done&&result.row===i?'aria-current="true"':''}><span role="cell">${diamondLabels[i]}</span><span class="dm-example" role="cell" aria-label="Пример комбинации">${pattern.map((_,j)=>flatDiamond(done&&result.row===i?result.example[j]:null)).join('')}</span><b role="cell">${diamondPays[i]}×</b></div>`).join('')}</div></div>`;
 }
 function board(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',locked=agLocked(),d=info?.detail,done=info?.phase==='done'&&!a.animating,step=info?.step||0;

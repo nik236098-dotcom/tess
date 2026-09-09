@@ -110,3 +110,6 @@
 @media(max-width:360px){#screen-ag.is-diamonds .ag-board{padding:9px}.dm-pay-row{padding:7px 6px;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 34px;gap:4px}.dm-pay-row>span:first-child{font-size:10px}.dm-pay-row>b{font-size:12px}.dm-result{height:130px}.dm-gems{gap:5px}.dm-tile{border-radius:10px}.dm-combination{font-size:11px}}
 @media(prefers-reduced-motion:reduce){.dm-gem-motion{will-change:auto}}
 .dm-cover{display:flex;position:relative;height:100%;align-items:center;justify-content:center;gap:0}.dm-cover .dm-gem{width:52%;flex:0 0 52%;margin:0 -11%;transform:translateY(8px) rotate(-13deg)}.dm-cover .dm-gem:nth-child(2){z-index:1;transform:translateY(-9px);filter:drop-shadow(0 6px 6px #a352f03d)}.dm-cover .dm-gem:nth-child(3){transform:translateY(9px) rotate(13deg)}
+
+.dm-example .dm-gem-empty{color:#655275;filter:none;opacity:.65}
+.dm-pay-row.is-selected .dm-example .dm-gem:not(.dm-gem-empty){filter:drop-shadow(0 0 3px currentColor)}
