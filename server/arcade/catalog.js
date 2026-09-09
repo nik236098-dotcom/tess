@@ -82,7 +82,7 @@ function publicState(game,r){
  const out={phase:r.phase,revision:r.revision,settled:r.settled,bet:r.bet,payout:r.payout,multiplier:r.multiplier,result:r.result,history:r.history,options:r.options||null};
  if(r.phase==='bet')return out;
  if(games[game].series)Object.assign(out,{step:r.step,events:r.events,last:r.last,coefficients:r.coefficients,available:r.phase==='play'?cents(r.bet,r.step?r.coefficients[r.step-1]:1):r.payout});
- if(game==='videopoker')Object.assign(out,{cards:r.cards,held:r.held||[]});
+ if(game==='videopoker'){const [name,multiplier]=evaluate(r.cards);Object.assign(out,{cards:r.cards,held:r.held||[],hand:{name,multiplier}});}
  if(r.phase==='done')out.detail=r.detail||null;
  return out;
 }

@@ -43,6 +43,18 @@ test('video poker recognises every payout class, including wheel and low-pair lo
 test('weighted prize tables total 100% and return 98% before cent rounding',()=>{
  for(const id of ['fishing']){const table=catalog.distribution(id);assert.equal(table.reduce((s,[w])=>s+w,0),10000);assert.ok(Math.abs(table.reduce((s,[w,m])=>s+w*m,0)/10000-.98)<1e-12);}
 });
+
+test('video poker current-hand preview reveals no future cards and does not pay before exchange',()=>{
+ const r=game.start('videopoker',game.initial(),100,{},0,rng());
+ r.cards=[10,11,12,13,14].map(rank=>({rank,suit:'s'}));
+ const before=JSON.stringify(r),view=game.publicState('videopoker',r);
+ assert.deepEqual(view.hand,{name:'Роял-флеш',multiplier:800});
+ assert.equal(view.payout,0);assert.equal(view.multiplier,0);assert.equal(view.phase,'play');
+ assert.equal(view.deck,undefined);assert.equal(view.detail,undefined);assert.equal(JSON.stringify(r),before);
+ const done=game.actGame('videopoker',r,'ag_pick',[0,1,2,3,4],r.revision);
+ assert.equal(done.payout,80000);assert.equal(game.publicState('videopoker',done).hand.multiplier,done.multiplier);
+ assert.throws(()=>game.actGame('videopoker',done,'ag_pick',[0,1,2,3,4],done.revision));
+});
 test('series: every game can advance, cash out once or lose, with no future outcome disclosure',()=>{
  for(const id of ids.filter(id=>games[id].series)){
   let r=game.start(id,game.initial(),100,opts(id),0,rng());

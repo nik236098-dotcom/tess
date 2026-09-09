@@ -8,7 +8,7 @@ const button=(label,index,disabled=false,cls='')=>`<button type="button" class="
 function prepare(game){if(!isGame(game))return;state.ag.options[game]??=structuredClone(definitions[game].defaults);state.ag.held=[];state.ag.cgTime=0;state.ag.cgPrevious=null;}
 function setup(){
  const host=$('casino-catalog');if(!host)return;
- host.innerHTML=CasinoRules.ids.map(id=>{const g=definitions[id];return `<button type="button" data-arcade="${id}" class="cg-launch"><span class="cg-launch-art">${id==='diamonds'?`<span class="dm-cover">${flatDiamond(1)}${flatDiamond(0)}${flatDiamond(2)}</span>`:CasinoArt.cover(id)}</span><span class="cg-launch-name">${g.name}</span><small>${g.tag}</small></button>`;}).join('');
+ host.innerHTML=CasinoRules.ids.map(id=>{const g=definitions[id];return `<button type="button" data-arcade="${id}" class="cg-launch"><span class="cg-launch-art">${id==='diamonds'?`<span class="dm-cover">${flatDiamond(1)}${flatDiamond(0)}${flatDiamond(2)}</span>`:id==='videopoker'?videoCover():CasinoArt.cover(id)}</span><span class="cg-launch-name">${g.name}</span><small>${g.tag}</small></button>`;}).join('');
 }
 function settings(){
  const a=state.ag,g=current(),options=a.options[a.game],disabled=agLocked()||a.info?.phase==='play',attr=disabled?'disabled':'';
@@ -27,12 +27,15 @@ function afterRender(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',pending=info?.phase==='done'&&!info.settled,main=$('ag-main');
  $('ag-title').classList.toggle('ag-long-title',g.name.length>15);
  $('screen-ag').classList.toggle('is-diamonds',a.game==='diamonds');
+ $('screen-ag').classList.toggle('is-videopoker',a.game==='videopoker');
+ $('screen-ag').classList.toggle('vp-is-live',a.game==='videopoker'&&live);
+ if(a.game==='videopoker')$('ag-subtitle').textContent='Jacks or Better';
  if(a.game==='diamonds')$('ag-subtitle').textContent='Собери одинаковые кристаллы';
  if(!live)return;
  const locked=agLocked();
  main.disabled=locked;main.classList.toggle('is-cash',Boolean(g.series));
  if(g.series){main.textContent=info.step?'Забрать '+money(info.available):'Вернуть ставку';$('ag-status').textContent=locked?'Подождите…':info.last?.tie?'Ничья · серия сохранена':`Успешных ходов: ${info.step||0}`;}
- else if(a.game==='videopoker'){main.textContent=(state.ag.held||[]).length===5?'Оставить все карты':'Заменить неотмеченные';$('ag-status').textContent='Отметь карты, которые оставляешь';}
+ else if(a.game==='videopoker'){const n=5-(a.held||[]).length;main.textContent=a.animating?'Раздаём карты…':a.pending?'Подождите…':n?`Заменить ${n} ${n===1?'карту':n===5?'карт':'карты'}`:'Оставить все карты';$('ag-status').textContent='Отметь карты, которые оставляешь';}
  if(!pending)$('ag-note').textContent=g.series?'Раунд сохранён. Можно продолжить или забрать.':'Раунд сохранён: можно выйти и вернуться.';
 }
 function main(){
@@ -70,12 +73,40 @@ function diamondBoard(info,animating){
  const done=info?.phase==='done'&&!animating,result=diamondResult(info),gems=info?.detail?.gems;
  return `<div class="dm-panel"><div class="dm-gems">${Array.from({length:5},(_,i)=>`<div class="dm-tile ${done&&result.matched[i]?'is-match':''}"><div class="dm-gem-motion" data-cg-gem="${i}">${flatDiamond(gems?.[i]??i)}</div></div>`).join('')}</div><div class="dm-result" role="status" aria-live="polite"><span class="dm-combination">${done?`${diamondLabels[result.row]} · ${agNumber(info.multiplier)}×`:animating?'Открываем кристаллы…':'Собери одинаковые кристаллы'}</span><b>${done?money(info.payout):'—'}</b><small>${done?'Выплата':'Результат раунда'}</small></div><div class="dm-paytable" role="table" aria-label="Комбинации и коэффициенты">${diamondPatterns.map((pattern,i)=>`<div class="dm-pay-row ${done&&result.row===i?'is-selected':''}" role="row" ${done&&result.row===i?'aria-current="true"':''}><span role="cell">${diamondLabels[i]}</span><span class="dm-example" role="cell" aria-label="Пример комбинации">${pattern.map((_,j)=>flatDiamond(done&&result.row===i?result.example[j]:null)).join('')}</span><b role="cell">${diamondPays[i]}×</b></div>`).join('')}</div></div>`;
 }
+function classicCard(c){
+ if(!c)return '<div class="vp-card-back"></div>';
+ const suit={s:'spade',c:'club',h:'heart',d:'diamond'}[c.suit];
+ const rank=({14:'1',13:'king',12:'queen',11:'jack'})[c.rank]||String(c.rank);
+ return `<svg class="vp-card-art" viewBox="0 0 169.075 244.640" aria-hidden="true"><use href="/img/classic/deck.svg#${suit}_${rank}"/></svg>`;
+}
+function videoCover(){return `<span class="vp-cover">${classicCard({rank:14,suit:'s'})}${classicCard({rank:13,suit:'h'})}</span>`;}
+function videoHandName(info){
+ const hand=info?.hand;if(!hand)return '';
+ if(hand.multiplier!==1)return hand.name;
+ const pair=info.cards.find(c=>c.rank>=11&&info.cards.filter(other=>other.rank===c.rank).length===2);
+ return pair?`Пара ${{11:'валетов',12:'дам',13:'королей',14:'тузов'}[pair.rank]}`:hand.name;
+}
+function videoBoard(info,animating,locked){
+ const a=state.ag,live=info?.phase==='play',done=info?.phase==='done'&&!animating;
+ const hand=animating?null:info?.hand,selected=hand?.multiplier||0;
+ const heading=done?'Раздача завершена':live?'Выберите карты':'Ваша следующая раздача';
+ const status=animating?'Раздаём карты…':!state.connected?'Восстанавливаем связь…':hand?videoHandName(info):'Сделайте ставку';
+ const note=done?`Выплата ${money(info.payout)}`:live?'Текущая комбинация':'Можно заменить до 5 карт';
+ const cards=Array.from({length:5},(_,i)=>{
+  const kept=info?.phase==='done'?info.held?.includes(i):(a.held||[]).includes(i),c=info?.cards?.[i];
+  const name=c?`${({14:'Туз',13:'Король',12:'Дама',11:'Валет'})[c.rank]||c.rank} ${{s:'пик',c:'треф',h:'червей',d:'бубен'}[c.suit]}`:`Карта ${i+1}`;
+  return `<button type="button" class="vp-card ${kept?'is-held':''}" data-cg-hold="${i}" ${!live||locked?'disabled':''} aria-pressed="${Boolean(kept)}" aria-label="${name}${live?kept?', оставить':', заменить':''}"><span class="cg-card-turn" style="transform:rotateY(${c&&(!animating||kept&&info.phase==='done')?180:0}deg)"><span class="vp-card-back"></span><span class="vp-card-front">${classicCard(c)}</span></span>${kept?'<span class="vp-held-check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m4 8 3 3 5-6"/></svg></span>':''}<small>${live?kept?'ОСТАВИТЬ':'ЗАМЕНИТЬ':info?.phase==='done'?kept?'ОСТАВЛЕНА':'НОВАЯ':'—'}</small></button>`;
+ }).join('');
+ const crown='<svg class="vp-crown" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 5 4 4-7 4 7 5-4-3 12H6ZM6 21h12"/></svg>';
+ const table=[...definitions.videopoker.table].reverse().map(([label,value])=>`<div class="vp-pay-tile${value===800?' is-royal':''}${selected===value?' is-selected':''}" role="listitem" ${selected===value?'aria-current="true"':''}>${value===800?crown:''}<span>${label}</span><b>${value}×</b></div>`).join('');
+ return `<div class="vp-hand-panel"><h2>${heading}</h2><div class="vp-cards">${cards}</div><div class="vp-hand-status" role="status" aria-live="polite"><span><b>${status}</b><small>${note}</small></span><strong>${hand?`${hand.multiplier}×`:'—'}</strong></div></div><div class="vp-paytable"><h2>Комбинации</h2><div class="vp-pay-grid" role="list" aria-label="Комбинации и коэффициенты Jacks or Better">${table}</div></div>`;
+}
 function board(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',locked=agLocked(),d=info?.detail,done=info?.phase==='done'&&!a.animating,step=info?.step||0;
  const visual=a.animating?a.cgPrevious:info,last=visual?.last,visibleStep=visual?.step||0;
  let html='';
  if(a.game==='diamonds')html=diamondBoard(info,a.animating);
- else if(a.game==='videopoker')html=`<div class="cg-scene cg-card-table">${plaque('JACKS OR BETTER')}<div class="cg-cards">${Array.from({length:5},(_,i)=>{const held=(a.held||[]).includes(i);return `<button type="button" class="cg-card ${held?'is-held':''}" data-cg-hold="${i}" ${!live||locked?'disabled':''} aria-pressed="${held}" aria-label="Оставить карту ${i+1}">${turnCard(info?.cards?.[i],info?.cards&&!a.animating?180:0)}<small>${live?held?'ОСТАВИТЬ':'ВЫБРАТЬ':info?.held?.includes(i)?'ОСТАВЛЕНА':''}</small></button>`;}).join('')}</div></div>${caption(done?d?.combination||'Раздача завершена':'Отметь карты для сохранения · один обмен')}`;
+ else if(a.game==='videopoker')html=videoBoard(info,a.animating,locked);
  else if(a.game==='limbo')html=`<div class="cg-scene cg-limbo"><div class="cg-starfield"></div><div class="cg-limbo-readout"><small>ТЕКУЩИЙ КОЭФФИЦИЕНТ</small><b id="cg-limbo-value">${done?agNumber(d.value):'1.00'}×</b><span>Цель ${agNumber(a.options.limbo.target)}×</span></div><div id="cg-rocket" class="cg-rocket">${art('orbit')}<i class="cg-exhaust"></i></div><div class="cg-orbit-line"></div>${particles()}</div>`;
  else if(a.game==='sicbo')html=`<div class="cg-scene cg-dice-scene">${plaque('SIC BO')}<div class="cg-dice">${(done?d.dice:[1,3,5]).map(dice).join('')}</div><div class="cg-dice-tray"></div></div>${caption(done?`Сумма ${d.sum}${d.triple?' · Тройка':''}`:'Три кубика · выбери исход перед броском')}`;
  else if(a.game==='chicken')html=`<div class="cg-scene cg-road"><div class="cg-road-ground"></div><div class="cg-road-markers">${Array.from({length:4},(_,i)=>`<span>${visibleStep+i+1}</span>`).join('')}</div><div id="cg-chicken" class="cg-chicken">${art('chicken')}</div><div id="cg-road-car" class="cg-road-car">${art('race')}</div><div class="cg-road-start"></div>${plaque(`ШАГ ${visibleStep} · ${agNumber(visual?.multiplier||1)}×`)}${particles()}</div>${caption(info?.last?.safe===false&&!a.animating?'Столкновение · раунд завершён':`Пройдено ${visibleStep} участков`)}${live?button('Следующий шаг →',0,locked):''}`;

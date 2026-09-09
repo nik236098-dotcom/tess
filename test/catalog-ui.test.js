@@ -84,3 +84,55 @@ test('Diamonds matches the approved table and highlights only the actual combina
   assert.equal(h.$('ag-overlay').innerHTML,'','inline result should not be covered by an overlay');
  }
 });
+
+test('videopoker keeps zero to five selected cards, shows the exact exchange count and locks the stake',()=>{
+ const h=harness('videopoker');h.deliver(game.initial());h.ctx.agRequest('start');
+ const r=game.start('videopoker',game.initial(),100,{},0,n=>n-1);h.deliver(r);h.advance();
+ assert.equal(h.$('ag-amount').disabled,true);
+ const labels=['Заменить 5 карт','Заменить 4 карты','Заменить 3 карты','Заменить 2 карты','Заменить 1 карту','Оставить все карты'];
+ for(let held=0;held<=5;held++){
+  assert.equal(h.$('ag-main').textContent,labels[held]);
+  assert.equal((h.$('ag-stage').innerHTML.match(/aria-pressed="true"/g)||[]).length,held);
+  assert.equal((h.$('ag-stage').innerHTML.match(/class="vp-held-check"/g)||[]).length,held);
+  if(held<5)h.click('ag-stage','cgHold',String(held));
+ }
+ h.click('ag-stage','cgHold','2');assert.equal(h.$('ag-main').textContent,'Заменить 1 карту');
+ h.$('ag-main').dispatch('click',{});h.$('ag-main').dispatch('click',{});
+ assert.equal(h.sent.filter(m=>m.type==='ag_pick').length,1);
+ assert.equal(JSON.stringify(h.sent.at(-1).index),'[0,1,3,4]');
+ assert.equal(h.$('ag-main').disabled,true);
+});
+
+test('videopoker shows all nine payouts, previews the hand and reveals the final payment after animation',()=>{
+ const h=harness('videopoker');h.deliver(game.initial());
+ assert.ok(!h.$('ag-stage').innerHTML.includes('aria-current="true"'));
+ const r=game.start('videopoker',game.initial(),100,{},0,n=>n-1);
+ r.cards=[{rank:12,suit:'h'},{rank:11,suit:'s'},{rank:11,suit:'d'},{rank:7,suit:'c'},{rank:2,suit:'s'}];
+ h.deliver(r);h.advance();
+ let html=h.$('ag-stage').innerHTML;
+ assert.match(html,/Пара валетов/);assert.match(html,/Текущая комбинация/);
+ assert.equal((html.match(/role="listitem"/g)||[]).length,9);
+ assert.equal((html.match(/aria-current="true"/g)||[]).length,1);
+ assert.match(html,/vp-pay-tile is-selected[^>]*><span>Валеты и старше<\/span><b>1×/);
+ for(let i=0;i<5;i++)h.click('ag-stage','cgHold',String(i));
+ h.$('ag-main').dispatch('click',{});
+ const done=game.actGame('videopoker',r,'ag_pick',[0,1,2,3,4],r.revision);done.settled=true;h.deliver(done);
+ assert.ok(!h.$('ag-stage').innerHTML.includes('aria-current="true"'),'no final result before animation completes');
+ h.advance();html=h.$('ag-stage').innerHTML;
+ assert.match(html,/Выплата \$1.00/);assert.match(html,/Пара валетов/);
+ assert.equal(h.$('ag-overlay').innerHTML,'');
+ assert.equal(h.$('ag-amount').disabled,false);
+ assert.equal(h.$('ag-main').textContent,'Сделать ставку');
+});
+
+test('every ordinary playing-card face referenced by videopoker exists in the bundled SVG deck',()=>{
+ const h=harness('videopoker'),deck=fs.readFileSync('public/img/classic/deck.svg','utf8');
+ const references=new Set();
+ for(const suit of ['s','c','h','d'])for(let rank=2;rank<=14;rank++){
+  const r=game.start('videopoker',game.initial(),100,{},0,n=>n-1);
+  r.cards[0]={rank,suit};h.state.ag.info=null;h.deliver(r);h.advance();
+  const id=h.$('ag-stage').innerHTML.match(/href="\/img\/classic\/deck.svg#([^"]+)"/)[1];
+  assert.ok(deck.includes(`id="${id}"`),`${rank} ${suit} has a real face`);references.add(id);
+ }
+ assert.equal(references.size,52);
+});

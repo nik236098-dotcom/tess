@@ -1,0 +1,10 @@
+SVG-cards — conventional French playing-card artwork
+
+Source: https://github.com/htdebeer/SVG-cards
+Original file: https://raw.githubusercontent.com/htdebeer/SVG-cards/master/svg-cards.svg
+Authors: David Bellot and Huub de Beer. Full copyright notices are retained in deck.svg.
+License: GNU Lesser General Public License, version 2.1; see LICENSE.txt.
+
+deck.svg is the original editable SVG source, unchanged apart from a trailing
+newline. The application references its card groups through SVG use elements.
+This artwork is licensed separately from the application's source code.
