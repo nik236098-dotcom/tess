@@ -95,3 +95,11 @@ test('failed retirement persistence never credits the wallet or consumes the ref
  const previous=a.arcadeRounds,balance=a.balance;accounts.flush=()=>{throw Error('disk failure');};
  assert.throws(()=>accounts.ensure(user));assert.equal(a.balance,balance);assert.equal(a.arcadeRounds,previous);
 });
+
+test('Sic Bo records only actual throw totals and preserves earlier history when starting again',()=>{
+ let i=0,r=game.start('sicbo',game.initial(),100,{side:'big'},0,()=>[2,3,4][i++]);r.settled=true;
+ assert.equal(r.history[0].sum,12);assert.deepEqual(r.history[0].dice,[3,4,5]);assert.equal(r.history[0].triple,false);
+ const next=game.start('sicbo',r,100,{side:'triple'},r.revision,()=>5);
+ assert.equal(next.history[0].sum,18);assert.equal(next.history[0].triple,true);assert.equal(next.history[0].payout,3100);
+ assert.equal(next.history[1].sum,12);assert.equal(r.history.length,1);
+});

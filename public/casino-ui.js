@@ -27,9 +27,14 @@ function afterRender(){
  $('ag-title').classList.toggle('ag-long-title',g.name.length>15);
  $('screen-ag').classList.toggle('is-diamonds',a.game==='diamonds');
  $('screen-ag').classList.toggle('is-videopoker',a.game==='videopoker');
+ $('screen-ag').classList.toggle('is-sicbo',a.game==='sicbo');
  $('screen-ag').classList.toggle('vp-is-live',a.game==='videopoker'&&live);
  if(a.game==='videopoker')$('ag-subtitle').textContent='Jacks or Better';
  if(a.game==='diamonds')$('ag-subtitle').textContent='Собери одинаковые кристаллы';
+ if(a.game==='sicbo'){
+  $('ag-subtitle').textContent='Три кубика — один бросок';
+  if(!pending)main.textContent=a.animating?'Кубики брошены…':a.pending?'Подождите…':'Бросить кубики';
+ }
  if(!live)return;
  const locked=agLocked();
  main.disabled=locked;main.classList.toggle('is-cash',Boolean(g.series));
@@ -50,7 +55,6 @@ function card(c){
 }
 function turnCard(c,angle=180){return `<div class="cg-card-turn" style="transform:rotateY(${angle}deg)"><div class="cg-card-back"></div>${card(c)}</div>`;}
 function gem(n,i=0){return `<span class="cg-gem" data-cg-gem="${i}" style="--hue:${[95,0,195,290,140,325,35][n%7]}deg">${art('gem')}<i></i></span>`;}
-function dice(n,i=0){return `<div class="cg-die" data-cg-die="${i}"><div class="cg-die-face" data-value="${n}">${Array.from({length:9},(_,j)=>`<i class="${({1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]}[n]).includes(j)?'is-dot':''}"></i>`).join('')}</div></div>`;}
 const caption=text=>`<p class="cg-caption">${text}</p>`;
 const plaque=text=>`<div class="cg-scene-plaque">${text}</div>`;
 const particles=()=>`<div class="cg-particles" aria-hidden="true">${Array.from({length:12},(_,i)=>`<i style="--n:${i};--a:${i*30}deg"></i>`).join('')}</div>`;
@@ -100,13 +104,27 @@ function videoBoard(info,animating,locked){
  const table=[...definitions.videopoker.table].reverse().map(([label,value])=>`<div class="vp-pay-tile${value===800?' is-royal':''}${selected===value?' is-selected':''}" role="listitem" ${selected===value?'aria-current="true"':''}>${value===800?crown:''}<span>${label}</span><b>${value}×</b></div>`).join('');
  return `<div class="vp-hand-panel"><h2>${heading}</h2><div class="vp-cards">${cards}</div><div class="vp-hand-status" role="status" aria-live="polite"><span><b>${status}</b><small>${note}</small></span><strong>${hand?`${hand.multiplier}×`:'—'}</strong></div></div><div class="vp-paytable"><h2>Комбинации</h2><div class="vp-pay-grid" role="list" aria-label="Комбинации и коэффициенты Jacks or Better">${table}</div></div>`;
 }
+const sbPips={1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+function sicboCube(value,index){
+ // Rigid six-face die: opposite faces always add to seven.
+ const adjacent={1:[2,3],2:[3,1],3:[1,2],4:[2,1],5:[1,3],6:[3,2]}[value];
+ const faces=[adjacent[0],7-adjacent[0],adjacent[1],7-adjacent[1],value,7-value];
+ return `<div class="sb-die sb-die-${index}" data-sb-die="${index}" role="img" aria-label="Кубик ${index+1}: ${value}"><span class="sb-shadow"></span><div class="sb-lift"><div class="sb-cube" style="transform:rotateX(-58deg) rotateY(26deg) rotateZ(${[-10,12,-8][index]}deg)">${faces.map((n,f)=>`<span class="sb-face sb-face-${f}" data-face-value="${n}">${Array.from({length:9},(_,j)=>`<i class="${sbPips[n].includes(j)?'is-pip':''}"></i>`).join('')}</span>`).join('')}</div></div></div>`;
+}
+function sicboBoard(info,animating,locked){
+ const done=info?.phase==='done'&&!animating,d=info?.detail,chosen=state.ag.options.sicbo.side;
+ const result=done?(d.triple?'Тройка':d.sum<=10?'Малое':'Большое'):animating?'Бросаем…':'Выберите исход';
+ const history=(animating?state.ag.cgPrevious?.history:info?.history)||[];
+ const rolls=history.filter(r=>Number.isInteger(r.sum)).slice(0,5).reverse();
+ return `<div class="sb-play"><div class="sb-tray"><div class="sb-rim"></div><div class="sb-felt"></div><div class="sb-dice" ${animating?'aria-hidden="true"':''}>${(d?.dice||[3,4,5]).map(sicboCube).join('')}</div></div><div class="sb-result ${done&&info.payout?'is-paid':''}" role="status" aria-live="polite"><div><small>Сумма</small><b>${done?d.sum:'—'}</b></div><strong>${result}</strong><div><small>Выплата</small><b>${done?money(info.payout):'—'}</b></div></div></div><section class="sb-outcomes"><h2>Выберите исход</h2><div class="sb-choices">${[['small','Малое','4–10',2],['big','Большое','11–17',2],['triple','Любая тройка','Три одинаковых',31]].map(([id,label,range,pay])=>`<button type="button" data-sb-side="${id}" class="sb-choice ${chosen===id?'is-selected':''}" aria-pressed="${chosen===id}" ${locked||info?.phase==='done'&&!info.settled?'disabled':''}><span>${label}</span><small>${range}</small><b>${pay}×</b></button>`).join('')}</div><p>Тройка не выигрывает в малом и большом</p></section><section class="sb-history"><h2>Последние броски</h2><div>${rolls.length?rolls.map((r,i)=>`<span class="${i===rolls.length-1?'is-latest':''}" aria-label="Сумма ${r.sum}${r.triple?', тройка':''}">${r.sum}${r.triple?'<small>×3</small>':''}</span>`).join(''):'<p>Здесь появятся результаты бросков</p>'}</div></section>`;
+}
 function board(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',locked=agLocked(),d=info?.detail,done=info?.phase==='done'&&!a.animating,step=info?.step||0;
  const visual=a.animating?a.cgPrevious:info,last=visual?.last,visibleStep=visual?.step||0;
  let html='';
  if(a.game==='diamonds')html=diamondBoard(info,a.animating);
  else if(a.game==='videopoker')html=videoBoard(info,a.animating,locked);
- else if(a.game==='sicbo')html=`<div class="cg-scene cg-dice-scene">${plaque('SIC BO')}<div class="cg-dice">${(done?d.dice:[1,3,5]).map(dice).join('')}</div><div class="cg-dice-tray"></div></div>${caption(done?`Сумма ${d.sum}${d.triple?' · Тройка':''}`:'Три кубика · выбери исход перед броском')}`;
+ else if(a.game==='sicbo')html=sicboBoard(info,a.animating,locked);
  else if(a.game==='chicken')html=`<div class="cg-scene cg-road"><div class="cg-road-ground"></div><div class="cg-road-markers">${Array.from({length:4},(_,i)=>`<span>${visibleStep+i+1}</span>`).join('')}</div><div id="cg-chicken" class="cg-chicken">${art('chicken')}</div><div id="cg-road-car" class="cg-road-car">${art('race')}</div><div class="cg-road-start"></div>${plaque(`ШАГ ${visibleStep} · ${agNumber(visual?.multiplier||1)}×`)}${particles()}</div>${caption(info?.last?.safe===false&&!a.animating?'Столкновение · раунд завершён':`Пройдено ${visibleStep} участков`)}${live?button('Следующий шаг →',0,locked):''}`;
  else if(a.game==='coin')html=`<div class="cg-scene cg-coin-scene">${plaque('ОРЁЛ ИЛИ РЕШКА')}<div id="cg-coin-shadow" class="cg-coin-shadow"></div><div class="cg-coin-lift" id="cg-coin-lift"><div class="cg-coin" id="cg-coin" style="transform:rotateY(${last?.opponent===1?180:0}deg)"><div class="cg-coin-side cg-coin-front">${art('coin')}</div><div class="cg-coin-side cg-coin-reverse"><span>♠</span><small>POKERGENA</small></div></div></div></div>${caption(last?(last.opponent===0?'Выпал орёл':'Выпала решка'):'Выбери сторону следующего броска')}${live?`<div class="cg-choices">${button('Орёл',0,locked)}${button('Решка',1,locked)}</div>`:''}`;
  else if(a.game==='rps')html=`<div class="cg-scene cg-rps-scene">${plaque('ТВОЙ ХОД')}<div class="cg-rps"><div><span id="cg-hand-you">${art(['rock','paper','scissors'][last?.choice??0])}</span><small>ТЫ</small></div><b>VS</b><div><span id="cg-hand-house">${art(['rock','paper','scissors'][last?.opponent??0])}</span><small>СОПЕРНИК</small></div></div></div>${caption(last?.tie?'Ничья — серия сохранена':'Камень · бумага · ножницы')}${live?`<div class="cg-choices">${['Камень','Бумага','Ножницы'].map((n,i)=>button(n,i,locked)).join('')}</div>`:''}`;
@@ -133,7 +151,7 @@ function paint(info,t){
  const toggle=(selector,name,value)=>el(selector)?.classList.toggle(name,value);
  if(game==='diamonds')f.items.forEach((v,i)=>{transform(`[data-cg-gem="${i}"]`,`translateY(${v.y}px) rotate(${v.rotation}deg)`);style(`[data-cg-gem="${i}"]`,'opacity',v.opacity);});
  if(game==='videopoker')f.cards.forEach((v,i)=>{transform(`[data-cg-hold="${i}"] .cg-card-turn`,`translateY(${v.y}px) rotateY(${v.flip}deg)`);});
- if(game==='sicbo')f.dice.forEach((v,i)=>{transform(`[data-cg-die="${i}"]`,`translateY(${v.y}px) rotate(${v.angle}deg) scale(${v.scale})`);const face=el(`[data-cg-die="${i}"] .cg-die-face`),value=v.settled?d.dice?.[i]||1:1+(Math.floor(t*22)+i*2)%6;if(face&&face.dataset.value!==String(value)){face.dataset.value=String(value);face.innerHTML=dice(value).match(/<div class="cg-die-face"[^>]*>(.*?)<\/div>/)[1];}});
+ if(game==='sicbo')f.dice.forEach((v,i)=>{transform(`[data-sb-die="${i}"]`,`translate(${v.x}%,${v.y}%)`);transform(`[data-sb-die="${i}"] .sb-lift`,`translateY(${-v.height}px)`);transform(`[data-sb-die="${i}"] .sb-cube`,`rotateX(${v.rx}deg) rotateY(${v.ry}deg) rotateZ(${v.rz}deg)`);transform(`[data-sb-die="${i}"] .sb-shadow`,`scale(${v.shadow})`);});
  if(game==='chicken'){style('#cg-chicken','left',f.x+'%');transform('#cg-chicken',`translate(-50%,${f.y}px) ${f.impact?'rotate(-75deg) scale(.7)':''}`);style('#cg-road-car','top',f.carY+'%');style('#cg-road-car','left',(last.safe===false?32:70)+'%');toggle('.cg-road','is-impact',f.impact);}
  if(game==='coin'){transform('#cg-coin',`rotateY(${f.angle}deg)`);transform('#cg-coin-lift',`translateY(${f.y}px)`);transform('#cg-coin-shadow',`scale(${f.shadow})`);}
  if(game==='rps'){for(const [id,index] of [['you',last.choice],['house',last.opponent]]){const node=el('#cg-hand-'+id);if(node){const key=f.reveal?['rock','paper','scissors'][index??0]:'rock';if(node.dataset.hand!==key){node.innerHTML=art(key);node.dataset.hand=key;}node.style.transform=`translateY(${f.y}px) scale(${f.scale})`;}}}
@@ -168,7 +186,13 @@ function settingEvent(event){
  const el=event.target.closest('[data-cg-option]');if(el){const g=current(),pair=g.choices.find(([,v])=>String(v)===el.dataset.cgOption);if(!pair)return;a.options[a.game][el.dataset.cgKey]=pair[1];renderArcade();}
 }
 function boardEvent(event){
- const a=state.ag;if(!isGame(a.game)||agLocked()||a.info?.phase!=='play')return;
+ const a=state.ag;
+ if(a.game==='sicbo'){
+  const choice=event.target.closest('[data-sb-side]');
+  if(choice&&!choice.disabled&&!agLocked()&&!(a.info.phase==='done'&&!a.info.settled)&&['small','big','triple'].includes(choice.dataset.sbSide)){a.options.sicbo.side=choice.dataset.sbSide;renderArcade();}
+  return;
+ }
+ if(!isGame(a.game)||agLocked()||a.info?.phase!=='play')return;
  const hold=event.target.closest('[data-cg-hold]');if(hold){a.held??=[];const n=Number(hold.dataset.cgHold),i=a.held.indexOf(n);if(i<0)a.held.push(n);else a.held.splice(i,1);renderArcade();return;}
  const pick=event.target.closest('[data-cg-pick]');if(pick&&!pick.disabled)agRequest('pick',{index:Number(pick.dataset.cgPick)});
 

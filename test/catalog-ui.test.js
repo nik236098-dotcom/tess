@@ -135,3 +135,22 @@ test('every ordinary playing-card face referenced by videopoker exists in the bu
  }
  assert.equal(references.size,52);
 });
+
+test('Sic Bo choices lock during a throw; real totals appear only after all dice settle',()=>{
+ const h=harness('sicbo');h.deliver(game.initial());
+ h.click('ag-stage','sbSide','big');assert.equal(h.state.ag.options.sicbo.side,'big');
+ h.$('ag-main').dispatch('click',{});assert.equal(h.sent.at(-1).options.side,'big');
+ h.click('ag-stage','sbSide','small');assert.equal(h.state.ag.options.sicbo.side,'big');
+ let index=0;const r=game.start('sicbo',game.initial(),100,{side:'big'},0,()=>[2,3,4][index++]);r.settled=true;h.deliver(r);
+ assert.match(h.$('ag-stage').innerHTML,/Бросаем…/);
+ assert.ok(!h.$('ag-stage').innerHTML.includes('$2.00'));
+ assert.equal(h.$('ag-amount').disabled,true);
+ h.advance(1700);assert.equal(h.state.ag.animating,true);
+ h.advance();let html=h.$('ag-stage').innerHTML;
+ assert.match(html,/Сумма<\/small><b>12<\/b>/);assert.match(html,/Выплата<\/small><b>\$2.00/);
+ assert.match(html,/aria-label="Сумма 12"/);assert.equal(h.$('ag-overlay').innerHTML,'');
+ assert.equal(h.$('ag-main').textContent,'Бросить кубики');
+ const faces=[...html.matchAll(/data-face-value="(\d)"/g)].map(m=>Number(m[1]));assert.equal(faces.length,18);
+ for(let i=0;i<3;i++){const cube=faces.slice(i*6,i*6+6);assert.equal(new Set(cube).size,6);assert.equal(cube[4],r.detail.dice[i]);for(let j=0;j<6;j+=2)assert.equal(cube[j]+cube[j+1],7);}
+ h.click('ag-stage','sbSide','triple');assert.equal(h.state.ag.options.sicbo.side,'triple');
+});

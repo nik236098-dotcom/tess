@@ -38,9 +38,6 @@
 .cg-card-face .cg-court{position:absolute;inset:0;background:url('/img/croc-test/deck.webp') 24.242% 57.143%/541.8% 121.44% no-repeat}.cg-card-face[data-rank=Q] .cg-court{background-position:48.065% 57.143%;background-size:520.472% 121.44%}.cg-card-face[data-rank=J] .cg-court{background-position:72.75% 57.143%;background-size:517.755% 121.44%}
 .cg-card>small{position:absolute;top:calc(100% + 9px);left:-2px;right:-2px;color:#bba4cf;font:700 8px/1.2 var(--font);letter-spacing:.2px}.cg-card.is-held{outline:2px solid #f1cb86;outline-offset:3px;box-shadow:0 0 15px #d7a75945}.cg-card.is-held>small{color:#f5ce8a}
 .cg-card:disabled{cursor:default;opacity:1}
-/* Ceramic dice: nine pip positions plus a thickness edge. */
-.cg-dice-scene{height:280px}.cg-dice{position:absolute;top:85px;left:12%;right:12%;display:flex;justify-content:space-between;gap:16px;z-index:2}.cg-die{position:relative;width:28%;aspect-ratio:1;transform-origin:center;filter:drop-shadow(0 14px 6px #03010688)}.cg-die:after{content:'';position:absolute;inset:7px -4px -6px 4px;background:linear-gradient(130deg,#907599,#362d43);border-radius:15px;z-index:-1}.cg-die-face{width:100%;height:100%;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:17%;gap:9%;border-radius:14px;border:1px solid #fff8;background:linear-gradient(140deg,#fff,#e9e1f0 55%,#bcabc9);box-shadow:inset 2px 2px 4px #fff,inset -3px -3px 7px #775b8c50}.cg-die-face i{aspect-ratio:1;border-radius:50%}.cg-die-face .is-dot{background:radial-gradient(at 65% 70%,#44224f,#180d20);box-shadow:inset 1px 2px 2px #08020d,0 1px 0 #fff}
-.cg-dice-tray{position:absolute;left:5%;right:5%;height:95px;top:149px;border:2px solid #85603f;border-radius:50%;background:radial-gradient(ellipse,#46205a,#1c0d27);box-shadow:inset 0 6px 12px #070109,0 6px 0 #110a19}
 /* Painted environments use a separate 2x2 atlas. */
 .cg-goal:before,.cg-bowling:before,.cg-race:before,.cg-fishing:before{opacity:1;background-image:url('/img/catalog/environments.webp');background-size:200% 200%}
 .cg-goal:before{background-position:0 0}.cg-bowling:before{background-position:100% 0}.cg-race:before{background-position:0 100%}.cg-fishing:before{background-position:100% 100%}
@@ -156,3 +153,44 @@
 .vp-cover{display:block;position:relative;height:100%;width:100%;max-width:140px;margin:auto}.vp-cover>.vp-card-art{position:absolute;width:56%;height:82%;top:8%;left:14%;transform:rotate(-14deg);filter:drop-shadow(0 7px 9px #04010988)}.vp-cover>.vp-card-art+.vp-card-art{left:42%;top:13%;transform:rotate(13deg)}
 @media(max-width:360px){.vp-hand-panel{padding:12px 8px}.vp-hand-panel h2,.vp-paytable h2{font-size:16px}.vp-cards{gap:6px}.vp-card small{font-size:7px;left:-2px;right:-2px}.vp-pay-grid{gap:6px}.vp-pay-tile{padding:7px 6px;font-size:11px;min-height:40px}.vp-pay-tile b{font-size:13px}.vp-hand-status b{font-size:13px}}
 @media(prefers-reduced-motion:reduce){.vp-card .cg-card-turn{will-change:auto}}
+/* Sic Bo: smooth project background, a fixed tray and rigid six-face dice. */
+#screen-ag.is-sicbo{background:linear-gradient(165deg,#100d24,#181132);isolation:isolate}
+#screen-ag.is-sicbo .mn-bg{background:none;filter:none}
+#screen-ag.is-sicbo .mn-bg svg{fill:#ad82f4;opacity:.06;filter:none}
+#screen-ag.is-sicbo .ag-status,#screen-ag.is-sicbo .ag-stats,#screen-ag.is-sicbo #ag-settings,#screen-ag.is-sicbo #ag-paytable{display:none}
+#screen-ag.is-sicbo .ag-board{padding:10px;background:linear-gradient(145deg,#1b142d,#110e21);border:1px solid #a974e244;border-radius:18px;box-shadow:none;overflow:visible}
+#screen-ag.is-sicbo .ag-stage{overflow:visible}
+#screen-ag.is-sicbo .mn-title{font-size:29px;justify-content:center;text-shadow:none}
+#screen-ag.is-sicbo .mn-balance span{display:none}
+#screen-ag.is-sicbo .mn-balance b{color:#f2cf83}
+#screen-ag.is-sicbo .ag-panel{display:flex;flex-direction:column;gap:10px;background:#171126;border-radius:16px;box-shadow:none}
+#screen-ag.is-sicbo .ag-label-row{order:0}
+#screen-ag.is-sicbo .mn-row{order:1}
+#screen-ag.is-sicbo .mn-main{order:2;background:linear-gradient(155deg,#a875ff,#7234e6);box-shadow:inset 0 2px 2px #e6cdff70;min-height:52px}
+#screen-ag.is-sicbo .ag-note{order:3}
+#screen-ag.is-sicbo [data-ag-amount=max]{display:none}
+#screen-ag.is-sicbo .mn-input{gap:7px;padding:0 10px}
+#screen-ag.is-sicbo .mn-coin{width:12px;background:none;box-shadow:none;color:white}
+#screen-ag.is-sicbo .ag-rules{padding:13px;border:1px solid #a974e244;background:#171126;border-radius:14px}
+.sb-tray{--die:clamp(40px,14vw,62px);position:relative;aspect-ratio:1.18;isolation:isolate;margin:3px 0 9px}
+.sb-rim{position:absolute;inset:2% 0 1%;clip-path:polygon(24% 0,76% 0,100% 33%,82% 98%,18% 98%,0 33%);background:linear-gradient(155deg,#e0caff 0,#af76f4 15%,#5c2d9d 35%,#aa6cf1 72%,#c693ff 84%,#36185e 88%)}
+.sb-felt{position:absolute;inset:6% 3% 8%;clip-path:polygon(23% 0,77% 0,100% 30%,82% 100%,18% 100%,0 30%);background:linear-gradient(160deg,#100921,#37204f 52%,#211230);box-shadow:inset 0 14px 12px #07021299}
+.sb-dice{position:absolute;inset:0;perspective:850px}
+.sb-die{perspective:600px;position:absolute;width:var(--die);height:var(--die);margin-left:calc(var(--die)/-2);margin-top:calc(var(--die)/-2)}
+.sb-die-0{left:50%;top:34%}.sb-die-1{left:29%;top:66%}.sb-die-2{left:73%;top:66%}
+.sb-shadow{position:absolute;left:-6%;right:-6%;height:40%;bottom:-30%;background:radial-gradient(ellipse,#04010cc2,transparent 70%);border-radius:50%;transform-origin:center}
+.sb-lift,.sb-cube{position:relative;width:100%;height:100%;transform-style:preserve-3d}
+.sb-cube{will-change:transform}
+.sb-face{position:absolute;inset:0;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);gap:10%;padding:17%;border:1px solid #dfd3e4;border-radius:11%;background:linear-gradient(145deg,#fffaf1,#f0e6e8 70%,#d1bfd5);backface-visibility:hidden;-webkit-backface-visibility:hidden;box-shadow:inset 1px 1px 3px #fff,inset -2px -2px 4px #80698c44}
+.sb-face-0{transform:translateZ(calc(var(--die)/2))}.sb-face-1{transform:rotateY(180deg) translateZ(calc(var(--die)/2))}.sb-face-2{transform:rotateY(90deg) translateZ(calc(var(--die)/2))}.sb-face-3{transform:rotateY(-90deg) translateZ(calc(var(--die)/2))}.sb-face-4{transform:rotateX(90deg) translateZ(calc(var(--die)/2))}.sb-face-5{transform:rotateX(-90deg) translateZ(calc(var(--die)/2))}
+.sb-face i{border-radius:50%;aspect-ratio:1}.sb-face .is-pip{background:radial-gradient(at 65% 70%,#563466,#23112f);box-shadow:inset 1px 1px 2px #10071c,0 1px 0 #fff}
+.sb-result{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) minmax(0,1.4fr);align-items:center;border:1px solid #a47ad54d;border-radius:11px;min-height:64px;padding:9px 5px;text-align:center;gap:6px}
+.sb-result small{display:block;color:#aa9bc6;font-size:11px;margin-bottom:3px}.sb-result b{display:block;font-size:clamp(19px,5.5vw,25px);line-height:1.2;color:#fff;overflow-wrap:anywhere}.sb-result strong{font-size:16px;border-left:1px solid #9b72c333;border-right:1px solid #9b72c333;padding:5px 3px;color:#f5eaff;overflow-wrap:anywhere}.sb-result.is-paid>div:last-child b{color:#97f2c9}
+.sb-outcomes h2,.sb-history h2{font:600 13px/1.5 var(--font);color:#b5a6cf;margin:0 0 8px}
+.sb-choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.sb-choice{position:relative;min-width:0;min-height:82px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:10px 4px;border:1px solid #9970c555;border-radius:12px;background:#1b152c;color:#faf1ff;font:600 13px/1.3 var(--font)}
+.sb-choice small{font-size:10px;font-weight:400;color:#bbaad2}.sb-choice b{font-size:21px;line-height:1.1}.sb-choice.is-selected{background:linear-gradient(135deg,#523078,#36204f);border-color:#ce9fff;box-shadow:inset 0 0 0 1px #b98adb55}.sb-choice.is-selected:after{content:'✓';position:absolute;right:4px;top:3px;font-size:10px;color:#dcc0ff}.sb-choice:disabled{opacity:.6;cursor:default}.sb-choice:focus-visible{outline:2px solid #eee0ff;outline-offset:2px}
+.sb-outcomes>p{font-size:10px;text-align:center;color:#a69abe;line-height:1.5;margin:9px 0 0}
+.sb-history>div{display:flex;gap:7px;min-height:35px}.sb-history>div>span{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:3px;border:1px solid #956fc64d;border-radius:9px;font-size:15px;font-weight:600;color:#f3eafa}.sb-history .is-latest{background:#67429266;border-color:#bb88f1}.sb-history small{font-size:9px;color:#c7afde}.sb-history p{font-size:11px;color:#a294b9;margin:5px 0}
+@media(max-width:360px){.sb-choice{font-size:12px;min-height:84px}.sb-choice small{font-size:9px}.sb-result strong{font-size:13px}.sb-result b{font-size:18px}}
+@media(prefers-reduced-motion:reduce){.sb-cube{will-change:auto}}

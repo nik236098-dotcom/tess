@@ -50,3 +50,15 @@ test('Andar reveals every card in order and finishes with the matching card',()=
  let last=0;for(let i=0;i<=1000;i++){const f=motion.frame('andar',info,null,i/1000);assert.ok(f.count>=last);assert.ok(f.count<=37);last=f.count;}
  assert.equal(last,37);
 });
+
+test('Sic Bo rolls rigid faces through diminishing hops and settles all three dice exactly',()=>{
+ let peaks=0,last=0,ascending=false;
+ for(let i=0;i<=1000;i++){
+  const f=motion.frame('sicbo',{},null,i/1000);
+  for(const d of f.dice){assert.ok(d.height>=0&&d.height<=46);assert.ok(d.x>=-10&&d.x<=10);assert.ok(d.y>=-12&&d.y<=0);assert.ok(d.shadow>=.65&&d.shadow<=1);}
+  const height=f.dice[0].height;if(height<last&&ascending){peaks++;ascending=false;}else if(height>last)ascending=true;last=height;
+ }
+ assert.equal(peaks,3);
+ const end=motion.frame('sicbo',{},null,1);for(const d of end.dice){assert.equal(d.height,0);assert.equal(d.rx,-58);assert.equal(d.ry,26);assert.equal(d.settled,true);}
+ assert.equal(motion.frame('sicbo',{},null,.8).dice.filter(d=>d.settled).length,1);
+});

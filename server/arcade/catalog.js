@@ -52,7 +52,9 @@ function start(game,previous,amount,options,revision,rng=randomInt){
  else if(game==='fishing'){m=prize(game,rng);r.detail={prize:m};}
  else if(game==='race'){const order=shuffle(4,rng);m=order[0]===selected.side?3.92:0;r.detail={order,winner:order[0]};}
  else fail('Игра не поддерживается');
- return finish(r,m);
+ finish(r,m);
+ if(game==='sicbo')Object.assign(r.history[0],{sum:r.detail.sum,dice:[...r.detail.dice],triple:r.detail.triple});
+ return r;
 }
 function act(game,previous,action,index,revision,rng=randomInt){
  if(!Number.isSafeInteger(revision)||revision!==previous.revision)fail('Раунд обновился');

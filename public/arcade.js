@@ -24,6 +24,7 @@ function openArcade(game) {
   showLobby(); const a=state.ag; a.game=game;
   $('screen-ag').classList.toggle('is-diamonds',game==='diamonds');
   $('screen-ag').classList.toggle('is-videopoker',game==='videopoker');
+  $('screen-ag').classList.toggle('is-sicbo',game==='sicbo');
   $('screen-ag').classList.remove('vp-is-live');
   if(agCatalog())CasinoUI.prepare(game);
   $('screen-lobby').classList.add('hidden'); $('screen-ag').classList.remove('hidden'); $('screen-ag').scrollTop=0;
@@ -212,7 +213,7 @@ function agResult() {
   const a=state.ag, info=a.info, overlay=$('ag-overlay');
   if(!info||info.phase!=='done')return;
   haptic(info.result==='win'?'success':info.result==='push'?'light':'error');
-  if(a.game==='diamonds'||a.game==='videopoker')return; // Keep the inline result and selected table row visible.
+  if(a.game==='diamonds'||a.game==='videopoker'||a.game==='sicbo')return; // Keep the inline result and selected table row visible.
   if(info.result!=='win'||!info.settled)return;
   const key=a.game+':'+info.revision;if(overlay.dataset.revision===key)return;
   overlay.dataset.revision=key;overlay.className='mn-overlay is-win ag-overlay';
