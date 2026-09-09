@@ -21,7 +21,7 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/croc-theme.css?v=1" />
   <link rel="stylesheet" href="/amethyst.css?v=1" />
-  <link rel="stylesheet" href="/game-standard.css?v=2" />
+  <link rel="stylesheet" href="/game-standard.css?v=3" />
   <script src="/game-result.js?v=2"></script>
   <script defer src="/game-layout.js?v=1"></script>
 </head>
@@ -846,7 +846,7 @@
 
     <!-- Nvuti: те же компоненты, что у Mines (экран, шапка, панель ставки);
          своё — шкала 1–100 с курсором цели и маркером результата. -->
-    <section id="screen-nv" class="screen game-standard mn-screen hidden">
+    <section id="screen-nv" class="screen mn-screen hidden">
       <div class="mn-bg" aria-hidden="true">
         <svg class="icon mn-suit-1"><use href="#i-spade"></use></svg>
         <svg class="icon mn-suit-2"><use href="#i-club"></use></svg>
@@ -880,13 +880,6 @@
           </div>
         </div>
         <div class="mn-panel">
-          <div class="g-settings">
-          <div class="mn-label">Режим</div>
-          <label class="mn-select">
-            <select id="nv-mode"><option value="under">Меньше</option><option value="over">Больше</option></select>
-            <svg class="icon mn-select-chevron"><use href="#i-chevron-right"></use></svg>
-          </label>
-          </div>
           <button id="nv-main" class="mn-main">Сделать ставку</button>
           <div class="mn-label">Сумма ставки</div>
           <div class="mn-row">
@@ -894,11 +887,15 @@
               <i class="mn-coin">$</i>
               <input id="nv-amount" type="text" inputmode="decimal" autocomplete="off" value="1,00" />
             </label>
-            <button id="nv-half" class="mn-mod">½</button>
-            <button id="nv-double" class="mn-mod">2×</button>
+            <button id="nv-half" class="mn-mod">1/2</button>
+            <button id="nv-double" class="mn-mod">2x</button>
             <button id="nv-max" class="mn-mod">Max</button>
           </div>
-
+          <div class="mn-label">Режим</div>
+          <label class="mn-select">
+            <select id="nv-mode"><option value="under">Меньше</option><option value="over">Больше</option></select>
+            <svg class="icon mn-select-chevron"><use href="#i-chevron-right"></use></svg>
+          </label>
         </div>
       </div>
     </section>
@@ -995,6 +992,6 @@
   <script src="/hilo.js?v=4"></script>
   <script src="/client-connection.js?v=1"></script>
   <script src="/telegram-display.js?v=1"></script>
-  <script src="/app.js?v=106"></script>
+  <script src="/app.js?v=107"></script>
 </body>
 </html>

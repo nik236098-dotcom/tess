@@ -2154,7 +2154,7 @@ function nvPlayRound(round) {
   nv.timer = setTimeout(() => {
     marker.classList.add(round.won ? 'is-win' : 'is-lose');
     outcome.className = `nv-outcome ${round.won ? 'is-win' : 'is-lose'}`;
-    outcome.textContent = `Выпало ${round.roll}`;
+    outcome.textContent = round.won ? `Выпало ${round.roll} · +${money(round.net)}` : `Выпало ${round.roll} · −${money(round.bet)}`;
     haptic(round.won ? 'success' : 'error');
     nvShowBalance(state.balance);
     nv.busy = false;
