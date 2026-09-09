@@ -43,6 +43,7 @@ class Accounts {
           username: account.username || null,
           balance: Math.max(0, Math.floor(Number(account.balance) || 0)),
           createdAt: account.createdAt || Date.now(),
+          hiloRound: account.hiloRound || null,
         });
       }
     } catch (error) {
@@ -182,4 +183,4 @@ class Accounts {
   }
 }
 
-module.exports = { Accounts, AccountError, DEFAULT_START_BALANCE };
+module.exports = { Accounts, AccountError, DEFAULT_START_BALANCE, MAX_BALANCE };

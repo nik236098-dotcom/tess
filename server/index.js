@@ -13,7 +13,8 @@ const roulette = require('./roulette/wheel');
 const baccarat = require('./baccarat/game');
 const { MinesGame, MinesError } = require('./mines/game');
 const nvuti = require('./nvuti/game');
-const { Accounts, AccountError, DEFAULT_START_BALANCE } = require('./accounts');
+const { HiloGame, HiloError } = require('./hilo/game');
+const { Accounts, AccountError, DEFAULT_START_BALANCE, MAX_BALANCE } = require('./accounts');
 const { createPayments, PaymentError } = require('./payments');
 const { formatMoney, parseMoney } = require('./money');
 const { PromoCodes, PromoError } = require('./promo');
@@ -329,7 +330,7 @@ function createApp(options = {}) {
       try {
         handleMessage(client, message);
       } catch (error) {
-        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError || error instanceof MinesError || error instanceof nvuti.NvutiError) {
+        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError || error instanceof HiloError || error instanceof MinesError || error instanceof nvuti.NvutiError) {
           client.fail(error.message);
         } else {
           console.error('Ошибка обработки сообщения:', error);
@@ -472,6 +473,15 @@ function createApp(options = {}) {
         break;
       case 'bc_bet':
         baccaratDeal(client, message.bets || (message.zone ? [{ zone: message.zone, amount: message.amount }] : []));
+        break;
+      case 'hl_open':
+        sendHilo(client);
+        break;
+      case 'hl_start':
+      case 'hl_pick':
+      case 'hl_skip':
+      case 'hl_cashout':
+        actHilo(client, message);
         break;
       case 'mn_open':
         sendMines(client);
@@ -936,6 +946,53 @@ function createApp(options = {}) {
     sendMines(client);
   }
 
+  // Hilo uses the same cent-based account ledger as Mines.
+  const hiloGames = new Map();
+  function hiloGame(client) {
+    if (!hiloGames.has(client.user.id)) {
+      const game = new HiloGame();
+      game.restore(accounts.get(client.user.id)?.hiloRound);
+      hiloGames.set(client.user.id, game);
+    }
+    return hiloGames.get(client.user.id);
+  }
+  function sendHilo(client) {
+    client.send({ type: 'hl', ...hiloGame(client).state(), balance: accounts.balanceOf(client.user.id) });
+  }
+  function actHilo(client, message) {
+    const game = hiloGame(client);
+    try {
+      game.check(message.revision);
+      if (message.type === 'hl_start') {
+        const amount = message.amount;
+        if (!Number.isSafeInteger(amount) || amount < 10 || amount > 10000000) throw new HiloError('Ставка от $0.10 до $100 000');
+        if (game.phase === 'play') throw new HiloError('Раунд уже идёт');
+        if (accounts.balanceOf(client.user.id) < amount) throw new HiloError('Недостаточно средств');
+        accounts.withdraw(client.user.id, amount);
+        game.start(amount, message.revision);
+      } else if (message.type === 'hl_pick') {
+        const next = Math.min(10000, game.multiplier * 0.97 / game.odds(message.direction));
+        if (accounts.balanceOf(client.user.id) + Math.floor(game.bet * next) > MAX_BALANCE) throw new HiloError('Достигнут лимит баланса. Заберите текущий выигрыш');
+        game.pick(message.direction, message.revision);
+      } else if (message.type === 'hl_skip') game.skip(message.revision);
+      else {
+        if (accounts.balanceOf(client.user.id) + Math.floor(game.bet * game.multiplier) > MAX_BALANCE) throw new HiloError('Выплата сохранена. Для получения уменьшите баланс счёта');
+        game.cashout(message.revision);
+      }
+      if (game.phase === 'done' && !game.settled) {
+        game.settled = true;
+        if (game.payout) accounts.deposit(client.user.id, game.payout);
+        if (game.payout > game.bet) noteWin({ userId: client.user.id, name: client.user.name, amount: game.payout - game.bet, game: 'hilo', code: 'HL' });
+      }
+    } catch (error) {
+      sendHilo(client);
+      throw error;
+    }
+    accounts.get(client.user.id).hiloRound = game.snapshot();
+    accounts.flush();
+    sendHilo(client);
+  }
+
   // ——— Nvuti ———
   // Как рулетка: ставка списывается, бросок мгновенный, выплата сразу.
   const NV_MIN_BET = 10;
@@ -1086,6 +1143,14 @@ function createApp(options = {}) {
     for (const room of rooms.values()) {
       room.cashOutAll();
       room.dispose();
+    }
+    // Settle active Hilo rounds on a normal service restart.
+    for (const [userId, game] of hiloGames) {
+      if (game.phase === 'play' && !game.settled && accounts.balanceOf(userId) + Math.floor(game.bet * game.multiplier) <= MAX_BALANCE) {
+        game.cashout(game.revision); game.settled = true;
+        accounts.deposit(userId, game.payout);
+        accounts.get(userId).hiloRound = game.snapshot();
+      }
     }
     accounts.flush();
     payments.flush();

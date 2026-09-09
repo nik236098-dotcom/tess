@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
   <link rel="stylesheet" href="/styles.css?v=133" />
+  <link rel="stylesheet" href="/hilo.css?v=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/croc-theme.css?v=1" />
   <link rel="stylesheet" href="/amethyst.css?v=1" />
@@ -242,6 +243,10 @@
               </span>
             </button>
 
+            <button id="play-hilo" class="lb-play lb-play-nv">
+              <span class="lb-play-art hl-lobby-art" aria-hidden="true">♠ ↕</span>
+              <span class="lb-play-body"><span class="lb-hero-kicker">Hilo</span><b>Выше или ниже</b><span>Угадай следующую карту · забирай выигрыш</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span>
+            </button>
             <details class="card rules" id="rules-card">
               <summary>Правила и порядок комбинаций</summary>
               <ol class="rules-list">
@@ -882,6 +887,25 @@
   </div>
 
   <script src="/amethyst.js?v=1"></script>
-  <script src="/app.js?v=95"></script>
+  <section id="screen-hl" class="screen mn-screen hidden">
+    <div class="mn-bg" aria-hidden="true"><svg class="icon mn-suit-1"><use href="#i-spade"></use></svg><svg class="icon mn-suit-2"><use href="#i-club"></use></svg></div>
+    <div class="mn-page hl-page">
+      <header class="mn-head"><button id="hl-back" class="mn-iconbtn" aria-label="В лобби">‹</button><b class="mn-title">Hilo <span class="mn-spark">✦</span></b><div class="mn-balance"><span>Баланс</span><b id="hl-balance">$0.00</b></div></header>
+      <p class="hl-subtitle">Угадай следующую карту</p>
+      <div class="mn-board-card hl-game">
+        <div class="hl-game-head"><span>Текущая карта</span><button id="hl-skip">Пропустить »</button></div>
+        <div class="hl-table"><div id="hl-deck" class="hl-deck"></div><div class="hl-options">
+          <button id="hl-high" class="hl-choice"><svg viewBox="0 0 24 16" aria-hidden="true"><path d="M3 13 12 4 21 13"/></svg><span>Выше или<br>равно</span><strong id="hl-high-chance">—</strong></button>
+          <button id="hl-low" class="hl-choice hl-choice-low"><svg viewBox="0 0 24 16" aria-hidden="true"><path d="m3 3 9 9 9-9"/></svg><span>Ниже или<br>равно</span><strong id="hl-low-chance">—</strong></button>
+        </div></div>
+        <div class="hl-stats"><div><span>Множитель</span><b id="hl-multiplier">1.00×</b></div><div><span>Выигрыш</span><b id="hl-win">$0.00</b></div></div>
+      </div>
+      <div class="hl-history-panel"><h3>История карт</h3><div id="hl-history" class="hl-history"></div></div>
+      <div id="hl-panel" class="mn-panel"><button id="hl-main" class="mn-main">Сделать ставку</button><div class="mn-label">Сумма ставки</div><div class="mn-row"><label class="mn-input"><i class="mn-coin">$</i><input id="hl-amount" aria-label="Сумма ставки" inputmode="decimal" value="1,00" autocomplete="off"></label><button class="mn-mod" data-hl-mod="0.5">1/2</button><button class="mn-mod" data-hl-mod="2">2x</button><button class="mn-mod" data-hl-mod="max">Max</button></div><p id="hl-result" class="hl-result" role="status" aria-live="polite"></p></div>
+      <details class="hl-rules"><summary>Как играть</summary><p>Туз — младшая карта, король — старшая. Равная карта выигрывает в обоих направлениях. Каждая следующая карта выбирается независимо из 52 карт. Направление с шансом 100% недоступно. Пропуск бесплатный и не меняет множитель. Выплата включает ставку; после каждого угаданного хода множитель увеличивается с комиссией 3%. Лимит 10 000× — автоматическая выплата. До первого выбора ставку можно вернуть.</p></details>
+    </div>
+  </section>
+  <script src="/hilo.js?v=1"></script>
+  <script src="/app.js?v=96"></script>
 </body>
 </html>

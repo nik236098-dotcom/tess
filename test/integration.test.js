@@ -370,3 +370,28 @@ test('добавление и удаление ботов разрешено т�
   const removed = await admin.wait(m => m.type === 'state' && m.seats[2].empty && m.you.balance === 10000);
   assert.equal(removed.seats[2].empty, true);
 });
+
+test('Hilo: invalid bets, duplicate requests, reconnect and cashout preserve the ledger', { timeout: 10000 }, async (t) => {
+  const port = await startServer(t, { paymentsFile: null, promoFile: null });
+  const a = connect(port); await once(a.socket, 'open'); t.after(() => a.close());
+  a.send({ type: 'auth', name: 'Hilo QA', devId: 'hilo-ledger' });
+  const auth = await a.wait(byType('auth_ok'));
+  a.send({ type: 'hl_open' }); const initial = await a.wait(byType('hl'));
+  a.send({ type: 'hl_start', amount: -100, revision: initial.revision });
+  await a.wait(byType('error')); const invalid = await a.wait(byType('hl'));
+  assert.strictEqual(invalid.balance, auth.balance);
+  a.send({ type: 'hl_start', amount: 100, revision: initial.revision });
+  const live = await a.wait(byType('hl'));
+  assert.strictEqual(live.balance, auth.balance - 100);
+  a.send({ type: 'hl_start', amount: 100, revision: initial.revision });
+  await a.wait(byType('error')); const duplicate = await a.wait(byType('hl'));
+  assert.strictEqual(duplicate.balance, live.balance);
+  const b = connect(port); await once(b.socket, 'open'); t.after(() => b.close());
+  b.send({ type: 'auth', name: 'Hilo QA', devId: 'hilo-ledger' }); await b.wait(byType('auth_ok'));
+  b.send({ type: 'hl_open' }); const resumed = await b.wait(byType('hl'));
+  assert.deepStrictEqual(resumed, live);
+  b.send({ type: 'hl_cashout', revision: resumed.revision }); const done = await b.wait(byType('hl'));
+  assert.strictEqual(done.balance, auth.balance); assert.strictEqual(done.payout, 100);
+  b.send({ type: 'hl_cashout', revision: resumed.revision }); await b.wait(byType('error'));
+  assert.strictEqual((await b.wait(byType('hl'))).balance, auth.balance);
+});

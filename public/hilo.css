@@ -1,0 +1,48 @@
+/* Hilo inherits the actual Mines/Nvuti background and betting controls. */
+.hl-page { max-width:480px; gap:14px; }
+.hl-subtitle { margin:0; text-align:center; color:#aaa0d8; font-size:14px; }
+.hl-game { padding:18px; }
+.hl-game-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; color:#b9bde0; font-size:14px; }
+.hl-game-head button { background:none; border:0; color:#b9a6ff; padding:8px 0 8px 12px; font:inherit; min-height:36px; }
+.hl-table { display:grid; grid-template-columns:1.08fr 1fr; gap:20px; align-items:stretch; padding:0 4px 12px; }
+.hl-deck { position:relative; aspect-ratio: .65; perspective:800px; isolation:isolate; }
+.hl-deck:before,.hl-deck:after { content:''; position:absolute; inset:0; border-radius:12px; background:#dadce9; box-shadow:0 2px 2px #0005; transform:translateY(8px) scale(.98); z-index:-1; }
+.hl-deck:before { transform:translateY(13px) scale(.96); background:#a5a8bd; }
+.hl-face { position:relative; width:100%; height:100%; background:linear-gradient(115deg,#fff,#f4f4f8); border-radius:11px; color:#101321; box-shadow:0 3px 12px #0005,inset 0 0 0 1px #fff; overflow:hidden; }
+.hl-corner { position:absolute; left:10%; top:5%; display:flex; flex-direction:column; align-items:center; font:800 clamp(28px,9vw,42px)/.98 Georgia,serif; }
+.hl-corner small { font-size:.64em; }
+.hl-bottom { left:auto; top:auto; right:10%; bottom:5%; transform:rotate(180deg); }
+.hl-pip { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font:76px/1 Georgia,serif; }
+.hl-red { color:#d4183d; }
+.hl-incoming { position:absolute; inset:0; }
+.hl-options { display:flex; flex-direction:column; gap:14px; }
+.hl-choice { flex:1; border-radius:15px; padding:10px 6px; border:1px solid #e9d97f; background:linear-gradient(140deg,#ffec9d,#e4ba41); color:#241b08; box-shadow:inset 0 1px 0 #fff8,0 4px 14px #e4ba4120; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; font:700 17px/1.2 var(--font); }
+.hl-choice svg { width:23px; height:15px; fill:none; stroke:currentColor; stroke-width:4; stroke-linecap:round; stroke-linejoin:round; }
+.hl-choice strong { font-size:20px; }
+.hl-choice-low { background:linear-gradient(140deg,#a18bff,#6540e7); border-color:#b9a0ff; color:#fff; box-shadow:inset 0 1px 0 #fff5,0 4px 18px #7843ef35; }
+.hl-choice:disabled { opacity:.55; cursor:default; }
+.hl-choice:active:not(:disabled) { transform:scale(.98); }
+.hl-stats { display:grid; grid-template-columns:1fr 1fr; border:1px solid #9582ff30; border-radius:13px; padding:12px 0; margin-top:12px; background:#0d102c88; text-align:center; }
+.hl-stats div+div { border-left:1px solid #9582ff30; }
+.hl-stats span { display:block; font-size:12px; color:#aaa0d8; margin-bottom:4px; }
+.hl-stats b { font-size:25px; color:#f4f2ff; font-variant-numeric:tabular-nums; }
+.hl-history-panel { padding:12px 14px; border:1px solid #9582ff30; border-radius:18px; background:#11132dcc; }
+.hl-history-panel h3 { margin:0 0 10px; font-size:14px; color:#b9bde0; font-weight:500; }
+.hl-history { display:flex; gap:14px; overflow-x:auto; padding:2px 2px 5px; scrollbar-width:thin; min-height:84px; align-items:center; }
+.hl-history-item { flex:0 0 44px; position:relative; padding-left:5px; }
+.hl-history-item .hl-face { height:58px; border-radius:5px; }
+.hl-history-item .hl-corner { font-size:17px; }
+.hl-history-item .hl-bottom { display:none; }
+.hl-history-item .hl-pip { font-size:29px; top:60%; left:60%; }
+.hl-history-item small { display:block; font-size:10px; color:#b9a6ff; margin-top:5px; text-align:center; }
+.hl-history-arrow { position:absolute; left:-8px; top:20px; color:#b9a6ff; font-size:16px; }
+.hl-history-item.is-loss .hl-face { box-shadow:0 0 0 2px #e74b72; }
+.hl-history-item.is-loss small { color:#ff7a98; }
+.hl-empty,.hl-loading { color:#8f8cae; font-size:13px; text-align:center; width:100%; }
+.hl-result { margin:0; color:#aaa0d8; font-size:12px; text-align:center; min-height:16px; }
+.hl-result.is-win { color:#68e99a; }
+.hl-rules { color:#8f8cae; font-size:12px; line-height:1.6; padding:0 4px 12px; }
+.hl-rules summary { cursor:pointer; }
+.hl-lobby-art { display:grid; place-items:center; font:700 55px Georgia,serif; color:#e8ddff; background:radial-gradient(ellipse,#6944bb,#181127); }
+@media(max-width:360px) { .hl-game { padding:12px; } .hl-table { gap:14px; } .hl-choice { font-size:15px; } .hl-pip { font-size:62px; } .hl-game-head { font-size:12px; } }
+@media(prefers-reduced-motion:reduce) { .hl-choice { transition:none; } }

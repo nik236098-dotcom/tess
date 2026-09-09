@@ -43,6 +43,7 @@ const state = {
   rl: { open: false, info: null, amount: 1000, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
   bc: { open: false, info: null, chip: 1000, bets: new Map(), dealing: false, timers: [], shownBalance: null, round: null, pendingHistory: null },
   mn: { open: false, info: null, amount: 100, mines: 3, busy: false, reveal: null, shownBalance: null },
+  hl: { open: false, info: null, amount: 100, busy: false, animating: false, token: 0 },
   nv: { open: false, info: null, amount: 100, target: 75, mode: 'under', busy: false, round: null, shownBalance: null, timer: null },
   unread: 0,
   tab: 'home', // главная | игры | турниры | бонусы | профиль
@@ -268,7 +269,7 @@ async function boot() {
     applyTelegramTheme();
     tg.onEvent('themeChanged', applyTelegramTheme);
     // Обработчик системной кнопки «назад» регистрируем один раз.
-    if (tg.BackButton) tg.BackButton.onClick(() => (state.nv.open ? closeNvuti() : state.mn.open ? closeMines() : state.bc.open ? closeBaccarat() : state.rl.open ? closeRoulette() : state.bj.open ? closeBlackjack() : leaveRoom()));
+    if (tg.BackButton) tg.BackButton.onClick(() => (state.hl.open ? closeHilo() : state.nv.open ? closeNvuti() : state.mn.open ? closeMines() : state.bc.open ? closeBaccarat() : state.rl.open ? closeRoulette() : state.bj.open ? closeBlackjack() : leaveRoom()));
   }
 
   try {
@@ -339,6 +340,7 @@ function connect() {
 
   socket.addEventListener('close', () => {
     state.connected = false;
+    if (state.hl.open) renderHilo();
     setStatus('Соединение потеряно, переподключаемся…');
     // Экспоненциальная пауза, чтобы не долбить сервер при обрыве связи.
     setTimeout(connect, state.reconnectDelay);
@@ -383,6 +385,7 @@ function handleMessage(message) {
   switch (message.type) {
     case 'auth_ok':
       state.user = message.user;
+      if (state.hl.open) send({ type: 'hl_open' });
       state.balance = message.balance || 0;
       state.isAdmin = Boolean(message.isAdmin);
       if (message.links) applyLinks(message.links);
@@ -424,6 +427,9 @@ function handleMessage(message) {
       break;
     case 'bc':
       onBaccaratState(message);
+      break;
+    case 'hl':
+      onHiloState(message);
       break;
     case 'mn':
       onMinesState(message);
@@ -501,6 +507,8 @@ function handleMessage(message) {
     case 'error':
       state.topup.busy = false;
       state.payout.busy = false;
+      state.hl.busy = false;
+      if (state.hl.open) renderHilo();
       state.mn.busy = false;
       if (state.mn.open) renderMines();
       state.nv.busy = false;
@@ -521,6 +529,8 @@ function handleMessage(message) {
 // ——— Экраны ———
 
 function showLobby() {
+  state.hl.open = false;
+  $('screen-hl').classList.add('hidden');
   $('bot-sheet').classList.add('hidden');
   closeRaisePanel();
   $('screen-table').classList.add('hidden');
@@ -2420,7 +2430,7 @@ function renderWins() {
   list.innerHTML = state.wins.slice(0, 8).map((win, index) => {
     const blackjack = win.game === 'blackjack';
     const icon = icons[blackjack ? 'blackjack' : 'holdem'];
-    const label = { blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti', omaha: 'Omaha' }[win.game] || 'Poker';
+    const label = { hilo: 'Hilo', blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti', omaha: 'Omaha' }[win.game] || 'Poker';
     return `
     <div class="mk-win" style="--i:${index}">
       <span class="mk-win-icon" style="background-image:url('/img/lobby/win-${icon}.png')"></span>
@@ -3884,6 +3894,7 @@ function stopTopUpPolling() {
 // ——— Ввод ———
 
 function bindUi() {
+  bindHilo();
   on('dev-enter', 'click', () => {
     const name = $('dev-name').value.trim();
     if (!name) {
