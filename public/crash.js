@@ -69,7 +69,7 @@ function renderCrash() {
   const overlay=$('cr-overlay'); const win=info?.phase==='done'&&info.result==='win'&&info.settled;
   if(win&&overlay.dataset.revision!==String(info.revision)) {
     overlay.dataset.revision=String(info.revision); overlay.className='mn-overlay is-win cr-overlay';
-    overlay.innerHTML=`<i class="mn-spark mn-spark-1">✦</i><i class="mn-spark mn-spark-2">✦</i><b>×${info.multiplier.toFixed(2)}</b><span><i class="mn-coin">$</i>${money(info.payout).slice(1)}</span>`;
+    overlay.innerHTML=`<svg class="icon mn-suit-l" aria-hidden="true"><use href="#i-spade"></use></svg><svg class="icon mn-suit-r" aria-hidden="true"><use href="#i-club"></use></svg><i class="mn-spark mn-spark-1">✦</i><i class="mn-spark mn-spark-2">✦</i><b>×${info.multiplier.toFixed(2)}</b><span><i class="mn-coin">$</i>${money(info.payout).slice(1)}</span>`;
   } else if(!win) {overlay.className='mn-overlay cr-overlay hidden';overlay.innerHTML='';delete overlay.dataset.revision;}
   $('cr-note').textContent=pending?'Выплата ожидает свободного места на балансе. Откройте игру повторно после уменьшения баланса.':live?'Ставка и автостоп зафиксированы до конца раунда.':'Раунд начнётся сразу после ставки.';
   crDraw();
