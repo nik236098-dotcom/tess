@@ -1922,7 +1922,18 @@ function renderMines() {
     cell.disabled = !live || mn.busy || kind !== '';
   }
 
-  GameResult.show($('mn-overlay'), reveal, reveal?.revision);
+  const overlay = $('mn-overlay');
+  if (reveal && reveal.result === 'win') {
+    overlay.className = 'mn-overlay is-win';
+    overlay.innerHTML = `<svg class="icon mn-suit-l"><use href="#i-spade"></use></svg><svg class="icon mn-suit-r"><use href="#i-club"></use></svg><i class="mn-spark mn-spark-1">✦</i><i class="mn-spark mn-spark-2">✦</i><b>x${reveal.multiplier.toFixed(2)}</b><span><i class="mn-coin">$</i>${money(reveal.payout).slice(1)}</span>`;
+  } else if (reveal) {
+    overlay.className = 'mn-overlay is-lose';
+    overlay.innerHTML = '<svg class="icon mn-suit-l"><use href="#i-spade"></use></svg><svg class="icon mn-suit-r"><use href="#i-club"></use></svg><b>Неудачно</b><span>Удачи в следующий раз!</span><button type="button" class="mn-again">Играть снова</button>';
+    overlay.querySelector('.mn-again').addEventListener('click', () => { mn.reveal = null; haptic('light'); renderMines(); });
+  } else {
+    overlay.className = 'mn-overlay hidden';
+    overlay.innerHTML = '';
+  }
 
   const main = $('mn-main');
   main.classList.toggle('is-cash', live);
@@ -1937,7 +1948,7 @@ function renderMines() {
       main.disabled = true;
     }
   } else {
-    main.textContent = 'Сделать ставку';
+    main.textContent = 'Ставка';
     const { min } = mnRange();
     main.disabled = mn.busy || mn.amount === null || mn.amount < min || mn.amount > state.balance;
   }
@@ -2091,7 +2102,6 @@ function onNvutiMain() {
   if (nv.amount > state.balance) { toast('Недостаточно средств'); haptic('error'); return; }
   if (nv.amount > max) { toast(`Максимальная ставка ${money(max)}`); return; }
   nv.busy = true;
-  GameResult.hide($('nv-overlay'));
   haptic('light');
   send({ type: 'nv_bet', amount: nv.amount, target: nv.target, mode: nv.mode });
   renderNvuti();
@@ -2132,7 +2142,6 @@ function nvPlayRound(round) {
   const marker = $('nv-marker');
   const outcome = $('nv-outcome');
   outcome.classList.add('hidden');
-  GameResult.hide($('nv-overlay'));
   marker.className = 'nv-marker';
   $('nv-marker-value').textContent = String(round.roll);
   const from = marker.dataset.at ? Number(marker.dataset.at) : (round.mode === 'under' ? 100 : 1);
@@ -2146,7 +2155,6 @@ function nvPlayRound(round) {
     marker.classList.add(round.won ? 'is-win' : 'is-lose');
     outcome.className = `nv-outcome ${round.won ? 'is-win' : 'is-lose'}`;
     outcome.textContent = `Выпало ${round.roll}`;
-    GameResult.show($('nv-overlay'),round,JSON.stringify(round));
     haptic(round.won ? 'success' : 'error');
     nvShowBalance(state.balance);
     nv.busy = false;
@@ -3248,7 +3256,8 @@ function renderResult(room) {
     pop.classList.add('winner-pop');pop.classList.toggle('center',result.game==='blackjack');
     return;
   }
-  // Spectators see the public winners, without a fictional personal stake.
+  // Spectators keep the original table placement.
+  GameResult.restore(pop);
   pop.classList.remove('g-result','is-win','is-push','is-partial','is-lose');
   pop.classList.add('winner-pop');
 

@@ -134,12 +134,12 @@
 .game-standard .nv-stat em { font-size:18px; }
 .game-standard .nv-swap { width:28px; height:28px; }
 
-/* Four approved result states. The dock occupies the field, never the controls. */
+/* Four approved result states: a screen overlay, outside the game layout. */
 .g-result {
   --result-accent:#c9c1e5; --result-glow:#9682ff24;
-  flex:none; position:relative; box-sizing:border-box; width:100%; max-width:340px;
+  position:fixed; box-sizing:border-box; width:calc(100% - 40px); max-width:340px;
   align-self:center; display:flex; flex-direction:column; align-items:center; justify-content:center;
-  margin:8px auto 0; padding:9px 25px; gap:2px; border-radius:20px;
+  margin:0; padding:22px 28px; gap:5px; border-radius:20px;
   border:1px solid var(--result-accent); background:linear-gradient(160deg,#182139f5,#0e102af5);
   box-shadow:0 0 16px var(--result-glow),inset 0 1px 1px #ffffff40;
   color:var(--result-accent); font-family:var(--font); text-align:center;
@@ -150,11 +150,11 @@
 .g-result.is-push { --result-accent:#c9c1e5; --result-glow:#9682ff14; }
 .g-result.is-partial { --result-accent:#cf8797; --result-glow:#cf879718; }
 .g-result.is-lose { --result-accent:#ff6b7a; --result-glow:#ff6b7a26; }
-.g-result .g-result-title { font:700 17px/1.2 var(--font); color:var(--result-accent); }
+.g-result .g-result-title { font:700 22px/1.2 var(--font); color:var(--result-accent); }
 .g-result .g-result-description { font:500 10px/1.3 var(--font); color:#c9c1e5; }
 .g-result .g-result-label { font:500 11px/1.2 var(--font); color:#aaa0d8; margin-top:3px; }
-.g-result .g-result-amount { font:800 clamp(24px,7vw,32px)/1.1 var(--font); font-variant-numeric:tabular-nums; color:var(--result-accent); overflow-wrap:anywhere; max-width:100%; }
-.g-result .g-result-multiplier { font:700 15px/1.2 var(--font); color:var(--result-accent); }
+.g-result .g-result-amount { font:800 clamp(30px,10vw,44px)/1.1 var(--font); font-variant-numeric:tabular-nums; color:var(--result-accent); overflow-wrap:anywhere; max-width:100%; }
+.g-result .g-result-multiplier { font:700 20px/1.2 var(--font); color:var(--result-accent); }
 .g-result .g-result-close { position:absolute; right:3px; top:3px; width:28px; height:28px; border:0; background:none; color:var(--result-accent); font:20px var(--font); border-radius:50%; opacity:.7; }
 .g-result-close:focus-visible { outline:2px solid currentColor; }
 .g-result.hidden { display:none!important; }
@@ -167,29 +167,13 @@
 #screen-bc.game-standard #bc-place::after { content:'Раздать карты'; }
 #screen-bc.game-standard #bc-clear { background:#171a3a; border:1px solid var(--g-border); color:var(--g-label); font:600 12px var(--font); }
 #screen-bc.game-standard #bc-clear::after { content:'Сбросить'; }
-#screen-bj.game-standard #bj-result { position:absolute; left:50%; top:204px; transform:translateX(-50%); width:210px; margin:0; padding:7px 20px; }
-#screen-bc.game-standard #bc-result { position:absolute; left:50%; top:64px; transform:translateX(-50%); width:84px; margin:0; padding:6px 4px; border-radius:14px; }
-#screen-bc.game-standard .g-result-title { font-size:11px; padding-top:8px; }
-#screen-bc.game-standard .g-result-amount { font-size:20px; }
-#screen-bc.game-standard .g-result-label { font-size:9px; }
-#screen-bc.game-standard .g-result-multiplier { font-size:11px; }
-#screen-bc.game-standard .g-result-description { display:none; }
-#screen-bc.game-standard .g-result-close { width:20px; height:20px; font-size:15px; top:0; right:0; }
 .game-standard .bj-bet-btn .bj-spade { color:#d9d4ff; }
-#winner-pop.g-result { position:absolute; width:230px; max-width:300px; margin:0; transform:translate(-50%,-50%); }
-.amethyst-theme #winner-pop.g-result { width:360px; max-width:360px; padding:14px 25px; gap:4px; }
-.amethyst-theme #winner-pop.g-result .g-result-title { font-size:30px; }
-.amethyst-theme #winner-pop.g-result .g-result-amount { font-size:50px; }
-.amethyst-theme #winner-pop.g-result :is(.g-result-label,.g-result-description) { font-size:18px; }
-.amethyst-theme #winner-pop.g-result .g-result-multiplier { font-size:24px; }
 @media(max-height:700px) {
   .game-standard.mn-screen .mn-page { gap:6px; }
   .game-standard .mn-panel { padding:9px!important; gap:6px!important; }
   .game-standard .hl-history { height:65px; min-height:65px; }
   .game-standard .hl-history-item .hl-face { height:45px; }
   .game-standard .nv-scale { min-height:110px; }
-  .g-result { padding-block:6px; gap:1px; margin-top:5px; }
-  .g-result .g-result-amount { font-size:25px; }
 }
 @media(max-height:540px) {
   /* Keyboard/landscape fallback: keep controls reachable instead of clipping. */
@@ -197,3 +181,15 @@
   .game-standard.mn-screen .mn-page { min-height:calc(540px + var(--safe-top) + var(--safe-bottom)); }
 }
 @media(prefers-reduced-motion:reduce) { .g-result { animation:none; } }
+
+/* Stronger than the old table's winner-pop coordinates, including its scaled theme. */
+.screen > .g-result {
+  position:fixed!important; left:50%!important;
+  top:calc((100% + var(--safe-top,0px) - var(--safe-bottom,0px)) / 2)!important;
+  transform:translate(-50%,-50%)!important; margin:0!important;
+  width:calc(100% - 40px)!important; min-width:0!important; max-width:340px!important;
+  max-height:calc(100% - var(--safe-top,0px) - var(--safe-bottom,0px) - 24px);
+  overflow:auto; z-index:200; animation:game-result-in .22s ease-out;
+}
+
+@media(prefers-reduced-motion:reduce) { .screen > .g-result { animation:none; } }

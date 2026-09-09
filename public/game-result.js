@@ -1,6 +1,11 @@
 'use strict';
 // One presentation for confirmed round totals. All amounts are integer cents.
 (function(root){
+  const origins=new WeakMap();
+  function restore(node){
+    const origin=origins.get(node);
+    if(origin){origin.parent.insertBefore(node,origin.next?.parentNode===origin.parent?origin.next:null);origins.delete(node);}
+  }
   const titles={win:'Выигрыш',push:'Возврат ставки',partial:'Частичный возврат',lose:'Проигрыш'};
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function model(round){
@@ -16,7 +21,7 @@
   }
   function hide(node,reset=true){
     if(!node)return;
-    node.classList.add('hidden');node.parentElement?.classList.remove('has-game-result');
+    node.classList.add('hidden');
     if(reset){node.innerHTML='';delete node.dataset.resultKey;delete node.dataset.dismissedResult;}
   }
   function show(node,round,key){
@@ -25,15 +30,21 @@
     if(!value){hide(node);return false;}
     key=String(key??[value.bet,value.payout,value.description].join(':'));
     if(node.dataset.dismissedResult===key)return false;
+    // A screen-level portal escapes scaled artwork and never occupies field space.
+    const screen=node.closest?.('.screen');
+    if(screen&&node.parentElement!==screen){
+      if(!origins.has(node))origins.set(node,{parent:node.parentElement,next:node.nextSibling});
+      screen.appendChild(node);
+    }
     if(node.dataset.resultKey!==key){
       node.dataset.resultKey=key;node.dataset.revision=key;
       node.className=`g-result is-${value.kind}`;node.innerHTML=markup(value);
       node.setAttribute('role','status');node.setAttribute('aria-live','polite');
       node.onclick=()=>{node.dataset.dismissedResult=key;hide(node,false);};
     }
-    node.classList.remove('hidden');node.parentElement?.classList.add('has-game-result');
+    node.classList.remove('hidden');
     return true;
   }
-  const api={model,markup,show,hide};
+  const api={model,markup,show,hide,restore};
   if(typeof module==='object'&&module.exports)module.exports=api;else root.GameResult=api;
 })(globalThis);

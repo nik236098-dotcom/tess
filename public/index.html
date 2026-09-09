@@ -21,8 +21,8 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/croc-theme.css?v=1" />
   <link rel="stylesheet" href="/amethyst.css?v=1" />
-  <link rel="stylesheet" href="/game-standard.css?v=1" />
-  <script src="/game-result.js?v=1"></script>
+  <link rel="stylesheet" href="/game-standard.css?v=2" />
+  <script src="/game-result.js?v=2"></script>
   <script defer src="/game-layout.js?v=1"></script>
 </head>
 <body>
@@ -803,7 +803,7 @@
 
     <!-- Mines: обычный прокручиваемый экран — поле сверху, параметры ставки
          ниже; раунд целиком на сервере, клиент только показывает состояние. -->
-    <section id="screen-mn" class="screen game-standard mn-screen hidden">
+    <section id="screen-mn" class="screen mn-screen hidden">
       <div class="mn-bg" aria-hidden="true">
         <svg class="icon mn-suit-1"><use href="#i-spade"></use></svg>
         <svg class="icon mn-suit-2"><use href="#i-club"></use></svg>
@@ -823,26 +823,23 @@
           <div id="mn-overlay" class="mn-overlay hidden"></div>
         </div>
         <div class="mn-panel">
-          <div class="g-settings">
-          <div class="mn-label">Мины</div>
-          <label class="mn-select">
-            <i class="mn-bomb-ico"></i>
-            <select id="mn-mines"></select>
-            <svg class="icon mn-select-chevron"><use href="#i-chevron-right"></use></svg>
-          </label>
-          </div>
-          <button id="mn-main" class="mn-main">Сделать ставку</button>
+          <button id="mn-main" class="mn-main">Ставка</button>
           <div class="mn-label">Сумма ставки</div>
           <div class="mn-row">
             <label class="mn-input">
               <i class="mn-coin">$</i>
               <input id="mn-amount" type="text" inputmode="decimal" autocomplete="off" value="1,00" />
             </label>
-            <button id="mn-half" class="mn-mod">½</button>
-            <button id="mn-double" class="mn-mod">2×</button>
+            <button id="mn-half" class="mn-mod">1/2</button>
+            <button id="mn-double" class="mn-mod">2x</button>
             <button id="mn-max" class="mn-mod">Max</button>
           </div>
-
+          <div class="mn-label">Мины</div>
+          <label class="mn-select">
+            <i class="mn-bomb-ico"></i>
+            <select id="mn-mines"></select>
+            <svg class="icon mn-select-chevron"><use href="#i-chevron-right"></use></svg>
+          </label>
         </div>
       </div>
     </section>
@@ -876,7 +873,6 @@
             <div class="nv-ticks" id="nv-ticks"></div>
             <div class="nv-legend"><span>1</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
           </div>
-          <div id="nv-overlay" class="g-result hidden"></div>
           <div class="nv-stats">
             <div class="nv-stat"><span>Выплата</span><b><em id="nv-mult">1.29</em><i>X</i></b></div>
             <div class="nv-stat"><span id="nv-mode-label">Ролл ниже</span><b><em id="nv-target">75</em><button id="nv-swap" class="nv-swap" type="button" aria-label="Сменить режим"><svg class="icon icon-sm"><use href="#i-swap"></use></svg></button></b></div>
@@ -999,6 +995,6 @@
   <script src="/hilo.js?v=4"></script>
   <script src="/client-connection.js?v=1"></script>
   <script src="/telegram-display.js?v=1"></script>
-  <script src="/app.js?v=105"></script>
+  <script src="/app.js?v=106"></script>
 </body>
 </html>

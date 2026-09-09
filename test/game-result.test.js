@@ -28,3 +28,13 @@ test('invalid monetary data cannot be presented as a settled result and descript
   const html=Result.markup(Result.model({bet:100,payout:100,description:'<img src=x onerror=alert(1)>'}));
   assert.ok(!html.includes('<img'));assert.ok(html.includes('&lt;img'));
 });
+
+test('result is placed at screen level, outside the field and scaled artwork',()=>{
+  const screen={appendChild(node){node.parentElement=this;}};
+  const field={insertBefore(node){node.parentElement=this;}};
+  const node={parentElement:field,nextSibling:null,dataset:{},innerHTML:'',closest:()=>screen,setAttribute(){},classList:{add(){},remove(){}}};
+  Result.show(node,{bet:100,payout:200},'round');
+  assert.equal(node.parentElement,screen,'showing a result must not consume field height');
+  Result.hide(node);assert.equal(node.parentElement,screen);
+  Result.restore(node);assert.equal(node.parentElement,field,'legacy spectator placement can be restored');
+});
