@@ -24,7 +24,9 @@
 .ch-lane.is-passed text{fill:#889ab8}
 .ch-lane.is-failed rect{fill:#d64061;stroke:#f07b92}
 .ch-lane.is-failed text{fill:white}
-.ch-result{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:13px 8px;gap:8px;min-height:78px;margin:0;border:0;border-radius:0;background:linear-gradient(180deg,#192238,#151d32);text-align:center}
+.ch-result{position:relative;z-index:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:13px 8px;gap:8px;min-height:78px;margin:0;border:0;border-radius:0;background:linear-gradient(180deg,#172035,#151d32);text-align:center}
+/* The rounded cap overlaps the real scene, so its exposed corners keep the road underneath. */
+.ch-result::before{content:'';position:absolute;left:0;right:0;top:-14px;height:14px;border-radius:14px 14px 0 0;background:#172035;pointer-events:none}
 .ch-result>div+div{border-left:1px solid #607b9b55}.ch-result small{display:block;color:#a5b5d0;font-size:11px;line-height:1.4;margin-bottom:4px}.ch-result b{display:block;color:#f4efff;font:800 clamp(21px,6vw,30px)/1.1 var(--font);overflow-wrap:anywhere}.ch-result>div+div b{color:#72edb0}.ch-result.is-loss b{font-size:17px;color:#e9a7b3}.ch-result.is-paid{box-shadow:inset 0 0 22px #45996818}
 #screen-ag.is-chicken .ag-panel{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;padding:13px;border:1px solid #708dcd55;border-radius:17px;background:linear-gradient(140deg,#151d32,#101526);box-shadow:inset 0 1px 0 #c1d5fc11}
 #screen-ag.is-chicken #ag-settings{order:0;margin-bottom:7px}
