@@ -28,6 +28,7 @@ function openArcade(game) {
   $('screen-ag').classList.toggle('is-chicken',game==='chicken');
   $('screen-ag').classList.toggle('is-coin',game==='coin');
   $('screen-ag').classList.toggle('is-slots',game==='slots');
+  $('screen-ag').classList.toggle('is-andar',game==='andar');
   $('ag-chicken-step').hidden=true;
   $('screen-ag').classList.remove('vp-is-live');
   if(agCatalog())CasinoUI.prepare(game);

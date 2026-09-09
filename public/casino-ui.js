@@ -31,6 +31,7 @@ function afterRender(){
  $('screen-ag').classList.toggle('is-chicken',a.game==='chicken');
  $('screen-ag').classList.toggle('is-coin',a.game==='coin');
  $('screen-ag').classList.toggle('is-slots',a.game==='slots');
+ $('screen-ag').classList.toggle('is-andar',a.game==='andar');
  $('ag-chicken-step').hidden=a.game!=='chicken'||!live;
  $('screen-ag').classList.toggle('vp-is-live',a.game==='videopoker'&&live);
  if(a.game==='videopoker')$('ag-subtitle').textContent='Jacks or Better';
@@ -44,6 +45,7 @@ function afterRender(){
   $('ag-subtitle').textContent='Три кубика — один бросок';
   if(!pending)main.textContent=a.animating?'Кубики брошены…':a.pending?'Подождите…':'Бросить кубики';
  }
+ if(a.game==='andar'&&!pending)main.textContent=a.animating?'Раздаём карты…':'Раздать карты';
  if(a.game==='slots'&&!pending)main.textContent=a.animating?'Барабаны крутятся…':'Крутить';
  if(a.game==='coin'&&!live&&!pending)main.textContent=a.animating?'Монета в воздухе…':'Начать раунд';
  if(!live)return;
@@ -139,6 +141,15 @@ function coinBoard(info,animating,locked){
  return `<div class="cf-panel"><div class="cg-coin-scene"><svg class="cf-landscape" viewBox="0 0 400 300" preserveAspectRatio="none" aria-hidden="true"><path d="M0 190 53 109 93 151 132 117 178 204 230 165 267 99 315 158 367 88 400 169V300H0Z" fill="#1b2d51"/><path d="M0 225 66 188 119 224 175 199 227 240 290 185 337 212 400 177V300H0Z" fill="#152440"/><path d="M0 270Q100 235 200 267T400 257V300H0Z" fill="#192b4b"/></svg><div id="cg-coin-shadow" class="cg-coin-shadow"></div><div class="cg-coin-lift" id="cg-coin-lift"><div class="cg-coin" id="cg-coin" style="transform:rotateY(${side*180}deg)"><div class="cg-coin-side cg-coin-front">${coinFace(0,'cf-front')}</div><div class="cg-coin-side cg-coin-reverse">${coinFace(1,'cf-back')}</div></div></div></div><div class="cf-result" role="status" aria-live="polite"><div><small>${animating?'Бросаем монету…':last?'Результат':'Ваш выбор'}</small><b>${animating?'…':last?picks[side]:picks[a.options.coin.side]}</b></div><div><small>${live?'Можно забрать':'Выплата'}</small><b>${v?.phase==='play'?money(v.available||0):v?.phase==='done'?money(v.payout||0):'—'}</b></div></div></div>${live?`<div class="cf-choices"><p>Выберите сторону следующего броска</p><div class="cg-choices">${picks.map((label,i)=>button(coinFace(i,'cf-pick-'+i)+`<span>${label}</span>`,i,locked,'cf-pick')).join('')}</div></div>`:''}`;
 }
 const slotSymbol=n=>`<span class="cs-symbol cs-symbol-${n}" role="img" aria-label="${['Рубин','Колокол','Виноград','Звезда','Семёрка','Крокодил'][n]}"></span>`;
+function andarCard(c){
+ const id=c?`${{s:'spade',c:'club',h:'heart',d:'diamond'}[c.suit]}_${({14:1,13:'king',12:'queen',11:'jack'})[c.rank]||c.rank}`:'back';
+ return `<svg class="ab-card-art" viewBox="0 0 169.075 244.640" role="img" aria-label="${c?videoCardName(c,0):'Рубашка карты'}"><use href="/img/classic/deck.svg#${id}"/></svg>`;
+}
+function andarPile(pile){return pile.slice(-3).map((c,i,all)=>`<span class="ab-pile-card" style="--offset:${i-(all.length-1)/2};--layer:${i}">${andarCard(c)}</span>`).join('');}
+function andarBoard(info,animating){
+ const d=info?.detail,done=info?.phase==='done'&&!animating;
+ return `<div class="ab-panel"><div class="cg-andar"><span class="ab-center-label">Главная карта</span><div class="cg-center-card">${andarCard(d?.center)}</div><div class="ab-deck">${andarCard(null)}</div><div class="cg-andar-sides">${['andar','bahar'].map((side,i)=>{const pile=done?d.dealt.filter((_,n)=>n%2===i):[];return `<div class="${done&&d.winner===side?'is-winner':''}" data-cg-side="${i}"><b>${i?'БАХАР':'АНДАР'}</b><div class="cg-small-card" id="cg-andar-${i}">${andarPile(pile)}</div><small id="cg-andar-count-${i}">${done&&d.winner===side?'✓ Совпадение':pile.length?pile.length+' карт':'Ждём раздачу'}</small></div>`;}).join('')}</div><div class="cg-flying-card" id="cg-flying-card"></div></div><div class="ab-result" role="status" aria-live="polite"><div><small>Результат</small><b>${done?d.winner==='andar'?'Андар':'Бахар':animating?'Раздача…':'—'}</b></div><div><small>Выплата</small><b>${done?money(info.payout):'—'}</b></div></div></div>`;
+}
 function board(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',locked=agLocked(),d=info?.detail,done=info?.phase==='done'&&!a.animating,step=info?.step||0;
  const visual=a.animating?a.cgPrevious:info,last=visual?.last,visibleStep=visual?.step||0;
@@ -153,7 +164,7 @@ function board(){
   const grid=d?.grid||[0,1,2,5,5,3,4,0,1],old=a.cgPrevious?.detail?.grid||[0,1,2,5,5,3,4,0,1];
   html=`<div class="cg-scene cg-slots-scene"><div class="cg-slot-machine">${[0,1,2].map(col=>{const result=[grid[col],grid[col+3],grid[col+6]],strip=a.animating?[...result,...Array.from({length:15},(_,i)=>(i*5+col)%6),old[col],old[col+3],old[col+6]]:result;return `<div class="cg-reel"><div class="cg-reel-strip" data-cg-reel="${col}" style="--symbols:${strip.length};transform:translateY(${a.animating?-18/21*100:0}%)">${strip.map((n,i)=>`<div class="cg-slot-cell ${done&&d?.lines?.[i]?.payout?'is-line-win':''}">${slotSymbol(n)}</div>`).join('')}</div></div>`;}).join('')}<div class="cg-reel-shade"></div></div><div class="cg-slot-footer"><i></i><span>3 ЛИНИИ</span><i></i></div><div class="cs-result" role="status" aria-live="polite"><div><small>Ставка</small><b>${info?.bet?money(info.bet):'—'}</b></div><div><small>Выигрыш</small><b>${done?money(info.payout):'—'}</b></div></div></div>`;
  }
- else if(a.game==='andar')html=`<div class="cg-scene cg-andar cg-card-table">${plaque('ANDAR BAHAR')}<div class="cg-center-card">${card(d?.center)}</div><div class="cg-andar-sides">${['andar','bahar'].map((side,i)=>{const pile=done?d.dealt.filter((_,n)=>n%2===i):[];return `<div class="${done&&d.winner===side?'is-winner':''}" data-cg-side="${i}"><b>${i?'Бахар':'Андар'}</b><div class="cg-small-card" id="cg-andar-${i}">${card(pile.at(-1))}</div><small id="cg-andar-count-${i}">${pile.length} карт</small></div>`;}).join('')}</div><div class="cg-flying-card" id="cg-flying-card"></div></div>${caption(done?`Совпадение: ${d.winner==='andar'?'Андар':'Бахар'}`:'Раздача до первого совпадения по достоинству')}`;
+ else if(a.game==='andar')html=andarBoard(info,a.animating);
  else if(a.game==='penalty')html=`<div class="cg-scene cg-goal">${plaque(`ПЕНАЛЬТИ · ${visibleStep} / 5`)}<div class="cg-net">${Array.from({length:5},(_,i)=>`<button type="button" data-cg-pick="${i}" ${!live||locked?'disabled':''} class="cg-goal-zone ${last?.choice===i?'is-shot':''}" aria-label="Удар в зону ${i+1}">${i+1}</button>`).join('')}</div><div class="cg-keeper" id="cg-keeper">${art('paper')}${art('paper')}</div><div class="cg-football" id="cg-football">${art('ball')}</div>${particles()}</div>${caption(live?'Выбери одну из пяти зон ворот':last?last.safe?'Гол!':'Вратарь отбил удар':'Пять зон · один удар')}`;
  else if(a.game==='darts')html=`<div class="cg-scene cg-darts-scene">${plaque('DARTS')}<div class="cg-dartboard"><div class="cg-dart-ring cg-ring-outer"></div><div class="cg-dart-ring cg-ring-mid"></div><div class="cg-dart-ring cg-ring-inner"></div><div class="cg-dart-ring cg-ring-bull"></div><span class="cg-target-label">20×</span><div id="cg-dart" class="cg-dart">${art('target')}</div></div></div>${caption(done?`Результат броска: ${agNumber(info.multiplier)}×`:'Бросок в мишень · зоны выплат в таблице')}`;
  else if(a.game==='bowling')html=`<div class="cg-scene cg-bowling">${plaque('BOWLING')}<div class="cg-pins">${Array.from({length:10},(_,i)=>`<div class="cg-pin" data-cg-pin="${i}" style="left:${[36,45,54,63,41,50,59,45,54,50][i]}%;top:${[22,22,22,22,28,28,28,34,34,40][i]}%">${art('pin')}</div>`).join('')}</div><div id="cg-bowling-ball" class="cg-bowling-ball">${art('bowling')}</div></div>${caption(done?`Сбито ${d.count} из 10${d.count===10?' · СТРАЙК':''}`:'Шар · дорожка · десять кеглей')}`;
@@ -185,8 +196,8 @@ function paint(info,t){
  if(game==='slots'&&a.animating)f.reels.forEach((r,i)=>{transform(`[data-cg-reel="${i}"]`,`translateY(${(r.position-18)/21*100}%)`);toggle(`[data-cg-reel="${i}"]`,'is-spinning',!r.settled);});
  if(game==='andar'){
   const count=t===1?d.dealt?.length||0:f.count;
-  for(let side=0;side<2;side++){const pile=(d.dealt||[]).slice(0,count).filter((_,i)=>i%2===side),node=el('#cg-andar-'+side),label=el('#cg-andar-count-'+side);if(node&&node.dataset.count!==String(pile.length)){node.innerHTML=card(pile.at(-1));node.dataset.count=String(pile.length);}if(label)label.textContent=pile.length+' карт';}
-  const moving=el('#cg-flying-card');if(moving){const c=d.dealt?.[f.index];if(moving.dataset.index!==String(f.index)){moving.innerHTML=card(c);moving.dataset.index=String(f.index);}moving.style.opacity=t<.15||f.complete?0:1;moving.style.left=(50+(f.index%2?28:-28)*f.flight)+'%';moving.style.top=(29+42*f.flight)+'%';moving.style.transform=`translate(-50%,-50%) rotate(${(f.index%2?1:-1)*Math.sin(f.flight*Math.PI)*12}deg)`;}
+  for(let side=0;side<2;side++){const pile=(d.dealt||[]).slice(0,count).filter((_,i)=>i%2===side),node=el('#cg-andar-'+side),label=el('#cg-andar-count-'+side);if(node&&node.dataset.count!==String(pile.length)){node.innerHTML=andarPile(pile);node.dataset.count=String(pile.length);}if(label)label.textContent=pile.length+' карт';}
+  const moving=el('#cg-flying-card');if(moving){const c=d.dealt?.[f.index];if(moving.dataset.index!==String(f.index)){moving.innerHTML=andarCard(c);moving.dataset.index=String(f.index);}moving.style.opacity=t<.15||f.complete?0:1;const u=f.flight*f.flight*(3-2*f.flight);moving.style.left=(64+((f.index%2?75:25)-64)*u)+'%';moving.style.top=(26+44*u-5*Math.sin(u*Math.PI))+'%';moving.style.transform=`translate(-50%,-50%) rotate(${(f.index%2?1:-1)*Math.sin(f.flight*Math.PI)*12}deg)`;}
  }
  if(game==='penalty'){style('#cg-football','left',f.x+'%');style('#cg-football','top',f.y+'%');transform('#cg-football',`translate(-50%,-50%) scale(${f.scale}) rotate(${f.rotation}deg)`);style('#cg-keeper','left',f.keeperX+'%');transform('#cg-keeper',`translateX(-50%) rotate(${(f.keeperX-50)*.7}deg)`);toggle('.cg-goal','is-goal',f.hit&&last.safe);}
  if(game==='darts'){style('#cg-dart','left',f.x+'%');style('#cg-dart','top',f.y+'%');style('#cg-dart','opacity',f.opacity);transform('#cg-dart',`translate(-18%,-82%) scale(${f.scale})`);toggle('.cg-dartboard','is-hit',f.hit);}

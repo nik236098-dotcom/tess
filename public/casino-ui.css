@@ -241,3 +241,26 @@
 #screen-ag.is-slots .mn-main{background:linear-gradient(#5b9dff,#2657e3);box-shadow:inset 0 2px 2px #d3e5ff77}
 @keyframes cs-line{50%{box-shadow:inset 0 0 0 2px #fff4ad,inset 0 0 20px #ffd55788}}
 @media(prefers-reduced-motion:reduce){#screen-ag.is-slots .cg-slot-cell.is-line-win{animation:none}}
+/* Andar Bahar: classic card deck, spacious two-sided deal, shared betting panel. */
+#screen-ag.is-andar{background:linear-gradient(150deg,#10162d,#14213b)}
+#screen-ag.is-andar .ag-board{padding:0;border:0;background:none;box-shadow:none}
+#screen-ag.is-andar .ag-status,#screen-ag.is-andar .ag-stats{display:none}
+.ab-panel{border:2px solid #355cb2;border-radius:22px;overflow:hidden;background:radial-gradient(ellipse at 50% 0,#20385c,#111d35 80%)}
+#screen-ag.is-andar .cg-andar{position:relative;height:auto;aspect-ratio:1.05;width:100%;container-type:inline-size}
+.ab-center-label{position:absolute;top:4%;left:0;right:0;text-align:center;color:#a6b9db;font-size:12px}
+#screen-ag.is-andar .cg-center-card{top:13%;left:34%;width:17%;height:auto;aspect-ratio:169.075/244.640}
+.ab-deck{position:absolute;top:14%;left:57%;width:17%;aspect-ratio:169.075/244.640;border-radius:6px;box-shadow:-2px 3px #a7b5d3,-4px 6px #7183a4,-6px 9px #4c5f85}
+.ab-card-art{display:block;width:100%;height:100%;color:#295198;fill:#295198;filter:drop-shadow(0 2px 2px #03091844);border-radius:5px;background:white}
+#screen-ag.is-andar .cg-andar-sides{left:2%;right:2%;top:46%;height:52%;display:grid;grid-template-columns:1fr 1fr;gap:3%}
+#screen-ag.is-andar .cg-andar-sides>div{position:relative;padding:9px 4px 5px;background:#101e3555;border:1px solid #546f9d88;border-radius:15px}
+#screen-ag.is-andar .cg-andar-sides b{color:#c5d3f1;font:700 15px var(--font)}
+#screen-ag.is-andar .cg-small-card{position:absolute;top:25%;left:50%;width:43%;height:62%;margin:0;transform:translateX(-50%)}
+.ab-pile-card{position:absolute;inset:0;transform:translateX(calc(var(--offset)*21%)) rotate(calc(var(--offset)*5deg));z-index:var(--layer)}
+#screen-ag.is-andar .cg-andar-sides small{position:absolute;left:0;right:0;bottom:3%;color:#a8bbdb;font-size:10px}
+#screen-ag.is-andar .cg-andar-sides .is-winner{border-color:#75b6ff;box-shadow:inset 0 0 12px #3580db33,0 0 9px #3684ec66}
+#screen-ag.is-andar .cg-andar-sides .is-winner small{color:#c4eaff;font-weight:700}
+#screen-ag.is-andar .cg-flying-card{width:20%;height:auto;aspect-ratio:169.075/244.640;left:64%;top:26%;transform:translate(-50%,-50%);pointer-events:none}
+.ab-result{position:relative;display:grid;grid-template-columns:1fr 1fr;padding:12px 5px;margin-top:10px;text-align:center;background:linear-gradient(#15243f,#101a30);border-radius:15px 15px 0 0}
+.ab-result>div+div{border-left:1px solid #647aab66}.ab-result small{display:block;color:#a6b9db;font-size:11px;margin-bottom:4px}.ab-result b{font-size:20px;color:#f1f5ff}.ab-result>div+div b{color:#7ae7b7}
+#screen-ag.is-andar .ag-choice.is-selected{background:linear-gradient(#4d92fc,#285cd3);border-color:#81b7ff}
+#screen-ag.is-andar .mn-main{background:linear-gradient(#5896ff,#285ae0);box-shadow:inset 0 2px 2px #cee3ff66}

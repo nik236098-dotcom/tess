@@ -8,7 +8,7 @@ test('every retained game has a bounded timeline, finite frames and exact comple
   let r=engine.start(id,engine.initial(),100,structuredClone(games[id].defaults),0,n=>n-1);
   if(games[id].series)r=engine.actGame(id,r,'ag_pick',0,r.revision,n=>n-1);
   const info=engine.publicState(id,r);
-  assert.ok(motion.duration(id,info)>=1000&&motion.duration(id,info)<=6500,id);
+  assert.ok(motion.duration(id,info)>=1000&&motion.duration(id,info)<=(id==='andar'?18000:6500),id);
   const finite=x=>{if(typeof x==='number')assert.ok(Number.isFinite(x),id);else if(x&&typeof x==='object')Object.values(x).forEach(finite);};
   for(let i=0;i<=100;i++)finite(motion.frame(id,info,null,i/100));
   assert.deepEqual(motion.frame(id,info,null,3),motion.frame(id,info,null,1));
@@ -61,4 +61,9 @@ test('Sic Bo rolls rigid faces through diminishing hops and settles all three di
  assert.equal(peaks,3);
  const end=motion.frame('sicbo',{},null,1);for(const d of end.dice){assert.equal(d.height,0);assert.equal(d.rx,-58);assert.equal(d.ry,26);assert.equal(d.settled,true);}
  assert.equal(motion.frame('sicbo',{},null,.8).dice.filter(d=>d.settled).length,1);
+});
+
+test('Andar gives long deals readable per-card time while keeping a finite end',()=>{
+ const d=n=>motion.duration('andar',{detail:{dealt:Array(n).fill({rank:8,suit:'h'})}});
+ assert.equal(d(10),5700);assert.equal(d(37),17040);assert.equal(d(51),18000);
 });
