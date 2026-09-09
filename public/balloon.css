@@ -5,7 +5,7 @@
 #screen-ag.is-balloon .ag-stats b{color:#c5dfff}
 #screen-ag.is-balloon #ag-payout{color:#77e6b4}
 #screen-ag.is-balloon .mn-main,#screen-ag.is-balloon .bl-inflate{background:linear-gradient(#359dff,#0960df);box-shadow:inset 0 1px 2px #c8e6ff88;color:#fff;border:1px solid #4b9af2;border-radius:14px}
-#screen-ag.is-balloon .mn-main.is-cash{background:linear-gradient(#233e61,#152b48);box-shadow:none;border-color:#4a719e;color:#c2e0ff}
+#screen-ag.is-balloon .mn-main.is-cash{background:linear-gradient(#48d58b,#1b9c5b);box-shadow:inset 0 1px 2px #c4ffdf88;border-color:#66e6a2;color:#062d1a}
 #screen-ag.is-balloon .mn-mod{background:linear-gradient(#233b5b,#132640);border-color:#486b95;color:#d9eaff}
 #screen-ag.is-balloon .ag-choice{background:#172c49;border-color:#3b587b;color:#b7cdec;border-radius:12px}
 #screen-ag.is-balloon .ag-choice.is-selected{background:linear-gradient(#278dff,#0964dd);border-color:#66afff;color:#fff}
@@ -14,6 +14,17 @@
 .bl-panel{overflow:hidden;width:100%;border-radius:17px;background:#09182e}
 .bl-scene{display:block;width:100%;height:auto;aspect-ratio:360/390}
 .bl-readout{display:flex;flex-direction:column;align-items:center;gap:5px;padding:15px;background:linear-gradient(#10233f,#0c192e);border-top:1px solid #355880}
-.bl-readout b{font:800 36px/1.1 var(--font-display);color:#b4d7ff;letter-spacing:-1px}
+
 .bl-readout span{font:12px/1.5 var(--font);color:#a4bddd}
 #screen-ag.is-balloon .bl-inflate{width:calc(100% - 24px);margin:12px;min-height:52px;font:700 17px var(--font)}
+
+#screen-ag.is-balloon #ag-paytable{display:none}
+.bl-steps{display:flex;gap:8px;width:100%;overflow-x:auto;overscroll-behavior-x:contain;padding:3px 0 9px;scrollbar-width:thin;scrollbar-color:#496e9a transparent;position:relative}
+.bl-step{flex:0 0 76px;box-sizing:border-box;padding:10px 7px;border:1px solid #355579;border-radius:12px;background:linear-gradient(#193653,#10243f);text-align:center}
+.bl-step small{display:block;color:#9ab7d9;font:11px/1.4 var(--font)}
+.bl-step b{display:block;margin-top:4px;color:#c4defb;font:700 16px/1.3 var(--font)}
+.bl-step.is-current{border-color:#79bcff;background:linear-gradient(#287cdf,#154a8b);box-shadow:inset 0 1px 1px #b4dbff55}
+.bl-step.is-current small,.bl-step.is-current b{color:#fff}
+.bl-step.is-lost{border-color:#e27891;background:#53243a}
+.bl-step.is-lost b{color:#ffbacb}
+.bl-steps:focus-visible{outline:2px solid #8ec8ff;outline-offset:3px}
