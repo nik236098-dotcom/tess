@@ -35,6 +35,7 @@ function afterRender(){
  $('screen-ag').classList.toggle('is-darts',a.game==='darts');
  $('screen-ag').classList.toggle('is-bowling',a.game==='bowling');
  $('screen-ag').classList.toggle('is-balloon',a.game==='balloon');
+ $('ag-balloon-pump').hidden=a.game!=='balloon';
  $('ag-chicken-step').hidden=a.game!=='chicken'||!live;
  $('screen-ag').classList.toggle('vp-is-live',a.game==='videopoker'&&live);
  if(a.game==='videopoker')$('ag-subtitle').textContent='Jacks or Better';
@@ -51,7 +52,14 @@ function afterRender(){
  if(a.game==='andar'&&!pending)main.textContent=a.animating?'Раздаём карты…':'Раздать карты';
  if(a.game==='darts')DartsGame.controls();
  if(a.game==='bowling'&&!pending){main.disabled=agLocked()||!BowlingScene.ready();main.textContent=a.animating?'Шар на дорожке…':a.pending?'Подождите…':BowlingScene.ready()?'Бросить шар':'Загружаем 3D…';}
- if(a.game==='balloon'&&!pending&&!live)main.textContent=a.animating?'Надуваем…':'Начать раунд';
+ if(a.game==='balloon'){
+  const pump=$('ag-balloon-pump');pump.disabled=agLocked()||Boolean(pending);
+  pump.textContent=a.animating?'Надуваем…':a.pending?'Подождите…':live?'Надуть ещё':'Надуть шар';
+  main.disabled=agLocked()||(!live&&!pending);main.classList.toggle('is-cash',live);
+  main.textContent=pending?'Получить выплату':live?'Забрать '+money(info.available):'Забрать';
+  $('ag-note').textContent=pending?'Выплата сохранена. Нажми «Получить выплату».':'Надувай шар или забирай выигрыш';
+  return;
+ }
  if(a.game==='slots'&&!pending)main.textContent=a.animating?'Барабаны крутятся…':'Крутить';
  if(a.game==='coin'&&!live&&!pending)main.textContent=a.animating?'Монета в воздухе…':'Начать раунд';
  if(!live)return;
@@ -63,6 +71,7 @@ function afterRender(){
 }
 function main(){
  const a=state.ag;if(!isGame(a.game))return false;
+ if(a.game==='balloon'&&a.info?.phase!=='play')return true;
  if(a.game==='darts')return DartsGame.enqueue();
  if(a.game==='bowling'&&!BowlingScene.ready()&&!(a.info?.phase==='done'&&!a.info.settled)){toast('Дождись загрузки 3D-сцены');return true;}
  if(a.info?.phase==='play'&&a.game==='videopoker'){agRequest('pick',{index:[...(a.held||[])]});return true;}
@@ -263,6 +272,10 @@ function boardEvent(event){
 
 }
 function bind(){
+ $('ag-balloon-pump').addEventListener('click',()=>{
+  const a=state.ag;if(a.game!=='balloon'||!a.info||agLocked()||(a.info.phase==='done'&&!a.info.settled))return;
+  agRequest(a.info.phase==='play'?'pick':'start',a.info.phase==='play'?{index:0}:{});
+ });
  $('ag-stage').addEventListener('bowlingready',()=>{if(state.ag.game==='bowling')afterRender();});
  $('ag-chicken-step').addEventListener('click',()=>{if(state.ag.game==='chicken'&&state.ag.info?.phase==='play'&&!agLocked())agRequest('pick',{index:0});});
  $('ag-settings').addEventListener('click',settingEvent);

@@ -39,8 +39,8 @@ function harness(id){
 for(const id of ids)test(`${id}: every board renders, actions send once, animations finish, reconnect state stays playable`,()=>{
  const h=harness(id);h.deliver(game.initial());
  assert.match(h.$('ag-stage').innerHTML,/class="cg-board cg-game-/,'board wrapper must not inherit scene grid/flex sizing');
- assert.ok(!h.$('ag-stage').innerHTML.includes('undefined'));assert.equal(h.$('ag-main').disabled,false);
- h.$('ag-main').dispatch('click',{});h.$('ag-main').dispatch('click',{});assert.equal(h.sent.length,1);assert.equal(h.sent[0].type,'ag_start');
+ assert.ok(!h.$('ag-stage').innerHTML.includes('undefined'));assert.equal(h.$(id==='balloon'?'ag-balloon-pump':'ag-main').disabled,false);
+ h.$(id==='balloon'?'ag-balloon-pump':'ag-main').dispatch('click',{});h.$(id==='balloon'?'ag-balloon-pump':'ag-main').dispatch('click',{});assert.equal(h.sent.length,1);assert.equal(h.sent[0].type,'ag_start');
  let r=game.start(id,game.initial(),100,structuredClone(games[id].defaults),0,n=>n-1);r.settled=r.phase==='done';h.deliver(r);h.advance();
  if(r.phase==='play'){
   if(id==='videopoker'){h.click('ag-stage','cgHold','0');h.click('ag-stage','cgHold','4');h.$('ag-main').dispatch('click',{});assert.equal(JSON.stringify(h.sent.at(-1).index),'[0,4]');r=game.actGame(id,r,'ag_pick',[0,4],r.revision);}
@@ -48,7 +48,7 @@ for(const id of ids)test(`${id}: every board renders, actions send once, animati
   else {h.$('ag-main').dispatch('click',{});assert.equal(h.sent.at(-1).type,'ag_cashout');r=game.actGame(id,r,'ag_cashout',null,r.revision);}
   r.settled=true;h.deliver(r);h.advance();
  }
- assert.equal(h.state.ag.animating,false);assert.equal(h.frames.size,0);assert.equal(h.$('ag-main').disabled,false);
+ assert.equal(h.state.ag.animating,false);assert.equal(h.frames.size,0);assert.equal(h.$(id==='balloon'?'ag-balloon-pump':'ag-main').disabled,false);
  assert.equal(h.$('ag-payout').textContent,'$'+(r.payout/100).toFixed(2));assert.ok(!h.$('ag-stage').innerHTML.includes('undefined'));
  h.state.connected=false;h.ctx.renderArcade();assert.equal(h.$('ag-main').disabled,true);
 });
@@ -343,13 +343,28 @@ test('bowling: saved winnings appear when settlement arrives at the same revisio
 });
 
 test('balloon pump locks repeat clicks and cashout, then restores controls and shared winnings',()=>{
- const h=harness('balloon');h.deliver(game.initial());h.$('ag-main').dispatch('click',{});
+ const h=harness('balloon');h.deliver(game.initial());assert.equal(h.$('ag-main').disabled,true);h.$('ag-balloon-pump').dispatch('click',{});
  let r=game.start('balloon',game.initial(),100,{level:'easy'},0,n=>n-1);r.order=Array(24).fill(true).concat(false);h.deliver(r);
  assert.match(h.$('ag-stage').innerHTML,/bl-handle/);
- h.click('ag-stage','cgPick','0');h.click('ag-stage','cgPick','0');assert.equal(h.sent.length,2);
+ h.$('ag-balloon-pump').dispatch('click',{});h.$('ag-balloon-pump').dispatch('click',{});assert.equal(h.sent.length,2);
  r=game.actGame('balloon',r,'ag_pick',0,r.revision);h.deliver(r);
  assert.equal(h.$('ag-main').disabled,true);assert.match(h.$('ag-stage').innerHTML,/Надуваем/);
  h.advance();assert.equal(h.$('ag-main').disabled,false);assert.match(h.$('ag-stage').innerHTML,/Успешных качков: 1/);
  h.$('ag-main').dispatch('click',{});r=game.actGame('balloon',r,'ag_cashout',null,r.revision);r.settled=true;h.deliver(r);
  assert.match(h.$('ag-overlay').className,/is-win/);assert.match(h.$('ag-stage').innerHTML,/Раунд завершён/);
+});
+
+test('balloon two-button panel keeps cashout inactive before start and preserved payments collectible',()=>{
+ const h=harness('balloon');h.deliver(game.initial());
+ assert.equal(h.$('ag-balloon-pump').hidden,false);assert.equal(h.$('ag-main').disabled,true);
+ h.$('ag-main').dispatch('click',{});assert.equal(h.sent.length,0);
+ assert.doesNotMatch(h.$('ag-stage').innerHTML,/class="cg-action bl-inflate"/);
+ h.$('ag-balloon-pump').dispatch('click',{});
+ let r=game.start('balloon',game.initial(),100,{level:'easy'},0,n=>n-1);h.deliver(r);
+ assert.equal(h.$('ag-main').classList.contains('is-cash'),true);
+ assert.equal(h.$('ag-main').disabled,false);
+ r=game.actGame('balloon',r,'ag_cashout',null,r.revision);r.settled=false;h.deliver(r);
+ assert.equal(h.$('ag-balloon-pump').disabled,true);assert.equal(h.$('ag-main').disabled,false);
+ const before=h.sent.length;h.$('ag-balloon-pump').dispatch('click',{});assert.equal(h.sent.length,before);
+ h.$('ag-main').dispatch('click',{});assert.equal(h.sent.at(-1).type,'ag_open');
 });
