@@ -45,11 +45,10 @@ test('game choices preserve native inputs and map numeric values to numbers',()=
   const target={dataset:{cgOption:String(value),cgKey:key},closest:selector=>selector==='[data-cg-option]'?target:null};h.$('ag-settings').dispatch('click',target);
   h.ctx.agRequest('start');assert.equal(h.sent.at(-1).options[key],value);
  }
- const h=harness('limbo');h.deliver(game.initial());h.$('ag-settings').dispatch('change',{id:'cg-target',value:'3,50'});h.ctx.agRequest('start');assert.equal(h.sent.at(-1).options.target,3.5);
 });
-test('catalog launchers contain all 16 distinct games and no baccarat duplicate',()=>{
+test('catalog launchers contain all 15 distinct games and no baccarat duplicate',()=>{
  const h=harness('diamonds'),html=h.$('casino-catalog').innerHTML;
- const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,ids);assert.equal(new Set(idsInHtml).size,16);assert.ok(!html.includes('data-arcade="baccarat"'));
+ const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,ids);assert.equal(new Set(idsInHtml).size,15);assert.ok(!html.includes('data-arcade="baccarat"'));
 });
 
 test('active animations lock clicks and stop permanently when leaving any game',()=>{
@@ -65,7 +64,7 @@ test('active animations lock clicks and stop permanently when leaving any game',
 test('scene markup uses project textures and generated assets rather than placeholder drawings',()=>{
  const h=harness('diamonds');h.deliver(game.initial());
  assert.match(h.$('casino-catalog').innerHTML,/cg-sprite/);
- for(const id of ['cases','collection','scratch'])assert.ok(!h.$('casino-catalog').innerHTML.includes(`data-arcade="${id}"`));
+ for(const id of ['cases','collection','scratch','limbo'])assert.ok(!h.$('casino-catalog').innerHTML.includes(`data-arcade="${id}"`));
  assert.match(fs.readFileSync('public/casino-ui.css','utf8'),/img\/catalog\/objects.webp/);
  for(const asset of ['objects','environments'])assert.ok(fs.statSync(`public/img/catalog/${asset}.webp`).size>10000);
 });

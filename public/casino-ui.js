@@ -12,7 +12,6 @@ function setup(){
 }
 function settings(){
  const a=state.ag,g=current(),options=a.options[a.game],disabled=agLocked()||a.info?.phase==='play',attr=disabled?'disabled':'';
- if(a.game==='limbo')return `<label class="mn-label" for="cg-target">Целевой коэффициент</label><input id="cg-target" class="ag-select" inputmode="decimal" value="${options.target}" ${attr} autocomplete="off"><p class="ag-note">Шанс: ${agNumber(99/options.target)}% · выплата при успехе ${agNumber(options.target)}×</p>`;
  if(g.choices){const key=a.game==='chicken'||a.game==='balloon'?'level':'side';return `<span class="mn-label">${key==='level'?'Сложность':'Выбор до ставки'}</span><div class="cg-choices">${g.choices.map(([name,value])=>`<button type="button" class="ag-choice ${options[key]===value?'is-selected':''}" data-cg-option="${value}" data-cg-key="${key}" ${attr} aria-pressed="${options[key]===value}">${name}</button>`).join('')}</div>`;}
  return `<p class="ag-note">${g.tag}</p>`;
 }
@@ -22,7 +21,7 @@ function seriesTable(game,options){
  else max=game==='penalty'?5:game==='pinball'?10:20;
  return Array.from({length:max},(_,i)=>{p*=size?(size-bad-i)/(size-i):game==='coin'||game==='rps'?.5:.8;return Math.floor((.98/p+1e-10)*100)/100;});
 }
-function paytable(){const a=state.ag,g=current();const table=g.series?seriesTable(a.game,a.options[a.game]).map((n,i)=>[`${i+1} шаг`,n]):a.game==='limbo'?[['Цель',a.options.limbo.target]]:g.table;return (table||[]).map(([label,value])=>`<span class="ag-pay is-positive"><small>${label}</small><b>${agNumber(value)}×</b></span>`).join('');}
+function paytable(){const a=state.ag,g=current();const table=g.series?seriesTable(a.game,a.options[a.game]).map((n,i)=>[`${i+1} шаг`,n]):g.table;return (table||[]).map(([label,value])=>`<span class="ag-pay is-positive"><small>${label}</small><b>${agNumber(value)}×</b></span>`).join('');}
 function afterRender(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',pending=info?.phase==='done'&&!info.settled,main=$('ag-main');
  $('ag-title').classList.toggle('ag-long-title',g.name.length>15);
@@ -107,7 +106,6 @@ function board(){
  let html='';
  if(a.game==='diamonds')html=diamondBoard(info,a.animating);
  else if(a.game==='videopoker')html=videoBoard(info,a.animating,locked);
- else if(a.game==='limbo')html=`<div class="cg-scene cg-limbo"><div class="cg-starfield"></div><div class="cg-limbo-readout"><small>ТЕКУЩИЙ КОЭФФИЦИЕНТ</small><b id="cg-limbo-value">${done?agNumber(d.value):'1.00'}×</b><span>Цель ${agNumber(a.options.limbo.target)}×</span></div><div id="cg-rocket" class="cg-rocket">${art('orbit')}<i class="cg-exhaust"></i></div><div class="cg-orbit-line"></div>${particles()}</div>`;
  else if(a.game==='sicbo')html=`<div class="cg-scene cg-dice-scene">${plaque('SIC BO')}<div class="cg-dice">${(done?d.dice:[1,3,5]).map(dice).join('')}</div><div class="cg-dice-tray"></div></div>${caption(done?`Сумма ${d.sum}${d.triple?' · Тройка':''}`:'Три кубика · выбери исход перед броском')}`;
  else if(a.game==='chicken')html=`<div class="cg-scene cg-road"><div class="cg-road-ground"></div><div class="cg-road-markers">${Array.from({length:4},(_,i)=>`<span>${visibleStep+i+1}</span>`).join('')}</div><div id="cg-chicken" class="cg-chicken">${art('chicken')}</div><div id="cg-road-car" class="cg-road-car">${art('race')}</div><div class="cg-road-start"></div>${plaque(`ШАГ ${visibleStep} · ${agNumber(visual?.multiplier||1)}×`)}${particles()}</div>${caption(info?.last?.safe===false&&!a.animating?'Столкновение · раунд завершён':`Пройдено ${visibleStep} участков`)}${live?button('Следующий шаг →',0,locked):''}`;
  else if(a.game==='coin')html=`<div class="cg-scene cg-coin-scene">${plaque('ОРЁЛ ИЛИ РЕШКА')}<div id="cg-coin-shadow" class="cg-coin-shadow"></div><div class="cg-coin-lift" id="cg-coin-lift"><div class="cg-coin" id="cg-coin" style="transform:rotateY(${last?.opponent===1?180:0}deg)"><div class="cg-coin-side cg-coin-front">${art('coin')}</div><div class="cg-coin-side cg-coin-reverse"><span>♠</span><small>POKERGENA</small></div></div></div></div>${caption(last?(last.opponent===0?'Выпал орёл':'Выпала решка'):'Выбери сторону следующего броска')}${live?`<div class="cg-choices">${button('Орёл',0,locked)}${button('Решка',1,locked)}</div>`:''}`;
@@ -135,7 +133,6 @@ function paint(info,t){
  const toggle=(selector,name,value)=>el(selector)?.classList.toggle(name,value);
  if(game==='diamonds')f.items.forEach((v,i)=>{transform(`[data-cg-gem="${i}"]`,`translateY(${v.y}px) rotate(${v.rotation}deg)`);style(`[data-cg-gem="${i}"]`,'opacity',v.opacity);});
  if(game==='videopoker')f.cards.forEach((v,i)=>{transform(`[data-cg-hold="${i}"] .cg-card-turn`,`translateY(${v.y}px) rotateY(${v.flip}deg)`);});
- if(game==='limbo'){const node=el('#cg-limbo-value');if(node)node.textContent=agNumber(f.value)+'×';style('#cg-rocket','left',f.x+'%');style('#cg-rocket','top',f.y+'%');toggle('.cg-limbo','is-flying',t<1);}
  if(game==='sicbo')f.dice.forEach((v,i)=>{transform(`[data-cg-die="${i}"]`,`translateY(${v.y}px) rotate(${v.angle}deg) scale(${v.scale})`);const face=el(`[data-cg-die="${i}"] .cg-die-face`),value=v.settled?d.dice?.[i]||1:1+(Math.floor(t*22)+i*2)%6;if(face&&face.dataset.value!==String(value)){face.dataset.value=String(value);face.innerHTML=dice(value).match(/<div class="cg-die-face"[^>]*>(.*?)<\/div>/)[1];}});
  if(game==='chicken'){style('#cg-chicken','left',f.x+'%');transform('#cg-chicken',`translate(-50%,${f.y}px) ${f.impact?'rotate(-75deg) scale(.7)':''}`);style('#cg-road-car','top',f.carY+'%');style('#cg-road-car','left',(last.safe===false?32:70)+'%');toggle('.cg-road','is-impact',f.impact);}
  if(game==='coin'){transform('#cg-coin',`rotateY(${f.angle}deg)`);transform('#cg-coin-lift',`translateY(${f.y}px)`);transform('#cg-coin-shadow',`scale(${f.shadow})`);}
@@ -170,12 +167,6 @@ function settingEvent(event){
  const a=state.ag;if(!isGame(a.game)||agLocked()||a.info?.phase==='play')return;
  const el=event.target.closest('[data-cg-option]');if(el){const g=current(),pair=g.choices.find(([,v])=>String(v)===el.dataset.cgOption);if(!pair)return;a.options[a.game][el.dataset.cgKey]=pair[1];renderArcade();}
 }
-function targetChange(event){
- if(event.target.id!=='cg-target'||state.ag.game!=='limbo'||agLocked()||state.ag.info?.phase==='play')return;
- const n=Number(event.target.value.replace(',','.'));
- if(!Number.isFinite(n)||n<1.01||n>10000||Math.abs(n*100-Math.round(n*100))>1e-6){toast('Коэффициент от 1.01 до 10000, до двух знаков');event.target.value=state.ag.options.limbo.target;return;}
- state.ag.options.limbo.target=n;renderArcade();
-}
 function boardEvent(event){
  const a=state.ag;if(!isGame(a.game)||agLocked()||a.info?.phase!=='play')return;
  const hold=event.target.closest('[data-cg-hold]');if(hold){a.held??=[];const n=Number(hold.dataset.cgHold),i=a.held.indexOf(n);if(i<0)a.held.push(n);else a.held.splice(i,1);renderArcade();return;}
@@ -183,7 +174,7 @@ function boardEvent(event){
 
 }
 function bind(){
- $('ag-settings').addEventListener('click',settingEvent);$('ag-settings').addEventListener('change',targetChange);
+ $('ag-settings').addEventListener('click',settingEvent);
  $('ag-stage').addEventListener('click',boardEvent);
 
 }

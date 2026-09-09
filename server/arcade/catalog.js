@@ -24,7 +24,6 @@ function validate(game,o){
  if(!o||typeof o!=='object'||Array.isArray(o))fail('Некорректные настройки');
  const g=games[game];if(!g)fail('Игра не найдена');
  if(g.choices){if(!g.choices.some(([,v])=>v===o[game==='chicken'||game==='balloon'?'level':'side']))fail('Выберите настройку игры');return {[game==='chicken'||game==='balloon'?'level':'side']:o[game==='chicken'||game==='balloon'?'level':'side']};}
- if(game==='limbo'){if(typeof o.target!=='number'||!Number.isFinite(o.target)||o.target<1.01||o.target>10000||Math.abs(o.target*100-Math.round(o.target*100))>1e-6)fail('Коэффициент от 1.01 до 10000, не больше двух знаков после точки');return {target:o.target};}
  if(game==='penalty'||game==='pinball'){if(!integer(o.side,0,game==='penalty'?4:1))fail('Выберите направление');return {side:o.side};}
  return {};
 }
@@ -45,7 +44,6 @@ function start(game,previous,amount,options,revision,rng=randomInt){
 
  let m=0;r.detail={};
  if(game==='diamonds'){const gems=Array.from({length:5},()=>rng(7)),key=multiplicities(gems).join(',');const values={'5':50,'4,1':5,'3,2':4,'3,1,1':3,'2,2,1':2,'2,1,1,1':.1};m=values[key]||0;r.detail={gems};}
- else if(game==='limbo'){const u=(rng(2**32)+1)/2**32;const value=Math.max(1,Math.min(1000000,rounded(.99/u)));m=value>=selected.target?selected.target:0;r.detail={value,target:selected.target};}
  else if(game==='sicbo'){const dice=Array.from({length:3},()=>rng(6)+1),sum=dice.reduce((a,b)=>a+b,0),triple=dice.every(n=>n===dice[0]);m=selected.side==='triple'?(triple?31:0):!triple&&(selected.side==='small'?sum>=4&&sum<=10:sum>=11&&sum<=17)?2:0;r.detail={dice,sum,triple};}
  else if(game==='slots'){const grid=Array.from({length:9},()=>rng(6)),pays=[6,12,24,36,54,79.68],lines=[];let payout=0;for(let row=0;row<3;row++){const cells=grid.slice(row*3,row*3+3),stake=Math.floor(amount/3)+(row===0?amount%3:0),mult=cells.every(n=>n===cells[0])?pays[cells[0]]:0;const won=cents(stake,mult);payout+=won;lines.push({row,stake,multiplier:mult,payout:won});}r.detail={grid,lines};finish(r,payout/amount);r.payout=payout;r.multiplier=payout/amount;r.result=payout>amount?'win':payout===amount?'push':'lose';r.history[0]={multiplier:r.multiplier,payout,result:r.result};return r;}
  else if(game==='andar'){const deck=shuffle(52,rng),center=card(deck.shift()),dealt=[];for(const id of deck){const c=card(id);dealt.push(c);if(c.rank===center.rank)break;}const winner=dealt.length%2?'andar':'bahar';m=selected.side===winner?(winner==='andar'?1.9:2):0;r.detail={center,dealt,winner};}

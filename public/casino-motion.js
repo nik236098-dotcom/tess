@@ -5,7 +5,7 @@
  const ease=n=>{n=clamp(n);return n*n*(3-2*n);};
  const out=n=>1-(1-clamp(n))**3;
  const phase=(t,a,b)=>clamp((t-a)/(b-a));
- const durations={diamonds:1900,videopoker:1400,limbo:2400,sicbo:1850,chicken:1450,coin:1600,rps:1600,slots:2800,andar:3200,penalty:1800,darts:1400,bowling:2600,balloon:1450,race:3800,pinball:2100,fishing:2800};
+ const durations={diamonds:1900,videopoker:1400,sicbo:1850,chicken:1450,coin:1600,rps:1600,slots:2800,andar:3200,penalty:1800,darts:1400,bowling:2600,balloon:1450,race:3800,pinball:2100,fishing:2800};
  function duration(game,info){return game==='andar'?Math.min(6500,1100+(info.detail?.dealt.length||0)*125):durations[game]||1600;}
  // Paths approach a bumper tangentially, reverse at its surface, and return to a flipper.
  // Bumper centers: [30,24], [70,35], [44,54]; radius 9 scene units.
@@ -21,7 +21,6 @@
   switch(game){
    case 'diamonds':return {items:Array.from({length:5},(_,i)=>{const u=phase(t,i*.12,.5+i*.12),fall=phase(u,0,.7),bounce=phase(u,.7,1);return {y:u<.7?-62*(1-out(fall)):-5*Math.sin(bounce*Math.PI),rotation:0,opacity:Math.min(1,u*6),settled:u===1};})};
    case 'videopoker':return {cards:Array.from({length:5},(_,i)=>{const kept=info.phase==='done'&&info.held?.includes(i);const u=phase(t,i*.07,.65+i*.07);return {flip:kept?180:180*ease(u),y:kept?0:(1-out(u))*-45};})};
-   case 'limbo':return {value:Math.exp(Math.log(Math.max(1,d.value||1))*out(t)),x:12+76*t,y:82-65*t*t};
    case 'sicbo':return {dice:Array.from({length:3},(_,i)=>{const u=phase(t,0,.72+i*.09);return {angle:(1-out(u))*(720+i*180),y:-70*Math.sin(u*Math.PI)*(1-u),scale:.8+.2*out(u),settled:u===1};})};
    case 'chicken':return {x:32+10*Math.sin(phase(t,0,.8)*Math.PI),y:-30*Math.sin(phase(t,0,.8)*Math.PI),carY:-55+170*phase(t,.25,.85),impact:!last.safe&&t>.72};
    case 'coin':return {angle:1080*out(t)+(last.opponent===1?180*out(t):0),y:-55*Math.sin(t*Math.PI),shadow:.6+.4*(1-Math.sin(t*Math.PI))};

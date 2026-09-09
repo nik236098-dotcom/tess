@@ -121,7 +121,7 @@ class Accounts {
     let balance = account.balance;
     const rounds = { ...oldRounds };
     let changed = false;
-    for (const game of ['cases', 'collection', 'scratch']) {
+    for (const game of ['cases', 'collection', 'scratch', 'limbo']) {
       const r = oldRounds[game];
       if (!r || r.settled || r.retired || !['play', 'done'].includes(r.phase)) continue;
       const credit = r.phase === 'play' ? r.bet : r.payout;
