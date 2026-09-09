@@ -1,0 +1,52 @@
+.cr-page { width:100%; max-width:480px; box-sizing:border-box; min-width:0; gap:12px; }
+.cr-page>* { min-width:0; max-width:100%; box-sizing:border-box; }
+.cr-subtitle { margin:0; text-align:center; color:#aaa0d8; font-size:13px; }
+.cr-game { padding:14px; overflow:hidden; }
+.cr-history { display:flex; gap:8px; height:34px; min-width:0; overflow-x:auto; scrollbar-width:none; align-items:center; }
+.cr-history-item { flex:0 0 auto; padding:7px 10px; border:1px solid #9582ff50; border-radius:10px; background:#181a37; font-size:12px; font-weight:700; color:#b9aff0; }
+.cr-history-item.is-win { border-color:#5cff6a50; background:#17413660; color:#70e4a6; }
+.cr-history-empty { color:#9490b1; font-size:12px; }
+.cr-chart { position:relative; height:230px; margin-top:10px; min-width:0; }
+.cr-chart>svg { width:100%; height:100%; display:block; overflow:hidden; }
+.cr-number { position:absolute; top:35px; left:0; width:100%; text-align:center; color:#fff; font:800 clamp(36px,12vw,58px)/1.1 var(--font-display); text-shadow:0 0 24px #9973ff99; font-variant-numeric:tabular-nums; }
+.cr-status { position:absolute; top:6px; width:100%; text-align:center; color:#bcb0ec; font-size:13px; }
+.cr-line { stroke:#b49aff; filter:drop-shadow(0 0 4px #9168ff); }
+.cr-dot { fill:#a082ff; stroke:#f5efff; }
+.cr-game.is-crashed .cr-number,.cr-game.is-crashed .cr-status { color:#ff738c; }
+.cr-game.is-crashed .cr-line { stroke:#ff738c; }
+.cr-caption { margin:3px 0 0; padding:10px 0 0; text-align:center; border-top:1px solid #9582ff30; font-size:13px; color:#b9a6ff; }
+.cr-settings-head { display:flex; justify-content:space-between; align-items:center; padding-top:12px; margin-top:2px; border-top:1px solid #9582ff30; }
+.cr-toggle { position:relative; width:44px; height:26px; flex:none; }
+.cr-toggle input { position:absolute; inset:0; width:100%; height:100%; opacity:0; margin:0; cursor:pointer; z-index:1; }
+.cr-toggle span { position:absolute; inset:0; background:#34304f; border:1px solid #8e7bbc70; border-radius:20px; }
+.cr-toggle span:after { content:''; position:absolute; width:20px; height:20px; left:2px; top:2px; background:#fff; border-radius:50%; transition:transform .18s; }
+.cr-toggle input:checked+span { background:#8363fa; }
+.cr-toggle input:checked+span:after { transform:translateX(18px); }
+.cr-toggle input:focus-visible+span { outline:2px solid white; outline-offset:3px; }
+.cr-target-row { display:grid; grid-template-columns:44px minmax(0,1fr) 44px; gap:8px; }
+.cr-target-row input { height:44px; min-width:0; width:100%; border-radius:12px; border:1px solid #9582ff60; background:#171a3a; color:white; text-align:center; font:700 19px var(--font); }
+.cr-step,.cr-preset { height:40px; border:1px solid #9582ff60; border-radius:11px; background:#171a3a; color:#c3b4f2; font:700 14px var(--font); }
+.cr-step { height:44px; font-size:23px; }
+.cr-presets { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.cr-preset.is-selected { background:linear-gradient(#b099ff,#8b6cf3); color:#140c31; }
+#cr-panel input:disabled,#cr-panel button:disabled { opacity:.55; }
+.cr-note { font-size:11px; color:#a39bc3; margin:0; line-height:1.5; text-align:center; }
+.cr-overlay { pointer-events:none; }
+.cr-game:has(.cr-overlay:not(.hidden)) .cr-number { opacity:0; }
+.cr-rules { font-size:12px; color:#9690b1; line-height:1.6; padding:0 4px 14px; }
+.lb-play-cr { background:radial-gradient(70% 90% at 0% 50%,#9661ed50,transparent 65%),linear-gradient(170deg,#231536,#110c21); border-color:#a98ce840; }
+.lb-cr-art svg { position:absolute; inset:25px 8px; width:110px; height:100px; filter:drop-shadow(0 4px 10px #7859cd88); }
+.lb-play-cr .lb-hero-kicker { color:#c7a4ff; }
+@media(max-width:360px) { .cr-game { padding:12px; }.cr-number{font-size:36px;} }
+@media(prefers-reduced-motion:reduce) { .cr-overlay,.cr-toggle span:after { animation:none; transition:none; } }
+/* Keep the bet and auto-stop controls compact without shrinking input text. */
+#cr-panel { padding:12px; gap:6px; }
+#cr-panel .mn-main { min-height:50px; }
+#cr-panel .mn-label { margin-top:0; font-size:13px; }
+#cr-panel .mn-input,#cr-panel .mn-mod { height:44px; }
+#cr-panel .mn-mod { width:48px; }
+#cr-panel .cr-settings-head { padding-top:8px; margin-top:2px; }
+#cr-panel .cr-target-row input,#cr-panel .cr-step { height:40px; }
+#cr-panel .cr-preset { height:34px; }
+.cr-chart { height:180px; }
+@media(max-height:740px) { .cr-chart { height:150px; }.cr-page { gap:10px; } }

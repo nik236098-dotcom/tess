@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Unbounded:wght@600;700;800&display=swap" />
   <link rel="stylesheet" href="/styles.css?v=133" />
   <link rel="stylesheet" href="/hilo.css?v=3" />
+  <link rel="stylesheet" href="/crash.css?v=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/croc-theme.css?v=1" />
   <link rel="stylesheet" href="/amethyst.css?v=1" />
@@ -247,6 +248,7 @@
               <span class="lb-play-art hl-lobby-art" aria-hidden="true"><i class="lb-mini lb-mini-1" data-pip="♠">A<b>♠</b></i><i class="lb-mini lb-mini-2 red" data-pip="♥">K<b>♥</b></i><i class="hl-art-direction hl-art-up">↑</i><i class="hl-art-direction hl-art-down">↓</i></span>
               <span class="lb-play-body"><span class="lb-hero-kicker">Hilo</span><b>Выше или ниже</b><span>Угадай следующую карту · забирай выигрыш</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span>
             </button>
+            <button id="play-crash" class="lb-play lb-play-cr"><span class="lb-play-art lb-cr-art" aria-hidden="true"><svg viewBox="0 0 110 100"><path d="M5 85Q66 82 100 16L100 85Z" fill="#946be933"/><path d="M5 85Q66 82 100 16" fill="none" stroke="#bb9aff" stroke-width="5" stroke-linecap="round"/><circle cx="100" cy="16" r="5" fill="#fff"/><text x="8" y="36" fill="#eee5ff" font-size="24" font-weight="bold">2.00×</text></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Crash</span><b>Crash</b><span>Одиночный раунд · растущий коэффициент · автостоп</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
             <details class="card rules" id="rules-card">
               <summary>Правила и порядок комбинаций</summary>
               <ol class="rules-list">
@@ -906,7 +908,28 @@
       <details class="hl-rules"><summary>Как играть</summary><p>Туз — младшая карта, король — старшая. Для карт от 2 до дамы равная карта выигрывает в обоих направлениях. На тузе: «Выше» (92,31%) или «Равно» (7,69%). На короле: «Равно» (7,69%) или «Ниже» (92,31%). При выборе «Выше» на тузе и «Ниже» на короле повтор карты проигрывает. Каждая следующая карта выбирается независимо из 52 карт. Пропуск бесплатный и не меняет множитель. Выплата включает ставку; множитель рассчитывается по вероятности всей выигрышной серии с удержанием 1% один раз, без повторного удержания на каждом ходе. Лимит 10 000× — автоматическая выплата. До первого выбора ставку можно вернуть.</p></details>
     </div>
   </section>
+  <section id="screen-cr" class="screen mn-screen hidden">
+    <div class="mn-bg" aria-hidden="true"><svg class="icon mn-suit-1"><use href="#i-spade"/></svg><svg class="icon mn-suit-2"><use href="#i-club"/></svg></div>
+    <div class="mn-page cr-page">
+      <header class="mn-head"><button id="cr-back" class="mn-iconbtn" aria-label="В лобби">‹</button><b class="mn-title">Crash <span class="mn-spark">✦</span></b><div class="mn-balance"><span>Баланс</span><b id="cr-balance">$0.00</b></div></header>
+      <p class="cr-subtitle">Одиночная игра</p>
+      <div id="cr-game" class="mn-board-card cr-game">
+        <div id="cr-history" class="cr-history" aria-label="История раундов"></div>
+        <div class="cr-chart"><svg viewBox="0 0 320 240" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="cr-gradient" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#9b73ff" stop-opacity=".35"/><stop offset="1" stop-color="#9b73ff" stop-opacity="0"/></linearGradient></defs><path d="M22 25H304M22 90H304M22 155H304M22 218H304M22 25V218M92 25V218M162 25V218M232 25V218M304 25V218" fill="none" stroke="#8e77d6" stroke-opacity=".15" stroke-dasharray="3 5"/><path id="cr-fill" fill="url(#cr-gradient)"/><path id="cr-curve" class="cr-line" fill="none" stroke-width="3" stroke-linecap="round"/><circle id="cr-dot" class="cr-dot" r="5" stroke-width="2"/></svg><span id="cr-status" class="cr-status">Готов к запуску</span><b id="cr-number" class="cr-number">1.00×</b></div>
+        <div id="cr-overlay" class="mn-overlay cr-overlay hidden" role="status" aria-live="polite"></div>
+        <p id="cr-auto-caption" class="cr-caption">Автостоп на 2.00×</p>
+      </div>
+      <div id="cr-panel" class="mn-panel"><button id="cr-main" class="mn-main">Сделать ставку</button>
+        <label for="cr-amount" class="mn-label">Сумма ставки</label><div class="mn-row"><label class="mn-input"><i class="mn-coin">$</i><input id="cr-amount" inputmode="decimal" value="1,00" autocomplete="off"></label><button class="mn-mod" data-cr-amount="0.5">1/2</button><button class="mn-mod" data-cr-amount="2">2x</button><button class="mn-mod" data-cr-amount="max">Max</button></div>
+        <div class="cr-settings-head"><b>Автостоп</b><label class="cr-toggle"><input id="cr-auto" type="checkbox" checked aria-label="Автостоп"><span></span></label></div>
+        <label for="cr-target" class="mn-label">Коэффициент</label><div class="cr-target-row"><button class="cr-step" data-cr-step="-0.1" aria-label="Уменьшить коэффициент">−</button><input id="cr-target" inputmode="decimal" value="2.00" autocomplete="off"><button class="cr-step" data-cr-step="0.1" aria-label="Увеличить коэффициент">+</button></div>
+        <div class="cr-presets"><button class="cr-preset" data-cr-target="1.5">1.50×</button><button class="cr-preset" data-cr-target="2">2×</button><button class="cr-preset" data-cr-target="3">3×</button><button class="cr-preset" data-cr-target="5">5×</button></div><p id="cr-note" class="cr-note"></p>
+      </div>
+      <details class="cr-rules"><summary>Как играть</summary><p>После ставки начинается ваш раунд. Коэффициент растёт от 1.00×. Заберите выплату до краша или заранее включите автостоп. Если краш наступил раньше, ставка проигрывает. Автостоп на точном значении краша засчитывается. Краш может произойти сразу на 1.00×. Выплата включает ставку. Максимум — 1 000 000×, при достижении выплата автоматическая. Потеря связи не останавливает раунд; автостоп продолжает работать на сервере.</p></details>
+    </div>
+  </section>
+  <script src="/crash.js?v=1"></script>
   <script src="/hilo.js?v=3"></script>
-  <script src="/app.js?v=96"></script>
+  <script src="/app.js?v=97"></script>
 </body>
 </html>

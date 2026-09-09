@@ -13,6 +13,8 @@ const roulette = require('./roulette/wheel');
 const baccarat = require('./baccarat/game');
 const { MinesGame, MinesError } = require('./mines/game');
 const nvuti = require('./nvuti/game');
+const { CrashError } = require('./crash/game');
+const { createCrashService } = require('./crash/service');
 const { HiloGame, HiloError } = require('./hilo/game');
 const { Accounts, AccountError, DEFAULT_START_BALANCE, MAX_BALANCE } = require('./accounts');
 const { createPayments, PaymentError } = require('./payments');
@@ -330,7 +332,7 @@ function createApp(options = {}) {
       try {
         handleMessage(client, message);
       } catch (error) {
-        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError || error instanceof HiloError || error instanceof MinesError || error instanceof nvuti.NvutiError) {
+        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError || error instanceof CrashError || error instanceof HiloError || error instanceof MinesError || error instanceof nvuti.NvutiError) {
           client.fail(error.message);
         } else {
           console.error('Ошибка обработки сообщения:', error);
@@ -473,6 +475,14 @@ function createApp(options = {}) {
         break;
       case 'bc_bet':
         baccaratDeal(client, message.bets || (message.zone ? [{ zone: message.zone, amount: message.amount }] : []));
+        break;
+      case 'cr_open':
+      case 'cr_start':
+      case 'cr_cashout':
+        crash.handle(client, message);
+        break;
+      case 'cr_close':
+        client.watchingCrash = false;
         break;
       case 'hl_open':
         sendHilo(client);
@@ -947,6 +957,7 @@ function createApp(options = {}) {
   }
 
   // Hilo uses the same cent-based account ledger as Mines.
+  const crash = createCrashService({ accounts, clients: clientsByUser, noteWin });
   const hiloGames = new Map();
   function hiloGame(client) {
     if (!hiloGames.has(client.user.id)) {
@@ -1139,6 +1150,7 @@ function createApp(options = {}) {
   });
 
   server.on('close', () => {
+    crash.stop();
     clearInterval(sweeper);
     wss.stop();
     for (const room of rooms.values()) {

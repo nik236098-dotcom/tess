@@ -398,3 +398,34 @@ test('Hilo: invalid bets, duplicate requests, reconnect and cashout preserve the
   b.send({ type: 'hl_cashout', revision: resumed.revision }); await b.wait(byType('error'));
   assert.strictEqual((await b.wait(byType('hl'))).balance, auth.balance);
 });
+
+
+test('Crash: offline auto-stop and reconnect credit the wallet exactly once over WebSocket', { timeout: 10000 }, async t => {
+  const { Accounts } = require('../server/accounts');
+  const { CrashGame } = require('../server/crash/game');
+  const accounts = new Accounts();
+  const account = accounts.ensure({ id: 'dev:crash-network', name: 'Crash QA' });
+  const game = new CrashGame({ draw: () => 3 });
+  game.start(100, 2, 0, Date.now() - 20000);
+  accounts.withdraw(account.id, 100);
+  account.crashRound = game.snapshot();
+  const port = await startServer(t, { accounts, paymentsFile: null, promoFile: null });
+  for (let i = 0; i < 2; i++) {
+    const client = connect(port);
+    await once(client.socket, 'open');
+    t.after(() => client.close());
+    client.send({ type: 'auth', name: 'Crash QA', devId: 'crash-network' });
+    await client.wait(byType('auth_ok'));
+    client.send({ type: 'cr_open' });
+    const result = await client.wait(m => m.type === 'cr' && m.phase === 'done');
+    assert.equal(result.payout, 200);
+    assert.equal(result.balance, 10100);
+    assert.equal(result.settled, true);
+    assert.equal(result.point, undefined);
+    client.send({ type: 'cr_cashout', revision: result.revision });
+    await client.wait(byType('error'));
+    assert.equal((await client.wait(byType('cr'))).balance, 10100);
+    const closed = once(client.socket, 'close');
+    client.close(); await closed;
+  }
+});

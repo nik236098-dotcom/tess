@@ -44,6 +44,7 @@ class Accounts {
           balance: Math.max(0, Math.floor(Number(account.balance) || 0)),
           createdAt: account.createdAt || Date.now(),
           hiloRound: account.hiloRound || null,
+          crashRound: account.crashRound || null,
         });
       }
     } catch (error) {
