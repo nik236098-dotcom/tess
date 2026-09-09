@@ -22,7 +22,6 @@
    case 'diamonds':return {items:Array.from({length:5},(_,i)=>{const u=phase(t,i*.12,.5+i*.12),fall=phase(u,0,.7),bounce=phase(u,.7,1);return {y:u<.7?-62*(1-out(fall)):-5*Math.sin(bounce*Math.PI),rotation:0,opacity:Math.min(1,u*6),settled:u===1};})};
    case 'videopoker':return {cards:Array.from({length:5},(_,i)=>{const kept=info.phase==='done'&&info.held?.includes(i);const u=phase(t,i*.07,.65+i*.07);return {flip:kept?180:180*ease(u),y:kept?0:(1-out(u))*-45};})};
    case 'sicbo':return {dice:Array.from({length:3},(_,i)=>{const u=phase(t,0,.78+i*.09),rest=1-u,roll=rest*rest;return {x:[-10,8,-8][i]*roll,y:-12*roll,height:46*Math.abs(Math.sin(u*Math.PI*3))*roll,rx:-58+720*roll,ry:26+(i%2?-720:720)*roll,rz:[-10,12,-8][i]+360*roll,shadow:1-.35*Math.abs(Math.sin(u*Math.PI*3))*roll,settled:u===1};})};
-   case 'chicken':return {x:32+10*Math.sin(phase(t,0,.8)*Math.PI),y:-30*Math.sin(phase(t,0,.8)*Math.PI),carY:-55+170*phase(t,.25,.85),impact:!last.safe&&t>.72};
    case 'coin':return {angle:1080*out(t)+(last.opponent===1?180*out(t):0),y:-55*Math.sin(t*Math.PI),shadow:.6+.4*(1-Math.sin(t*Math.PI))};
    case 'rps':return {reveal:t>=.65,y:t<.65?-18*Math.abs(Math.sin(t/.65*Math.PI*3)):0,scale:1+.1*Math.sin(phase(t,.65,1)*Math.PI)};
    case 'slots':return {reels:[0,1,2].map(i=>({position:18*out(phase(t,0,.7+i*.13)),settled:t>=.7+i*.13}))};

@@ -27,7 +27,7 @@ function harness(id){
  const ctx=vm.createContext({state,$,document:{querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},performance:{now:()=>0},structuredClone,
  send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),haptic(){},toast(){},
  requestAnimationFrame:f=>{const id=++next;frames.set(id,f);return id;},cancelAnimationFrame:id=>frames.delete(id)});
- for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
+ for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
  vm.runInContext(`CasinoUI.prepare('${id}');`,ctx);ctx.bindArcade();
  const deliver=round=>ctx.onArcadeState({game:id,config:game.config(id),balance:100000,...game.publicState(id,round),requestId:state.ag.pending?.id});
  const advance=(now=10000)=>{const list=[...frames.values()];frames.clear();for(const f of list)f(now);};
@@ -67,6 +67,38 @@ test('game choices preserve native inputs and map numeric values to numbers',()=
 test('catalog launchers contain all 15 distinct games and no baccarat duplicate',()=>{
  const h=harness('diamonds'),html=h.$('casino-catalog').innerHTML;
  const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,ids);assert.equal(new Set(idsInHtml).size,15);assert.ok(!html.includes('data-arcade="baccarat"'));
+});
+test('Chicken step and cashout controls lock duplicate requests and restore a saved round',()=>{
+ const h=harness('chicken');h.deliver(game.initial());
+ assert.equal(h.$('ag-chicken-step').hidden,true);
+ h.$('ag-main').dispatch('click',{});
+ let r=game.start('chicken',game.initial(),100,{level:'easy'},0,n=>n-1);r.order=[...Array(20).fill(1),0];h.deliver(r);
+ assert.equal(h.$('ag-chicken-step').hidden,false);assert.equal(h.$('ag-chicken-step').disabled,false);
+ assert.equal(h.$('ag-amount').disabled,true);
+ assert.match(h.$('ag-stage').innerHTML,/ch-road-svg/);assert.ok(!h.$('ag-stage').innerHTML.includes('cg-road-ground'));
+ assert.equal(h.$('ag-chicken-step').textContent,'Следующий шаг →');
+ h.$('ag-chicken-step').dispatch('click',{});h.$('ag-chicken-step').dispatch('click',{});h.$('ag-main').dispatch('click',{});
+ assert.equal(h.sent.filter(m=>m.type==='ag_pick').length,1);assert.equal(h.sent.filter(m=>m.type==='ag_cashout').length,0);
+ r=game.actGame('chicken',r,'ag_pick',0,r.revision);h.deliver(r);
+ assert.equal(h.$('ag-chicken-step').disabled,true);assert.equal(h.$('ag-main').disabled,true);
+ assert.ok(!h.$('ag-stage').innerHTML.includes('1.02×</b>'),'future payout stays hidden until the step finishes');
+ h.advance();assert.match(h.$('ag-stage').innerHTML,/1.02×<\/b>/);assert.equal(h.$('ag-main').textContent,'Забрать $1.02');
+ const resume=harness('chicken');resume.deliver(r);assert.equal(resume.state.ag.animating,false);assert.equal(resume.$('ag-main').textContent,'Забрать $1.02');
+ h.$('ag-main').dispatch('click',{});h.$('ag-main').dispatch('click',{});
+ assert.equal(h.sent.filter(m=>m.type==='ag_cashout').length,1);
+ r=game.actGame('chicken',r,'ag_cashout',null,r.revision);r.settled=true;h.deliver(r);
+ assert.equal(h.$('ag-chicken-step').hidden,true);assert.equal(h.$('ag-amount').disabled,false);
+ assert.match(h.$('ag-stage').innerHTML,/Выплата/);assert.equal(h.$('ag-main').textContent,'Сделать ставку');
+});
+test('Chicken loss appears only after collision and reduced motion completes without a hanging lock',()=>{
+ for(const reduced of [false,true]){
+  const h=harness('chicken');h.ctx.window.matchMedia=()=>({matches:reduced});h.deliver(game.initial());h.ctx.agRequest('start');
+  let r=game.start('chicken',game.initial(),100,{level:'hard'},0,n=>n-1);r.order[0]=0;h.deliver(r);
+  h.$('ag-chicken-step').dispatch('click',{});r=game.actGame('chicken',r,'ag_pick',0,r.revision);r.settled=true;h.deliver(r);
+  assert.ok(!h.$('ag-stage').innerHTML.includes('Столкновение'));
+  h.advance();assert.match(h.$('ag-stage').innerHTML,/Столкновение/);assert.match(h.$('ag-stage').innerHTML,/\$0.00/);
+  assert.equal(h.state.ag.animating,false);assert.equal(h.frames.size,0);assert.equal(h.$('ag-main').disabled,false);
+ }
 });
 
 test('active animations lock clicks and stop permanently when leaving any game',()=>{

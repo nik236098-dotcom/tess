@@ -25,6 +25,8 @@ function openArcade(game) {
   $('screen-ag').classList.toggle('is-diamonds',game==='diamonds');
   $('screen-ag').classList.toggle('is-videopoker',game==='videopoker');
   $('screen-ag').classList.toggle('is-sicbo',game==='sicbo');
+  $('screen-ag').classList.toggle('is-chicken',game==='chicken');
+  $('ag-chicken-step').hidden=true;
   $('screen-ag').classList.remove('vp-is-live');
   if(agCatalog())CasinoUI.prepare(game);
   $('screen-lobby').classList.add('hidden'); $('screen-ag').classList.remove('hidden'); $('screen-ag').scrollTop=0;
