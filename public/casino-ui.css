@@ -272,3 +272,24 @@
 #screen-ag.is-andar .mn-bg{display:none}
 #screen-ag.is-andar .cg-andar::before{content:'';position:absolute;inset:0;pointer-events:none;opacity:.16;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E")}
 #screen-ag.is-andar .mn-mod{background:linear-gradient(#233658,#172641);border-color:#536c99;color:#dce7ff}
+/* Penalty uses a stadium backdrop with independently animated goalkeeper and ball. */
+#screen-ag.is-penalty{background:linear-gradient(145deg,#0e172e,#141b40)}
+#screen-ag.is-penalty .mn-bg,#screen-ag.is-penalty .ag-status,#screen-ag.is-penalty .ag-stats{display:none}
+#screen-ag.is-penalty .ag-board{padding:0;background:none;border:0;box-shadow:none}
+.pn-panel{overflow:hidden;border:1px solid #597eec99;border-radius:22px;background:#142044}
+.pn-field{position:relative;aspect-ratio:1.4;background:url('/img/catalog/penalty-stadium.webp') center/100% 100% no-repeat;overflow:hidden;isolation:isolate}
+.pn-keeper{position:absolute;left:50%;top:44%;width:24%;height:35%;transform:translate(-50%,-50%);z-index:2;will-change:transform,left,top;filter:drop-shadow(0 2px 2px #07162d66)}
+.pn-keeper svg,.pn-ball svg{display:block;width:100%;height:100%;overflow:visible}
+.pn-ball{position:absolute;left:50%;top:85%;width:12%;aspect-ratio:1;transform:translate(-50%,-50%);z-index:3;filter:drop-shadow(1px 4px 2px #021c2966);will-change:transform,left,top}
+.pn-target{position:absolute;transform:translate(-50%,-50%);width:44px;height:44px;min-height:44px;border-radius:50%;border:2px solid #63d9ff;background:radial-gradient(at 35% 20%,#268cff,#034fda);box-shadow:0 0 9px #1cbfff88,inset 0 1px 2px #d4f4ff99;color:#fff;font:800 20px var(--font);z-index:4;cursor:pointer;padding:0;touch-action:manipulation}
+.pn-target:disabled{opacity:.65;cursor:default}.pn-target:focus-visible{outline:3px solid white;outline-offset:3px}.pn-target:not(:disabled):active{filter:brightness(1.2)}
+.is-animating .pn-target{opacity:0;pointer-events:none}
+.pn-net-impact{position:absolute;width:16%;height:22%;opacity:0;z-index:1;background:repeating-linear-gradient(0deg,transparent 0 8px,#f3faffaa 8px 9px),repeating-linear-gradient(90deg,transparent 0 8px,#f3faffaa 8px 9px);border-radius:50%;box-shadow:0 0 16px #daefff88;pointer-events:none}
+.pn-result{position:relative;display:grid;grid-template-columns:1fr 1fr;text-align:center;padding:14px 10px;background:linear-gradient(#152345,#101b35);border-radius:17px 17px 0 0;margin-top:-8px;z-index:5;gap:7px}
+.pn-result>div:nth-child(2){border-left:1px solid #687cad77}.pn-result small{display:block;color:#aebde6;font-size:12px;margin-bottom:4px}.pn-result b{color:#57bdff;font:800 25px var(--font)}
+.pn-result p{grid-column:1/-1;margin:8px 0;color:#d6e2ff;font-size:13px;line-height:1.4}
+.pn-progress{grid-column:1/-1;display:flex;justify-content:center;gap:15px;padding:4px}
+.pn-progress i{width:12px;height:12px;border-radius:50%;background:#344778;border:1px solid #617bb6}.pn-progress .is-goal{background:#62dca0;border-color:#b2ffcc}.pn-progress .is-miss{background:#ee687d;border-color:#ffb7c5}
+#screen-ag.is-penalty .mn-main:not(.is-cash){background:linear-gradient(#509bff,#2555dc);box-shadow:inset 0 2px 2px #d8f0ff77}
+#screen-ag.is-penalty .mn-mod{background:linear-gradient(#263a61,#19294b);border-color:#526eab}
+@media(max-width:360px){.pn-result b{font-size:21px}.pn-target{width:40px;height:40px;min-height:40px;font-size:18px}}

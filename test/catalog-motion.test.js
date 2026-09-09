@@ -67,3 +67,14 @@ test('Andar gives long deals readable per-card time while keeping a finite end',
  const d=n=>motion.duration('andar',{detail:{dealt:Array(n).fill({rank:8,suit:'h'})}});
  assert.equal(d(10),5700);assert.equal(d(37),17040);assert.equal(d(51),18000);
 });
+test('Penalty reaches each target and never shows a net hit on a saved shot',()=>{
+ const targets=[[29,27],[71,27],[29,53],[71,53],[50,40]];
+ for(let choice=0;choice<5;choice++)for(let opponent=0;opponent<5;opponent++){
+  const safe=choice!==opponent,info={last:{choice,opponent,safe}},hit=motion.frame('penalty',info,null,.72);
+  assert.equal(hit.x,targets[choice][0]);assert.equal(hit.y,targets[choice][1]);
+  assert.equal(hit.keeperX,targets[opponent][0]);assert.equal(hit.hit,true);
+  const after=motion.frame('penalty',info,null,.86);
+  if(safe)assert.ok(after.net>0);else {assert.equal(after.net,0);assert.ok(after.y>hit.y);}
+  const end=motion.frame('penalty',info,null,1);assert.equal(end.net,0);
+ }
+});
