@@ -285,6 +285,8 @@ test('фишки только переходят между игроками', (
     playOut(room);
     const total = room.seats.filter(Boolean).reduce((sum, seat) => sum + seat.stack, 0);
     assert.strictEqual(total, 2000, `после раздачи ${i + 1} сумма фишек изменилась`);
+    const outcomes=room.lastResult.outcomes;
+    assert.equal(outcomes.reduce((sum,p)=>sum+p.payout-p.bet,0),0,'round UI totals conserve the duel stakes');
   }
 });
 
@@ -386,6 +388,11 @@ test('когда за столом остаётся один, прошлая р�
   room.start('u0');
   room.applyAction(room.hand.actingPlayer.id, 'fold');
   assert.ok(room.lastResult, 'раздача закончилась');
+  for(const outcome of room.lastResult.outcomes){
+    const player=room.hand.player(outcome.userId);
+    assert.equal(outcome.payout-outcome.bet,player.stack-player.startingStack);
+    assert.ok(outcome.payout>=0);
+  }
 
   room.stand('u1');
   t.mock.timers.tick(10 * 1000);

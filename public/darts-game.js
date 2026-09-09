@@ -89,7 +89,11 @@ const DartsGame=(()=>{
   $('ag-status').textContent=!state.connected?'Восстанавливаем связь…':open?'Загрузка…':busy?`В полёте: ${active()} · Ожидают: ${waiting()}`:batch?`Бросков: ${totals.count}`:'Готов к броску';
   $('ag-multiplier').textContent=agNumber(batch?(totals.bet?totals.payout/totals.bet:0):visible?.multiplier)+'×';
   $('ag-payout').textContent=money(batch?totals.payout:visible?.payout||0);
-  if(!pending)$('ag-note').textContent='Каждое нажатие — отдельная ставка. Внизу мишени — общий результат серии бросков.';
+  if(!pending)$('ag-note').textContent='Каждое нажатие — отдельная ставка.';
+  if(!busy){
+   const result=batch&&totals.count?{...totals,settled:a.info?.settled,description:totals.count>1?`Завершено бросков: ${totals.count}`:''}:visible;
+   GameResult.show($('ag-overlay'),result,'darts:'+generation+':'+serial+':'+(visible?.revision||0));
+  }
  }
  return {reset,stop,enqueue,receive,board,paint,controls};
 })();

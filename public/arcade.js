@@ -104,16 +104,17 @@ function agPayoutTable() {
   if(agCatalog())return CasinoUI.paytable();
   const a=state.ag, cfg=a.info?.config; if(!cfg) return '';
   let values=[];
-  if(a.game==='plinko') values=cfg.tables[a.options.plinko.risk].map((n,i)=>[String(i+1),n]);
+  if(a.game==='plinko') return ''; // The pocket labels already show every payout.
   else if(a.game==='tower') values=cfg.tables[a.options.tower.level].map((n,i)=>[`${i+1} этаж`,n]);
   else if(a.game==='keno') values=(cfg.tables[a.options.keno.picks.length]||[]).map((n,i)=>[`${i} совп.`,n]);
   else return '<span class="ag-table-note">A &lt; 2 &lt; … &lt; Q &lt; K · при ничьей возврат стороне ½ ставки</span>';
   if(!values.length) return '<span class="ag-table-note">Выбери числа — здесь появятся коэффициенты</span>';
-  return values.map(([name,n])=>`<span class="ag-pay ${n>=1?'is-positive':''}"><small>${name}</small><b>${agNumber(n)}×</b></span>`).join('');
+  return values.map(([name,n],i)=>`<span class="ag-pay ${n>=1?'is-positive':''}" ${a.game==='tower'&&i===(a.info?.floor||1)-1?'aria-current="step"':''}><small>${name}</small><b>${agNumber(n)}×</b></span>`).join('');
 }
 function renderArcade(board=true) {
   const a=state.ag;if(!a.game)return;
   const info=a.info, locked=agLocked(), live=info?.phase==='play', pending=info?.phase==='done'&&!info.settled;
+  if(!info||info.phase!=='done'||a.animating||a.pending?.action==='start')GameResult.hide($('ag-overlay'));
   $('ag-balance').textContent=money(state.balance);
   $('ag-status').textContent=!state.connected?'Восстанавливаем связь…':a.pending?'Подождите…':a.animating?'Раунд идёт…':pending?'Выплата сохранена':live?`Этаж ${Math.min(9,(info.floor||0)+1)} из 9`:info?.phase==='done'?(info.result==='win'?'Выигрыш':info.result==='push'?'Ставка возвращена':info.payout?'Частичный возврат':'Без выигрыша'):'Готов к игре';
   $('ag-multiplier').textContent=agNumber(a.animating?0:info?.multiplier)+'×';
@@ -131,6 +132,7 @@ function renderArcade(board=true) {
   $('ag-settings').innerHTML=agSettings();
   $('ag-paytable').innerHTML=agPayoutTable();
   if(agCatalog())CasinoUI.afterRender();
+  $('ag-note').hidden=!pending&&a.game!=='plinko';
   if(board) agBoard();
   else for(const el of $('ag-stage').querySelectorAll('button')) el.disabled=locked||el.dataset.locked==='true';
 }
@@ -174,7 +176,7 @@ function agPlinkoSummary(completed,paid) {
   const n=info?.balls?.length||1;
   const done=completed??(a.animating?0:n), payout=paid??(a.animating?0:info?.payout||0);
   $('ag-note').textContent=`Следующий запуск: ${count} × ${money(Math.max(0,unit))} = ${money(total)}.`+
-    (result?` ${a.animating?'Текущий':'Последний'} запуск: ${done}/${n} · Ставки ${money(info.bet)} · Выплата ${money(payout)} · Итог ${money(payout-info.bet)}.`:'');
+    (result&&a.animating?` Завершено: ${done}/${n}.`:'');
 }
 function agDuelCard(side,index) {
   const a=state.ag, info=a.info, card=info?.cards?.[index];
@@ -227,12 +229,10 @@ function agAnimateResult(info) {
 function agResult() {
   const a=state.ag, info=a.info, overlay=$('ag-overlay');
   if(!info||info.phase!=='done'||a.animating)return;
-  haptic(info.result==='win'?'success':info.result==='push'?'light':'error');
-  if(a.game==='diamonds'||a.game==='videopoker'||a.game==='sicbo')return; // Keep the inline result and selected table row visible.
-  if(info.result!=='win'||!info.settled)return;
-  const key=a.game+':'+info.revision;if(overlay.dataset.revision===key)return;
-  overlay.dataset.revision=key;overlay.className='mn-overlay is-win ag-overlay';
-  overlay.innerHTML=`<svg class="icon mn-suit-l" aria-hidden="true"><use href="#i-spade"/></svg><svg class="icon mn-suit-r" aria-hidden="true"><use href="#i-club"/></svg><i class="mn-spark mn-spark-1">✦</i><i class="mn-spark mn-spark-2">✦</i><b>×${agNumber(info.multiplier)}</b><span><i class="mn-coin">$</i>${money(info.payout).slice(1)}</span><button type="button" data-ag-dismiss aria-label="Закрыть выигрыш">×</button>`;
+  const result=GameResult.model(info),key=a.game+':'+info.revision;
+  if(result&&overlay.dataset.resultKey!==key)haptic(result.kind==='win'?'success':result.kind==='push'?'light':'error');
+  const description=a.game==='plinko'&&info.balls?.length>1?`Завершено шариков: ${info.balls.length}`:a.game==='keno'?`Совпадений: ${info.hits?.length||0} из ${info.options?.picks?.length||0}`:'';
+  GameResult.show(overlay,{...info,description},key);
 }
 function bindArcade() {
   if(typeof CasinoUI!=='undefined'){CasinoUI.setup();CasinoUI.bind();}

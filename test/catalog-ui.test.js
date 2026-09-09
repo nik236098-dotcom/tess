@@ -27,7 +27,7 @@ function harness(id){
  const ctx=vm.createContext({state,$,document:{querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},performance:{now:()=>0},structuredClone,
  send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),haptic(){},toast(){},
  requestAnimationFrame:f=>{const id=++next;frames.set(id,f);return id;},cancelAnimationFrame:id=>frames.delete(id)});
- for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-physics','bowling-scene','balloon-scene','race-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
+ for(const file of ['game-result','casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-physics','bowling-scene','balloon-scene','race-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
  // DOM harness has no graphics context; GPU rendering is checked separately.
  vm.runInContext('BowlingScene.render=()=>true;BowlingScene.ready=()=>true;RaceScene.ready=()=>true;',ctx);
  vm.runInContext(`CasinoUI.prepare('${id}');`,ctx);ctx.bindArcade();
@@ -132,7 +132,7 @@ test('Diamonds matches the approved table and highlights only the actual combina
   assert.equal((html.match(/class="dm-pay-row is-selected"/g)||[]).length,1,label);
   assert.equal((html.match(/role="row"/g)||[]).length,7);
   assert.ok(html.includes(label));assert.ok(!html.includes('cg-jewel-tray'));assert.ok(!html.includes('cg-sprite'));
-  assert.equal(h.$('ag-overlay').innerHTML,'','inline result should not be covered by an overlay');
+  assert.match(h.$('ag-overlay').innerHTML,/g-result-amount/);
  }
 });
 
@@ -172,7 +172,7 @@ test('videopoker shows all nine payouts, previews the hand and reveals the final
  assert.ok(!h.$('ag-stage').innerHTML.includes('aria-current="true"'),'no final result before animation completes');
  h.advance();html=h.$('ag-stage').innerHTML;
  assert.match(html,/Выплата \$1.00/);assert.match(html,/Пара валетов/);
- assert.equal(h.$('ag-overlay').innerHTML,'');
+ assert.match(h.$('ag-overlay').className,/is-push/);
  assert.equal(h.$('ag-amount').disabled,false);
  assert.equal(h.$('ag-main').textContent,'Сделать ставку');
 });
@@ -241,7 +241,7 @@ test('Sic Bo choices lock during a throw; real totals appear only after all dice
  h.advance(1700);assert.equal(h.state.ag.animating,true);
  h.advance();let html=h.$('ag-stage').innerHTML;
  assert.match(html,/Сумма<\/small><b>12<\/b>/);assert.match(html,/Выплата<\/small><b>\$2.00/);
- assert.match(html,/aria-label="Сумма 12"/);assert.equal(h.$('ag-overlay').innerHTML,'');
+ assert.match(html,/aria-label="Сумма 12"/);assert.match(h.$('ag-overlay').className,/is-win/);
  assert.equal(h.$('ag-main').textContent,'Бросить кубики');
  assert.match(html,/id="sb-scene"/);assert.match(html,/aria-label="Кубики 3, 4, 5"/);assert.ok(!html.includes('sb-face'));
  h.click('ag-stage','sbSide','triple');assert.equal(h.state.ag.options.sicbo.side,'triple');
@@ -329,7 +329,7 @@ test('bowling: silent board reveals payout and shared win only after the throw, 
  assert.doesNotMatch(h.$('ag-stage').innerHTML,/\$443\.00/);
  h.advance();
  assert.match(h.$('ag-overlay').className,/is-win/);
- assert.match(h.$('ag-overlay').innerHTML,/×443/);
+ assert.match(h.$('ag-overlay').innerHTML,/443.00×/);
  assert.match(h.$('ag-stage').innerHTML,/Выплата<\/small><b>\$443\.00/);
  h.$('ag-main').dispatch('click',{});
  assert.equal(h.$('ag-overlay').classList.contains('hidden'),true);
@@ -339,7 +339,7 @@ test('bowling: saved winnings appear when settlement arrives at the same revisio
  const r=game.start('bowling',game.initial(),100,{},0,()=>1);r.settled=false;h.deliver(r);h.advance();
  assert.equal(h.$('ag-overlay').innerHTML,'');
  r.settled=true;h.deliver(r);
- assert.match(h.$('ag-overlay').innerHTML,/×443/);
+ assert.match(h.$('ag-overlay').innerHTML,/443.00×/);
 });
 
 test('balloon pump locks repeat clicks and cashout, then restores controls and shared winnings',()=>{
@@ -374,4 +374,14 @@ test('race waits for assets before accepting a stake, but saved payments remain 
  assert.equal(h.$('ag-main').disabled,true);h.$('ag-main').dispatch('click',{});assert.equal(h.sent.length,0);
  const r=game.start('race',game.initial(),100,{side:0},0,n=>n-1);r.settled=false;h.deliver(r);
  assert.equal(h.$('ag-main').disabled,false);h.$('ag-main').dispatch('click',{});assert.equal(h.sent.at(-1).type,'ag_open');
+});
+
+test('Coin continues from the shared bottom panel without a second throw or cashout button',()=>{
+ const h=harness('coin');h.deliver(game.initial());h.ctx.agRequest('start');
+ const r=game.start('coin',game.initial(),100,{side:0},0,()=>0);h.deliver(r);
+ assert.match(h.$('ag-settings').innerHTML,/g-live-choices/);
+ assert.equal((h.$('ag-settings').innerHTML.match(/data-cg-pick=/g)||[]).length,2);
+ h.click('ag-settings','cgPick','1');
+ assert.equal(h.sent.at(-1).type,'ag_pick');assert.equal(h.sent.at(-1).index,1);
+ assert.equal(h.$('ag-main').disabled,true);
 });

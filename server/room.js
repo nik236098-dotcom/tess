@@ -604,6 +604,9 @@ class Room extends EventEmitter {
       winnerName,
       reason: result.reason,
       amount: result.amount,
+      outcomes: [this.round.firstId,this.round.secondId].map(userId=>({
+        userId,bet:result.bet,payout:result.bet+(result.winnerId===userId?result.amount:result.winnerId?-result.amount:0),
+      })),
       players: [this.openerSeat, this.secondSeat]
         .map((index) => this.seats[index])
         .filter(Boolean)
@@ -733,6 +736,8 @@ class Room extends EventEmitter {
 
     this.lastResult = {
       showdown: result.showdown,
+      // Public round accounting, without any extra card information.
+      outcomes: this.hand.players.map(p=>({userId:p.id,bet:p.total,payout:p.total+p.stack-p.startingStack})),
       board: result.board.map(cardToString),
       winners: result.winners.map((w) => ({
         userId: w.id,

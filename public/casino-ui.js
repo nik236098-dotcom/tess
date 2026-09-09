@@ -12,6 +12,10 @@ function setup(){
 }
 function settings(){
  const a=state.ag,g=current(),options=a.options[a.game],disabled=agLocked()||a.info?.phase==='play',attr=disabled?'disabled':'';
+ if(a.info?.phase==='play'&&['coin','rps','pinball'].includes(a.game)){
+  const labels=a.game==='coin'?['Орёл','Решка']:a.game==='rps'?['Камень','Бумага','Ножницы']:['Левая лопатка','Правая лопатка'];
+  return `<div class="cg-choices g-live-choices">${labels.map((label,i)=>button((a.game==='coin'?coinFace(i,'cf-control-'+i):'')+`<span>${label}</span>`,i,agLocked())).join('')}</div>`;
+ }
  if(g.choices){const key=a.game==='chicken'||a.game==='balloon'?'level':'side';return `<span class="mn-label">${key==='level'?'Сложность':'Выбор до ставки'}</span><div class="cg-choices">${g.choices.map(([name,value])=>`<button type="button" class="ag-choice ${options[key]===value?'is-selected':''}" data-cg-option="${value}" data-cg-key="${key}" ${attr} aria-pressed="${options[key]===value}">${a.game==='race'?Number(value)+1:name}</button>`).join('')}</div>`;}
  return `<p class="ag-note">${g.tag}</p>`;
 }
@@ -21,7 +25,7 @@ function seriesTable(game,options){
  else max=game==='pinball'?10:20;
  return Array.from({length:max},(_,i)=>{p*=size?(size-bad-i)/(size-i):game==='coin'||game==='rps'?.5:.8;return Math.floor((.98/p+1e-10)*100)/100;});
 }
-function paytable(){const a=state.ag,g=current();if(a.game==='race')return '<span>Коэффициент <b>3,92×</b></span>';const table=g.series?seriesTable(a.game,a.options[a.game]).map((n,i)=>[`${i+1} шаг`,n]):g.table;return (table||[]).map(([label,value])=>`<span class="ag-pay is-positive"><small>${label}</small><b>${agNumber(value)}×</b></span>`).join('');}
+function paytable(){const a=state.ag,g=current();if(a.game==='race')return '<span>Коэффициент <b>3,92×</b></span>';const table=g.series?seriesTable(a.game,a.options[a.game]).map((n,i)=>[`${i+1} шаг`,n]):g.table;const step=(a.animating?a.cgPrevious:a.info)?.step||0;return (table||[]).map(([label,value],i)=>`<span class="ag-pay is-positive" ${g.series&&i===Math.max(0,step-1)?'aria-current="step"':''}><small>${label}</small><b>${agNumber(value)}×</b></span>`).join('');}
 function afterRender(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',pending=info?.phase==='done'&&!info.settled,main=$('ag-main');
  $('ag-title').classList.toggle('ag-long-title',g.name.length>15);
@@ -36,6 +40,7 @@ function afterRender(){
  $('screen-ag').classList.toggle('is-bowling',a.game==='bowling');
  $('screen-ag').classList.toggle('is-balloon',a.game==='balloon');
  $('screen-ag').classList.toggle('is-race',a.game==='race');
+ $('screen-ag').classList.toggle('g-live',Boolean(live));
  $('ag-balloon-pump').hidden=a.game!=='balloon';
  $('ag-chicken-step').hidden=a.game!=='chicken'||!live;
  $('screen-ag').classList.toggle('vp-is-live',a.game==='videopoker'&&live);
@@ -246,6 +251,7 @@ function animate(info){
 }
 function changed(){state.ag.held=[];state.ag.cgTime=0;}
 function settingEvent(event){
+ if(event.target.closest('[data-cg-pick]'))return boardEvent(event);
  const a=state.ag;if(!isGame(a.game)||agLocked()||a.info?.phase==='play')return;
  const el=event.target.closest('[data-cg-option]');if(el){const g=current(),pair=g.choices.find(([,v])=>String(v)===el.dataset.cgOption);if(!pair)return;a.options[a.game][el.dataset.cgKey]=pair[1];renderArcade();}
 }

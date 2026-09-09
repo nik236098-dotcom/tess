@@ -21,6 +21,9 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/croc-theme.css?v=1" />
   <link rel="stylesheet" href="/amethyst.css?v=1" />
+  <link rel="stylesheet" href="/game-standard.css?v=1" />
+  <script src="/game-result.js?v=1"></script>
+  <script defer src="/game-layout.js?v=1"></script>
 </head>
 <body>
   <!-- Один набор иконок на всё приложение: контурные, 24×24, currentColor.
@@ -658,7 +661,7 @@
 
     <!-- Блекджек против дилера: экран собран по макету 1 в 1 на холсте 390×653,
          фон — сам макет без нарисованных карт и кнопок (img/bj-bg.webp). -->
-    <section id="screen-bj" class="screen bj-screen hidden">
+    <section id="screen-bj" class="screen game-standard bj-screen hidden">
       <div id="bj-canvas" class="bj-canvas">
         <div id="bj-balance" class="bj-balance"><span>Баланс</span><b id="bj-balance-value">$0.00</b></div>
         <button id="bj-back" class="bj-back" title="В лобби">
@@ -764,7 +767,7 @@
          только живое: баланс, подписи и счёт сторон, карты, плашка итога,
          фишки на зонах, рамка выбранной фишки, точки истории. Все
          координаты — с макета, умноженные на k. -->
-    <section id="screen-bc" class="screen bj-screen hidden">
+    <section id="screen-bc" class="screen game-standard bj-screen hidden">
       <div id="bc-canvas" class="bj-canvas bc-canvas">
         <button id="bc-back" class="bc-hit bc-back" aria-label="В лобби"></button>
         <div id="bc-balance" class="bc-balance"><b id="bc-balance-value">$0.00</b></div>
@@ -800,7 +803,7 @@
 
     <!-- Mines: обычный прокручиваемый экран — поле сверху, параметры ставки
          ниже; раунд целиком на сервере, клиент только показывает состояние. -->
-    <section id="screen-mn" class="screen mn-screen hidden">
+    <section id="screen-mn" class="screen game-standard mn-screen hidden">
       <div class="mn-bg" aria-hidden="true">
         <svg class="icon mn-suit-1"><use href="#i-spade"></use></svg>
         <svg class="icon mn-suit-2"><use href="#i-club"></use></svg>
@@ -820,30 +823,33 @@
           <div id="mn-overlay" class="mn-overlay hidden"></div>
         </div>
         <div class="mn-panel">
-          <button id="mn-main" class="mn-main">Ставка</button>
-          <div class="mn-label">Сумма ставки</div>
-          <div class="mn-row">
-            <label class="mn-input">
-              <i class="mn-coin">$</i>
-              <input id="mn-amount" type="text" inputmode="decimal" autocomplete="off" value="1,00" />
-            </label>
-            <button id="mn-half" class="mn-mod">1/2</button>
-            <button id="mn-double" class="mn-mod">2x</button>
-            <button id="mn-max" class="mn-mod">Max</button>
-          </div>
+          <div class="g-settings">
           <div class="mn-label">Мины</div>
           <label class="mn-select">
             <i class="mn-bomb-ico"></i>
             <select id="mn-mines"></select>
             <svg class="icon mn-select-chevron"><use href="#i-chevron-right"></use></svg>
           </label>
+          </div>
+          <button id="mn-main" class="mn-main">Сделать ставку</button>
+          <div class="mn-label">Сумма ставки</div>
+          <div class="mn-row">
+            <label class="mn-input">
+              <i class="mn-coin">$</i>
+              <input id="mn-amount" type="text" inputmode="decimal" autocomplete="off" value="1,00" />
+            </label>
+            <button id="mn-half" class="mn-mod">½</button>
+            <button id="mn-double" class="mn-mod">2×</button>
+            <button id="mn-max" class="mn-mod">Max</button>
+          </div>
+
         </div>
       </div>
     </section>
 
     <!-- Nvuti: те же компоненты, что у Mines (экран, шапка, панель ставки);
          своё — шкала 1–100 с курсором цели и маркером результата. -->
-    <section id="screen-nv" class="screen mn-screen hidden">
+    <section id="screen-nv" class="screen game-standard mn-screen hidden">
       <div class="mn-bg" aria-hidden="true">
         <svg class="icon mn-suit-1"><use href="#i-spade"></use></svg>
         <svg class="icon mn-suit-2"><use href="#i-club"></use></svg>
@@ -870,6 +876,7 @@
             <div class="nv-ticks" id="nv-ticks"></div>
             <div class="nv-legend"><span>1</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
           </div>
+          <div id="nv-overlay" class="g-result hidden"></div>
           <div class="nv-stats">
             <div class="nv-stat"><span>Выплата</span><b><em id="nv-mult">1.29</em><i>X</i></b></div>
             <div class="nv-stat"><span id="nv-mode-label">Ролл ниже</span><b><em id="nv-target">75</em><button id="nv-swap" class="nv-swap" type="button" aria-label="Сменить режим"><svg class="icon icon-sm"><use href="#i-swap"></use></svg></button></b></div>
@@ -877,6 +884,13 @@
           </div>
         </div>
         <div class="mn-panel">
+          <div class="g-settings">
+          <div class="mn-label">Режим</div>
+          <label class="mn-select">
+            <select id="nv-mode"><option value="under">Меньше</option><option value="over">Больше</option></select>
+            <svg class="icon mn-select-chevron"><use href="#i-chevron-right"></use></svg>
+          </label>
+          </div>
           <button id="nv-main" class="mn-main">Сделать ставку</button>
           <div class="mn-label">Сумма ставки</div>
           <div class="mn-row">
@@ -884,15 +898,11 @@
               <i class="mn-coin">$</i>
               <input id="nv-amount" type="text" inputmode="decimal" autocomplete="off" value="1,00" />
             </label>
-            <button id="nv-half" class="mn-mod">1/2</button>
-            <button id="nv-double" class="mn-mod">2x</button>
+            <button id="nv-half" class="mn-mod">½</button>
+            <button id="nv-double" class="mn-mod">2×</button>
             <button id="nv-max" class="mn-mod">Max</button>
           </div>
-          <div class="mn-label">Режим</div>
-          <label class="mn-select">
-            <select id="nv-mode"><option value="under">Меньше</option><option value="over">Больше</option></select>
-            <svg class="icon mn-select-chevron"><use href="#i-chevron-right"></use></svg>
-          </label>
+
         </div>
       </div>
     </section>
@@ -901,7 +911,7 @@
   </div>
 
   <script src="/amethyst.js?v=1"></script>
-  <section id="screen-hl" class="screen mn-screen hidden">
+  <section id="screen-hl" class="screen game-standard mn-screen hidden">
     <div class="mn-bg" aria-hidden="true"><svg class="icon mn-suit-1"><use href="#i-spade"></use></svg><svg class="icon mn-suit-2"><use href="#i-club"></use></svg></div>
     <div class="mn-page hl-page">
       <header class="mn-head"><button id="hl-back" class="mn-iconbtn" aria-label="В лобби">‹</button><b class="mn-title">Hilo <span class="mn-spark">✦</span></b><div class="mn-balance"><span>Баланс</span><b id="hl-balance">$0.00</b></div></header>
@@ -913,14 +923,13 @@
           <button id="hl-low" class="hl-choice hl-choice-low"><svg viewBox="0 0 24 16" aria-hidden="true"><path id="hl-low-icon" d="m3 3 9 9 9-9"/></svg><span id="hl-low-label">Ниже или<br>равно</span><strong id="hl-low-chance">—</strong></button>
         </div></div>
         <div id="hl-overlay" class="mn-overlay hl-win-overlay hidden" role="status" aria-live="polite"></div>
-        <div class="hl-stats"><div><span>Множитель</span><b id="hl-multiplier">1.00×</b></div><div><span>Выигрыш</span><b id="hl-win">$0.00</b></div></div>
+        <div class="hl-history-panel"><h3>История карт</h3><div id="hl-history" class="hl-history"></div></div><div hidden aria-hidden="true"><span id="hl-multiplier"></span><span id="hl-win"></span></div>
       </div>
-      <div class="hl-history-panel"><h3>История карт</h3><div id="hl-history" class="hl-history"></div></div>
-      <div id="hl-panel" class="mn-panel"><button id="hl-main" class="mn-main">Сделать ставку</button><div class="mn-label">Сумма ставки</div><div class="mn-row"><label class="mn-input"><i class="mn-coin">$</i><input id="hl-amount" aria-label="Сумма ставки" inputmode="decimal" value="1,00" autocomplete="off"></label><button class="mn-mod" data-hl-mod="0.5">1/2</button><button class="mn-mod" data-hl-mod="2">2x</button><button class="mn-mod" data-hl-mod="max">Max</button></div><p id="hl-result" class="hl-result" role="status" aria-live="polite"></p></div>
+      <div id="hl-panel" class="mn-panel"><button id="hl-main" class="mn-main">Сделать ставку</button><div class="mn-label">Сумма ставки</div><div class="mn-row"><label class="mn-input"><i class="mn-coin">$</i><input id="hl-amount" aria-label="Сумма ставки" inputmode="decimal" value="1,00" autocomplete="off"></label><button class="mn-mod" data-hl-mod="0.5">½</button><button class="mn-mod" data-hl-mod="2">2×</button><button class="mn-mod" data-hl-mod="max">Max</button></div><p id="hl-result" class="hl-result" role="status" aria-live="polite"></p></div>
       <details class="hl-rules"><summary>Как играть</summary><p>Туз — младшая карта, король — старшая. Для карт от 2 до дамы равная карта выигрывает в обоих направлениях. На тузе: «Выше» (92,31%) или «Равно» (7,69%). На короле: «Равно» (7,69%) или «Ниже» (92,31%). При выборе «Выше» на тузе и «Ниже» на короле повтор карты проигрывает. Каждая следующая карта выбирается независимо из 52 карт. Пропуск бесплатный и не меняет множитель. Выплата включает ставку; множитель рассчитывается по вероятности всей выигрышной серии с удержанием 1% один раз, без повторного удержания на каждом ходе. Лимит 10 000× — автоматическая выплата. До первого выбора ставку можно вернуть.</p></details>
     </div>
   </section>
-  <section id="screen-cr" class="screen mn-screen hidden">
+  <section id="screen-cr" class="screen game-standard mn-screen hidden">
     <div class="mn-bg" aria-hidden="true"><svg class="icon mn-suit-1"><use href="#i-spade"/></svg><svg class="icon mn-suit-2"><use href="#i-club"/></svg></div>
     <div class="mn-page cr-page">
       <header class="mn-head"><button id="cr-back" class="mn-iconbtn" aria-label="В лобби">‹</button><b class="mn-title">Crash <span class="mn-spark">✦</span></b><div class="mn-balance"><span>Баланс</span><b id="cr-balance">$0.00</b></div></header>
@@ -931,16 +940,20 @@
         <div id="cr-overlay" class="mn-overlay cr-overlay hidden" role="status" aria-live="polite"></div>
         <p id="cr-auto-caption" class="cr-caption">Автостоп на 2.00×</p>
       </div>
-      <div id="cr-panel" class="mn-panel"><button id="cr-main" class="mn-main">Сделать ставку</button>
-        <label for="cr-amount" class="mn-label">Сумма ставки</label><div class="mn-row"><label class="mn-input"><i class="mn-coin">$</i><input id="cr-amount" inputmode="decimal" value="1,00" autocomplete="off"></label><button class="mn-mod" data-cr-amount="0.5">1/2</button><button class="mn-mod" data-cr-amount="2">2x</button><button class="mn-mod" data-cr-amount="max">Max</button></div>
+      <div id="cr-panel" class="mn-panel">
+        <div class="g-settings cr-settings">
         <div class="cr-settings-head"><b>Автостоп</b><label class="cr-toggle"><input id="cr-auto" type="checkbox" checked aria-label="Автостоп"><span></span></label></div>
         <label for="cr-target" class="mn-label">Коэффициент</label><div class="cr-target-row"><button class="cr-step" data-cr-step="-0.1" aria-label="Уменьшить коэффициент">−</button><input id="cr-target" inputmode="decimal" value="2.00" autocomplete="off"><button class="cr-step" data-cr-step="0.1" aria-label="Увеличить коэффициент">+</button></div>
-        <div class="cr-presets"><button class="cr-preset" data-cr-target="1.5">1.50×</button><button class="cr-preset" data-cr-target="2">2×</button><button class="cr-preset" data-cr-target="3">3×</button><button class="cr-preset" data-cr-target="5">5×</button></div><p id="cr-note" class="cr-note"></p>
+        <div class="cr-presets"><button class="cr-preset" data-cr-target="1.5">1.50×</button><button class="cr-preset" data-cr-target="2">2×</button><button class="cr-preset" data-cr-target="3">3×</button><button class="cr-preset" data-cr-target="5">5×</button></div>
+        </div>
+        <button id="cr-main" class="mn-main">Сделать ставку</button>
+        <label for="cr-amount" class="mn-label">Сумма ставки</label><div class="mn-row"><label class="mn-input"><i class="mn-coin">$</i><input id="cr-amount" inputmode="decimal" value="1,00" autocomplete="off"></label><button class="mn-mod" data-cr-amount="0.5">½</button><button class="mn-mod" data-cr-amount="2">2×</button><button class="mn-mod" data-cr-amount="max">Max</button></div>
+        <p id="cr-note" class="cr-note"></p>
       </div>
       <details class="cr-rules"><summary>Как играть</summary><p>После ставки начинается ваш раунд. Коэффициент растёт от 1.00×. Заберите выплату до краша или заранее включите автостоп. Если краш наступил раньше, ставка проигрывает. Автостоп на точном значении краша засчитывается. Краш может произойти сразу на 1.00×. Выплата включает ставку. Максимум — 1 000 000×, при достижении выплата автоматическая. Потеря связи не останавливает раунд; автостоп продолжает работать на сервере.</p></details>
     </div>
   </section>
-  <section id="screen-ag" class="screen mn-screen hidden">
+  <section id="screen-ag" class="screen game-standard mn-screen hidden">
     <div class="mn-bg" aria-hidden="true"><svg class="icon mn-suit-1"><use href="#i-spade"/></svg><svg class="icon mn-suit-2"><use href="#i-club"/></svg></div>
     <div class="mn-page ag-page">
       <header class="mn-head"><button id="ag-back" class="mn-iconbtn" aria-label="В лобби">‹</button><b id="ag-title" class="mn-title">Игры</b><div class="mn-balance"><span>Баланс</span><b id="ag-balance">$0.00</b></div></header>
@@ -948,13 +961,13 @@
       <div class="ag-game-shell">
       <div class="mn-board-card ag-board">
         <div id="ag-status" class="ag-status" role="status" aria-live="polite">Готов к игре</div>
-        <div id="ag-stage" class="ag-stage"></div>
-        <div class="ag-stats"><div><small>Коэффициент</small><b id="ag-multiplier">0×</b></div><div><small>Выплата</small><b id="ag-payout">$0.00</b></div></div>
+        <div id="ag-scene-viewport"><div id="ag-stage" class="ag-stage"></div></div>
+        <div id="ag-paytable" class="ag-paytable" aria-label="Таблица коэффициентов" tabindex="0"></div>
+        <div hidden aria-hidden="true"><span id="ag-multiplier"></span><span id="ag-payout"></span></div>
         <div id="ag-overlay" class="mn-overlay ag-overlay hidden" role="status" aria-live="polite"></div>
       </div>
       <div class="mn-panel ag-panel">
         <div id="ag-settings"></div>
-        <div id="ag-paytable" class="ag-paytable" aria-label="Таблица коэффициентов" tabindex="0"></div>
         <button type="button" id="ag-balloon-pump" class="mn-main" hidden disabled>Надуть шар</button>
         <button type="button" id="ag-chicken-step" class="mn-main" hidden disabled>Следующий шаг →</button>
         <button type="button" id="ag-main" class="mn-main" disabled>Сделать ставку</button>
@@ -975,17 +988,17 @@
   <script src="/darts-rules.js?v=1"></script>
   <script src="/darts-scene.js?v=3"></script>
   <script src="/darts-audio.js?v=2"></script>
-  <script src="/darts-game.js?v=1"></script>
+  <script src="/darts-game.js?v=3"></script>
   <script src="/bowling-physics.js?v=1"></script>
   <script src="/bowling-scene.js?v=3"></script>
 <script src="/balloon-scene.js?v=3"></script>
 <script src="/race-scene.js?v=1"></script>
-<script src="/casino-ui.js?v=27"></script>
-  <script src="/arcade.js?v=20"></script>
+<script src="/casino-ui.js?v=28"></script>
+  <script src="/arcade.js?v=21"></script>
   <script src="/crash.js?v=2"></script>
-  <script src="/hilo.js?v=3"></script>
+  <script src="/hilo.js?v=4"></script>
   <script src="/client-connection.js?v=1"></script>
   <script src="/telegram-display.js?v=1"></script>
-  <script src="/app.js?v=104"></script>
+  <script src="/app.js?v=105"></script>
 </body>
 </html>

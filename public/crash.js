@@ -16,6 +16,7 @@ function crSend() {
     if(amount>state.balance) { toast('Недостаточно средств'); return; }
     if(autoStop!==null&&(!Number.isFinite(autoStop)||autoStop<1.01||autoStop>1000000||Math.abs(autoStop*100-Math.round(autoStop*100))>1e-6)) {toast('Автостоп: от 1.01× до 1 000 000×, не более двух знаков');return;}
   }
+  if(!live)GameResult.hide($('cr-overlay'));
   cr.busy=true; renderCrash(); haptic('light');
   send({type:live?'cr_cashout':'cr_start',revision:cr.info.revision,amount,autoStop});
 }
@@ -66,12 +67,9 @@ function renderCrash() {
     history.dataset.key=historyKey;
     history.innerHTML=(info?.history||[]).map(item=>`<span class="cr-history-item ${item.result==='win'?'is-win':''}">${item.multiplier.toFixed(2)}×</span>`).join('')||'<span class="cr-history-empty">История раундов</span>';
   }
-  const overlay=$('cr-overlay'); const win=info?.phase==='done'&&info.result==='win'&&info.settled;
-  if(win&&overlay.dataset.revision!==String(info.revision)) {
-    overlay.dataset.revision=String(info.revision); overlay.className='mn-overlay is-win cr-overlay';
-    overlay.innerHTML=`<svg class="icon mn-suit-l" aria-hidden="true"><use href="#i-spade"></use></svg><svg class="icon mn-suit-r" aria-hidden="true"><use href="#i-club"></use></svg><i class="mn-spark mn-spark-1">✦</i><i class="mn-spark mn-spark-2">✦</i><b>×${info.multiplier.toFixed(2)}</b><span><i class="mn-coin">$</i>${money(info.payout).slice(1)}</span>`;
-  } else if(!win) {overlay.className='mn-overlay cr-overlay hidden';overlay.innerHTML='';delete overlay.dataset.revision;}
+  GameResult.show($('cr-overlay'),info?.phase==='done'&&!cr.busy?info:null,info?.revision);
   $('cr-note').textContent=pending?'Выплата ожидает свободного места на балансе. Откройте игру повторно после уменьшения баланса.':live?'Ставка и автостоп зафиксированы до конца раунда.':'Раунд начнётся сразу после ставки.';
+  $('cr-note').hidden=!pending;
   crDraw();
   cancelAnimationFrame(cr.raf);
   if(live) { const tick=()=>{if(!cr.open||cr.info?.phase!=='play')return;crDraw();cr.raf=requestAnimationFrame(tick);};cr.raf=requestAnimationFrame(tick); }

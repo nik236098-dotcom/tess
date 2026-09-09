@@ -636,7 +636,9 @@ function fitBlackjack() {
   const screen = $('screen-bj');
   if (!screen || screen.classList.contains('hidden')) return;
   const w = screen.clientWidth || window.innerWidth;
-  const scale = w / 390;
+  const style=getComputedStyle(screen);
+  const available=screen.clientHeight-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom);
+  const scale = Math.min(w / 390, available / 760);
   $('bj-canvas').style.setProperty('--bj', scale.toFixed(4));
 }
 
@@ -951,21 +953,9 @@ function renderBlackjack() {
   const result = $('bj-result');
   if (done && view.results && !revealing) {
     const r = view.results;
-    result.className = 'bj-result';
-    if (r.net > 0) {
-      const natural = r.hands.some((h) => h.outcome === 'blackjack');
-      result.textContent = `${natural ? 'BLACKJACK!' : 'YOU WIN'} +${money(r.net)}`;
-    } else if (r.net === 0) {
-      result.textContent = 'PUSH · ставка возвращена';
-      result.classList.add('push');
-    } else {
-      const bust = r.hands.every((h) => h.outcome === 'bust');
-      result.textContent = `${bust ? 'BUST' : 'DEALER WINS'} −${money(-r.net)}`;
-      result.classList.add('lose');
-    }
-    result.classList.remove('hidden');
+    GameResult.show(result,{...r,description:r.hands.some(h=>h.outcome==='blackjack')?'Блэкджек':r.hands.length>1?`Завершено рук: ${r.hands.length}`:''},JSON.stringify(r));
   } else {
-    result.classList.add('hidden');
+    GameResult.hide(result);
   }
 }
 
@@ -1442,7 +1432,9 @@ function fitBaccarat() {
   const screen = $('screen-bc');
   if (!screen || screen.classList.contains('hidden')) return;
   const w = screen.clientWidth || window.innerWidth;
-  $('bc-canvas').style.setProperty('--bj', (w / 390).toFixed(4));
+  const style=getComputedStyle(screen);
+  const available=screen.clientHeight-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom);
+  $('bc-canvas').style.setProperty('--bj', Math.min(w / 390,available / 598.5).toFixed(4));
 }
 
 function openBaccarat() {
@@ -1679,13 +1671,12 @@ function finishBaccaratDeal(round) {
   }
   const result = $('bc-result');
   const view = bcResultView(round);
-  result.className = `bc-result is-visible ${view.cls}`;
-  result.innerHTML = `<b>${view.line1}</b><span>${view.line2}</span>`;
+  GameResult.show(result,{...round,description:round.winner==='tie'?'Ничья':round.winner==='player'?'Победил игрок':'Победил банкир'},JSON.stringify(round));
+  result.classList.add('is-visible');
   // Карты выигравшей раздачу стороны обводим в цвет исхода — как на макете.
   if (round.winner === 'player' || round.winner === 'banker') {
     document.querySelectorAll(`.bc-card[data-side="${round.winner}"]`).forEach((c) => c.classList.add(`is-glow-${view.cls}`));
   }
-  bc.timers.push(setTimeout(() => result.classList.remove('is-visible'), 3200));
   haptic(round.net > 0 ? 'success' : 'light');
   bcShowBalance(state.balance);
   bc.bets.clear();
@@ -1931,18 +1922,7 @@ function renderMines() {
     cell.disabled = !live || mn.busy || kind !== '';
   }
 
-  const overlay = $('mn-overlay');
-  if (reveal && reveal.result === 'win') {
-    overlay.className = 'mn-overlay is-win';
-    overlay.innerHTML = `<svg class="icon mn-suit-l"><use href="#i-spade"></use></svg><svg class="icon mn-suit-r"><use href="#i-club"></use></svg><i class="mn-spark mn-spark-1">✦</i><i class="mn-spark mn-spark-2">✦</i><b>x${reveal.multiplier.toFixed(2)}</b><span><i class="mn-coin">$</i>${money(reveal.payout).slice(1)}</span>`;
-  } else if (reveal) {
-    overlay.className = 'mn-overlay is-lose';
-    overlay.innerHTML = '<svg class="icon mn-suit-l"><use href="#i-spade"></use></svg><svg class="icon mn-suit-r"><use href="#i-club"></use></svg><b>Неудачно</b><span>Удачи в следующий раз!</span><button type="button" class="mn-again">Играть снова</button>';
-    overlay.querySelector('.mn-again').addEventListener('click', () => { mn.reveal = null; haptic('light'); renderMines(); });
-  } else {
-    overlay.className = 'mn-overlay hidden';
-    overlay.innerHTML = '';
-  }
+  GameResult.show($('mn-overlay'), reveal, reveal?.revision);
 
   const main = $('mn-main');
   main.classList.toggle('is-cash', live);
@@ -1957,7 +1937,7 @@ function renderMines() {
       main.disabled = true;
     }
   } else {
-    main.textContent = 'Ставка';
+    main.textContent = 'Сделать ставку';
     const { min } = mnRange();
     main.disabled = mn.busy || mn.amount === null || mn.amount < min || mn.amount > state.balance;
   }
@@ -2111,6 +2091,7 @@ function onNvutiMain() {
   if (nv.amount > state.balance) { toast('Недостаточно средств'); haptic('error'); return; }
   if (nv.amount > max) { toast(`Максимальная ставка ${money(max)}`); return; }
   nv.busy = true;
+  GameResult.hide($('nv-overlay'));
   haptic('light');
   send({ type: 'nv_bet', amount: nv.amount, target: nv.target, mode: nv.mode });
   renderNvuti();
@@ -2151,6 +2132,7 @@ function nvPlayRound(round) {
   const marker = $('nv-marker');
   const outcome = $('nv-outcome');
   outcome.classList.add('hidden');
+  GameResult.hide($('nv-overlay'));
   marker.className = 'nv-marker';
   $('nv-marker-value').textContent = String(round.roll);
   const from = marker.dataset.at ? Number(marker.dataset.at) : (round.mode === 'under' ? 100 : 1);
@@ -2163,7 +2145,8 @@ function nvPlayRound(round) {
   nv.timer = setTimeout(() => {
     marker.classList.add(round.won ? 'is-win' : 'is-lose');
     outcome.className = `nv-outcome ${round.won ? 'is-win' : 'is-lose'}`;
-    outcome.textContent = round.won ? `Выпало ${round.roll} · +${money(round.net)}` : `Выпало ${round.roll} · −${money(round.bet)}`;
+    outcome.textContent = `Выпало ${round.roll}`;
+    GameResult.show($('nv-overlay'),round,JSON.stringify(round));
     haptic(round.won ? 'success' : 'error');
     nvShowBalance(state.balance);
     nv.busy = false;
@@ -3253,9 +3236,21 @@ function renderResult(room) {
   const result = room.lastResult;
   if (!result || room.status === 'playing' || room.status === 'betting'
       || (result.game !== 'blackjack' && !result.winners.length)) {
-    pop.classList.add('hidden');
+    GameResult.hide(pop);
     return;
   }
+
+  const own=result.outcomes?.find(p=>String(p.userId)===String(state.user?.id));
+  if(own?.bet>0){
+    const winner=result.winners?.find(p=>String(p.userId)===String(state.user?.id));
+    const description=winner?.hand?.name||(result.game==='blackjack'?result.reason:result.winners?.length>1?'Банк разделён':result.winners?.length===1?`Победитель: ${result.winners[0].name}`:'');
+    GameResult.show(pop,{...own,description},JSON.stringify(result));
+    pop.classList.add('winner-pop');pop.classList.toggle('center',result.game==='blackjack');
+    return;
+  }
+  // Spectators see the public winners, without a fictional personal stake.
+  pop.classList.remove('g-result','is-win','is-push','is-partial','is-lose');
+  pop.classList.add('winner-pop');
 
   // В блекджеке игроки сидят сверху и снизу — поп-ап ставим по центру,
   // иначе он закрывает карты банкира.

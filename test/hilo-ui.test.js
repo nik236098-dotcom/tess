@@ -15,6 +15,7 @@ function harness(rejectAnimation = false) {
   const state = { connected:true, balance:12500, hl:{open:true,info:null,token:0} };
   const context = vm.createContext({ $, state, SUITS:{s:{symbol:'♠'}}, document:{createElement:element,querySelectorAll:()=>[]},
     matchMedia:()=>({matches:false}), haptic(){}, money:n=>'$'+(n/100).toFixed(2) });
+  vm.runInContext(fs.readFileSync('public/game-result.js','utf8'), context);
   vm.runInContext(fs.readFileSync('public/hilo.js','utf8'), context);
   return { context, state, floating, $, calls:()=>calls };
 }
@@ -34,7 +35,7 @@ test('unsupported animations still apply the next card and unlock input', async 
 });
 test('cashout shows Mines-style winnings, new round clears it, unchanged render does not restart it', async () => {
   const h=harness(); await h.context.onHiloState(snap(0)); await h.context.onHiloState(snap(1,'done'));
-  assert.match(h.$('hl-overlay').innerHTML,/×2.00/); assert.match(h.$('hl-overlay').innerHTML,/2.00/);
+  assert.match(h.$('hl-overlay').innerHTML,/2.00×/); assert.match(h.$('hl-overlay').innerHTML,/2.00/);
   const markup=h.$('hl-overlay').innerHTML; h.context.renderHilo(); assert.equal(h.$('hl-overlay').innerHTML,markup);
   await h.context.onHiloState(snap(2)); assert.equal(h.$('hl-overlay').innerHTML,'');
 });
@@ -48,4 +49,14 @@ test('A/K keep both buttons enabled and label the equality choice honestly', asy
     assert.equal(h.$(rank===1?'hl-high-label':'hl-low-label').innerHTML,rank===1?'Выше':'Ниже');
     assert.equal(h.$(rank===1?'hl-high-chance':'hl-low-chance').textContent,'92,31%');
   }
+});
+
+test('Hilo has neutral return and zero-loss results, without a stale reached multiplier',async()=>{
+ const h=harness();await h.context.onHiloState(snap(0));
+ await h.context.onHiloState({...snap(1,'done'),payout:100,multiplier:1});
+ assert.match(h.$('hl-overlay').className,/is-push/);
+ await h.context.onHiloState(snap(2));
+ await h.context.onHiloState({...snap(3,'done'),payout:0,multiplier:7.84,result:'lose'});
+ assert.match(h.$('hl-overlay').className,/is-lose/);
+ assert.match(h.$('hl-overlay').innerHTML,/0×/);assert.doesNotMatch(h.$('hl-overlay').innerHTML,/7.84/);
 });

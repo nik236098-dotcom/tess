@@ -17,6 +17,7 @@ function harness(game,reduced=false) {
     structuredClone,send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),
     requestAnimationFrame:f=>{const id=++next;frames.set(id,f);return id;},cancelAnimationFrame:id=>frames.delete(id),
     haptic(){},toast(){},hlCard:card=>`<div>${card.rank}</div>`});
+  vm.runInContext(fs.readFileSync('public/game-result.js','utf8'),ctx);
   vm.runInContext(fs.readFileSync('public/plinko-motion.js','utf8'),ctx);
   vm.runInContext(fs.readFileSync('public/arcade.js','utf8'),ctx);
   const deliver=round=>ctx.onArcadeState({type:'ag',game,config:config(game),balance:10000,...publicState(game,round),requestId:state.ag.pending?.id});
@@ -100,7 +101,9 @@ test('Plinko launches a chosen batch, shows running totals, then one combined re
   assert.equal((h.$('ag-stage').innerHTML.match(/id="ag-ball(?:-\d+)?"/g)||[]).length,5);
   h.advance(4400);assert.equal(h.state.ag.animating,true);assert.match(h.$('ag-note').textContent,/1\/5/);
   h.advance(6000);assert.equal(h.state.ag.animating,false);
-  assert.equal(h.$('ag-payout').textContent,'$110.00');assert.match(h.$('ag-note').textContent,/5\/5.*Ставки \$5.00.*Выплата \$110.00.*Итог \$105.00/);
+  assert.equal(h.$('ag-payout').textContent,'$110.00');assert.match(h.$('ag-note').textContent,/5 × \$1.00 = \$5.00/);
+  assert.doesNotMatch(h.$('ag-note').textContent,/Выплата|Итог/);
+  assert.match(h.$('ag-overlay').innerHTML,/\$110.00/);
 });
 test('Plinko MAX divides the balance across all balls and manual oversized batches are blocked',()=>{
   const h=harness('plinko');h.deliver(initial());h.ctx.bindArcade();h.state.ag.options.plinko.count=25;

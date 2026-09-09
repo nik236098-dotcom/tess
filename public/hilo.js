@@ -26,6 +26,7 @@ function hlRequest(action, extra = {}) {
     if (amount > state.balance) { toast('Недостаточно средств'); return; }
     hl.amount = amount; extra.amount = amount;
   }
+  if (action === 'start' || action === 'skip') { hl.reveal = null; GameResult.hide($('hl-overlay')); }
   hl.pendingAction = action;
   hl.busy = true; haptic('light'); renderHilo();
   send({ type: `hl_${action}`, revision: hl.info.revision, rulesVersion: 2, ...extra });
@@ -62,7 +63,7 @@ async function onHiloState(message) {
   }
   if (token !== hl.token) return;
   hl.info = message; hl.animating = false;
-  hl.reveal = message.phase === 'done' && message.result === 'win' && message.payout > message.bet ? message : null;
+  hl.reveal = message.phase === 'done' ? message : null;
   renderHilo();
   if (hl.open && message.phase === 'done' && previous?.phase === 'play') haptic(message.result === 'win' ? 'success' : 'error');
 }
@@ -90,20 +91,12 @@ function renderHilo() {
   main.disabled = locked;
   main.classList.toggle('is-cash', Boolean(live));
   main.textContent = live ? (info.multiplier === 1 ? `Вернуть ставку ${money(info.bet)}` : `Забрать ${money(info.available)}`) : 'Сделать ставку';
-  $('hl-result').textContent = info?.phase === 'done' ? (info.result === 'win' ? `Забрано ${money(info.payout)}` : 'Не угадали. Попробуйте ещё раз') : (live ? 'Выберите направление следующей карты' : 'Сделайте ставку, чтобы начать');
+  $('hl-result').textContent = live ? 'Выберите направление следующей карты' : '';
   $('hl-result').classList.toggle('is-win', info?.result === 'win');
   for (const el of document.querySelectorAll('#hl-panel input, #hl-panel .mn-mod')) el.disabled = locked || live;
   const overlay = $('hl-overlay');
   const reveal = hl.reveal;
-  $('hl-game').classList.toggle('has-result', Boolean(reveal));
-  if (reveal && overlay.dataset.revision !== String(reveal.revision)) {
-    overlay.dataset.revision = String(reveal.revision);
-    overlay.className = 'mn-overlay hl-win-overlay is-win';
-    overlay.innerHTML = `<svg class="icon mn-suit-l"><use href="#i-spade"></use></svg><svg class="icon mn-suit-r"><use href="#i-club"></use></svg><i class="mn-spark mn-spark-1">✦</i><i class="mn-spark mn-spark-2">✦</i><b>×${reveal.multiplier.toFixed(2)}</b><span><i class="mn-coin">$</i>${money(reveal.payout).slice(1)}</span>`;
-  } else if (!reveal) {
-    overlay.className = 'mn-overlay hl-win-overlay hidden';
-    overlay.innerHTML = ''; delete overlay.dataset.revision;
-  }
+  GameResult.show(overlay, reveal, reveal?.revision);
   const history = $('hl-history');
   history.innerHTML = (info?.history || []).map(item => `<div class="hl-history-item ${item.won === false ? 'is-loss' : ''}"><span class="hl-history-arrow">${item.mode === 'same' ? '=' : ({high:'↑',low:'↓',skip:'»',start:'•'})[item.direction]}</span>${hlCard(item.card)}<small>${item.direction === 'skip' ? 'Пропуск' : item.multiplier.toFixed(2) + '×'}</small></div>`).join('') || '<span class="hl-empty">Здесь появятся ваши карты</span>';
   history.scrollLeft = history.scrollWidth;
