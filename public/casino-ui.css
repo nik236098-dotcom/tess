@@ -78,7 +78,6 @@
 #screen-ag.is-diamonds .ag-panel .mn-main{order:2;min-height:52px;background:linear-gradient(150deg,#ad7afd,#7935ed);box-shadow:inset 0 2px 2px #efdcff70,0 4px 12px #6c22c92a}
 #screen-ag.is-diamonds .ag-panel .ag-note{order:3}
 #screen-ag.is-diamonds [data-ag-amount=max]{display:none}
-#screen-ag.is-diamonds .mn-input .mn-coin{background:transparent;box-shadow:none;color:#f4edff}
 #screen-ag.is-diamonds .mn-mod{width:48px;border-radius:12px}
 #screen-ag.is-diamonds .ag-rules{padding:14px;border:1px solid #aa85cb30;border-radius:14px;background:#151024}
 .dm-panel{width:100%;min-width:0;padding:7px 0 0}
@@ -119,7 +118,6 @@
 #screen-ag.is-videopoker .ag-panel .ag-note{order:3}
 #screen-ag.is-videopoker [data-ag-amount=max]{display:none}
 #screen-ag.is-videopoker .mn-input{padding:0 10px;gap:7px}
-#screen-ag.is-videopoker .mn-input .mn-coin{width:11px;background:transparent;box-shadow:none;color:#f4edff}
 #screen-ag.is-videopoker .mn-mod{width:48px;border-radius:12px}
 #screen-ag.is-videopoker.vp-is-live .mn-input:after{content:'';flex:0 0 12px;height:16px;background:#bba3e6;opacity:.75;pointer-events:none;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 18'%3E%3Cpath fill='none' stroke='black' stroke-width='2' d='M4 8V5a4 4 0 0 1 8 0v3'/%3E%3Crect x='2' y='7' width='12' height='10' rx='2'/%3E%3C/svg%3E") center/contain no-repeat}
 #screen-ag.is-videopoker .ag-rules{padding:14px;border:1px solid #aa85cb30;border-radius:14px;background:#151024}
@@ -173,7 +171,6 @@
 #screen-ag.is-sicbo .ag-note{order:3}
 #screen-ag.is-sicbo [data-ag-amount=max]{display:none}
 #screen-ag.is-sicbo .mn-input{gap:7px;padding:0 10px}
-#screen-ag.is-sicbo .mn-coin{width:12px;background:none;box-shadow:none;color:white}
 #screen-ag.is-sicbo .ag-rules{padding:13px;border:1px solid #a974e244;background:#171126;border-radius:14px}
 .sb-tray{position:relative;aspect-ratio:1.18;margin:0 0 9px;min-width:0;isolation:isolate}
 .sb-webgl{display:block;width:100%;height:100%;position:absolute;inset:0;filter:drop-shadow(0 7px 8px #05021466)}
