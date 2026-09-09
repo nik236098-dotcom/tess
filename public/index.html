@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/styles.css?v=133" />
   <link rel="stylesheet" href="/hilo.css?v=3" />
   <link rel="stylesheet" href="/crash.css?v=1" />
+  <link rel="stylesheet" href="/arcade.css?v=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/croc-theme.css?v=1" />
   <link rel="stylesheet" href="/amethyst.css?v=1" />
@@ -249,6 +250,10 @@
               <span class="lb-play-body"><span class="lb-hero-kicker">Hilo</span><b>Выше или ниже</b><span>Угадай следующую карту · забирай выигрыш</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span>
             </button>
             <button id="play-crash" class="lb-play lb-play-cr"><span class="lb-play-art lb-cr-art" aria-hidden="true"><svg viewBox="0 0 110 100"><path d="M5 85Q66 82 100 16L100 85Z" fill="#946be933"/><path d="M5 85Q66 82 100 16" fill="none" stroke="#bb9aff" stroke-width="5" stroke-linecap="round"/><circle cx="100" cy="16" r="5" fill="#fff"/><text x="8" y="36" fill="#eee5ff" font-size="24" font-weight="bold">2.00×</text></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Crash</span><b>Crash</b><span>Одиночный раунд · растущий коэффициент · автостоп</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
+<button type="button" data-arcade="plinko" class="lb-play lb-play-ag"><span class="lb-play-art ag-lobby-art" aria-hidden="true"><svg viewBox="0 0 112 120"><g fill="#baa0dc"><circle cx="55.0" cy="26" r="3"/><circle cx="45.0" cy="44" r="3"/><circle cx="65.0" cy="44" r="3"/><circle cx="35.0" cy="62" r="3"/><circle cx="55.0" cy="62" r="3"/><circle cx="75.0" cy="62" r="3"/><circle cx="25.0" cy="80" r="3"/><circle cx="45.0" cy="80" r="3"/><circle cx="65.0" cy="80" r="3"/><circle cx="85.0" cy="80" r="3"/><circle cx="15.0" cy="98" r="3"/><circle cx="35.0" cy="98" r="3"/><circle cx="55.0" cy="98" r="3"/><circle cx="75.0" cy="98" r="3"/><circle cx="95.0" cy="98" r="3"/></g><circle cx="60" cy="48" r="8" fill="#f8dcff"/><path d="M7 110H103" stroke="#c393f2" stroke-width="8" stroke-linecap="round"/></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Plinko</span><b>Plinko</b><span>Светящийся шарик · три уровня риска</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
+<button type="button" data-arcade="tower" class="lb-play lb-play-ag"><span class="lb-play-art ag-lobby-art" aria-hidden="true"><svg viewBox="0 0 112 120"><path d="M20 105V80H32V56H44V32H56V8H68V32H80V56H92V105Z" fill="#4d326d" stroke="#bf8ced" stroke-width="2"/><path d="M20 80H92M32 56H80M44 32H68" stroke="#9868c0" stroke-width="2"/><path d="M48 19L56 3 64 19 56 25Z" fill="#ecbc73"/><path d="M43 105V86Q56 67 69 86V105" fill="#ba86f5"/></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Tower</span><b>Башня</b><span>Девять этажей · забирай выигрыш</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
+<button type="button" data-arcade="keno" class="lb-play lb-play-ag"><span class="lb-play-art ag-lobby-art" aria-hidden="true"><svg viewBox="0 0 112 120"><rect x="9" y="14" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="23" y="34" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">1</text><rect x="42" y="14" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="56" y="34" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">4</text><rect x="75" y="14" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="89" y="34" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">7</text><rect x="9" y="47" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="23" y="67" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">10</text><rect x="42" y="47" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="56" y="67" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">13</text><rect x="75" y="47" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="89" y="67" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">16</text><rect x="9" y="80" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="23" y="100" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">19</text><rect x="42" y="80" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="56" y="100" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">22</text><rect x="75" y="80" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="89" y="100" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">25</text></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Keno</span><b>Кено</b><span>Выбирай числа · лови совпадения</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
+<button type="button" data-arcade="dragon" class="lb-play lb-play-ag"><span class="lb-play-art ag-lobby-art" aria-hidden="true"><svg viewBox="0 0 112 120"><g transform="rotate(-12 34 67)"><rect x="9" y="24" width="48" height="76" rx="7" fill="#faf6ff"/><text x="16" y="44" fill="#20182e" font-size="19" font-weight="bold">A</text><text x="22" y="79" fill="#20182e" font-size="33">♠</text></g><g transform="rotate(12 80 65)"><rect x="56" y="21" width="48" height="76" rx="7" fill="#fff7fc"/><text x="63" y="42" fill="#d3264c" font-size="19" font-weight="bold">K</text><text x="69" y="77" fill="#d3264c" font-size="30">♥</text></g></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Dragon & Tiger</span><b>Дракон и Тигр</b><span>Две карты · старшая побеждает</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
             <details class="card rules" id="rules-card">
               <summary>Правила и порядок комбинаций</summary>
               <ol class="rules-list">
@@ -928,8 +933,31 @@
       <details class="cr-rules"><summary>Как играть</summary><p>После ставки начинается ваш раунд. Коэффициент растёт от 1.00×. Заберите выплату до краша или заранее включите автостоп. Если краш наступил раньше, ставка проигрывает. Автостоп на точном значении краша засчитывается. Краш может произойти сразу на 1.00×. Выплата включает ставку. Максимум — 1 000 000×, при достижении выплата автоматическая. Потеря связи не останавливает раунд; автостоп продолжает работать на сервере.</p></details>
     </div>
   </section>
+  <section id="screen-ag" class="screen mn-screen hidden">
+    <div class="mn-bg" aria-hidden="true"><svg class="icon mn-suit-1"><use href="#i-spade"/></svg><svg class="icon mn-suit-2"><use href="#i-club"/></svg></div>
+    <div class="mn-page ag-page">
+      <header class="mn-head"><button id="ag-back" class="mn-iconbtn" aria-label="В лобби">‹</button><b id="ag-title" class="mn-title">Игры</b><div class="mn-balance"><span>Баланс</span><b id="ag-balance">$0.00</b></div></header>
+      <p id="ag-subtitle" class="ag-subtitle"></p>
+      <div class="mn-board-card ag-board">
+        <div id="ag-status" class="ag-status" role="status" aria-live="polite">Готов к игре</div>
+        <div id="ag-stage" class="ag-stage"></div>
+        <div class="ag-stats"><div><small>Коэффициент</small><b id="ag-multiplier">0×</b></div><div><small>Выплата</small><b id="ag-payout">$0.00</b></div></div>
+        <div id="ag-overlay" class="mn-overlay ag-overlay hidden" role="status" aria-live="polite"></div>
+      </div>
+      <div class="mn-panel ag-panel">
+        <div id="ag-settings"></div>
+        <div id="ag-paytable" class="ag-paytable" aria-label="Таблица коэффициентов" tabindex="0"></div>
+        <button type="button" id="ag-main" class="mn-main" disabled>Сделать ставку</button>
+        <div class="ag-label-row"><label for="ag-amount">Сумма ставки</label><small id="ag-limit"></small></div>
+        <div class="mn-row"><div class="mn-input"><i class="mn-coin">$</i><input id="ag-amount" type="text" inputmode="decimal" value="1,00" autocomplete="off" aria-label="Сумма ставки"/></div><button class="mn-mod" type="button" data-ag-amount="0.5">½</button><button class="mn-mod" type="button" data-ag-amount="2">2×</button><button class="mn-mod" type="button" data-ag-amount="max">Max</button></div>
+        <p id="ag-note" class="ag-note"></p>
+      </div>
+      <details class="ag-rules"><summary>Как играть</summary><p id="ag-rules-text"></p></details>
+    </div>
+  </section>
+  <script src="/arcade.js?v=1"></script>
   <script src="/crash.js?v=2"></script>
   <script src="/hilo.js?v=3"></script>
-  <script src="/app.js?v=97"></script>
+  <script src="/app.js?v=98"></script>
 </body>
 </html>

@@ -43,6 +43,7 @@ const state = {
   rl: { open: false, info: null, amount: 1000, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
   bc: { open: false, info: null, chip: 1000, bets: new Map(), dealing: false, timers: [], shownBalance: null, round: null, pendingHistory: null },
   mn: { open: false, info: null, amount: 100, mines: 3, busy: false, reveal: null, shownBalance: null },
+  ag: { game:null, info:null, pending:null, animating:false, token:0, raf:null, options:{ plinko:{risk:"medium"}, tower:{level:"easy"}, keno:{picks:[]}, dragon:{side:"dragon"} } },
   cr: { open:false, info:null, busy:false, receivedAt:0, raf:null },
   hl: { open: false, info: null, amount: 100, busy: false, animating: false, token: 0 },
   nv: { open: false, info: null, amount: 100, target: 75, mode: 'under', busy: false, round: null, shownBalance: null, timer: null },
@@ -270,7 +271,7 @@ async function boot() {
     applyTelegramTheme();
     tg.onEvent('themeChanged', applyTelegramTheme);
     // Обработчик системной кнопки «назад» регистрируем один раз.
-    if (tg.BackButton) tg.BackButton.onClick(() => (state.cr.open ? closeCrash() : state.hl.open ? closeHilo() : state.nv.open ? closeNvuti() : state.mn.open ? closeMines() : state.bc.open ? closeBaccarat() : state.rl.open ? closeRoulette() : state.bj.open ? closeBlackjack() : leaveRoom()));
+    if (tg.BackButton) tg.BackButton.onClick(() => (state.ag.game ? closeArcade() : state.cr.open ? closeCrash() : state.hl.open ? closeHilo() : state.nv.open ? closeNvuti() : state.mn.open ? closeMines() : state.bc.open ? closeBaccarat() : state.rl.open ? closeRoulette() : state.bj.open ? closeBlackjack() : leaveRoom()));
   }
 
   try {
@@ -342,6 +343,7 @@ function connect() {
   socket.addEventListener('close', () => {
     state.connected = false;
     if (state.hl.open) renderHilo();
+    if (state.ag.game) renderArcade();
     if (state.cr.open) renderCrash();
     setStatus('Соединение потеряно, переподключаемся…');
     // Экспоненциальная пауза, чтобы не долбить сервер при обрыве связи.
@@ -389,6 +391,7 @@ function handleMessage(message) {
       state.user = message.user;
       if (state.hl.open) send({ type: 'hl_open' });
       if (state.cr.open) send({type:'cr_open'});
+      if (state.ag.game) agOpenRequest();
       state.balance = message.balance || 0;
       state.isAdmin = Boolean(message.isAdmin);
       if (message.links) applyLinks(message.links);
@@ -430,6 +433,9 @@ function handleMessage(message) {
       break;
     case 'bc':
       onBaccaratState(message);
+      break;
+    case 'ag':
+      onArcadeState(message);
       break;
     case 'cr':
       onCrashState(message);
@@ -513,6 +519,7 @@ function handleMessage(message) {
     case 'error':
       state.topup.busy = false;
       state.payout.busy = false;
+      if(state.ag.game) { state.ag.pending=null; renderArcade(); }
       state.cr.busy = false;
       if(state.cr.open) renderCrash();
       state.hl.busy = false;
@@ -537,6 +544,7 @@ function handleMessage(message) {
 // ——— Экраны ———
 
 function showLobby() {
+  stopArcade();
   if(state.cr.open) send({type:'cr_close'});
   state.cr.open=false; cancelAnimationFrame(state.cr.raf);
   $('screen-cr').classList.add('hidden');
@@ -2441,7 +2449,7 @@ function renderWins() {
   list.innerHTML = state.wins.slice(0, 8).map((win, index) => {
     const blackjack = win.game === 'blackjack';
     const icon = icons[blackjack ? 'blackjack' : 'holdem'];
-    const label = { crash: 'Crash', hilo: 'Hilo', blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti', omaha: 'Omaha' }[win.game] || 'Poker';
+    const label = { plinko:'Plinko', tower:'Башня', keno:'Кено', dragon:'Дракон и Тигр', crash: 'Crash', hilo: 'Hilo', blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti', omaha: 'Omaha' }[win.game] || 'Poker';
     return `
     <div class="mk-win" style="--i:${index}">
       <span class="mk-win-icon" style="background-image:url('/img/lobby/win-${icon}.png')"></span>
@@ -3907,6 +3915,7 @@ function stopTopUpPolling() {
 function bindUi() {
   bindHilo();
   bindCrash();
+  bindArcade();
   on('dev-enter', 'click', () => {
     const name = $('dev-name').value.trim();
     if (!name) {

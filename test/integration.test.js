@@ -429,3 +429,29 @@ test('Crash: offline auto-stop and reconnect credit the wallet exactly once over
     client.close(); await closed;
   }
 });
+
+
+test('Arcade: four games route over WebSocket, persist results, reject duplicate starts and unauthenticated requests', { timeout:10000 }, async t => {
+  const port=await startServer(t,{paymentsFile:null,promoFile:null});
+  const client=connect(port); await once(client.socket,'open');t.after(()=>client.close());
+  client.send({type:'ag_open',game:'plinko'});assert.match((await client.wait(byType('error'))).message,/авторизоваться/);
+  client.send({type:'auth',name:'Arcade QA',devId:'arcade-network'});const auth=await client.wait(byType('auth_ok'));let balance=auth.balance;
+  const opts={plinko:{risk:'medium'},tower:{level:'easy'},keno:{picks:[1,2,3]},dragon:{side:'tie'}};
+  for(const game of Object.keys(opts)) {
+    client.send({type:'ag_open',game});const initial=await client.wait(m=>m.type==='ag'&&m.game===game);
+    assert.ok(initial.config.maxBet>=100);
+    const bet={type:'ag_start',game,amount:100,options:opts[game],revision:initial.revision};
+    client.send(bet);let next=await client.wait(m=>m.type==='ag'&&m.game===game);
+    assert.equal(next.balance,balance-100+next.payout);balance=next.balance;
+    client.send(bet);await client.wait(byType('error'));const duplicate=await client.wait(m=>m.type==='ag'&&m.game===game);
+    assert.equal(duplicate.balance,balance);assert.equal(duplicate.revision,next.revision);
+    if(game==='tower') {
+      assert.equal(next.traps,undefined);assert.deepEqual(next.revealed,[]);
+      client.send({type:'ag_pick',game,index:0,revision:next.revision});next=await client.wait(m=>m.type==='ag'&&m.game===game);
+      if(next.phase==='play') {client.send({type:'ag_cashout',game,revision:next.revision});next=await client.wait(m=>m.type==='ag'&&m.game===game);}
+      assert.equal(next.balance,balance+next.payout);balance=next.balance;
+    }
+    client.send({type:'ag_open',game});const reopened=await client.wait(m=>m.type==='ag'&&m.game===game);
+    assert.equal(reopened.balance,balance);assert.equal(reopened.revision,next.revision);
+  }
+});

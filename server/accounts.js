@@ -45,6 +45,7 @@ class Accounts {
           createdAt: account.createdAt || Date.now(),
           hiloRound: account.hiloRound || null,
           crashRound: account.crashRound || null,
+          arcadeRounds: account.arcadeRounds || null,
         });
       }
     } catch (error) {
@@ -55,7 +56,7 @@ class Accounts {
   }
 
   // Пишем через временный файл, чтобы не оставить обрезанный JSON при падении.
-  flush() {
+  flush({ strict = false } = {}) {
     if (!this.file) return;
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
@@ -69,6 +70,7 @@ class Accounts {
       fs.renameSync(temporary, this.file);
     } catch (error) {
       console.error('Не удалось сохранить балансы:', error.message);
+      if (strict) throw error;
     }
   }
 

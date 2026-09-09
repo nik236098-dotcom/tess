@@ -22,6 +22,9 @@ node --check public/app.js
 node --check public/crash.js
 node --check server/crash/game.js
 node --check server/crash/service.js
+node --check public/arcade.js
+node --check server/arcade/game.js
+node --check server/arcade/service.js
 systemctl start poker
 systemctl is-active --quiet poker
 trap - ERR
