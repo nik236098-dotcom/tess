@@ -10,7 +10,7 @@ const { Accounts, MAX_BALANCE } = require('../server/accounts');
 const OPTIONS = {plinko:{risk:'medium'},tower:{level:'easy'},keno:{picks:[1,2,3,4,5]},dragon:{side:'dragon'}};
 const sequence = numbers => {let i=0;return max=>{const n=numbers[i++];assert.ok(Number.isInteger(n)&&n>=0&&n<max);return n;};};
 test('invalid amounts/options and stale revisions leave every game untouched',()=>{
-  for(const game of GAMES){
+  for(const game of Object.keys(OPTIONS)){
     const old=initial();const before=JSON.stringify(old);
     const limit=game==='tower'?config(game).maxBets.easy:config(game).maxBet;
     for(const amount of [-1,0,9,10.5,'100',NaN,Infinity,limit+1])assert.throws(()=>start(game,old,amount,OPTIONS[game],0));

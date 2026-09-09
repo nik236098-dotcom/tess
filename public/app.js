@@ -2449,7 +2449,7 @@ function renderWins() {
   list.innerHTML = state.wins.slice(0, 8).map((win, index) => {
     const blackjack = win.game === 'blackjack';
     const icon = icons[blackjack ? 'blackjack' : 'holdem'];
-    const label = { plinko:'Plinko', tower:'Башня', keno:'Кено', dragon:'Дракон и Тигр', crash: 'Crash', hilo: 'Hilo', blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti', omaha: 'Omaha' }[win.game] || 'Poker';
+    const label = { ...Object.fromEntries(Object.entries(CasinoRules.games).map(([id,g])=>[id,g.name])), plinko:'Plinko', tower:'Башня', keno:'Кено', dragon:'Дракон и Тигр', crash: 'Crash', hilo: 'Hilo', blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti', omaha: 'Omaha' }[win.game] || 'Poker';
     return `
     <div class="mk-win" style="--i:${index}">
       <span class="mk-win-icon" style="background-image:url('/img/lobby/win-${icon}.png')"></span>

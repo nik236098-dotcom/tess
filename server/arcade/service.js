@@ -1,5 +1,5 @@
 'use strict';
-const { ArcadeError, GAMES, config, initial, start, actTower, publicState } = require('./game');
+const { ArcadeError, GAMES, config, initial, start, actGame, publicState } = require('./game');
 const { MAX_BALANCE } = require('../accounts');
 
 function createArcadeService({ accounts, noteWin, rng }) {
@@ -19,8 +19,7 @@ function createArcadeService({ accounts, noteWin, rng }) {
         if (balance < next.bet) throw new ArcadeError('Недостаточно средств на все шарики');
         balance -= next.bet;
       } else if (message.type === 'ag_pick' || message.type === 'ag_cashout') {
-        if (game !== 'tower') throw new ArcadeError('Это действие доступно только в Башне');
-        next = actTower(previous, message.type, message.index, message.revision);
+        next = actGame(game, previous, message.type, message.index, message.revision, rng);
       } else if (message.type !== 'ag_open') throw new ArcadeError('Неизвестное действие');
       if (next.phase === 'done' && !next.settled && balance + next.payout <= MAX_BALANCE) {
         next = { ...next, settled: true };

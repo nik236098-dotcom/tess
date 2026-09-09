@@ -431,6 +431,38 @@ test('Crash: offline auto-stop and reconnect credit the wallet exactly once over
 });
 
 
+test('Catalog: all 19 games complete through WebSocket and credit once', { timeout:20000 }, async t => {
+  const port = await startServer(t, { paymentsFile:null, promoFile:null });
+  const { games } = require('../public/casino-rules');
+  for (const [game, definition] of Object.entries(games)) {
+    const client=connect(port); await once(client.socket,'open'); t.after(()=>client.close());
+    const receive=()=>client.wait(m=>m.type==='ag'&&m.game===game);
+    client.send({type:'auth',name:'Catalog QA',devId:'catalog-network-'+game});
+    const auth=await client.wait(byType('auth_ok'));
+    client.send({type:'ag_open',game}); let round=await receive();
+    const start={type:'ag_start',game,amount:100,options:definition.defaults,revision:round.revision};
+    client.send(start); round=await receive();
+    assert.equal(round.balance,auth.balance-100+round.payout,game);
+    client.send(start); await client.wait(byType('error'));
+    const duplicate=await receive(); assert.equal(duplicate.balance,round.balance,game);
+    if(definition.series) {
+      client.send({type:'ag_cashout',game,revision:round.revision}); round=await receive();
+    } else if(game==='videopoker') {
+      client.send({type:'ag_pick',game,index:[],revision:round.revision}); round=await receive();
+    } else if(game==='scratch') {
+      for(let index=0;index<9;index++) {
+        client.send({type:'ag_pick',game,index,revision:round.revision}); round=await receive();
+      }
+    }
+    assert.equal(round.phase,'done',game);
+    assert.equal(round.balance,auth.balance-100+round.payout,game);
+    client.send({type:'ag_open',game}); const reopened=await receive();
+    assert.equal(reopened.balance,round.balance,game);
+    assert.equal(reopened.revision,round.revision,game);
+    const closed=once(client.socket,'close'); client.close(); await closed;
+  }
+});
+
 test('Arcade: four games route over WebSocket, persist results, reject duplicate starts and unauthenticated requests', { timeout:10000 }, async t => {
   const port=await startServer(t,{paymentsFile:null,promoFile:null});
   const client=connect(port); await once(client.socket,'open');t.after(()=>client.close());

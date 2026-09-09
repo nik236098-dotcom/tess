@@ -7,6 +7,8 @@ const AG_RULES = {
   keno: 'Режим Classic. Выбери от 1 до 10 разных чисел из 40. Сервер случайно вытянет 10 разных чисел. Выплата зависит от количества совпадений и выбранных чисел. Таблица показана до ставки; коэффициент включает возврат ставки.',
   dragon: 'Из восьми колод (416 карт), перемешанных перед раундом, открывается по одной карте Дракону и Тигру. Старшая побеждает: A — младшая, K — старшая; масть не влияет. Победа стороны: 2×. Ничья: 12× при ставке на ничью. Если поставил на сторону, а вышла ничья — возвращается половина ставки. Выплата включает ставку.',
 };
+if(typeof CasinoRules!=='undefined')for(const [id,game] of Object.entries(CasinoRules.games)){AG_NAMES[id]=game.name;AG_SUBTITLES[id]=game.tag;AG_RULES[id]=game.rules;}
+function agCatalog(){return typeof CasinoUI!=='undefined'&&CasinoUI.isGame(state.ag.game);}
 function agNumber(n) { return Number(n || 0).toFixed(2).replace(/\.00$/, ''); }
 function agLocked() { const a=state.ag; return !state.connected || !a.info || Boolean(a.pending) || a.animating; }
 function agMaxBet() {
@@ -20,6 +22,7 @@ function stopArcade() {
 function openArcade(game) {
   if(!Object.hasOwn(AG_NAMES,game)) return;
   showLobby(); const a=state.ag; a.game=game;
+  if(agCatalog())CasinoUI.prepare(game);
   $('screen-lobby').classList.add('hidden'); $('screen-ag').classList.remove('hidden'); $('screen-ag').scrollTop=0;
   stopRoomsPolling(); tg?.BackButton?.show();
   $('ag-title').textContent=AG_NAMES[game]; $('ag-subtitle').textContent=AG_SUBTITLES[game]; $('ag-rules-text').textContent=AG_RULES[game];
@@ -60,7 +63,8 @@ function onArcadeState(message) {
   a.info=message;
   if(action==='open'&&message.options) a.options[a.game]=structuredClone(message.options);
   const changed=!previous||previous.revision!==message.revision;
-  if(action==='start'&&message.phase==='done'&&changed) {
+  if(agCatalog()&&changed){a.cgPrevious=previous;CasinoUI.changed();}
+  if(changed&&((message.phase==='done'&&(action==='start'||(agCatalog()&&action==='pick')))||(agCatalog()&&message.phase==='play'&&((action==='pick'&&a.game!=='scratch')||(action==='start'&&a.game==='videopoker'))))) {
     a.animating=true; renderArcade(); agAnimateResult(message); return;
   }
   renderArcade();
@@ -68,6 +72,7 @@ function onArcadeState(message) {
   if(a.game==='tower'&&message.phase==='play'&&(changed||action==='open')) agScrollTower();
 }
 function agSettings() {
+  if(agCatalog())return CasinoUI.settings();
   const a=state.ag, info=a.info, disabled=agLocked()||info?.phase==='play';
   const attr=disabled?'disabled':'';
   const button=(label,value,selected)=>`<button type="button" class="ag-choice ${selected?'is-selected':''}" data-ag-option="${value}" ${attr} aria-pressed="${Boolean(selected)}">${label}</button>`;
@@ -77,6 +82,7 @@ function agSettings() {
   return `<div class="ag-choices ag-sides">${[['Дракон','dragon',2],['Ничья','tie',12],['Тигр','tiger',2]].map(([n,v,m])=>button(`${n}<small>${m}×</small>`,v,a.options.dragon.side===v)).join('')}</div>`;
 }
 function agPayoutTable() {
+  if(agCatalog())return CasinoUI.paytable();
   const a=state.ag, cfg=a.info?.config; if(!cfg) return '';
   let values=[];
   if(a.game==='plinko') values=cfg.tables[a.options.plinko.risk].map((n,i)=>[String(i+1),n]);
@@ -105,10 +111,12 @@ function renderArcade(board=true) {
   if(a.game==='plinko'&&!pending)agPlinkoSummary();
   $('ag-settings').innerHTML=agSettings();
   $('ag-paytable').innerHTML=agPayoutTable();
+  if(agCatalog())CasinoUI.afterRender();
   if(board) agBoard();
   else for(const el of $('ag-stage').querySelectorAll('button')) el.disabled=locked||el.dataset.locked==='true';
 }
 function agBoard() {
+  if(agCatalog())return CasinoUI.board();
   const a=state.ag, info=a.info, stage=$('ag-stage');
   if(a.game==='plinko') {
     const risk=a.options.plinko.risk, table=info?.config.tables[risk]||Array(11).fill(0);
@@ -158,6 +166,7 @@ function agScrollTower() {
   if(box&&row)box.scrollTo({top:Math.max(0,row.offsetTop-box.offsetTop-box.clientHeight*.58),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 }
 function agAnimateResult(info) {
+  if(agCatalog())return CasinoUI.animate(info);
   const a=state.ag, token=++a.token, game=a.game, reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const balls=game==='plinko'?(info.balls||[{path:info.path,slot:info.slot,payout:info.payout}]):null;
   const motions=balls?.map(ball=>PlinkoMotion.create(ball.path));
@@ -206,12 +215,14 @@ function agResult() {
   overlay.innerHTML=`<svg class="icon mn-suit-l" aria-hidden="true"><use href="#i-spade"/></svg><svg class="icon mn-suit-r" aria-hidden="true"><use href="#i-club"/></svg><i class="mn-spark mn-spark-1">✦</i><i class="mn-spark mn-spark-2">✦</i><b>×${agNumber(info.multiplier)}</b><span><i class="mn-coin">$</i>${money(info.payout).slice(1)}</span><button type="button" data-ag-dismiss aria-label="Закрыть выигрыш">×</button>`;
 }
 function bindArcade() {
+  if(typeof CasinoUI!=='undefined'){CasinoUI.setup();CasinoUI.bind();}
   for(const el of document.querySelectorAll('[data-arcade]'))el.addEventListener('click',()=>openArcade(el.dataset.arcade));
   $('ag-amount').addEventListener('input',()=>{if(state.ag.game==='plinko')agPlinkoSummary();});
   $('ag-back').addEventListener('click',closeArcade);
   $('ag-main').addEventListener('click',()=>{
     const info=state.ag.info;if(!info)return;
     if(info.phase==='done'&&!info.settled){agOpenRequest();renderArcade(false);return;}
+    if(agCatalog()&&CasinoUI.main())return;
     agRequest(info.phase==='play'?'cashout':'start');
   });
   $('ag-overlay').addEventListener('click',()=>{$('ag-overlay').classList.add('hidden');});

@@ -1,9 +1,10 @@
 'use strict';
 const { randomInt } = require('node:crypto');
+const catalog = require('./catalog');
 const { MAX_BALANCE } = require('../accounts');
 
 class ArcadeError extends Error {}
-const GAMES = ['plinko', 'tower', 'keno', 'dragon'];
+const GAMES = ['plinko', 'tower', 'keno', 'dragon', ...catalog.ids];
 const MIN_BET = 10;
 const ROWS = 10;
 const FLOORS = 9;
@@ -36,6 +37,7 @@ function maxBet(game, level) {
   return Math.min(100000, Math.floor(MAX_BALANCE / max));
 }
 function config(game) {
+  if (catalog.ids.includes(game)) return catalog.config(game);
   if (!GAMES.includes(game)) throw new ArcadeError('Игра не найдена');
   const base = { minBet: game === 'tower' ? 100 : MIN_BET, maxBet: maxBet(game) };
   if (game === 'plinko') return { ...base, rows: ROWS, maxBalls: 25, tables: PLINKO, probabilities: plinkoProbabilities };
@@ -85,6 +87,7 @@ function finish(round, multiplier, payout = moneyAt(round.bet, multiplier)) {
   round.history = [{ multiplier, payout: round.payout, result: round.result }, ...round.history].slice(0, 15);
 }
 function start(game, previous, amount, options, revision, rng = randomInt) {
+  if (catalog.ids.includes(game)) return catalog.start(game, previous, amount, options, revision, rng);
   config(game); check(previous, revision);
   if (previous.phase === 'play' || !previous.settled) throw new ArcadeError('Сначала завершите предыдущий раунд');
   const selected = optionsFor(game, options);
@@ -140,6 +143,7 @@ function actTower(previous, action, index, revision) {
   return round;
 }
 function publicState(game, round) {
+  if (catalog.ids.includes(game)) return catalog.publicState(game, round);
   const out = { phase: round.phase, revision: round.revision, settled: round.settled, bet: round.bet,
     payout: round.payout, multiplier: round.multiplier, result: round.result, history: round.history,
     options: round.options || null };
@@ -152,4 +156,8 @@ function publicState(game, round) {
   if (round.phase === 'done') for (const key of ['unitBet', 'balls', 'path', 'slot', 'drawn', 'hits', 'cards', 'winner']) if (round[key] !== undefined) out[key] = round[key];
   return out;
 }
-module.exports = { ArcadeError, GAMES, PLINKO, KENO, TOWER, LEVELS, ROWS, FLOORS, config, initial, start, actTower, publicState, choose, moneyAt };
+function actGame(game, previous, action, index, revision, rng) {
+  if (game === 'tower') return actTower(previous, action, index, revision);
+  return catalog.act(game, previous, action, index, revision, rng);
+}
+module.exports = { CatalogError: catalog.CatalogError, actGame, ArcadeError, GAMES, PLINKO, KENO, TOWER, LEVELS, ROWS, FLOORS, config, initial, start, actTower, publicState, choose, moneyAt };

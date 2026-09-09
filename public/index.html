@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/hilo.css?v=3" />
   <link rel="stylesheet" href="/crash.css?v=1" />
   <link rel="stylesheet" href="/arcade.css?v=3" />
+  <link rel="stylesheet" href="/casino-ui.css?v=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/croc-theme.css?v=1" />
   <link rel="stylesheet" href="/amethyst.css?v=1" />
@@ -254,6 +255,7 @@
 <button type="button" data-arcade="tower" class="lb-play lb-play-ag"><span class="lb-play-art ag-lobby-art" aria-hidden="true"><svg viewBox="0 0 112 120"><path d="M20 105V80H32V56H44V32H56V8H68V32H80V56H92V105Z" fill="#4d326d" stroke="#bf8ced" stroke-width="2"/><path d="M20 80H92M32 56H80M44 32H68" stroke="#9868c0" stroke-width="2"/><path d="M48 19L56 3 64 19 56 25Z" fill="#ecbc73"/><path d="M43 105V86Q56 67 69 86V105" fill="#ba86f5"/></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Tower</span><b>Башня</b><span>Девять этажей · забирай выигрыш</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
 <button type="button" data-arcade="keno" class="lb-play lb-play-ag"><span class="lb-play-art ag-lobby-art" aria-hidden="true"><svg viewBox="0 0 112 120"><rect x="9" y="14" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="23" y="34" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">1</text><rect x="42" y="14" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="56" y="34" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">4</text><rect x="75" y="14" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="89" y="34" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">7</text><rect x="9" y="47" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="23" y="67" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">10</text><rect x="42" y="47" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="56" y="67" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">13</text><rect x="75" y="47" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="89" y="67" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">16</text><rect x="9" y="80" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="23" y="100" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">19</text><rect x="42" y="80" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="56" y="100" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">22</text><rect x="75" y="80" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="89" y="100" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">25</text></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Keno</span><b>Кено</b><span>Выбирай числа · лови совпадения</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
 <button type="button" data-arcade="dragon" class="lb-play lb-play-ag"><span class="lb-play-art ag-lobby-art" aria-hidden="true"><svg viewBox="0 0 112 120"><g transform="rotate(-12 34 67)"><rect x="9" y="24" width="48" height="76" rx="7" fill="#faf6ff"/><text x="16" y="44" fill="#20182e" font-size="19" font-weight="bold">A</text><text x="22" y="79" fill="#20182e" font-size="33">♠</text></g><g transform="rotate(12 80 65)"><rect x="56" y="21" width="48" height="76" rx="7" fill="#fff7fc"/><text x="63" y="42" fill="#d3264c" font-size="19" font-weight="bold">K</text><text x="69" y="77" fill="#d3264c" font-size="30">♥</text></g></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Dragon & Tiger</span><b>Дракон и Тигр</b><span>Две карты · старшая побеждает</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
+<div id="casino-catalog" class="cg-catalog" aria-label="Мини-игры"></div>
             <details class="card rules" id="rules-card">
               <summary>Правила и порядок комбинаций</summary>
               <ol class="rules-list">
@@ -956,9 +958,12 @@
     </div>
   </section>
   <script src="/plinko-motion.js?v=2"></script>
-  <script src="/arcade.js?v=3"></script>
+  <script src="/casino-rules.js?v=1"></script>
+  <script src="/casino-art.js?v=1"></script>
+  <script src="/casino-ui.js?v=1"></script>
+  <script src="/arcade.js?v=4"></script>
   <script src="/crash.js?v=2"></script>
   <script src="/hilo.js?v=3"></script>
-  <script src="/app.js?v=98"></script>
+  <script src="/app.js?v=99"></script>
 </body>
 </html>

@@ -26,6 +26,10 @@ node --check public/arcade.js
 node --check public/plinko-motion.js
 node --check server/arcade/game.js
 node --check server/arcade/service.js
+node --check server/arcade/catalog.js
+node --check public/casino-rules.js
+node --check public/casino-art.js
+node --check public/casino-ui.js
 systemctl start poker
 systemctl is-active --quiet poker
 trap - ERR
