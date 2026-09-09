@@ -69,14 +69,14 @@
  <linearGradient id="${p}-glass" x2=".5" y2="1"><stop stop-color="#55738e"/><stop offset="1" stop-color="#1a223d"/></linearGradient>
  <linearGradient id="${p}-blue" x1="0" y1="0" x2=".8" y2="1"><stop stop-color="#8cafff"/><stop offset=".4" stop-color="#487ceb"/><stop offset=".7" stop-color="#2856c0"/><stop offset="1" stop-color="#193570"/></linearGradient>
  <linearGradient id="${p}-red" x1="0" y1="0" x2=".8" y2="1"><stop stop-color="#ffada1"/><stop offset=".4" stop-color="#f26c77"/><stop offset=".7" stop-color="#cd435e"/><stop offset="1" stop-color="#76334a"/></linearGradient>
- <linearGradient id="${p}-road" x2="0" y2="1"><stop stop-color="#34304e"/><stop offset="1" stop-color="#242139"/></linearGradient>
- <linearGradient id="${p}-curb" x2="1" y2="0"><stop stop-color="#6e508f"/><stop offset=".5" stop-color="#433357"/><stop offset="1" stop-color="#8c69b4"/></linearGradient>
+ <linearGradient id="${p}-road" x2="0" y2="1"><stop stop-color="#2c3a54"/><stop offset="1" stop-color="#202c42"/></linearGradient>
+ <linearGradient id="${p}-curb" x2="1" y2="0"><stop stop-color="#56729a"/><stop offset=".5" stop-color="#354967"/><stop offset="1" stop-color="#7194be"/></linearGradient>
  <radialGradient id="${p}-light"><stop stop-color="#ffdc98" stop-opacity=".5"/><stop offset="1" stop-color="#ffdc98" stop-opacity="0"/></radialGradient>
  <pattern id="${p}-grain" width="29" height="23" patternUnits="userSpaceOnUse"><circle cx="3" cy="7" r=".6" fill="#ddd0fa" opacity=".07"/><circle cx="18" cy="18" r=".8" fill="#060615" opacity=".18"/></pattern>
  <clipPath id="${p}-road-clip"><path d="M36 0H364L380 300H20Z"/></clipPath>
  </defs>`;}
- function hatch(p){return `<ellipse cy="5" rx="34" ry="21" fill="#0e0a1b" opacity=".45"/><ellipse rx="34" ry="21" fill="#3e3158" stroke="#53426e" stroke-width="2"/><ellipse rx="27" ry="16" fill="#261c3b" stroke="#665180" stroke-width="1.5"/><path d="M-10-7V7M0-8V8M10-7V7" stroke="#141024" stroke-width="4.5" stroke-linecap="round"/>`;}
- function barrier(){return `<ellipse cy="20" rx="34" ry="5" fill="#0c0818" opacity=".5"/><rect x="-26" y="0" width="9" height="19" rx="4" fill="#4d3c67"/><rect x="17" y="0" width="9" height="19" rx="4" fill="#4d3c67"/><rect x="-32" y="-11" width="64" height="17" rx="7" fill="#53406f"/><rect x="-28" y="-9" width="56" height="9" rx="4" fill="#eef0ff"/><path d="m-24-1 7-7h9l-7 7Zm18 0 7-7h9L3-1Zm18 0 7-7h7l-7 7Z" fill="#6287ff"/>`;}
+ function hatch(p){return `<ellipse cy="5" rx="34" ry="21" fill="#0c1322" opacity=".45"/><ellipse rx="34" ry="21" fill="#344966" stroke="#486180" stroke-width="2"/><ellipse rx="27" ry="16" fill="#21324a" stroke="#597597" stroke-width="1.5"/><path d="M-10-7V7M0-8V8M10-7V7" stroke="#111c2e" stroke-width="4.5" stroke-linecap="round"/>`;}
+ function barrier(){return `<ellipse cy="20" rx="34" ry="5" fill="#0b1321" opacity=".5"/><rect x="-26" y="0" width="9" height="19" rx="4" fill="#3e5473"/><rect x="17" y="0" width="9" height="19" rx="4" fill="#3e5473"/><rect x="-32" y="-11" width="64" height="17" rx="7" fill="#455d7f"/><rect x="-28" y="-9" width="56" height="9" rx="4" fill="#eef0ff"/><path d="m-24-1 7-7h9l-7 7Zm18 0 7-7h9L3-1Zm18 0 7-7h7l-7 7Z" fill="#6287ff"/>`;}
  function laneState(index,info,reveal=true){
   if(reveal&&info.last?.safe===false)return index===(info.step||0)+1?'is-failed':index<=(info.step||0)?'is-passed':'';
   return index===(info.step||0)?'is-current':index<(info.step||0)?'is-passed':'';
@@ -87,25 +87,25 @@
   const start=Math.max(1,target-1),end=Math.min(lanes.length||20,target+4);
   const indices=Array.from({length:end-start+1},(_,i)=>start+i);
   return `<div class="ch-scene${animating?' is-moving':''}${!animating&&info.last?.safe===false?' is-crashed':''}"><svg class="ch-road-svg" viewBox="0 0 400 338" role="img" aria-label="Курица переходит дорогу по люкам; пройденные полосы закрываются барьерами.">${defs(p)}
-  <rect width="400" height="338" fill="#1b142e"/>
+  <rect width="400" height="338" fill="#192238"/>
   <g data-ch-world="" transform="translate(${-f.camera} 0)">
-   <g class="ch-start-zone"><path d="M0 0H128V338H0Z" fill="#20172f"/>
-   ${[0,82,164,246].map(y=>`<rect x="112" y="${y}" width="16" height="79" rx="2" fill="#463651"/><rect x="112" y="${y+74}" width="16" height="4" rx="1" fill="#5c456b"/>`).join('')}
-   ${[0,24,48,72,96].map(x=>`<rect x="${x}" y="204" width="21" height="57" rx="3" fill="#57426c"/>`).join('')}
-   <g transform="translate(53 51)"><ellipse cy="107" rx="23" ry="8" fill="#110d20"/><rect x="-15" y="88" width="30" height="16" rx="9" fill="#4e3c65"/><rect x="-5" y="24" width="10" height="69" rx="4" fill="#4b3b61"/><rect x="-27" y="-10" width="54" height="33" rx="16" fill="#4b3a63"/><circle cx="-12" cy="6" r="10" fill="#271d39"/><circle cx="12" cy="6" r="10" fill="#271d39"/><circle data-ch-signal="stop" cx="-12" cy="6" r="7" fill="#e0ad59"/><circle data-ch-signal="go" cx="12" cy="6" r="7" fill="#3e3352"/><path d="m-15 2 2-2M9 2l2-2" stroke="#fff3c1" stroke-width="2" stroke-linecap="round" opacity=".75"/></g>
-   <g transform="translate(57 296)"><ellipse cy="14" rx="31" ry="12" fill="#120c20"/><path d="M-29 3Q-38-13-21-16Q-24-31-6-26Q8-37 17-23Q34-23 30-9Q43 6 26 11Q21 29 6 20Q-14 29-19 15Q-36 18-29 3" fill="#3d2b52"/><path d="M-26-3Q-32-15-17-15Q-19-28-3-22Q9-32 15-20Q31-22 26-8Q35 3 20 7Q14 19 3 10Q-12 20-17 5Z" fill="#503662"/></g>
+   <g class="ch-start-zone"><path d="M0 0H128V338H0Z" fill="#1d2940"/>
+   ${[0,82,164,246].map(y=>`<rect x="112" y="${y}" width="16" height="79" rx="2" fill="#35455f"/><rect x="112" y="${y+74}" width="16" height="4" rx="1" fill="#485d7a"/>`).join('')}
+   ${[0,24,48,72,96].map(x=>`<rect x="${x}" y="204" width="21" height="57" rx="3" fill="#465b79"/>`).join('')}
+   <g transform="translate(53 51)"><ellipse cy="107" rx="23" ry="8" fill="#101828"/><rect x="-15" y="88" width="30" height="16" rx="9" fill="#3d5271"/><rect x="-5" y="24" width="10" height="69" rx="4" fill="#3b506d"/><rect x="-27" y="-10" width="54" height="33" rx="16" fill="#3b506f"/><circle cx="-12" cy="6" r="10" fill="#202d43"/><circle cx="12" cy="6" r="10" fill="#202d43"/><circle data-ch-signal="stop" cx="-12" cy="6" r="7" fill="#e0ad59"/><circle data-ch-signal="go" cx="12" cy="6" r="7" fill="#34445f"/><path d="m-15 2 2-2M9 2l2-2" stroke="#fff3c1" stroke-width="2" stroke-linecap="round" opacity=".75"/></g>
+   <g transform="translate(57 296)"><ellipse cy="14" rx="31" ry="12" fill="#101a2a"/><path d="M-29 3Q-38-13-21-16Q-24-31-6-26Q8-37 17-23Q34-23 30-9Q43 6 26 11Q21 29 6 20Q-14 29-19 15Q-36 18-29 3" fill="#2d405b"/><path d="M-26-3Q-32-15-17-15Q-19-28-3-22Q9-32 15-20Q31-22 26-8Q35 3 20 7Q14 19 3 10Q-12 20-17 5Z" fill="#3c5270"/></g>
    </g>
    ${indices.map(i=>{const x=laneX(i),kind=laneState(i,shown,!animating),safe=i<=current;
     const traffic=i>target+(animating?1:0);
     return `<g data-ch-world-lane="${i}" transform="translate(${x} 0)">
-     <path d="M54 4V334" stroke="#41334f" stroke-width="3" stroke-dasharray="15 19" stroke-linecap="round" opacity=".55"/>
+     <path d="M54 4V334" stroke="#344762" stroke-width="3" stroke-dasharray="15 19" stroke-linecap="round" opacity=".55"/>
      <g transform="translate(0 ${crossingY})">${hatch(p)}</g>
      <g data-ch-barrier="${i}" transform="translate(0 146)" ${safe?'':'display="none"'}>${barrier()}</g>
      ${traffic?`<g class="ch-traffic ${i%2?'ch-traffic-red':'ch-traffic-blue'}" style="--ch-delay:-${(i*1.7)%6}s">${car(p,`url(#${p}-${i%2?'red':'blue'})`).replace('<g ','<g transform="translate(0 56) scale(.92)" ')}</g>`:''}
      <g data-ch-lane="${i}" class="ch-lane ${kind} ${lanes[i-1]>=1000?'is-long':''}" transform="translate(0 267)"><rect x="-42" width="84" height="30" rx="12"/><text y="20" text-anchor="middle">${Number(lanes[i-1]||1).toFixed(2)}×</text></g>
     </g>`;}).join('')}
   </g>
-  <ellipse data-ch-shadow="" cx="${f.x}" cy="${crossingY}" rx="22" ry="6" fill="#110b21" opacity=".3"/>
+  <ellipse data-ch-shadow="" cx="${f.x}" cy="${crossingY}" rx="22" ry="6" fill="#101829" opacity=".3"/>
   <g data-chicken="" transform="translate(${f.x} 194) scale(.75)">${chicken(p)}</g>
   <g data-ch-crossing-car="" display="none">${car(p,`url(#${p}-red)`)}</g>
   </svg></div>`;
@@ -122,8 +122,8 @@
   attr('[data-ch-crossing-car]','display',animating?'inline':'none');
   attr('[data-ch-crossing-car]','transform',`translate(${f.carX} ${f.carY}) scale(${f.carScale})`);
   const cleared=!animating||t>=.88,visible=cleared?info:(previous||{});
-  attr('[data-ch-signal="stop"]','fill',animating?'#49344b':'#e0ad59');
-  attr('[data-ch-signal="go"]','fill',animating?'#8cccaa':'#3e3352');
+  attr('[data-ch-signal="stop"]','fill',animating?'#39485c':'#e0ad59');
+  attr('[data-ch-signal="go"]','fill',animating?'#8cccaa':'#34445f');
   for(const node of host.querySelectorAll('[data-ch-barrier]')){
    const i=Number(node.dataset.chBarrier),raised=i<=(visible.step||0);
    node.setAttribute('display',raised?'inline':'none');
@@ -135,7 +135,7 @@
    node.setAttribute('class',`ch-lane ${state} ${(info.coefficients?.[i-1]||0)>=1000?'is-long':''}`);
   }
  }
- function cover(){const p='ch-cover';return `<svg class="ch-cover" viewBox="0 0 150 140" aria-hidden="true">${defs(p)}<rect x="10" y="6" width="130" height="128" rx="16" fill="#241833"/><path d="M27 12V130M126 12V130" stroke="#705186" stroke-width="2" stroke-dasharray="12 10"/><g transform="translate(76 114)">${hatch(p)}</g><g transform="translate(76 35) scale(.68)">${barrier()}</g><g transform="translate(76 73) scale(.84)">${chicken(p)}</g></svg>`;}
+ function cover(){const p='ch-cover';return `<svg class="ch-cover" viewBox="0 0 150 140" aria-hidden="true">${defs(p)}<rect x="10" y="6" width="130" height="128" rx="16" fill="#1d2940"/><path d="M27 12V130M126 12V130" stroke="#55749a" stroke-width="2" stroke-dasharray="12 10"/><g transform="translate(76 114)">${hatch(p)}</g><g transform="translate(76 35) scale(.68)">${barrier()}</g><g transform="translate(76 73) scale(.84)">${chicken(p)}</g></svg>`;}
 
  const api={pose,legPath,scene,paint,cover,laneX,laneState,cameraAt,crossingY};if(typeof module==='object'&&module.exports)module.exports=api;else root.ChickenScene=api;
 })(globalThis);
