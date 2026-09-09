@@ -9,14 +9,18 @@
 .ag-board { padding:12px; isolation:isolate; }
 .ag-stage { width:100%; min-width:0; overflow:hidden; }
 .ag-status { min-height:20px; margin-bottom:6px; text-align:center; color:#c2b5ed; font-size:13px; }
-.ag-plinko { aspect-ratio:360/316; }
+.ag-plinko { aspect-ratio:360/350; }
 .ag-plinko-svg { display:block; width:100%; height:100%; }
 .ag-pin { fill:#c8b7ef; filter:drop-shadow(0 0 2px #af85fd70); }
 #ag-ball { filter:drop-shadow(0 0 5px #b88cff); }
-.ag-slot rect { fill:#402c70; stroke:#9163dc80; }
-.ag-slot:nth-of-type(2) rect,.ag-slot:last-of-type rect { fill:#bd6c30; stroke:#ffcc80; }
+.ag-pocket-fill { fill:#231734; }
+.ag-pocket-wall { fill:none; stroke:#8965b4; stroke-width:2; stroke-linecap:round; }
+.ag-slot-label { fill:#402c70; stroke:#9163dc80; }
+.ag-slot.is-edge .ag-slot-label { fill:#a9602b; stroke:#ffcc80; }
 .ag-slot text { fill:#f8eaff; font:700 7.5px var(--font); }
-.ag-slot.is-landed rect { fill:#7d59d4; stroke:#f0dbff; stroke-width:2; }
+.ag-slot.is-landed .ag-pocket-fill { fill:#3e285b; }
+.ag-slot.is-landed .ag-pocket-wall { stroke:#ebc9ff; filter:drop-shadow(0 0 3px #b677ed); }
+.ag-slot.is-landed .ag-slot-label { fill:#7d59d4; stroke:#f0dbff; stroke-width:2; }
 .ag-stats { display:grid; grid-template-columns:1fr 1fr; margin-top:10px; padding:12px 0 2px; border-top:1px solid #9480da30; text-align:center; }
 .ag-stats div+div { border-left:1px solid #9480da30; }
 .ag-stats small { display:block; color:#aaa0ca; font-size:12px; margin-bottom:6px; }

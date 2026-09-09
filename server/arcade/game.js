@@ -28,9 +28,9 @@ const KENO = {1:[0,3.96],2:[0,1.9,4.5],3:[0,1,3.1,10.4],4:[0,.8,1.8,5,22.5],5:[0
 const LEVELS = { easy:{safe:3,columns:4}, medium:{safe:2,columns:3}, hard:{safe:1,columns:2}, expert:{safe:1,columns:3}, master:{safe:1,columns:4} };
 const TOWER = Object.fromEntries(Object.entries(LEVELS).map(([key, {safe,columns}]) =>
   [key, Array.from({ length:FLOORS }, (_,i) => Math.round(.98 * (columns/safe) ** (i+1) * 100) / 100)]));
-function maxBet(game) {
+function maxBet(game, level) {
   const max = game === 'plinko' ? Math.max(...Object.values(PLINKO).flat())
-    : game === 'tower' ? Math.max(...Object.values(TOWER).flat())
+    : game === 'tower' ? Math.max(...(TOWER[level] || Object.values(TOWER).flat()))
       : game === 'keno' ? Math.max(...Object.values(KENO).flat()) : 12;
   return Math.min(100000, Math.floor(MAX_BALANCE / max));
 }
@@ -38,7 +38,8 @@ function config(game) {
   if (!GAMES.includes(game)) throw new ArcadeError('Игра не найдена');
   const base = { minBet: MIN_BET, maxBet: maxBet(game) };
   if (game === 'plinko') return { ...base, rows: ROWS, tables: PLINKO, probabilities: plinkoProbabilities };
-  if (game === 'tower') return { ...base, floors: FLOORS, levels: LEVELS, tables: TOWER };
+  // Keep maxBet conservative for old clients; current clients use the selected level.
+  if (game === 'tower') return { ...base, maxBets: Object.fromEntries(Object.keys(LEVELS).map(level => [level, maxBet(game, level)])), floors: FLOORS, levels: LEVELS, tables: TOWER };
   if (game === 'keno') return { ...base, size: 40, drawCount: 10, maxPicks: 10, tables: KENO };
   return { ...base, table: { dragon: 2, tiger: 2, tie: 12 }, tieReturn: .5 };
 }
@@ -83,8 +84,9 @@ function finish(round, multiplier) {
 function start(game, previous, amount, options, revision, rng = randomInt) {
   config(game); check(previous, revision);
   if (previous.phase === 'play' || !previous.settled) throw new ArcadeError('Сначала завершите предыдущий раунд');
-  if (!Number.isSafeInteger(amount) || amount < MIN_BET || amount > maxBet(game)) throw new ArcadeError(`Ставка от $0.10 до $${(maxBet(game) / 100).toFixed(2)}`);
   const selected = optionsFor(game, options);
+  const limit = maxBet(game, selected.level);
+  if (!Number.isSafeInteger(amount) || amount < MIN_BET || amount > limit) throw new ArcadeError(`Ставка от $0.10 до $${(limit / 100).toFixed(2)}`);
   const round = { ...initial(), revision: previous.revision + 1, phase: 'play', settled: false,
     history: previous.history, bet: amount, options: selected };
   if (game === 'plinko') {

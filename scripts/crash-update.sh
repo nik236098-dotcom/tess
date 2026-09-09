@@ -23,6 +23,7 @@ node --check public/crash.js
 node --check server/crash/game.js
 node --check server/crash/service.js
 node --check public/arcade.js
+node --check public/plinko-motion.js
 node --check server/arcade/game.js
 node --check server/arcade/service.js
 systemctl start poker

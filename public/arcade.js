@@ -9,6 +9,10 @@ const AG_RULES = {
 };
 function agNumber(n) { return Number(n || 0).toFixed(2).replace(/\.00$/, ''); }
 function agLocked() { const a=state.ag; return !state.connected || !a.info || Boolean(a.pending) || a.animating; }
+function agMaxBet() {
+  const a=state.ag, cfg=a.info?.config;
+  return a.game==='tower' ? cfg?.maxBets?.[a.options.tower.level] ?? cfg?.maxBet : cfg?.maxBet;
+}
 function stopArcade() {
   const a=state.ag; a.token++; cancelAnimationFrame(a.raf); a.animating=false; a.game=null; a.info=null; a.pending=null;
   $('screen-ag').classList.add('hidden');
@@ -36,7 +40,7 @@ function agRequest(action, extra={}) {
   const info=a.info, message={type:'ag_'+action,game:a.game,revision:info.revision,...extra};
   if(action==='start') {
     const amount=toCents($('ag-amount').value);
-    if(!Number.isSafeInteger(amount)||amount<info.config.minBet||amount>info.config.maxBet) {toast(`Ставка от ${money(info.config.minBet)} до ${money(info.config.maxBet)}`);return;}
+    if(!Number.isSafeInteger(amount)||amount<info.config.minBet||amount>agMaxBet()) {toast(`Ставка от ${money(info.config.minBet)} до ${money(agMaxBet())}`);return;}
     if(amount>state.balance) {toast('Недостаточно средств');return;}
     if(a.game==='keno'&&!a.options.keno.picks.length) {toast('Выбери хотя бы одно число');return;}
     message.amount=amount; message.options=structuredClone(a.options[a.game]);
@@ -94,7 +98,8 @@ function renderArcade(board=true) {
   main.textContent=pending?'Получить сохранённую выплату':a.animating?'Раунд идёт…':live?(info.floor?'Забрать '+money(info.available):'Выбери плитку первого этажа'):a.game==='plinko'?'Запустить шарик':a.game==='tower'?'Начать подъём':'Сделать ставку';
   $('ag-amount').disabled=Boolean(locked||live||pending);
   for(const el of document.querySelectorAll('[data-ag-amount]')) el.disabled=Boolean(locked||live||pending);
-  $('ag-limit').textContent=info?`Ставка ${money(info.config.minBet)}–${money(info.config.maxBet)}`:'';
+  $('ag-limit').textContent=info?`Ставка ${money(info.config.minBet)}–${money(agMaxBet())}`:'';
+  if(info) { $('ag-amount').min=(info.config.minBet/100).toFixed(2); $('ag-amount').max=(agMaxBet()/100).toFixed(2); }
   $('ag-note').textContent=pending?'Выплата ждёт свободного места на балансе. Освободи место и нажми кнопку получения.':live?'Можно выйти: текущий этаж и ставка сохранятся.':'Коэффициенты включают ставку. Выплата округляется вниз до цента.';
   $('ag-settings').innerHTML=agSettings();
   $('ag-paytable').innerHTML=agPayoutTable();
@@ -105,16 +110,22 @@ function agBoard() {
   const a=state.ag, info=a.info, stage=$('ag-stage');
   if(a.game==='plinko') {
     const risk=a.options.plinko.risk, table=info?.config.tables[risk]||Array(11).fill(0);
-    let pins='';for(let r=0;r<10;r++)for(let j=0;j<=r;j++)pins+=`<circle cx="${180+(j-r/2)*28}" cy="${40+r*23}" r="3" class="ag-pin"/>`;
+    const g=PlinkoMotion.geometry;
+    const pins=PlinkoMotion.pins.map(pin=>`<circle cx="${pin.x}" cy="${pin.y}" r="${g.pinRadius}" class="ag-pin"/>`).join('');
     const slot=!a.animating&&info?.phase==='done'?info.slot:-1;
-    stage.innerHTML=`<svg viewBox="0 0 360 316" class="ag-plinko-svg" role="img" aria-label="Поле Plinko, 10 рядов"><defs><radialGradient id="ag-ball-glow"><stop stop-color="#fff"/><stop offset=".4" stop-color="#e8d1ff"/><stop offset="1" stop-color="#a477ff"/></radialGradient></defs>${pins}${table.map((n,i)=>`<g class="ag-slot ${i===slot?'is-landed':''}"><rect x="${26+i*28}" y="282" width="26" height="24" rx="5"/><text x="${39+i*28}" y="298" text-anchor="middle">${agNumber(n)}×</text></g>`).join('')}<circle id="ag-ball" cx="${slot>=0?180+(slot-5)*28:180}" cy="${slot>=0?273:18}" r="7" fill="url(#ag-ball-glow)"/></svg>`;
+    const pockets=table.map((n,i)=>{
+      const x=PlinkoMotion.slotX(i), top=g.pocketTop, bottom=g.pocketFloor;
+      return `<g class="ag-slot ${i===slot?'is-landed':''} ${i===0||i===10?'is-edge':''}" data-ag-slot="${i}"><rect class="ag-pocket-fill" x="${x-12}" y="${top}" width="24" height="${bottom-top}" rx="4"/><path class="ag-pocket-wall" d="M${x-12} ${top}V${bottom-4}Q${x-12} ${bottom} ${x-8} ${bottom}H${x+8}Q${x+12} ${bottom} ${x+12} ${bottom-4}V${top}"/><rect class="ag-slot-label" x="${x-13}" y="323" width="26" height="21" rx="5"/><text x="${x}" y="337" text-anchor="middle">${agNumber(n)}×</text></g>`;
+    }).join('');
+    stage.innerHTML=`<svg viewBox="0 0 ${g.width} ${g.height}" class="ag-plinko-svg" role="img" aria-label="Поле Plinko, 10 рядов"><defs><radialGradient id="ag-ball-glow"><stop stop-color="#fff"/><stop offset=".45" stop-color="#f8e4ff"/><stop offset="1" stop-color="#b184f5"/></radialGradient></defs>${pins}${pockets}<circle id="ag-pin-impact" r="6" opacity="0" fill="none" stroke="#f3d4ff" stroke-width="2"/><circle id="ag-ball" cx="${slot>=0?PlinkoMotion.slotX(slot):g.center}" cy="${slot>=0?PlinkoMotion.restY:g.startY}" r="${g.ballRadius}" fill="url(#ag-ball-glow)"/></svg>`;
   } else if(a.game==='tower') {
     const old=stage.querySelector('.ag-tower-scroll')?.scrollTop;
-    const table=info?.config.tables[a.options.tower.level]||Array(9).fill(0), columns=info?.config.levels[a.options.tower.level].columns||4, floor=info?.floor||0;
+    const round=info?.options?.level===a.options.tower.level?info:null;
+    const table=info?.config.tables[a.options.tower.level]||Array(9).fill(0), columns=info?.config.levels[a.options.tower.level].columns||4, floor=round?.floor||0;
     stage.innerHTML=`<div class="ag-tower-scroll"><div class="ag-tower-rows">${Array.from({length:9},(_,i)=>8-i).map(row=>{
-      const step=info?.steps?.[row], current=info?.phase==='play'&&row===floor;
+      const step=round?.steps?.[row], current=round?.phase==='play'&&row===floor;
       return `<div class="ag-floor ${current?'is-current':''}" data-floor="${row}" style="--ag-columns:${columns}"><span class="ag-floor-label">${row===8?'♛':row+1}</span>${Array.from({length:columns},(_,i)=>i).map(col=>{
-        const trap=info?.revealed?.[row]?.includes(col), picked=step?.index===col, disabled=agLocked()||!current;
+        const trap=round?.revealed?.[row]?.includes(col), picked=step?.index===col, disabled=agLocked()||!current;
         return `<button type="button" data-ag-tile="${col}" data-locked="${!current}" ${disabled?'disabled':''} class="ag-tile ${step?(trap?'is-trap':'is-safe'):''} ${picked?'is-picked':''}" aria-label="Этаж ${row+1}, плитка ${col+1}">${step?(trap?'×':'✦'):'◇'}</button>`;
       }).join('')}<b class="ag-floor-pay">${agNumber(table[row])}×</b></div>`;
     }).join('')}</div></div>`;
@@ -136,16 +147,21 @@ function agScrollTower() {
 }
 function agAnimateResult(info) {
   const a=state.ag, token=++a.token, game=a.game, reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const duration=reduced?0:game==='plinko'?2100:game==='keno'?2400:1400;
+  const motion=game==='plinko'?PlinkoMotion.create(info.path):null;
+  const duration=reduced?0:motion?motion.duration:game==='keno'?2400:1400;
   const started=performance.now(); let last=-1;
   const tick=now=>{
     if(token!==a.token||game!==a.game)return;
     const progress=duration?Math.min(1,(now-started)/duration):1;
     if(game==='plinko') {
-      const points=[{x:180,y:18},{x:180,y:40}];let x=180;
-      for(let i=0;i<info.path.length;i++){x+=(info.path[i]?14:-14);points.push({x,y:40+(i+1)*23});}
-      const position=progress*(points.length-1), i=Math.min(points.length-2,Math.floor(position)), f=position-i;
-      const ball=$('ag-ball');if(ball){ball.setAttribute('cx',points[i].x+(points[i+1].x-points[i].x)*f);ball.setAttribute('cy',points[i].y+(points[i+1].y-points[i].y)*f-5*Math.sin(f*Math.PI));}
+      const position=PlinkoMotion.sample(motion,progress*motion.duration);
+      const ball=$('ag-ball');if(ball){ball.setAttribute('cx',position.x);ball.setAttribute('cy',position.y);}
+      const impact=$('ag-pin-impact');
+      if(impact){
+        impact.setAttribute('opacity',position.impact?.strength||0);
+        if(position.impact){impact.setAttribute('cx',position.impact.x);impact.setAttribute('cy',position.impact.y);impact.setAttribute('r',4+(1-position.impact.strength)*4);}
+      }
+      if(position.landed&&last!==info.slot){$('ag-stage').querySelector(`[data-ag-slot="${info.slot}"]`)?.classList.add('is-landed');last=info.slot;}
     } else if(game==='keno') {
       const count=Math.min(10,Math.floor(progress*11));
       if(count!==last){for(let i=last<0?0:last;i<count;i++){
@@ -179,13 +195,21 @@ function bindArcade() {
     agRequest(info.phase==='play'?'cashout':'start');
   });
   $('ag-overlay').addEventListener('click',()=>{$('ag-overlay').classList.add('hidden');});
-  $('ag-settings').addEventListener('change',event=>{if(event.target.id==='ag-difficulty'&&!agLocked()&&state.ag.info?.phase!=='play'){state.ag.options.tower.level=event.target.value;renderArcade();}});
+  $('ag-settings').addEventListener('change',event=>{
+    const a=state.ag;
+    if(a.game==='tower'&&event.target.id==='ag-difficulty'&&!agLocked()&&a.info?.phase!=='play'&&Object.hasOwn(a.info.config.levels,event.target.value)) {
+      a.options.tower.level=event.target.value;
+      renderArcade();
+    }
+  });
   $('ag-settings').addEventListener('click',event=>{
     if(agLocked()||state.ag.info?.phase==='play')return;
-    const a=state.ag, option=event.target.closest('[data-ag-option]');
+    const a=state.ag, option=event.target.closest('[data-ag-option]'), clear=event.target.closest('[data-ag-clear]'), quick=event.target.closest('[data-ag-quick]');
+    // A native select must survive its opening click until its change event.
+    if(!option&&!clear&&!quick)return;
     if(option){a.options[a.game][a.game==='plinko'?'risk':a.game==='tower'?'level':'side']=option.dataset.agOption;}
-    if(event.target.closest('[data-ag-clear]'))a.options.keno.picks=[];
-    if(event.target.closest('[data-ag-quick]')){const pool=Array.from({length:40},(_,i)=>i+1);for(let i=0;i<5;i++){const j=i+Math.floor(Math.random()*(40-i));[pool[i],pool[j]]=[pool[j],pool[i]];}a.options.keno.picks=pool.slice(0,5);}
+    if(clear)a.options.keno.picks=[];
+    if(quick){const pool=Array.from({length:40},(_,i)=>i+1);for(let i=0;i<5;i++){const j=i+Math.floor(Math.random()*(40-i));[pool[i],pool[j]]=[pool[j],pool[i]];}a.options.keno.picks=pool.slice(0,5);}
     renderArcade();
   });
   $('ag-stage').addEventListener('click',event=>{
@@ -196,7 +220,7 @@ function bindArcade() {
   });
   for(const el of document.querySelectorAll('[data-ag-amount]'))el.addEventListener('click',()=>{
     if(agLocked())return;
-    const max=Math.min(state.balance,state.ag.info.config.maxBet), value=toCents($('ag-amount').value)??100;
+    const max=Math.min(state.balance,agMaxBet()), value=toCents($('ag-amount').value)??100;
     const amount=Math.max(10,Math.min(max,Math.floor(el.dataset.agAmount==='max'?max:value*Number(el.dataset.agAmount))));
     $('ag-amount').value=(amount/100).toFixed(2).replace('.',',');
   });

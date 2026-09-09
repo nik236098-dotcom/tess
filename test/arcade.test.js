@@ -12,7 +12,8 @@ const sequence = numbers => {let i=0;return max=>{const n=numbers[i++];assert.ok
 test('invalid amounts/options and stale revisions leave every game untouched',()=>{
   for(const game of GAMES){
     const old=initial();const before=JSON.stringify(old);
-    for(const amount of [-1,0,9,10.5,'100',NaN,Infinity,config(game).maxBet+1])assert.throws(()=>start(game,old,amount,OPTIONS[game],0));
+    const limit=game==='tower'?config(game).maxBets.easy:config(game).maxBet;
+    for(const amount of [-1,0,9,10.5,'100',NaN,Infinity,limit+1])assert.throws(()=>start(game,old,amount,OPTIONS[game],0));
     assert.throws(()=>start(game,old,100,OPTIONS[game],999));
     assert.equal(JSON.stringify(old),before);
   }
@@ -61,6 +62,18 @@ test('Tower trap loses, early cashout succeeds and cannot pay twice',()=>{
   const loss=actTower(live,'ag_pick',0,live.revision);assert.equal(loss.payout,0);assert.equal(loss.phase,'done');
   const step=actTower(live,'ag_pick',3,live.revision);const win=actTower(step,'ag_cashout',null,step.revision);
   assert.equal(win.payout,moneyAt(101,TOWER.easy[0]));assert.throws(()=>actTower(win,'ag_cashout',null,win.revision));
+});
+test('Tower accepts larger stakes by difficulty and every maximum can pay the final floor in full',()=>{
+  const cfg=config('tower');
+  for(const level of ['easy','medium','hard'])assert.equal(cfg.maxBets[level],100000);
+  assert.ok(cfg.maxBets.expert>cfg.maxBets.master);
+  for(const [level,limit] of Object.entries(cfg.maxBets)){
+    let round=start('tower',initial(),limit,{level},0,()=>0);
+    assert.throws(()=>start('tower',initial(),limit+1,{level},0));
+    for(let i=0;i<9;i++)round=actTower(round,'ag_pick',LEVELS[level].columns-1,round.revision);
+    assert.equal(round.payout,moneyAt(limit,TOWER[level][8]));
+    assert.ok(Number.isSafeInteger(round.payout)&&round.payout<=MAX_BALANCE);
+  }
 });
 test('Dragon Tiger uses eight decks, Ace low, side 2x, tie 12x and half-return on tied side',()=>{
   assert.equal(start('dragon',initial(),100,{side:'tiger'},0,sequence([0,11])).payout,200); // A versus K
