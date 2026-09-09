@@ -244,3 +244,16 @@ test('Sic Bo choices lock during a throw; real totals appear only after all dice
  assert.match(html,/id="sb-scene"/);assert.match(html,/aria-label="Кубики 3, 4, 5"/);assert.ok(!html.includes('sb-face'));
  h.click('ag-stage','sbSide','triple');assert.equal(h.state.ag.options.sicbo.side,'triple');
 });
+test('Andar renders all 52 Baccarat-style faces inline and keeps only the top face on each stack',()=>{
+ const h=harness('andar');h.deliver(game.initial());
+ for(const suit of ['s','c','h','d'])for(let rank=2;rank<=14;rank++){
+  const c={rank,suit};h.state.ag.info={...h.state.ag.info,phase:'done',settled:true,bet:100,payout:200,detail:{center:c,dealt:[c,c,c,c,c,c],winner:'bahar'}};
+  h.ctx.renderArcade();const html=h.$('ag-stage').innerHTML;
+  assert.ok(!html.includes('/img/classic/deck.svg'));
+  assert.equal((html.match(/class="ab-rank"/g)||[]).length,3);
+  assert.equal((html.match(/class="ab-pile-card is-stacked is-deep"/g)||[]).length,2);
+  assert.ok(html.includes(`<span class="ab-rank">${({14:'A',13:'K',12:'Q',11:'J'})[rank]||rank}</span>`));
+  assert.ok(html.includes(`<span class="ab-suit">${{s:'♠',c:'♣',h:'♥',d:'♦'}[suit]}</span>`));
+  assert.ok(!html.includes('--offset:'));
+ }
+});
