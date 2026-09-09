@@ -186,3 +186,31 @@
 
 
 .sb-history>div>span{flex:0 0 42px}.sb-choice.is-selected small{color:#e2e8ff}
+/* Coin: shared bet controls stay untouched; only the game scene is themed. */
+#screen-ag.is-coin{background:linear-gradient(150deg,#10132a,#14213b)}
+#screen-ag.is-coin .ag-board{padding:0;background:transparent;border:0;box-shadow:none}
+#screen-ag.is-coin .ag-status,#screen-ag.is-coin .ag-stats{display:none}
+#screen-ag.is-coin .mn-title{font-size:clamp(23px,6vw,30px)}
+#screen-ag.is-coin .cg-coin-scene{position:relative;height:290px;background:radial-gradient(ellipse at 50% 30%,#293c6e,#152440 75%);overflow:hidden}
+.cf-panel{overflow:hidden;border:1px solid #657db966;border-radius:20px;background:#192b4b}
+.cf-landscape{position:absolute;inset:0;width:100%;height:100%}
+#screen-ag.is-coin .cg-coin-lift{width:164px;height:164px;left:calc(50% - 82px);top:94px}
+#screen-ag.is-coin .cg-coin-side{border:0;background:none;box-shadow:none;display:block}
+#screen-ag.is-coin .cg-coin-side:before{content:none}
+#screen-ag.is-coin .cg-coin-side svg{display:block;width:100%;height:100%;filter:drop-shadow(0 3px 2px #61391155)}
+#screen-ag.is-coin .cg-coin-front{transform:translateZ(4px)}
+#screen-ag.is-coin .cg-coin-reverse{transform:rotateY(180deg) translateZ(4px)}
+#screen-ag.is-coin .cg-coin-shadow{bottom:15px}
+.cf-result{display:grid;grid-template-columns:1fr 1fr;text-align:center;padding:15px 8px;background:linear-gradient(#192b4b,#172039);gap:8px}
+.cf-result>div+div{border-left:1px solid #647eac66}
+.cf-result small{display:block;font-size:12px;color:#a6b9de;margin-bottom:5px}
+.cf-result b{font-size:23px;color:#f5f7ff;overflow-wrap:anywhere}
+.cf-result>div+div b{color:#7ce8bb}
+.cf-choices p{color:#b4c3df;font-size:13px;margin:16px 0 10px}
+#screen-ag.is-coin .cf-pick{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0;min-height:72px;background:linear-gradient(#29477b,#1b2c50);border:1px solid #658acf;border-radius:15px;color:#fff;font-size:18px}
+.cf-pick svg{width:45px;height:45px;flex-shrink:0}
+#screen-ag.is-coin .cf-pick:disabled{opacity:.55}
+#screen-ag.is-coin .cf-pick:not(:disabled):active{background:#345d9e;transform:translateY(1px)}
+#screen-ag.is-coin .ag-choice.is-selected{background:linear-gradient(#5288ef,#345ac4);border-color:#8cafff}
+#screen-ag.is-coin .mn-main:not(.is-cash){background:linear-gradient(#5896ff,#285ae0);box-shadow:inset 0 2px 2px #cee3ff66}
+@media(max-width:360px){#screen-ag.is-coin .cg-coin-scene{height:265px}#screen-ag.is-coin .cg-coin-lift{top:75px}.cf-result b{font-size:20px}.cf-pick svg{width:36px;height:36px}}

@@ -8,7 +8,7 @@ const button=(label,index,disabled=false,cls='')=>`<button type="button" class="
 function prepare(game){if(!isGame(game))return;state.ag.options[game]??=structuredClone(definitions[game].defaults);state.ag.held=[];state.ag.cgTime=0;state.ag.cgPrevious=null;}
 function setup(){
  const host=$('casino-catalog');if(!host)return;
- host.innerHTML=CasinoRules.ids.map(id=>{const g=definitions[id];return `<button type="button" data-arcade="${id}" class="cg-launch"><span class="cg-launch-art">${id==='diamonds'?`<span class="dm-cover">${flatDiamond(1)}${flatDiamond(0)}${flatDiamond(2)}</span>`:id==='videopoker'?videoCover():id==='chicken'?ChickenScene.cover():CasinoArt.cover(id)}</span><span class="cg-launch-name">${g.name}</span><small>${g.tag}</small></button>`;}).join('');
+ host.innerHTML=CasinoRules.ids.map(id=>{const g=definitions[id];return `<button type="button" data-arcade="${id}" class="cg-launch"><span class="cg-launch-art">${id==='diamonds'?`<span class="dm-cover">${flatDiamond(1)}${flatDiamond(0)}${flatDiamond(2)}</span>`:id==='videopoker'?videoCover():id==='chicken'?ChickenScene.cover():id==='coin'?coinFace(0,'cf-cover'):CasinoArt.cover(id)}</span><span class="cg-launch-name">${g.name}</span><small>${g.tag}</small></button>`;}).join('');
 }
 function settings(){
  const a=state.ag,g=current(),options=a.options[a.game],disabled=agLocked()||a.info?.phase==='play',attr=disabled?'disabled':'';
@@ -29,6 +29,7 @@ function afterRender(){
  $('screen-ag').classList.toggle('is-videopoker',a.game==='videopoker');
  $('screen-ag').classList.toggle('is-sicbo',a.game==='sicbo');
  $('screen-ag').classList.toggle('is-chicken',a.game==='chicken');
+ $('screen-ag').classList.toggle('is-coin',a.game==='coin');
  $('ag-chicken-step').hidden=a.game!=='chicken'||!live;
  $('screen-ag').classList.toggle('vp-is-live',a.game==='videopoker'&&live);
  if(a.game==='videopoker')$('ag-subtitle').textContent='Jacks or Better';
@@ -42,6 +43,7 @@ function afterRender(){
   $('ag-subtitle').textContent='Три кубика — один бросок';
   if(!pending)main.textContent=a.animating?'Кубики брошены…':a.pending?'Подождите…':'Бросить кубики';
  }
+ if(a.game==='coin'&&!live&&!pending)main.textContent=a.animating?'Монета в воздухе…':'Начать раунд';
  if(!live)return;
  const locked=agLocked();
  main.disabled=locked;main.classList.toggle('is-cash',Boolean(g.series));
@@ -125,6 +127,15 @@ function sicboBoard(info,animating,locked){
  const rolls=history.filter(r=>Number.isInteger(r.sum)).slice(0,5).reverse();
  return `<div class="sb-play"><div class="sb-tray" id="sb-scene" role="img" aria-label="${animating?'Бросаем кубики':done?`Кубики ${d.dice.join(', ')}`:'Три кубика в лотке'}"><div class="sb-fallback" aria-hidden="true">${animating?'Бросаем кубики…':(d?.dice||[3,4,5]).map(n=>`<span>${['⚀','⚁','⚂','⚃','⚄','⚅'][n-1]}</span>`).join('')}</div></div><div class="sb-result ${done&&info.payout?'is-paid':''}" role="status" aria-live="polite"><div><small>Сумма</small><b>${done?d.sum:'—'}</b></div><strong>${result}</strong><div><small>Выплата</small><b>${done?money(info.payout):'—'}</b></div></div></div><section class="sb-outcomes"><h2>Выберите исход</h2><div class="sb-choices">${[['small','Малое','4–10',2],['big','Большое','11–17',2],['triple','Любая тройка','Три одинаковых',31]].map(([id,label,range,pay])=>`<button type="button" data-sb-side="${id}" class="sb-choice ${chosen===id?'is-selected':''}" aria-pressed="${chosen===id}" ${locked||info?.phase==='done'&&!info.settled?'disabled':''}><span>${label}</span><small>${range}</small><b>${pay}×</b></button>`).join('')}</div><p>Тройка не выигрывает в малом и большом</p></section><section class="sb-history"><h2>Последние броски</h2><div>${rolls.length?rolls.map((r,i)=>`<span class="${i===rolls.length-1?'is-latest':''}" aria-label="Сумма ${r.sum}${r.triple?', тройка':''}">${r.sum}${r.triple?'<small>×3</small>':''}</span>`).join(''):'<p>Здесь появятся результаты бросков</p>'}</div></section>`;
 }
+function coinFace(side,prefix){
+ const emblem=side===1?'<path d="m100 48 15 32 35 5-25 25 6 36-31-17-31 17 6-36-25-25 35-5Z"/>':'<path d="M54 71Q84 36 116 57L108 66Q139 59 149 82L158 99Q139 88 121 99L138 106Q129 126 106 130L111 150Q90 139 83 119L69 136 72 113 52 122 62 98 44 105 58 82 44 86Z"/><path d="M103 78L124 75 116 84Z" fill="#684019"/><circle cx="116" cy="78" r="2" fill="#fff3b0"/>';
+ return `<svg viewBox="0 0 200 200" aria-hidden="true"><defs><linearGradient id="${prefix}" x2=".8" y2="1"><stop stop-color="#fff3a4"/><stop offset=".38" stop-color="#f7ca59"/><stop offset=".7" stop-color="#ce8825"/><stop offset="1" stop-color="#ffdb70"/></linearGradient></defs><circle cx="100" cy="103" r="94" fill="#996019"/><circle cx="100" cy="98" r="92" fill="url(#${prefix})" stroke="#ffe9a0" stroke-width="3"/><circle cx="100" cy="98" r="80" fill="none" stroke="#a86b20" stroke-width="3"/><circle cx="100" cy="100" r="77" fill="none" stroke="#ffe39b" stroke-width="2"/><g fill="#e6ad40" stroke="#fff0ac" stroke-width="2" stroke-linejoin="round">${emblem}</g><path d="M29 69A77 77 0 0 1 111 23" fill="none" stroke="#fff9d7" stroke-width="4" stroke-linecap="round" opacity=".7"/></svg>`;
+}
+function coinBoard(info,animating,locked){
+ const a=state.ag,v=animating?a.cgPrevious:info,last=v?.last,live=info?.phase==='play',side=last?.opponent??0;
+ const picks=['Орёл','Решка'];
+ return `<div class="cf-panel"><div class="cg-coin-scene"><svg class="cf-landscape" viewBox="0 0 400 300" preserveAspectRatio="none" aria-hidden="true"><path d="M0 190 53 109 93 151 132 117 178 204 230 165 267 99 315 158 367 88 400 169V300H0Z" fill="#1b2d51"/><path d="M0 225 66 188 119 224 175 199 227 240 290 185 337 212 400 177V300H0Z" fill="#152440"/><path d="M0 270Q100 235 200 267T400 257V300H0Z" fill="#192b4b"/></svg><div id="cg-coin-shadow" class="cg-coin-shadow"></div><div class="cg-coin-lift" id="cg-coin-lift"><div class="cg-coin" id="cg-coin" style="transform:rotateY(${side*180}deg)"><div class="cg-coin-side cg-coin-front">${coinFace(0,'cf-front')}</div><div class="cg-coin-side cg-coin-reverse">${coinFace(1,'cf-back')}</div></div></div></div><div class="cf-result" role="status" aria-live="polite"><div><small>${animating?'Бросаем монету…':last?'Результат':'Ваш выбор'}</small><b>${animating?'…':last?picks[side]:picks[a.options.coin.side]}</b></div><div><small>${live?'Можно забрать':'Выплата'}</small><b>${v?.phase==='play'?money(v.available||0):v?.phase==='done'?money(v.payout||0):'—'}</b></div></div></div>${live?`<div class="cf-choices"><p>Выберите сторону следующего броска</p><div class="cg-choices">${picks.map((label,i)=>button(coinFace(i,'cf-pick-'+i)+`<span>${label}</span>`,i,locked,'cf-pick')).join('')}</div></div>`:''}`;
+}
 function board(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',locked=agLocked(),d=info?.detail,done=info?.phase==='done'&&!a.animating,step=info?.step||0;
  const visual=a.animating?a.cgPrevious:info,last=visual?.last,visibleStep=visual?.step||0;
@@ -133,7 +144,7 @@ function board(){
  else if(a.game==='videopoker')html=videoBoard(info,a.animating,locked);
  else if(a.game==='sicbo')html=sicboBoard(info,a.animating,locked);
  else if(a.game==='chicken')html=chickenBoard(info,a.animating);
- else if(a.game==='coin')html=`<div class="cg-scene cg-coin-scene">${plaque('ОРЁЛ ИЛИ РЕШКА')}<div id="cg-coin-shadow" class="cg-coin-shadow"></div><div class="cg-coin-lift" id="cg-coin-lift"><div class="cg-coin" id="cg-coin" style="transform:rotateY(${last?.opponent===1?180:0}deg)"><div class="cg-coin-side cg-coin-front">${art('coin')}</div><div class="cg-coin-side cg-coin-reverse"><span>♠</span><small>POKERGENA</small></div></div></div></div>${caption(last?(last.opponent===0?'Выпал орёл':'Выпала решка'):'Выбери сторону следующего броска')}${live?`<div class="cg-choices">${button('Орёл',0,locked)}${button('Решка',1,locked)}</div>`:''}`;
+ else if(a.game==='coin')html=coinBoard(info,a.animating,locked);
  else if(a.game==='rps')html=`<div class="cg-scene cg-rps-scene">${plaque('ТВОЙ ХОД')}<div class="cg-rps"><div><span id="cg-hand-you">${art(['rock','paper','scissors'][last?.choice??0])}</span><small>ТЫ</small></div><b>VS</b><div><span id="cg-hand-house">${art(['rock','paper','scissors'][last?.opponent??0])}</span><small>СОПЕРНИК</small></div></div></div>${caption(last?.tie?'Ничья — серия сохранена':'Камень · бумага · ножницы')}${live?`<div class="cg-choices">${['Камень','Бумага','Ножницы'].map((n,i)=>button(n,i,locked)).join('')}</div>`:''}`;
  else if(a.game==='slots'){
   const grid=d?.grid||[0,1,2,3,4,5,2,1,0];
