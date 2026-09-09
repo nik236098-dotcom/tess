@@ -27,7 +27,7 @@ function harness(id){
  const ctx=vm.createContext({state,$,document:{querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},performance:{now:()=>0},structuredClone,
  send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),haptic(){},toast(){},
  requestAnimationFrame:f=>{const id=++next;frames.set(id,f);return id;},cancelAnimationFrame:id=>frames.delete(id)});
- for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-physics','bowling-scene','bowling-audio','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
+ for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-physics','bowling-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
  // DOM harness has no graphics context; GPU rendering is checked separately.
  vm.runInContext('BowlingScene.render=()=>true;BowlingScene.ready=()=>true;',ctx);
  vm.runInContext(`CasinoUI.prepare('${id}');`,ctx);ctx.bindArcade();
@@ -317,4 +317,27 @@ test('Bowling blocks new stakes until 3D is ready but keeps saved payouts access
  const r=game.start('bowling',game.initial(),100,{},0,n=>n-1);r.settled=false;
  vm.runInContext('BowlingScene.ready=()=>false;',h.ctx);h.deliver(r);h.advance();
  assert.equal(h.$('ag-main').disabled,false);
+});
+
+test('bowling: silent board reveals payout and shared win only after the throw, then hides it for the next round',()=>{
+ const h=harness('bowling');h.deliver(game.initial());
+ assert.doesNotMatch(h.$('ag-stage').innerHTML,/data-bw-sound|Звук:/);
+ h.$('ag-main').dispatch('click',{});
+ const r=game.start('bowling',game.initial(),100,{},0,()=>1);r.settled=true;h.deliver(r);
+ assert.equal(h.$('ag-overlay').innerHTML,'');
+ h.ctx.agResult();assert.equal(h.$('ag-overlay').innerHTML,'');
+ assert.doesNotMatch(h.$('ag-stage').innerHTML,/\$443\.00/);
+ h.advance();
+ assert.match(h.$('ag-overlay').className,/is-win/);
+ assert.match(h.$('ag-overlay').innerHTML,/×443/);
+ assert.match(h.$('ag-stage').innerHTML,/Выплата<\/small><b>\$443\.00/);
+ h.$('ag-main').dispatch('click',{});
+ assert.equal(h.$('ag-overlay').classList.contains('hidden'),true);
+});
+test('bowling: saved winnings appear when settlement arrives at the same revision',()=>{
+ const h=harness('bowling');h.deliver(game.initial());h.$('ag-main').dispatch('click',{});
+ const r=game.start('bowling',game.initial(),100,{},0,()=>1);r.settled=false;h.deliver(r);h.advance();
+ assert.equal(h.$('ag-overlay').innerHTML,'');
+ r.settled=true;h.deliver(r);
+ assert.match(h.$('ag-overlay').innerHTML,/×443/);
 });

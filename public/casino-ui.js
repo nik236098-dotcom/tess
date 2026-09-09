@@ -63,7 +63,6 @@ function main(){
  const a=state.ag;if(!isGame(a.game))return false;
  if(a.game==='darts')return DartsGame.enqueue();
  if(a.game==='bowling'&&!BowlingScene.ready()&&!(a.info?.phase==='done'&&!a.info.settled)){toast('Дождись загрузки 3D-сцены');return true;}
- if(a.game==='bowling'&&!agLocked())BowlingAudio.unlock();
  if(a.info?.phase==='play'&&a.game==='videopoker'){agRequest('pick',{index:[...(a.held||[])]});return true;}
  return false;
 }
@@ -221,12 +220,10 @@ function animate(info){
  cancelAnimationFrame(a.raf);
  const duration=reduced?0:CasinoMotion.duration(game,info),start=performance.now();a.cgTime=0;
  if(game==='darts')DartsAudio.begin(info.revision,reduced);
- if(game==='bowling')BowlingAudio.begin(info,reduced);
  const tick=now=>{
   if(token!==a.token||a.game!==game)return;
   const t=duration?Math.min(1,(now-start)/duration):1;a.cgTime=t;paint(info,t);
   if(game==='darts')DartsAudio.frame(t);
-  if(game==='bowling')BowlingAudio.frame(t);
   if(t<1)a.raf=requestAnimationFrame(tick);else{a.animating=false;a.cgTime=0;renderArcade();agResult();}
  };
  a.raf=requestAnimationFrame(tick);
@@ -238,7 +235,6 @@ function settingEvent(event){
 }
 function boardEvent(event){
  const a=state.ag;
- if(a.game==='bowling'&&event.target.closest('[data-bw-sound]')){const enabled=BowlingAudio.toggle();const button=event.target.closest('[data-bw-sound]');button.setAttribute('aria-pressed',String(enabled));button.textContent=enabled?'Звук: вкл':'Звук: выкл';return;}
  if(a.game==='darts'){
   const sound=event.target.closest('[data-dt-sound]');
   if(sound){const enabled=DartsAudio.toggle();sound.setAttribute('aria-pressed',String(enabled));sound.setAttribute('aria-label',`${enabled?'Выключить':'Включить'} звук`);}

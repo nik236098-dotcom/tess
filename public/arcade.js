@@ -18,7 +18,6 @@ function agMaxBet() {
 function stopArcade() {
   if(typeof DartsGame!=='undefined')DartsGame.stop();
   if(typeof DartsAudio!=='undefined')DartsAudio.stop();
-  if(typeof BowlingAudio!=='undefined')BowlingAudio.stop();
   const a=state.ag; a.token++; cancelAnimationFrame(a.raf); a.animating=false; a.game=null; a.info=null; a.pending=null;
   $('screen-ag').classList.add('hidden');
 }
@@ -87,7 +86,7 @@ function onArcadeState(message) {
     a.animating=true; renderArcade(); agAnimateResult(message); return;
   }
   renderArcade();
-  if(message.phase==='done'&&changed) agResult();
+  if(message.phase==='done'&&(changed||(!previous?.settled&&message.settled))) agResult();
   if(a.game==='tower'&&message.phase==='play'&&(changed||action==='open')) agScrollTower();
 }
 function agSettings() {
@@ -226,7 +225,7 @@ function agAnimateResult(info) {
 }
 function agResult() {
   const a=state.ag, info=a.info, overlay=$('ag-overlay');
-  if(!info||info.phase!=='done')return;
+  if(!info||info.phase!=='done'||a.animating)return;
   haptic(info.result==='win'?'success':info.result==='push'?'light':'error');
   if(a.game==='diamonds'||a.game==='videopoker'||a.game==='sicbo')return; // Keep the inline result and selected table row visible.
   if(info.result!=='win'||!info.settled)return;
