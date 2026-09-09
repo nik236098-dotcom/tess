@@ -5,10 +5,10 @@ const symbols=['♣','♦','♥','♠','✦','♛'];
 const isGame=game=>Object.hasOwn(definitions,game);
 const current=()=>definitions[state.ag.game];
 const button=(label,index,disabled=false,cls='')=>`<button type="button" class="cg-action ${cls}" data-cg-pick="${index}" ${disabled?'disabled':''}>${label}</button>`;
-function prepare(game){if(!isGame(game))return;state.ag.options[game]??=structuredClone(definitions[game].defaults);state.ag.held=[];state.ag.cgTime=0;state.ag.cgPrevious=null;}
+function prepare(game){if(!isGame(game))return;if(game==='darts')DartsGame.reset();state.ag.options[game]??=structuredClone(definitions[game].defaults);state.ag.held=[];state.ag.cgTime=0;state.ag.cgPrevious=null;}
 function setup(){
  const host=$('casino-catalog');if(!host)return;
- host.innerHTML=CasinoRules.ids.map(id=>{const g=definitions[id];return `<button type="button" data-arcade="${id}" class="cg-launch"><span class="cg-launch-art">${id==='diamonds'?`<span class="dm-cover">${flatDiamond(1)}${flatDiamond(0)}${flatDiamond(2)}</span>`:id==='videopoker'?videoCover():id==='chicken'?ChickenScene.cover():id==='coin'?coinFace(0,'cf-cover'):id==='slots'?'<span class="cs-cover"></span>':id==='penalty'?penaltyBall():CasinoArt.cover(id)}</span><span class="cg-launch-name">${g.name}</span><small>${g.tag}</small></button>`;}).join('');
+ host.innerHTML=CasinoRules.ids.map(id=>{const g=definitions[id];return `<button type="button" data-arcade="${id}" class="cg-launch"><span class="cg-launch-art">${id==='diamonds'?`<span class="dm-cover">${flatDiamond(1)}${flatDiamond(0)}${flatDiamond(2)}</span>`:id==='videopoker'?videoCover():id==='chicken'?ChickenScene.cover():id==='coin'?coinFace(0,'cf-cover'):id==='slots'?'<span class="cs-cover"></span>':CasinoArt.cover(id)}</span><span class="cg-launch-name">${g.name}</span><small>${g.tag}</small></button>`;}).join('');
 }
 function settings(){
  const a=state.ag,g=current(),options=a.options[a.game],disabled=agLocked()||a.info?.phase==='play',attr=disabled?'disabled':'';
@@ -18,7 +18,7 @@ function settings(){
 function seriesTable(game,options){
  let size,bad,max,p=1;const level=options.level;
  if(game==='chicken'||game==='balloon'){size=game==='chicken'?21:25;bad={easy:1,medium:3,hard:5}[level];max=size-bad;}
- else max=game==='penalty'?5:game==='pinball'?10:20;
+ else max=game==='pinball'?10:20;
  return Array.from({length:max},(_,i)=>{p*=size?(size-bad-i)/(size-i):game==='coin'||game==='rps'?.5:.8;return Math.floor((.98/p+1e-10)*100)/100;});
 }
 function paytable(){const a=state.ag,g=current();const table=g.series?seriesTable(a.game,a.options[a.game]).map((n,i)=>[`${i+1} шаг`,n]):g.table;return (table||[]).map(([label,value])=>`<span class="ag-pay is-positive"><small>${label}</small><b>${agNumber(value)}×</b></span>`).join('');}
@@ -32,7 +32,7 @@ function afterRender(){
  $('screen-ag').classList.toggle('is-coin',a.game==='coin');
  $('screen-ag').classList.toggle('is-slots',a.game==='slots');
  $('screen-ag').classList.toggle('is-andar',a.game==='andar');
- $('screen-ag').classList.toggle('is-penalty',a.game==='penalty');
+ $('screen-ag').classList.toggle('is-darts',a.game==='darts');
  $('ag-chicken-step').hidden=a.game!=='chicken'||!live;
  $('screen-ag').classList.toggle('vp-is-live',a.game==='videopoker'&&live);
  if(a.game==='videopoker')$('ag-subtitle').textContent='Jacks or Better';
@@ -46,8 +46,8 @@ function afterRender(){
   $('ag-subtitle').textContent='Три кубика — один бросок';
   if(!pending)main.textContent=a.animating?'Кубики брошены…':a.pending?'Подождите…':'Бросить кубики';
  }
- if(a.game==='penalty'&&!live&&!pending)main.textContent=a.animating?'Удар…':'Начать раунд';
  if(a.game==='andar'&&!pending)main.textContent=a.animating?'Раздаём карты…':'Раздать карты';
+ if(a.game==='darts')DartsGame.controls();
  if(a.game==='slots'&&!pending)main.textContent=a.animating?'Барабаны крутятся…':'Крутить';
  if(a.game==='coin'&&!live&&!pending)main.textContent=a.animating?'Монета в воздухе…':'Начать раунд';
  if(!live)return;
@@ -59,6 +59,7 @@ function afterRender(){
 }
 function main(){
  const a=state.ag;if(!isGame(a.game))return false;
+ if(a.game==='darts')return DartsGame.enqueue();
  if(a.info?.phase==='play'&&a.game==='videopoker'){agRequest('pick',{index:[...(a.held||[])]});return true;}
  return false;
 }
@@ -153,12 +154,6 @@ function andarBoard(info,animating){
  const d=info?.detail,done=info?.phase==='done'&&!animating;
  return `<div class="ab-panel"><div class="cg-andar"><span class="ab-center-label">Главная карта</span><div class="cg-center-card">${andarCard(d?.center)}</div><div class="ab-deck">${andarCard(null)}</div><div class="cg-andar-sides">${['andar','bahar'].map((side,i)=>{const pile=done?d.dealt.filter((_,n)=>n%2===i):[];return `<div class="${done&&d.winner===side?'is-winner':''}" data-cg-side="${i}"><b>${i?'БАХАР':'АНДАР'}</b><div class="cg-small-card" id="cg-andar-${i}">${andarPile(pile)}</div><small id="cg-andar-count-${i}">${done&&d.winner===side?'✓ Совпадение':pile.length?pile.length+' карт':'Ждём раздачу'}</small></div>`;}).join('')}</div><div class="cg-flying-card" id="cg-flying-card"></div></div><div class="ab-result" role="status" aria-live="polite"><div><small>Результат</small><b>${done?d.winner==='andar'?'Андар':'Бахар':animating?'Раздача…':'—'}</b></div><div><small>Выплата</small><b>${done?money(info.payout):'—'}</b></div></div></div>`;
 }
-function penaltyKeeper(){return `<svg viewBox="0 0 120 180" aria-hidden="true"><defs><linearGradient id="pn-kit" x2="1" y2="1"><stop stop-color="#39b589"/><stop offset=".5" stop-color="#087c5a"/><stop offset="1" stop-color="#024537"/></linearGradient><linearGradient id="pn-skin" x2="1" y2="1"><stop stop-color="#ffd6a5"/><stop offset="1" stop-color="#bb764f"/></linearGradient></defs><ellipse cx="60" cy="173" rx="47" ry="5" fill="#061428" opacity=".3"/><g id="pn-leg-left" style="transform-origin:49px 107px"><path d="M51 100 36 128 30 164" stroke="#064834" stroke-width="18" fill="none" stroke-linecap="round"/><path d="M36 129 31 156" stroke="#22a481" stroke-width="11"/><path d="M23 158 35 160 37 174 13 174Q10 168 23 158" fill="#182334" stroke="#748698" stroke-width="2"/></g><g id="pn-leg-right" style="transform-origin:72px 107px"><path d="M69 100 87 128 95 163" stroke="#064834" stroke-width="18" fill="none" stroke-linecap="round"/><path d="M86 129 92 155" stroke="#22a481" stroke-width="11"/><path d="M88 160 100 158Q114 168 108 174H86Z" fill="#182334" stroke="#748698" stroke-width="2"/></g><path d="M38 86H82L87 111 64 118 59 105 53 118 32 110Z" fill="#053e35" stroke="#122b2c" stroke-width="2"/><g id="pn-arm-left" style="transform-origin:38px 51px"><path d="M39 50 23 72 12 83" stroke="#065741" stroke-width="17" stroke-linecap="round" fill="none"/><path d="M36 47 21 68" stroke="#4bccac" stroke-width="3"/><path d="M14 76 4 72 1 77 5 82 0 87 3 94 10 96 19 86Z" fill="#e9e5d0" stroke="#839f9b" stroke-width="2"/></g><g id="pn-arm-right" style="transform-origin:82px 51px"><path d="M81 50 98 72 109 83" stroke="#065741" stroke-width="17" stroke-linecap="round" fill="none"/><path d="M84 47 99 68" stroke="#4bccac" stroke-width="3"/><path d="M106 76 116 72 119 77 115 82 120 87 117 94 110 96 101 86Z" fill="#e9e5d0" stroke="#839f9b" stroke-width="2"/></g><path d="M46 40 60 46 74 40 85 51 77 95Q60 104 41 95L35 51Z" fill="url(#pn-kit)" stroke="#124b41" stroke-width="2"/><path d="m48 41 12 11 12-11" fill="none" stroke="#b8dfcc" stroke-width="3"/><path d="M72 55h8v8l-4 4-4-4Z" fill="#c7e8e0"/><text x="48" y="69" fill="#eafaf1" font-size="14" font-family="sans-serif" font-weight="bold">1</text><path d="m48 84 18 4 9-5M49 90l19 3" stroke="#005540" fill="none"/><path d="M52 33v10q8 10 16 0V33" fill="url(#pn-skin)"/><path d="M44 13Q60 1 76 13L74 31Q60 49 46 31Z" fill="url(#pn-skin)" stroke="#9a6348"/><path d="M43 22Q37 5 52 4Q65-4 77 9L75 23 69 13 51 15 46 25Z" fill="#342921"/><path d="M48 8q13-5 23 3" fill="none" stroke="#775139" stroke-width="3"/><path d="m49 24 6-1m10 0 6 1" stroke="#352b25" stroke-width="2"/><circle cx="53" cy="26" r="1.4"/><circle cx="68" cy="26" r="1.4"/><path d="m60 26-2 6h4m-8 4q6 3 12-1" stroke="#9f5e44" fill="none"/></svg>`;}
-function penaltyBall(){return `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="pn-ball" cx=".3" cy=".2"><stop stop-color="#fff"/><stop offset=".7" stop-color="#e2e8f5"/><stop offset="1" stop-color="#8795b7"/></radialGradient></defs><circle cx="50" cy="50" r="47" fill="url(#pn-ball)" stroke="#d4e2ff" stroke-width="2"/><g fill="#151b37" stroke="#44516d" stroke-width="1"><path d="m50 28 21 15-8 24H37l-8-24Z"/><path d="m8 28 15-9 6 16-10 17L3 47ZM32 6l18-3 18 6-8 12H40ZM93 31l4 20-14 8-9-19ZM26 90 14 77 27 67 39 79 37 95ZM78 87 62 96 61 80 77 68 90 73Z"/></g><path d="M40 21 35 34M60 21l6 14M19 52l13 2m44-1 9 6M39 79l3-12m19 13-5-13" fill="none" stroke="#52617d"/></svg>`;}
-function penaltyBoard(info,animating,locked){
- const a=state.ag,v=animating?a.cgPrevious:info,last=v?.last,live=info?.phase==='play',step=v?.step||0;
- return `<div class="pn-panel"><div class="pn-field"><div class="pn-net-impact" id="pn-net-impact"></div><div class="pn-keeper" id="cg-keeper">${penaltyKeeper()}</div><div class="pn-ball" id="cg-football">${penaltyBall()}</div>${[[29,27],[71,27],[29,53],[71,53],[50,40]].map(([x,y],i)=>`<button type="button" class="pn-target" data-cg-pick="${i}" style="left:${x}%;top:${y}%" ${!live||locked?'disabled':''} aria-label="Удар в точку ${i+1}">${i+1}</button>`).join('')}</div><div class="pn-result" role="status" aria-live="polite"><div><small>Множитель</small><b>${Number(last?.safe===false?0:v?.multiplier||1).toFixed(2)}×</b></div><div><small>${v?.phase==='done'?'Выплата':'Можно забрать'}</small><b>${v?.phase==='play'?money(v.available||v.bet||0):v?.phase==='done'?money(v.payout||0):'—'}</b></div><p>${animating?'Удар…':last?last.safe?live?'Гол! Выберите следующую точку':'Гол! Серия завершена':'Вратарь отбил удар':live?'Выберите точку удара':'Начните раунд, затем выберите точку'}</p><div class="pn-progress" aria-label="Голов: ${step} из 5">${Array.from({length:5},(_,i)=>`<i class="${i<step?'is-goal':last?.safe===false&&i===step?'is-miss':''}"></i>`).join('')}</div></div></div>`;
-}
 function board(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',locked=agLocked(),d=info?.detail,done=info?.phase==='done'&&!a.animating,step=info?.step||0;
  const visual=a.animating?a.cgPrevious:info,last=visual?.last,visibleStep=visual?.step||0;
@@ -174,14 +169,14 @@ function board(){
   html=`<div class="cg-scene cg-slots-scene"><div class="cg-slot-machine">${[0,1,2].map(col=>{const result=[grid[col],grid[col+3],grid[col+6]],strip=a.animating?[...result,...Array.from({length:15},(_,i)=>(i*5+col)%6),old[col],old[col+3],old[col+6]]:result;return `<div class="cg-reel"><div class="cg-reel-strip" data-cg-reel="${col}" style="--symbols:${strip.length};transform:translateY(${a.animating?-18/21*100:0}%)">${strip.map((n,i)=>`<div class="cg-slot-cell ${done&&d?.lines?.[i]?.payout?'is-line-win':''}">${slotSymbol(n)}</div>`).join('')}</div></div>`;}).join('')}<div class="cg-reel-shade"></div></div><div class="cg-slot-footer"><i></i><span>3 ЛИНИИ</span><i></i></div><div class="cs-result" role="status" aria-live="polite"><div><small>Ставка</small><b>${info?.bet?money(info.bet):'—'}</b></div><div><small>Выигрыш</small><b>${done?money(info.payout):'—'}</b></div></div></div>`;
  }
  else if(a.game==='andar')html=andarBoard(info,a.animating);
- else if(a.game==='penalty')html=penaltyBoard(info,a.animating,locked);
- else if(a.game==='darts')html=`<div class="cg-scene cg-darts-scene">${plaque('DARTS')}<div class="cg-dartboard"><div class="cg-dart-ring cg-ring-outer"></div><div class="cg-dart-ring cg-ring-mid"></div><div class="cg-dart-ring cg-ring-inner"></div><div class="cg-dart-ring cg-ring-bull"></div><span class="cg-target-label">20×</span><div id="cg-dart" class="cg-dart">${art('target')}</div></div></div>${caption(done?`Результат броска: ${agNumber(info.multiplier)}×`:'Бросок в мишень · зоны выплат в таблице')}`;
+ else if(a.game==='darts')html=DartsGame.board();
  else if(a.game==='bowling')html=`<div class="cg-scene cg-bowling">${plaque('BOWLING')}<div class="cg-pins">${Array.from({length:10},(_,i)=>`<div class="cg-pin" data-cg-pin="${i}" style="left:${[36,45,54,63,41,50,59,45,54,50][i]}%;top:${[22,22,22,22,28,28,28,34,34,40][i]}%">${art('pin')}</div>`).join('')}</div><div id="cg-bowling-ball" class="cg-bowling-ball">${art('bowling')}</div></div>${caption(done?`Сбито ${d.count} из 10${d.count===10?' · СТРАЙК':''}`:'Шар · дорожка · десять кеглей')}`;
  else if(a.game==='balloon')html=`<div class="cg-scene cg-balloon-scene">${plaque('PUMP')}<div class="cg-balloon" id="cg-balloon">${art('balloon')}<i class="cg-balloon-string"></i></div><div class="cg-pump"><i id="cg-pump-handle"></i><b></b><span></span></div><div class="cg-balloon-value">${agNumber(visual?.multiplier||1)}×</div>${particles()}</div>${caption(last?.safe===false?'Шар лопнул':`Успешных качков: ${visibleStep}`)}${live?button('Надуть ещё',0,locked):''}`;
  else if(a.game==='race')html=`<div class="cg-scene cg-race">${plaque('NIGHT RACE')}<div class="cg-race-finish"></div>${Array.from({length:4},(_,i)=>`<div class="cg-race-lane ${done&&d.winner===i?'is-winner':''}" style="--lane:${i}"><div class="cg-racer" data-cg-racer="${i}">${art('race')}<small>${i+1}</small></div></div>`).join('')}</div>${caption(done?`Первым финишировал №${d.winner+1}`:'Четыре участника · один финиш')}`;
  else if(a.game==='pinball')html=`<div class="cg-scene cg-pinball-scene"><div class="cg-pinball">${plaque('AMETHYST')}<div class="cg-pinball-rail"></div>${CasinoMotion.bumpers.map(([x,y],i)=>`<div class="cg-bumper" data-cg-bumper="${i}" style="left:${x}%;top:${y}%">${art('pinball')}</div>`).join('')}<i class="cg-flipper cg-flipper-left"></i><i class="cg-flipper cg-flipper-right"></i><div class="cg-pinball-ball" id="cg-pinball-ball"></div><div class="cg-drain"></div></div></div>${caption(`Отскоков: ${visibleStep}`)}${live?`<div class="cg-choices">${button('Левая лопатка',0,locked)}${button('Правая лопатка',1,locked)}</div>`:''}`;
  else if(a.game==='fishing')html=`<div class="cg-scene cg-fishing">${plaque('DEEP WATER')}<div class="cg-fishing-line" id="cg-fishing-line"><i></i></div><div id="cg-fish" class="cg-fish">${art('fish')}</div><div class="cg-bubbles"><i></i><i></i><i></i></div><b class="cg-fishing-prize">${done?d.prize?agNumber(d.prize)+'×':'Пусто':''}</b></div>${caption(done?'Улов поднят':'Забрось удочку и открой свой улов')}`;
  $('ag-stage').innerHTML=`<div class="cg-board cg-game-${g.kind} ${a.animating?'is-animating':''}">${html}</div>`;
+ if(a.game==='darts'){DartsGame.paint();return;}
  if(a.game==='sicbo'||a.game==='chicken')paint(info||{},a.animating?a.cgTime||0:1);
  else if(!a.animating&&info&&info.phase!=='bet'&&(info.last||done))paint(info,1);
  else if(a.animating)paint(info,a.cgTime||0);
@@ -208,14 +203,8 @@ function paint(info,t){
   for(let side=0;side<2;side++){const pile=(d.dealt||[]).slice(0,count).filter((_,i)=>i%2===side),node=el('#cg-andar-'+side),label=el('#cg-andar-count-'+side);if(node&&node.dataset.count!==String(pile.length)){node.innerHTML=andarPile(pile);node.dataset.count=String(pile.length);}if(label)label.textContent=pile.length+' карт';}
   const moving=el('#cg-flying-card');if(moving){const c=d.dealt?.[f.index];if(moving.dataset.index!==String(f.index)){moving.innerHTML=andarCard(c);moving.dataset.index=String(f.index);}moving.style.opacity=t<.15||f.complete?0:1;const u=f.flight*f.flight*(3-2*f.flight);moving.style.left=(64+((f.index%2?75:25)-64)*u)+'%';moving.style.top=(26+44*u-5*Math.sin(u*Math.PI))+'%';moving.style.transform=`translate(-50%,-50%) rotate(0deg)`;}
  }
- if(game==='penalty'){
- const reset=!a.animating&&info.phase==='play';
- style('#cg-football','left',(reset?50:f.x)+'%');style('#cg-football','top',(reset?85:f.y)+'%');transform('#cg-football',`translate(-50%,-50%) scale(${reset?1:f.scale}) rotate(${reset?0:f.rotation}deg)`);
- style('#cg-keeper','left',(reset?50:f.keeperX)+'%');style('#cg-keeper','top',(reset?44:f.keeperY)+'%');transform('#cg-keeper',`translate(-50%,-50%) rotate(${reset?0:f.keeperAngle}deg)`);
- transform('#pn-arm-left',`rotate(${reset?0:-f.reach}deg)`);transform('#pn-arm-right',`rotate(${reset?0:f.reach}deg)`);transform('#pn-leg-left',`rotate(${reset?0:f.reach*.2}deg)`);transform('#pn-leg-right',`rotate(${reset?0:-f.reach*.25}deg)`);
- style('#pn-net-impact','opacity',a.animating?f.net:0);style('#pn-net-impact','left',f.targetX+'%');style('#pn-net-impact','top',f.targetY+'%');transform('#pn-net-impact',`translate(-50%,-50%) scale(${1+f.net*.5})`);
- }
- if(game==='darts'){style('#cg-dart','left',f.x+'%');style('#cg-dart','top',f.y+'%');style('#cg-dart','opacity',f.opacity);transform('#cg-dart',`translate(-18%,-82%) scale(${f.scale})`);toggle('.cg-dartboard','is-hit',f.hit);}
+
+ if(game==='darts')DartsScene.paint(stage,f,info);
  if(game==='bowling'){style('#cg-bowling-ball','top',f.y+'%');transform('#cg-bowling-ball',`translate(-50%,-50%) scale(${f.scale}) rotate(${f.rotation}deg)`);style('#cg-bowling-ball','opacity',t>.85?Math.max(0,(1-t)/.15):1);f.pins.forEach((p,i)=>{transform(`[data-cg-pin="${i}"]`,`translate(-50%,-100%) translate(${(i%2?1:-1)*p.fall*20}px,${-p.fall*15}px) rotate(${p.angle}deg)`);style(`[data-cg-pin="${i}"]`,'opacity',1-p.fall*.9);});}
  if(game==='balloon'){transform('#cg-balloon',`translateX(-50%) scale(${f.scale})`);style('#cg-balloon','opacity',f.burst?0:1);transform('#cg-pump-handle',`translateY(${f.pump*16}px)`);toggle('.cg-balloon-scene','is-burst',f.burst);style('.cg-particles','--burst',f.burstProgress);}
  if(game==='race')f.cars.forEach((c,i)=>{style(`[data-cg-racer="${i}"]`,'top',c.y+'%');transform(`[data-cg-racer="${i}"]`,`translate(-50%,-50%) rotate(${t<1?Math.sin(t*20+i)*1.2:0}deg)`);});
@@ -226,9 +215,11 @@ function animate(info){
  const a=state.ag,game=a.game,token=++a.token,reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
  cancelAnimationFrame(a.raf);
  const duration=reduced?0:CasinoMotion.duration(game,info),start=performance.now();a.cgTime=0;
+ if(game==='darts')DartsAudio.begin(info.revision,reduced);
  const tick=now=>{
   if(token!==a.token||a.game!==game)return;
   const t=duration?Math.min(1,(now-start)/duration):1;a.cgTime=t;paint(info,t);
+  if(game==='darts')DartsAudio.frame(t);
   if(t<1)a.raf=requestAnimationFrame(tick);else{a.animating=false;a.cgTime=0;renderArcade();agResult();}
  };
  a.raf=requestAnimationFrame(tick);
@@ -240,6 +231,11 @@ function settingEvent(event){
 }
 function boardEvent(event){
  const a=state.ag;
+ if(a.game==='darts'){
+  const sound=event.target.closest('[data-dt-sound]');
+  if(sound){const enabled=DartsAudio.toggle();sound.setAttribute('aria-pressed',String(enabled));sound.setAttribute('aria-label',`${enabled?'Выключить':'Включить'} звук`);}
+  return;
+ }
  if(a.game==='sicbo'){
   const choice=event.target.closest('[data-sb-side]');
   if(choice&&!choice.disabled&&!agLocked()&&!(a.info.phase==='done'&&!a.info.settled)&&['small','big','triple'].includes(choice.dataset.sbSide)){a.options.sicbo.side=choice.dataset.sbSide;renderArcade();}

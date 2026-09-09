@@ -8,7 +8,7 @@ const CasinoArt=(()=>{
   if(id==='sicbo')return `<span class="cg-cover-dice">${[5,3].map(n=>`<span class="cg-cover-cube">${Array.from({length:9},(_,i)=>`<i class="${(n===5?[0,2,4,6,8]:[0,4,8]).includes(i)?'is-dot':''}"></i>`).join('')}</span>`).join('')}</span>`;
   if(id==='rps')return `<span class="cg-cover-pair">${sprite('rock')}${sprite('scissors')}</span>`;
   if(id==='slots')return `<span class="cg-cover-pair">${sprite('seven')}${sprite('seven')}</span>`;
-  const map={diamonds:'gem',chicken:'chicken',coin:'coin',penalty:'ball',darts:'target',bowling:'bowling',balloon:'balloon',race:'race',pinball:'pinball',fishing:'fish'};
+  const map={diamonds:'gem',chicken:'chicken',coin:'coin',darts:'target',bowling:'bowling',balloon:'balloon',race:'race',pinball:'pinball',fishing:'fish'};
   return sprite(map[id]);
  }
  return {sprite,svg,cover};

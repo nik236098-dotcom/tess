@@ -5,7 +5,8 @@
  const ease=n=>{n=clamp(n);return n*n*(3-2*n);};
  const out=n=>1-(1-clamp(n))**3;
  const phase=(t,a,b)=>clamp((t-a)/(b-a));
- const durations={diamonds:1900,videopoker:1400,sicbo:2700,chicken:1450,coin:2100,rps:1600,slots:3200,andar:3200,penalty:2000,darts:1400,bowling:2600,balloon:1450,race:3800,pinball:2100,fishing:2800};
+ const dartsTiming={launch:.12,impact:.64};
+ const durations={diamonds:1900,videopoker:1400,sicbo:2700,chicken:1450,coin:2100,rps:1600,slots:3200,andar:3200,darts:1400,bowling:2600,balloon:1450,race:3800,pinball:2100,fishing:2800};
  function duration(game,info){return game==='andar'?Math.min(18000,1500+(info.detail?.dealt.length||0)*420):durations[game]||1600;}
  // Paths approach a bumper tangentially, reverse at its surface, and return to a flipper.
  // Bumper centers: [30,24], [70,35], [44,54]; radius 9 scene units.
@@ -26,11 +27,12 @@
    case 'rps':return {reveal:t>=.65,y:t<.65?-18*Math.abs(Math.sin(t/.65*Math.PI*3)):0,scale:1+.1*Math.sin(phase(t,.65,1)*Math.PI)};
    case 'slots':return {reels:[0,1,2].map(i=>({position:18*out(phase(t,0,.7+i*.13)),settled:t>=.7+i*.13}))};
    case 'andar':{const n=d.dealt?.length||0,progress=phase(t,.15,.95)*n;return {count:Math.min(n,Math.floor(progress)),flight:progress%1,index:Math.min(n-1,Math.floor(progress)),complete:t>=.95};}
-   case 'penalty':{
-    const targets=[[29,27],[71,27],[29,53],[71,53],[50,40]],target=targets[last.choice??4],keep=targets[last.opponent??4],u=ease(phase(t,.12,.72)),dive=ease(phase(t,.23,.7)),bounce=phase(t,.72,1),save=last.safe===false;
-    return {targetX:target[0],targetY:target[1],x:50+(target[0]-50)*u+(save?(50-target[0])*.25*bounce:0),y:85+(target[1]-85)*u-9*Math.sin(u*Math.PI)+(save?12*bounce:3*bounce),scale:1-.55*u+(save?.08*bounce:0),rotation:540*u,keeperX:50+(keep[0]-50)*dive,keeperY:44+(keep[1]+3-44)*dive,keeperAngle:(keep[0]-50)*2*dive,reach:48*dive,hit:t>=.72,net:!save&&t>=.72&&t<1?Math.sin(bounce*Math.PI)*.65:0};
+
+   case 'darts':{
+    const u=phase(t,dartsTiming.launch,dartsTiming.impact),travel=u*u,rest=phase(t,dartsTiming.impact,1),radius=clamp(d.radius||0),angle=d.angle||0;
+    const x=150+119*radius*Math.sin(angle),y=151-119*radius*Math.cos(angle),heading=Math.atan2(370-y,180-x)*180/Math.PI-56;
+    return {x:x+(180-x)*(1-travel),y:y+(370-y)*(1-travel),scale:.72+1.1*(1-travel),opacity:t<dartsTiming.launch?0:Math.min(1,u*12),hit:t>=dartsTiming.impact,rotation:heading+5*Math.sin(rest*Math.PI*6)*(1-rest)**3,ripple:phase(t,dartsTiming.impact,.88)};
    }
-   case 'darts':{const u=out(phase(t,.2,.8));return {x:50+43*(d.radius||0)*Math.sin(d.angle||0),y:50-43*(d.radius||0)*Math.cos(d.angle||0)+(1-u)*65,scale:1+.6*(1-u),opacity:Math.min(1,u*5),hit:t>=.8};}
    case 'bowling':{const u=ease(phase(t,0,.6)),travel=phase(t,.6,.93),rows=[22,22,22,22,28,28,28,34,34,40];return {y:90-50*u-20*travel,scale:1-.65*u,rotation:540*(u+travel*.3),pins:Array.from({length:10},(_,i)=>{const hit=.6+(40-rows[i])/20*.33,v=phase(t,hit,Math.min(1,hit+.12));return {fall:d.fallen?.[i]?ease(v):0,angle:(i%2?1:-1)*75*ease(v)};})};}
    case 'balloon':{const old=previous?.step||0,now=info.step||old;return {scale:1+.018*(old+(now-old)*out(phase(t,0,.7))),pump:Math.sin(phase(t,0,.55)*Math.PI),burst:last.safe===false&&t>.68,burstProgress:phase(t,.68,1)};}
    case 'race':return {cars:[0,1,2,3].map(i=>{const rank=d.order?.indexOf(i)??i;return {y:85-(70-rank*7)*ease(t)+(t===1?0:Math.sin(t*9+i)*4*Math.sin(t*Math.PI)),finished:t===1};})};
@@ -39,6 +41,6 @@
    default:return {progress:p};
   }
  }
- const api={clamp,ease,out,phase,duration,frame,bumpers};
+ const api={clamp,ease,out,phase,duration,frame,bumpers,dartsTiming};
  if(typeof module==='object'&&module.exports)module.exports=api;else root.CasinoMotion=api;
 })(globalThis);

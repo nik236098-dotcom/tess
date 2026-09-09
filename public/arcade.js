@@ -16,6 +16,8 @@ function agMaxBet() {
   return a.game==='tower' ? cfg?.maxBets?.[a.options.tower.level] ?? cfg?.maxBet : cfg?.maxBet;
 }
 function stopArcade() {
+  if(typeof DartsGame!=='undefined')DartsGame.stop();
+  if(typeof DartsAudio!=='undefined')DartsAudio.stop();
   const a=state.ag; a.token++; cancelAnimationFrame(a.raf); a.animating=false; a.game=null; a.info=null; a.pending=null;
   $('screen-ag').classList.add('hidden');
 }
@@ -29,7 +31,7 @@ function openArcade(game) {
   $('screen-ag').classList.toggle('is-coin',game==='coin');
   $('screen-ag').classList.toggle('is-slots',game==='slots');
   $('screen-ag').classList.toggle('is-andar',game==='andar');
-  $('screen-ag').classList.toggle('is-penalty',game==='penalty');
+  $('screen-ag').classList.toggle('is-darts',game==='darts');
   $('ag-chicken-step').hidden=true;
   $('screen-ag').classList.remove('vp-is-live');
   if(agCatalog())CasinoUI.prepare(game);
@@ -45,10 +47,12 @@ function openArcade(game) {
 function closeArcade() { showLobby(); }
 function agOpenRequest() {
   const a=state.ag; if(!a.game) return;
+  if(a.game==='darts')DartsGame.reset();
   a.pending={id:String(Date.now())+'-'+Math.random().toString(36).slice(2),action:'open'};
   send({type:'ag_open',game:a.game,requestId:a.pending.id});
 }
 function agRequest(action, extra={}) {
+  if(state.ag.game==='darts'&&action==='start')return DartsGame.enqueue();
   const a=state.ag; if(agLocked()) return;
   const info=a.info, message={type:'ag_'+action,game:a.game,revision:info.revision,...extra};
   if(action==='start') {
@@ -64,8 +68,11 @@ function agRequest(action, extra={}) {
   renderArcade(false); send(message); haptic('light');
 }
 function onArcadeState(message) {
-  const a=state.ag; state.balance=message.balance;
+  const a=state.ag;
+  if(a.game===message.game&&a.info&&message.revision<a.info.revision)return;
+  state.balance=message.balance;
   if(a.game!==message.game) return;
+  if(a.game==='darts'&&DartsGame.receive(message))return;
   if(a.info && message.revision<a.info.revision) return;
   const previous=a.info;
   const action=a.pending && a.pending.id===message.requestId?a.pending.action:null;

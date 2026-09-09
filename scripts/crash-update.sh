@@ -32,6 +32,10 @@ node --check public/casino-art.js
 node --check public/casino-ui.js
 node --check public/casino-motion.js
 node --check public/chicken-scene.js
+node --check public/darts-rules.js
+node --check public/darts-scene.js
+node --check public/darts-audio.js
+node --check public/darts-game.js
 systemctl start poker
 systemctl is-active --quiet poker
 trap - ERR

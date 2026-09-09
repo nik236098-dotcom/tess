@@ -27,9 +27,9 @@ function harness(id){
  const ctx=vm.createContext({state,$,document:{querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},performance:{now:()=>0},structuredClone,
  send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),haptic(){},toast(){},
  requestAnimationFrame:f=>{const id=++next;frames.set(id,f);return id;},cancelAnimationFrame:id=>frames.delete(id)});
- for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
+ for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
  vm.runInContext(`CasinoUI.prepare('${id}');`,ctx);ctx.bindArcade();
- const deliver=round=>ctx.onArcadeState({game:id,config:game.config(id),balance:100000,...game.publicState(id,round),requestId:state.ag.pending?.id});
+ const deliver=round=>ctx.onArcadeState({game:id,accepted:true,config:game.config(id),balance:100000,...game.publicState(id,round),requestId:state.ag.pending?.id});
  const advance=(now=10000)=>{const list=[...frames.values()];frames.clear();for(const f of list)f(now);};
  const click=(container,key,value)=>{const target=key==='cgHold'&&cardNodes[Number(value)]||{dataset:{[key]:value},disabled:false,closest:selector=>selector===`[data-${key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())}]`?target:null};$(container).dispatch('click',target);};
  return {ctx,state,$,sent,deliver,advance,frames,click};
@@ -64,9 +64,9 @@ test('game choices preserve native inputs and map numeric values to numbers',()=
   h.ctx.agRequest('start');assert.equal(h.sent.at(-1).options[key],value);
  }
 });
-test('catalog launchers contain all 15 distinct games and no baccarat duplicate',()=>{
+test('catalog launchers contain all 14 distinct games and no baccarat duplicate',()=>{
  const h=harness('diamonds'),html=h.$('casino-catalog').innerHTML;
- const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,ids);assert.equal(new Set(idsInHtml).size,15);assert.ok(!html.includes('data-arcade="baccarat"'));
+ const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,ids);assert.equal(new Set(idsInHtml).size,14);assert.ok(!html.includes('data-arcade="baccarat"'));
 });
 test('Chicken step and cashout controls lock duplicate requests and restore a saved round',()=>{
  const h=harness('chicken');h.deliver(game.initial());
@@ -106,8 +106,8 @@ test('active animations lock clicks and stop permanently when leaving any game',
   const h=harness(id);h.deliver(game.initial());h.ctx.agRequest('start');
   let r=game.start(id,game.initial(),100,structuredClone(games[id].defaults),0,n=>n-1);r.settled=r.phase==='done';h.deliver(r);
   if(games[id].series){h.ctx.agRequest('pick',{index:0});r=game.actGame(id,r,'ag_pick',0,r.revision,n=>n-1);r.settled=r.phase==='done';h.deliver(r);}
-  h.advance(100);assert.equal(h.state.ag.animating,true,id);assert.equal(h.$('ag-main').disabled,true,id);assert.equal(h.frames.size,1,id);
-  const count=h.sent.length;h.$('ag-main').dispatch('click',{});h.click('ag-stage','cgPick','0');assert.equal(h.sent.length,count,id);
+  h.advance(100);assert.equal(h.state.ag.animating,true,id);assert.equal(h.$('ag-main').disabled,id!=='darts',id);assert.equal(h.frames.size,1,id);
+  const count=h.sent.length;h.$('ag-main').dispatch('click',{});h.click('ag-stage','cgPick','0');assert.equal(h.sent.length,count+(id==='darts'?1:0),id);
   h.ctx.stopArcade();h.advance(10000);assert.equal(h.state.ag.animating,false,id);assert.equal(h.frames.size,0,id);
  }
 });
@@ -255,5 +255,52 @@ test('Andar renders all 52 Baccarat-style faces inline and keeps only the top fa
   assert.ok(html.includes(`<span class="ab-rank">${({14:'A',13:'K',12:'Q',11:'J'})[rank]||rank}</span>`));
   assert.ok(html.includes(`<span class="ab-suit">${{s:'♠',c:'♣',h:'♥',d:'♦'}[suit]}</span>`));
   assert.ok(!html.includes('--offset:'));
+ }
+});
+
+function dartsBridge(balance=500){
+ const h=harness('darts');h.deliver(game.initial());h.state.balance=balance;
+ const account={id:'qa',name:'QA',balance},messages=[],saved=[];
+ const accounts={get:()=>account,flush(){saved.push(structuredClone(account));}};
+ const service=require('../server/arcade/service').createArcadeService({accounts,noteWin(){},rng:n=>n-1});
+ const client={user:{id:'qa'},send:m=>{messages.push(m);h.ctx.onArcadeState(m);}};
+ return {h,account,messages,saved,accounts,run:i=>service.handle(client,h.sent[i]),service,client};
+}
+test('four rapid darts reserve four stakes, overlap and add payouts only at each impact',()=>{
+ const {h,account,messages,saved,run}=dartsBridge();
+ for(let i=0;i<4;i++)h.$('ag-main').dispatch('click',{});
+ assert.equal(h.sent.length,1,'only one unconfirmed revision is sent');
+ for(let i=0;i<4;i++){
+  h.ctx.performance.now=()=>i*100;run(i);
+  assert.equal(h.$('ag-main').disabled,false,'next throw remains available');
+ }
+ assert.equal(h.sent.length,4);assert.equal(new Set(h.sent.map(m=>m.requestId)).size,4);
+ assert.deepEqual(h.sent.map(m=>m.revision),[0,2,4,6]);
+ assert.equal(account.balance,260);assert.equal(saved.length,4);
+ assert.equal((h.$('ag-stage').innerHTML.match(/data-dt-flight="/g)||[]).length,4);
+ assert.equal(h.$('ag-payout').textContent,'$0.00');
+ h.advance(950);assert.equal(h.$('ag-payout').textContent,'$0.40');
+ h.advance(1300);assert.equal(h.$('ag-payout').textContent,'$1.60');
+ h.advance(1800);assert.equal(h.state.ag.animating,false);assert.equal(h.frames.size,0);assert.equal(h.$('ag-multiplier').textContent,'0.40×');
+ assert.equal(h.$('ag-amount').disabled,false);
+ h.ctx.onArcadeState(messages[0]);assert.equal(h.state.balance,260,'late old response cannot rewind the wallet');
+ assert.throws(()=>run(0),/Раунд обновился/);assert.equal(account.balance,260,'duplicate wire request cannot debit twice');
+ assert.equal(messages.at(-1).accepted,false);assert.equal(h.sent.length,4);
+});
+test('queued darts cannot reserve more than the wallet and rejected persistence cancels the queue',()=>{
+ const {h,run,account}=dartsBridge(250);
+ for(let i=0;i<4;i++)h.$('ag-main').dispatch('click',{});
+ run(0);run(1);assert.equal(h.sent.length,2);assert.equal(account.balance,130);
+ const failing=dartsBridge();for(let i=0;i<4;i++)failing.h.$('ag-main').dispatch('click',{});
+ failing.accounts.flush=()=>{throw Error('disk failure');};
+ assert.throws(()=>failing.run(0),/Не удалось сохранить/);assert.equal(failing.account.balance,500);
+ assert.equal(failing.messages.at(-1).accepted,false);assert.equal(failing.h.sent.length,1);assert.equal(failing.h.state.ag.animating,false);
+});
+test('closing or reconnecting cancels unsent darts and never replays an uncertain request',()=>{
+ for(const close of [false,true]){
+  const {h,run,account}=dartsBridge();for(let i=0;i<4;i++)h.$('ag-main').dispatch('click',{});
+  if(close)h.ctx.stopArcade();else{h.state.connected=false;vm.runInContext('DartsGame.stop()',h.ctx);}
+  run(0);assert.equal(account.balance,440);assert.equal(h.sent.length,1);
+  if(!close){h.state.connected=true;h.ctx.agOpenRequest();run(1);assert.equal(account.balance,440);assert.equal(h.sent.length,2);assert.equal(h.sent[1].type,'ag_open');assert.equal(h.state.ag.animating,false);assert.equal(h.$('ag-payout').textContent,'$0.40');}
  }
 });

@@ -10,7 +10,7 @@ function complete(id,r,random){
  if(id==='scratch'){for(let i=0;i<9;i++)r=game.actGame(id,r,'ag_pick',i,r.revision,random);return r;}
  return game.actGame(id,r,'ag_cashout',null,r.revision,random);
 }
-test('catalog includes exactly the 15 retained additions and excludes baccarat',()=>{assert.equal(ids.length,15);assert.ok(!ids.includes('baccarat'));});
+test('catalog includes exactly the 14 retained additions and excludes baccarat',()=>{assert.equal(ids.length,14);assert.ok(!ids.includes('baccarat'));});
 for(const id of ids)test(`${id}: validates stake/options, preserves hidden state, completes and blocks replay`,()=>{
  const random=rng(),old=game.initial();
  for(const amount of [-1,0,99,100001,1.5,NaN,'100'])assert.throws(()=>game.start(id,old,amount,opts(id),0,random));
@@ -58,14 +58,14 @@ test('series: every game can advance, cash out once or lose, with no future outc
  for(const id of ids.filter(id=>games[id].series)){
   let r=game.start(id,game.initial(),100,opts(id),0,rng());
   if(r.order)r.order[0]=1;
-  const index=id==='rps'?1:id==='penalty'?1:0;
+  const index=id==='rps'?1:0;
   const random=id==='pinball'?()=>1:()=>0;
   const step=game.actGame(id,r,'ag_pick',index,r.revision,random);assert.equal(step.step,1,id);
   const done=game.actGame(id,step,'ag_cashout',null,step.revision,random);assert.ok(done.payout>=100);assert.throws(()=>game.actGame(id,done,'ag_cashout',null,done.revision));
  }
  let r=game.start('rps',game.initial(),100,opts('rps'),0,()=>0);r=game.actGame('rps',r,'ag_pick',0,r.revision,()=>0);assert.equal(r.step,0);assert.equal(r.last.tie,true);assert.equal(game.actGame('rps',r,'ag_cashout',null,r.revision).payout,100);
 });
-test('all 15 games persist to disk and reopening never recredits their result',t=>{
+test('all 14 games persist to disk and reopening never recredits their result',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'catalog-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));const file=path.join(dir,'accounts.json');
  let accounts=new Accounts({file});accounts.ensure({id:'qa'});let messages=[];const client={user:{id:'qa'},send:m=>messages.push(m)};
  for(const id of ids){let service=createArcadeService({accounts,noteWin(){},rng:rng()});const before=accounts.balanceOf('qa');service.handle(client,{type:'ag_start',game:id,amount:100,options:opts(id),revision:0});let info=messages.at(-1);
@@ -103,3 +103,5 @@ test('Sic Bo records only actual throw totals and preserves earlier history when
  assert.equal(next.history[0].sum,18);assert.equal(next.history[0].triple,true);assert.equal(next.history[0].payout,3100);
  assert.equal(next.history[1].sum,12);assert.equal(r.history.length,1);
 });
+
+test('removed penalty cannot be opened or started',()=>{const e=require('../server/arcade/game');assert.ok(!ids.includes('penalty'));assert.ok(!e.GAMES.includes('penalty'));assert.throws(()=>e.config('penalty'),/Игра не найдена/);});

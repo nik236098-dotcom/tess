@@ -1,0 +1,19 @@
+/* Darts uses the same blue controls and stake field as the other redesigned games. */
+#screen-ag.is-darts .ag-board{padding:12px 0 0;border:1px solid #53618d;background:linear-gradient(155deg,#1d2943,#182039);box-shadow:inset 0 1px 1px #93a8e522;overflow:hidden;border-radius:22px}
+#screen-ag.is-darts .ag-stage{overflow:hidden}
+#screen-ag.is-darts .ag-status{margin:0 12px;color:#acbbd9}
+#screen-ag.is-darts .ag-stats{margin:0;padding:15px 12px 17px;background:linear-gradient(#18223966,#141b3299);border-radius:16px 16px 0 0;border-top:1px solid #61709233}
+#screen-ag.is-darts .ag-stats small{color:#aab6d2}
+#screen-ag.is-darts .ag-stats b{font-size:26px}
+#screen-ag.is-darts #ag-payout{color:#6eefac}
+#screen-ag.is-darts .mn-main{background:linear-gradient(#5896ff,#285ae0);box-shadow:inset 0 2px 2px #cee3ff66}
+#screen-ag.is-darts .mn-mod{background:linear-gradient(#233658,#172641);border-color:#536c99;color:#dce7ff}
+#screen-ag.is-darts #ag-paytable,#screen-ag.is-darts #ag-settings{display:none}
+.dt-panel{width:100%;min-width:0}
+.dt-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;margin:0 12px;color:#9daecf;font:12px/1.35 var(--font)}
+.dt-sound{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;border:1px solid #566b92;border-radius:13px;background:#24324e;color:#d7e3ff;cursor:pointer;touch-action:manipulation}
+.dt-sound svg{width:21px;height:21px}
+.dt-sound[aria-pressed=true] .dt-sound-off,.dt-sound[aria-pressed=false] .dt-sound-wave{display:none}
+.dt-sound:active{background:#354568}
+.dt-sound:focus-visible{outline:2px solid #abbdff;outline-offset:2px}
+.dt-scene{display:block;width:100%;height:auto;aspect-ratio:360/386;overflow:hidden;user-select:none;-webkit-user-select:none}

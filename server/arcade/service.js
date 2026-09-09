@@ -39,9 +39,9 @@ function createArcadeService({ accounts, noteWin, rng }) {
         if (before !== balance) accounts.onChange?.(account);
         if (newlyPaid && next.payout > next.bet) noteWin({ userId: account.id, name: account.name, amount: next.payout - next.bet, game, code: 'AG' });
       }
-      client.send({ type: 'ag', game, requestId: message.requestId, config: config(game), ...publicState(game, next), balance: account.balance });
+      client.send({ type: 'ag', game, requestId: message.requestId, accepted: true, config: config(game), ...publicState(game, next), balance: account.balance });
     } catch (error) {
-      client.send({ type: 'ag', game, requestId: message.requestId, config: config(game), ...publicState(game, account.arcadeRounds?.[game] || previous), balance: account.balance });
+      client.send({ type: 'ag', game, requestId: message.requestId, accepted: false, config: config(game), ...publicState(game, account.arcadeRounds?.[game] || previous), balance: account.balance });
       throw error;
     }
   }

@@ -342,6 +342,7 @@ function connect() {
 
   socket.addEventListener('close', () => {
     state.connected = false;
+    if(state.ag.game==='darts')DartsGame.stop();
     if (state.hl.open) renderHilo();
     if (state.ag.game) renderArcade();
     if (state.cr.open) renderCrash();
