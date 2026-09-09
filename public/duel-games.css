@@ -1,0 +1,31 @@
+/* The games breathe on the shared canvas; only actionable controls are boxed. */
+#screen-ag.is-coin.game-surface .cf-panel { overflow:visible; }
+#screen-ag.is-coin.game-surface .cg-coin-scene { height:clamp(220px,calc(var(--scene-height,370px) - 52px),520px); overflow:hidden; perspective:none; }
+#screen-ag.is-coin.game-surface .cg-coin-lift { width:clamp(155px,48vw,224px); height:auto; aspect-ratio:1; top:auto; bottom:30px; left:calc(50% - clamp(155px,48vw,224px)/2); perspective:none; }
+#screen-ag.is-coin.game-surface .cg-coin { transform-style:flat; z-index:2; }
+#screen-ag.is-coin.game-surface .cg-coin-side { transform:none; backface-visibility:visible; -webkit-backface-visibility:visible; border:0; border-radius:50%; background:none; box-shadow:none; }
+#screen-ag.is-coin.game-surface .cg-coin-side[hidden] { display:none!important; }
+#screen-ag.is-coin.game-surface .cg-coin-side::before { content:none; }
+.cf-coin-edge { position:absolute; height:96%; width:8px; left:calc(50% - 4px); top:2%; border-radius:50%; background:repeating-linear-gradient(0deg,#f6d67e 0 2px,#ae7028 2px 4px); box-shadow:inset 1px 0 1px #ffedb7; }
+#screen-ag.is-coin.game-surface .cg-coin-shadow { width:150px; left:calc(50% - 75px); bottom:14px; height:16px; }
+#screen-ag.is-coin.game-surface .cf-result { min-height:32px; padding:3px 0; }
+#screen-ag.is-coin.game-surface .cf-result b { font:600 17px var(--font); color:#c9c1e5; }
+#screen-ag:is(.is-coin,.is-rps) .ag-panel .cg-choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+#screen-ag.is-rps .ag-panel .cg-choices { grid-template-columns:repeat(3,minmax(0,1fr)); }
+#screen-ag:is(.is-coin,.is-rps) .ag-panel :is(.cg-action,.ag-choice) { display:flex; align-items:center; justify-content:center; gap:7px; min-height:48px; padding:6px; font-size:13px; }
+#screen-ag:is(.is-coin,.is-rps) .ag-panel :is(.cg-action,.ag-choice) svg { width:30px; height:32px; flex:none; }
+#screen-ag.is-rps .ag-panel :is(.cg-action,.ag-choice) { flex-direction:column; gap:3px; min-height:66px; }
+#screen-ag.is-rps .ag-panel :is(.cg-action,.ag-choice) svg { width:32px; height:34px; }
+.rps-scene { position:relative; display:flex; flex-direction:column; justify-content:center; gap:26px; height:clamp(245px,var(--scene-height,350px),530px); padding:14px 0; box-sizing:border-box; }
+.rps-duel { display:grid; grid-template-columns:minmax(0,1fr) 32px minmax(0,1fr); align-items:center; gap:8px; }
+.rps-player { min-width:0; text-align:center; }
+.rps-hand { display:block; width:100%; height:clamp(136px,calc(var(--scene-height,350px) * .48),215px); transform-origin:50% 80%; }
+.rps-hand .duel-hand-art { display:block; width:100%; height:100%; }
+.rps-player.is-house .duel-hand-art { transform:scaleX(-1); }
+.rps-player > small { display:block; margin-top:12px; font:600 11px var(--font); letter-spacing:1px; color:#a9a2c4; }
+.rps-versus { color:#817492; font:800 16px var(--font); text-align:center; }
+.rps-caption { min-height:38px; text-align:center; display:flex; flex-direction:column; gap:6px; color:#ece7fa; font:600 16px var(--font); }
+.rps-caption small { color:#a9a2c4; font:400 11px var(--font); }
+.rps-player.is-winner .duel-hand-art { filter:drop-shadow(0 0 9px #b78afb40); }
+.rps-player.is-winner > small { color:#d6c4ff; }
+@media(max-width:360px) { #screen-ag.is-rps .ag-panel :is(.cg-action,.ag-choice) { font-size:11px; } }

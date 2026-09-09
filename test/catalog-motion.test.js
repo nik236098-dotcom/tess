@@ -32,19 +32,6 @@ test('bowling collision happens before pins fall, and standing pins stay upright
  assert.equal(motion.frame('bowling',info,null,.5).pins[0].fall,0);
  const end=motion.frame('bowling',info,null,1);assert.equal(end.pins.filter(p=>p.active).length,2);assert.equal(end.pins[9].fall,1);assert.equal(end.y,require('../public/bowling-scene').R);
 });
-test('pinball paths stay outside all bumper interiors and reach the selected bumper surface',()=>{
- for(let choice=0;choice<2;choice++)for(let bumper=0;bumper<3;bumper++)for(const safe of [true,false]){
-  const info={last:{choice,bumper,safe}};
-  let contact=false;
-  for(let i=0;i<=1000;i++){
-   const f=motion.frame('pinball',info,null,i/1000);
-   for(const [x,y] of motion.bumpers)assert.ok(Math.hypot(f.x-x,f.y-y)>=10.4,`path intersects bumper: ${choice}/${bumper}/${i}`);
-   contact ||= f.impact;
-  }
-  assert.ok(contact);
-  assert.equal(motion.frame('pinball',info,null,1).y,safe?86:106);
- }
-});
 test('Andar reveals every card in order and finishes with the matching card',()=>{
  const info={detail:{dealt:Array.from({length:37},(_,i)=>({id:i}))}};
  let last=0;for(let i=0;i<=1000;i++){const f=motion.frame('andar',info,null,i/1000);assert.ok(f.count>=last);assert.ok(f.count<=37);last=f.count;}

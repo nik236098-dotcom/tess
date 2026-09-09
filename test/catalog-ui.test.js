@@ -27,7 +27,7 @@ function harness(id){
  const ctx=vm.createContext({state,$,document:{querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},performance:{now:()=>0},structuredClone,
  send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),haptic(){},toast(){},
  requestAnimationFrame:f=>{const id=++next;frames.set(id,f);return id;},cancelAnimationFrame:id=>frames.delete(id)});
- for(const file of ['game-result','casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-physics','bowling-scene','balloon-scene','race-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
+ for(const file of ['game-result','casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-physics','bowling-scene','balloon-scene','race-scene','fishing-scene','duel-art','game-catalog','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
  // DOM harness has no graphics context; GPU rendering is checked separately.
  vm.runInContext('BowlingScene.render=()=>true;BowlingScene.ready=()=>true;RaceScene.ready=()=>true;',ctx);
  vm.runInContext(`CasinoUI.prepare('${id}');`,ctx);ctx.bindArcade();
@@ -42,6 +42,7 @@ for(const id of ids)test(`${id}: every board renders, actions send once, animati
  assert.ok(!h.$('ag-stage').innerHTML.includes('undefined'));assert.equal(h.$(id==='balloon'?'ag-balloon-pump':'ag-main').disabled,false);
  h.$(id==='balloon'?'ag-balloon-pump':'ag-main').dispatch('click',{});h.$(id==='balloon'?'ag-balloon-pump':'ag-main').dispatch('click',{});assert.equal(h.sent.length,1);assert.equal(h.sent[0].type,'ag_start');
  let r=game.start(id,game.initial(),100,structuredClone(games[id].defaults),0,n=>n-1);r.settled=r.phase==='done';h.deliver(r);h.advance();
+ if(['coin','rps'].includes(id)){assert.equal(h.sent.at(-1).type,'ag_pick');r=game.actGame(id,r,'ag_pick',h.sent.at(-1).index,r.revision,()=>0);r.settled=r.phase==='done';h.deliver(r);h.advance();}
  if(r.phase==='play'){
   if(id==='videopoker'){h.click('ag-stage','cgHold','0');h.click('ag-stage','cgHold','4');h.$('ag-main').dispatch('click',{});assert.equal(JSON.stringify(h.sent.at(-1).index),'[0,4]');r=game.actGame(id,r,'ag_pick',[0,4],r.revision);}
   else if(id==='scratch'){for(let i=0;i<9;i++){h.click('ag-stage','cgScratch',String(i));assert.equal(h.sent.at(-1).index,i);r=game.actGame(id,r,'ag_pick',i,r.revision);r.settled=r.phase==='done';h.deliver(r);} }
@@ -54,7 +55,8 @@ for(const id of ids)test(`${id}: every board renders, actions send once, animati
 });
 test('series board buttons are usable while cashout and stake controls keep their own states',()=>{
  for(const id of ids.filter(id=>games[id].series)){
-  const h=harness(id);h.deliver(game.initial());h.ctx.agRequest('start');const r=game.start(id,game.initial(),100,structuredClone(games[id].defaults),0,n=>n-1);h.deliver(r);
+  const h=harness(id);h.deliver(game.initial());h.ctx.agRequest('start');let r=game.start(id,game.initial(),100,structuredClone(games[id].defaults),0,n=>n-1);h.deliver(r);
+  if(['coin','rps'].includes(id)){r=game.actGame(id,r,'ag_pick',h.sent.at(-1).index,r.revision,()=>0);h.deliver(r);h.advance();}
   assert.equal(h.$('ag-main').disabled,false);assert.equal(h.$('ag-amount').disabled,true);
   const before=h.sent.length;h.click('ag-stage','cgPick','0');assert.equal(h.sent.length,before+1,id);assert.equal(h.sent.at(-1).type,'ag_pick');
  }
@@ -66,9 +68,9 @@ test('game choices preserve native inputs and map numeric values to numbers',()=
   h.ctx.agRequest('start');assert.equal(h.sent.at(-1).options[key],value);
  }
 });
-test('catalog launchers contain all 14 distinct games and no baccarat duplicate',()=>{
+test('catalog launchers contain all 13 distinct games and no baccarat duplicate',()=>{
  const h=harness('diamonds'),html=h.$('casino-catalog').innerHTML;
- const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,ids);assert.equal(new Set(idsInHtml).size,14);assert.ok(!html.includes('data-arcade="baccarat"'));
+ const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,ids);assert.equal(new Set(idsInHtml).size,13);assert.ok(!html.includes('data-arcade="baccarat"'));
 });
 test('Chicken step and cashout controls lock duplicate requests and restore a saved round',()=>{
  const h=harness('chicken');h.deliver(game.initial());
@@ -115,8 +117,8 @@ test('active animations lock clicks and stop permanently when leaving any game',
 });
 test('scene markup uses project textures and generated assets rather than placeholder drawings',()=>{
  const h=harness('diamonds');h.deliver(game.initial());
- assert.match(h.$('casino-catalog').innerHTML,/cg-sprite/);
- for(const id of ['cases','collection','scratch','limbo'])assert.ok(!h.$('casino-catalog').innerHTML.includes(`data-arcade="${id}"`));
+ assert.match(h.$('casino-catalog').innerHTML,/img\/game-cards/);
+ for(const id of ['cases','collection','scratch','limbo','pinball'])assert.ok(!h.$('casino-catalog').innerHTML.includes(`data-arcade="${id}"`));
  assert.match(fs.readFileSync('public/casino-ui.css','utf8'),/img\/catalog\/objects.webp/);
  for(const asset of ['objects','environments'])assert.ok(fs.statSync(`public/img/catalog/${asset}.webp`).size>10000);
 });
@@ -378,10 +380,31 @@ test('race waits for assets before accepting a stake, but saved payments remain 
 
 test('Coin continues from the shared bottom panel without a second throw or cashout button',()=>{
  const h=harness('coin');h.deliver(game.initial());h.ctx.agRequest('start');
- const r=game.start('coin',game.initial(),100,{side:0},0,()=>0);h.deliver(r);
+ let r=game.start('coin',game.initial(),100,{side:0},0,()=>0);h.deliver(r);
+ assert.equal(h.sent.at(-1).type,'ag_pick');assert.equal(h.sent.at(-1).index,0);
+ r=game.actGame('coin',r,'ag_pick',0,r.revision,()=>0);h.deliver(r);h.advance();
  assert.match(h.$('ag-settings').innerHTML,/g-live-choices/);
  assert.equal((h.$('ag-settings').innerHTML.match(/data-cg-pick=/g)||[]).length,2);
  h.click('ag-settings','cgPick','1');
  assert.equal(h.sent.at(-1).type,'ag_pick');assert.equal(h.sent.at(-1).index,1);
  assert.equal(h.$('ag-main').disabled,true);
+});
+test('Coin Flip and RPS submit the selected opening move once; duplicate acknowledgements and reconnects never replay it',()=>{
+ for(const id of ['coin','rps']){
+  const h=harness(id);h.deliver(game.initial());h.state.ag.options[id].side=1;h.ctx.agRequest('start');
+  const requestId=h.state.ag.pending.id,round=game.start(id,game.initial(),100,{side:1},0,()=>0);
+  const message={game:id,accepted:true,config:game.config(id),balance:99900,...game.publicState(id,round),requestId};
+  h.ctx.onArcadeState(message);h.ctx.onArcadeState(message);
+  assert.equal(h.sent.filter(m=>m.type==='ag_pick').length,1);assert.equal(h.sent.at(-1).index,1);
+  const resumed=harness(id);resumed.deliver(round);assert.equal(resumed.sent.length,0);assert.equal(resumed.$('ag-main').disabled,false);
+ }
+});
+test('first-move Coin Flip loss displays zero; an opening RPS tie keeps the round available',()=>{
+ for(const id of ['coin','rps']){
+  const h=harness(id);h.deliver(game.initial());h.ctx.agRequest('start');let round=game.start(id,game.initial(),100,{side:0},0,()=>0);h.deliver(round);
+  round=game.actGame(id,round,'ag_pick',0,round.revision,()=>id==='coin'?1:0);round.settled=round.phase==='done';h.deliver(round);h.advance();
+  assert.equal(h.state.ag.animating,false);assert.equal(h.state.ag.pending,null);
+  if(id==='coin'){assert.equal(round.payout,0);assert.equal(h.$('ag-multiplier').textContent,'0×');}
+  else{assert.equal(round.phase,'play');assert.equal(round.last.tie,true);assert.equal(h.$('ag-main').disabled,false);assert.equal(h.$('ag-amount').disabled,true);}
+ }
 });

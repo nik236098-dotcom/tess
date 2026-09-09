@@ -87,9 +87,9 @@
   const start=Math.max(1,target-1),end=Math.min(lanes.length||20,target+4);
   const indices=Array.from({length:end-start+1},(_,i)=>start+i);
   return `<div class="ch-scene${animating?' is-moving':''}${!animating&&info.last?.safe===false?' is-crashed':''}"><svg class="ch-road-svg" viewBox="0 0 400 338" role="img" aria-label="Курица переходит дорогу по люкам; пройденные полосы закрываются барьерами.">${defs(p)}
-  <rect width="400" height="338" fill="#192238"/>
+  <rect width="400" height="338" fill="var(--game-bg,#111329)"/>
   <g data-ch-world="" transform="translate(${-f.camera} 0)">
-   <g class="ch-start-zone"><path d="M0 0H128V338H0Z" fill="#1d2940"/>
+   <g class="ch-start-zone"><path d="M0 0H128V338H0Z" fill="var(--game-bg,#111329)"/>
    ${[0,82,164,246].map(y=>`<rect x="112" y="${y}" width="16" height="79" rx="2" fill="#35455f"/><rect x="112" y="${y+74}" width="16" height="4" rx="1" fill="#485d7a"/>`).join('')}
    ${[0,24,48,72,96].map(x=>`<rect x="${x}" y="204" width="21" height="57" rx="3" fill="#465b79"/>`).join('')}
    <g transform="translate(53 51)"><ellipse cy="107" rx="23" ry="8" fill="#101828"/><rect x="-15" y="88" width="30" height="16" rx="9" fill="#3d5271"/><rect x="-5" y="24" width="10" height="69" rx="4" fill="#3b506d"/><rect x="-27" y="-10" width="54" height="33" rx="16" fill="#3b506f"/><circle cx="-12" cy="6" r="10" fill="#202d43"/><circle cx="12" cy="6" r="10" fill="#202d43"/><circle data-ch-signal="stop" cx="-12" cy="6" r="7" fill="#e0ad59"/><circle data-ch-signal="go" cx="12" cy="6" r="7" fill="#34445f"/><path d="m-15 2 2-2M9 2l2-2" stroke="#fff3c1" stroke-width="2" stroke-linecap="round" opacity=".75"/></g>

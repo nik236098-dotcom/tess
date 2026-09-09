@@ -10,7 +10,7 @@ function complete(id,r,random){
  if(id==='scratch'){for(let i=0;i<9;i++)r=game.actGame(id,r,'ag_pick',i,r.revision,random);return r;}
  return game.actGame(id,r,'ag_cashout',null,r.revision,random);
 }
-test('catalog includes exactly the 14 retained additions and excludes baccarat',()=>{assert.equal(ids.length,14);assert.ok(!ids.includes('baccarat'));});
+test('catalog includes exactly the 13 retained additions and excludes baccarat',()=>{assert.equal(ids.length,13);assert.ok(!ids.includes('baccarat'));});
 for(const id of ids)test(`${id}: validates stake/options, preserves hidden state, completes and blocks replay`,()=>{
  const random=rng(),old=game.initial();
  for(const amount of [-1,0,99,100001,1.5,NaN,'100'])assert.throws(()=>game.start(id,old,amount,opts(id),0,random));
@@ -65,7 +65,7 @@ test('series: every game can advance, cash out once or lose, with no future outc
  }
  let r=game.start('rps',game.initial(),100,opts('rps'),0,()=>0);r=game.actGame('rps',r,'ag_pick',0,r.revision,()=>0);assert.equal(r.step,0);assert.equal(r.last.tie,true);assert.equal(game.actGame('rps',r,'ag_cashout',null,r.revision).payout,100);
 });
-test('all 14 games persist to disk and reopening never recredits their result',t=>{
+test('all 13 games persist to disk and reopening never recredits their result',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'catalog-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));const file=path.join(dir,'accounts.json');
  let accounts=new Accounts({file});accounts.ensure({id:'qa'});let messages=[];const client={user:{id:'qa'},send:m=>messages.push(m)};
  for(const id of ids){let service=createArcadeService({accounts,noteWin(){},rng:rng()});const before=accounts.balanceOf('qa');service.handle(client,{type:'ag_start',game:id,amount:100,options:opts(id),revision:0});let info=messages.at(-1);
@@ -77,7 +77,7 @@ test('all 14 games persist to disk and reopening never recredits their result',t
 });
 
 test('removed games cannot start and disappear from server and browser catalogs',()=>{
- for(const id of ['cases','collection','scratch','limbo']){
+ for(const id of ['cases','collection','scratch','limbo','pinball']){
   assert.ok(!ids.includes(id));assert.ok(!game.GAMES.includes(id));
   assert.throws(()=>game.start(id,game.initial(),100,{},0));
  }
@@ -94,6 +94,14 @@ test('failed retirement persistence never credits the wallet or consumes the ref
  const accounts=new Accounts(),user={id:'failure'},a=accounts.ensure(user);a.arcadeRounds={scratch:{phase:'play',revision:1,settled:false,bet:100}};
  const previous=a.arcadeRounds,balance=a.balance;accounts.flush=()=>{throw Error('disk failure');};
  assert.throws(()=>accounts.ensure(user));assert.equal(a.balance,balance);assert.equal(a.arcadeRounds,previous);
+});
+test('Pinball retirement returns the earned cashout once, retaining the original round for audit',t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pinball-retired-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'accounts.json');let accounts=new Accounts({file}),user={id:'old-pinball'},a=accounts.ensure(user);
+ a.balance=1000;a.arcadeRounds={pinball:{phase:'play',settled:false,revision:8,bet:101,step:3,coefficients:[1.22,1.53,1.91],events:[{safe:true},{safe:true},{safe:true}]}};accounts.flush({strict:true});
+ accounts.ensure(user);assert.equal(a.balance,1192);assert.equal(a.arcadeRounds.pinball.payout,192);assert.equal(a.arcadeRounds.pinball.retired,true);assert.equal(a.arcadeRounds.pinball.events.length,3);
+ accounts.ensure(user);assert.equal(a.balance,1192);accounts=new Accounts({file});assert.equal(accounts.ensure(user).balance,1192);
+ assert.throws(()=>game.start('pinball',game.initial(),100,{side:0},0));
 });
 
 test('Sic Bo records only actual throw totals and preserves earlier history when starting again',()=>{

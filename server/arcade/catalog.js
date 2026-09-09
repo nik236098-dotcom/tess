@@ -25,12 +25,11 @@ function validate(game,o){
  if(!o||typeof o!=='object'||Array.isArray(o))fail('Некорректные настройки');
  const g=games[game];if(!g)fail('Игра не найдена');
  if(g.choices){if(!g.choices.some(([,v])=>v===o[game==='chicken'||game==='balloon'?'level':'side']))fail('Выберите настройку игры');return {[game==='chicken'||game==='balloon'?'level':'side']:o[game==='chicken'||game==='balloon'?'level':'side']};}
- if(game==='pinball'){if(!integer(o.side,0,1))fail('Выберите направление');return {side:o.side};}
  return {};
 }
 function seriesSpec(game,options){
  if(game==='chicken'||game==='balloon'){const size=game==='chicken'?21:25,bad={easy:1,medium:3,hard:5}[options.level];return {size,bad,max:size-bad};}
- return {max:game==='pinball'?10:20,p:game==='coin'||game==='rps'?.5:.8};
+ return {max:20,p:.5};
 }
 function coefficients(game,options){const s=seriesSpec(game,options);let p=1;return Array.from({length:s.max},(_,i)=>{p*=s.size?(s.size-s.bad-i)/(s.size-i):s.p;return rounded(.98/p);});}
 function config(game){const g=games[game];if(!g)fail('Игра не найдена');return {minBet:100,maxBet:100000,catalog:true,definition:g};}
@@ -72,7 +71,6 @@ function act(game,previous,action,index,revision,rng=randomInt){
  if(r.order){if(index!==0)fail('Нажмите следующий шаг');safe=Boolean(r.order[r.step]);event={safe};}
  else if(game==='coin'){if(!integer(index,0,1))fail('Выберите сторону');const opponent=rng(2);safe=index===opponent;event={choice:index,opponent,safe};}
  else if(game==='rps'){if(!integer(index,0,2))fail('Выберите жест');const opponent=rng(3);if(index===opponent){r.last={choice:index,opponent,tie:true};r.revision++;return r;}safe=(index-opponent+3)%3===1;event={choice:index,opponent,safe};}
- else if(game==='pinball'){if(!integer(index,0,1))fail('Выберите лопатку');safe=rng(5)!==0;event={choice:index,bumper:rng(3),safe};}
  r.last=event;r.events.push(event);r.revision++;
  if(!safe)return finish(r,0);
  r.step++;r.multiplier=r.coefficients[r.step-1];

@@ -6,17 +6,8 @@
  const out=n=>1-(1-clamp(n))**3;
  const phase=(t,a,b)=>clamp((t-a)/(b-a));
  const dartsTiming={launch:.12,impact:.64};
- const durations={diamonds:1900,videopoker:1400,sicbo:2700,chicken:1450,coin:2100,rps:1600,slots:3200,andar:3200,darts:1400,bowling:4600,balloon:1450,race:5200,pinball:2100,fishing:2800};
+ const durations={diamonds:1900,videopoker:1400,sicbo:2700,chicken:1450,coin:2100,rps:1600,slots:3200,andar:3200,darts:1400,bowling:4600,balloon:1450,race:6500,fishing:4600};
  function duration(game,info){return game==='andar'?Math.min(18000,1500+(info.detail?.dealt.length||0)*420):durations[game]||1600;}
- // Paths approach a bumper tangentially, reverse at its surface, and return to a flipper.
- // Bumper centers: [30,24], [70,35], [44,54]; radius 9 scene units.
- const bumpers=[[30,24],[70,35],[44,54]], rests=[[37,86],[63,86]];
- function pinball(last,t,previous){
-  const side=last?.choice||0,[bx,by]=bumpers[last?.bumper||0],rest=rests[side],wall=bx>=50?88:12;
-  const points=[previous?.last?.safe?rests[previous.last.choice||0]:[50,91],rest,[wall,75],[wall,by+18],[bx,by+11],[wall,by+19],[wall,75],last?.safe===false?[50,106]:rest];
-  const scaled=clamp(t)*(points.length-1),i=Math.min(points.length-2,Math.floor(scaled)),p=scaled-i;
-  return {x:points[i][0]+(points[i+1][0]-points[i][0])*p,y:points[i][1]+(points[i+1][1]-points[i][1])*p,impact:Math.abs(scaled-4)<.35};
- }
  function frame(game,info,previous,t){
   t=clamp(t);const d=info.detail||{},last=info.last||{},p=ease(t);
   switch(game){
@@ -36,11 +27,10 @@
    case 'bowling':return (typeof module==='object'&&module.exports?require('./bowling-scene'):root.BowlingScene).frame(info,t);
    case 'balloon':return (typeof module==='object'&&module.exports?require('./balloon-scene'):root.BalloonScene).frame(info,previous,t);
    case 'race':return (typeof module==='object'&&module.exports?require('./race-scene'):root.RaceScene).frame(info,t);
-   case 'pinball':return pinball(last,t,previous);
-   case 'fishing':{const u=phase(t,.16,.68),haul=out(phase(t,.7,1));return {hookY:8+61*ease(u)-57*haul,fishX:105-55*out(phase(t,.28,.7)),fishY:69-57*haul,reveal:t>.36&&Boolean(d.prize),caught:t>.7};}
+   case 'fishing':return (typeof module==='object'&&module.exports?require('./fishing-scene'):root.FishingScene).frame(info,t);
    default:return {progress:p};
   }
  }
- const api={clamp,ease,out,phase,duration,frame,bumpers,dartsTiming};
+ const api={clamp,ease,out,phase,duration,frame,dartsTiming};
  if(typeof module==='object'&&module.exports)module.exports=api;else root.CasinoMotion=api;
 })(globalThis);

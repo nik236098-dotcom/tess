@@ -8,24 +8,24 @@ const button=(label,index,disabled=false,cls='')=>`<button type="button" class="
 function prepare(game){if(!isGame(game))return;if(game==='darts')DartsGame.reset();state.ag.options[game]??=structuredClone(definitions[game].defaults);state.ag.held=[];state.ag.cgTime=0;state.ag.cgPrevious=null;}
 function setup(){
  const host=$('casino-catalog');if(!host)return;
- host.innerHTML=CasinoRules.ids.map(id=>{const g=definitions[id];return `<button type="button" data-arcade="${id}" class="cg-launch"><span class="cg-launch-art">${id==='diamonds'?`<span class="dm-cover">${flatDiamond(1)}${flatDiamond(0)}${flatDiamond(2)}</span>`:id==='videopoker'?videoCover():id==='chicken'?ChickenScene.cover():id==='coin'?coinFace(0,'cf-cover'):id==='slots'?'<span class="cs-cover"></span>':CasinoArt.cover(id)}</span><span class="cg-launch-name">${g.name}</span><small>${g.tag}</small></button>`;}).join('');
+ host.innerHTML=CasinoRules.ids.map(id=>GameCatalog.tile(id)).join('');
 }
 function settings(){
  const a=state.ag,g=current(),options=a.options[a.game],disabled=agLocked()||a.info?.phase==='play',attr=disabled?'disabled':'';
- if(a.info?.phase==='play'&&['coin','rps','pinball'].includes(a.game)){
-  const labels=a.game==='coin'?['Орёл','Решка']:a.game==='rps'?['Камень','Бумага','Ножницы']:['Левая лопатка','Правая лопатка'];
-  return `<div class="cg-choices g-live-choices">${labels.map((label,i)=>button((a.game==='coin'?coinFace(i,'cf-control-'+i):'')+`<span>${label}</span>`,i,agLocked())).join('')}</div>`;
+ const artLabel=(name,value,prefix)=>a.game==='coin'?coinFace(value,prefix)+`<span>${name}</span>`:a.game==='rps'?DuelArt.hand(value,prefix)+`<span>${name}</span>`:a.game==='race'?`<i class="rc-choice-mark" style="--car-color:${RaceScene.carColors[value]}" aria-hidden="true"></i><span>№${Number(value)+1}</span>`:name;
+ if(a.info?.phase==='play'&&['coin','rps'].includes(a.game)){
+  return `<div class="cg-choices g-live-choices">${g.choices.map(([label,i])=>button(artLabel(label,i,'live-'+a.game+'-'+i),i,agLocked())).join('')}</div>`;
  }
- if(g.choices){const key=a.game==='chicken'||a.game==='balloon'?'level':'side';return `<span class="mn-label">${key==='level'?'Сложность':'Выбор до ставки'}</span><div class="cg-choices">${g.choices.map(([name,value])=>`<button type="button" class="ag-choice ${options[key]===value?'is-selected':''}" data-cg-option="${value}" data-cg-key="${key}" ${attr} aria-pressed="${options[key]===value}">${a.game==='race'?Number(value)+1:name}</button>`).join('')}</div>`;}
- return `<p class="ag-note">${g.tag}</p>`;
+ if(g.choices){const key=a.game==='chicken'||a.game==='balloon'?'level':'side';return `<span class="mn-label">${key==='level'?'Сложность':'Выбор до ставки'}</span><div class="cg-choices">${g.choices.map(([name,value])=>`<button type="button" class="ag-choice ${options[key]===value?'is-selected':''}" data-cg-option="${value}" data-cg-key="${key}" ${attr} aria-pressed="${options[key]===value}">${artLabel(name,value,'choice-'+a.game+'-'+value)}</button>`).join('')}</div>`;}
+ return '';
 }
 function seriesTable(game,options){
  let size,bad,max,p=1;const level=options.level;
  if(game==='chicken'||game==='balloon'){size=game==='chicken'?21:25;bad={easy:1,medium:3,hard:5}[level];max=size-bad;}
- else max=game==='pinball'?10:20;
+ else max=20;
  return Array.from({length:max},(_,i)=>{p*=size?(size-bad-i)/(size-i):game==='coin'||game==='rps'?.5:.8;return Math.floor((.98/p+1e-10)*100)/100;});
 }
-function paytable(){const a=state.ag,g=current();if(a.game==='race')return '<span>Коэффициент <b>3,92×</b></span>';const table=g.series?seriesTable(a.game,a.options[a.game]).map((n,i)=>[`${i+1} шаг`,n]):g.table;const step=(a.animating?a.cgPrevious:a.info)?.step||0;return (table||[]).map(([label,value],i)=>`<span class="ag-pay is-positive" ${g.series&&i===Math.max(0,step-1)?'aria-current="step"':''}><small>${label}</small><b>${agNumber(value)}×</b></span>`).join('');}
+function paytable(){const a=state.ag,g=current();if(['race','fishing'].includes(a.game))return '';const table=g.series?seriesTable(a.game,a.options[a.game]).map((n,i)=>[`${i+1} шаг`,n]):g.table;const step=(a.animating?a.cgPrevious:a.info)?.step||0;return (table||[]).map(([label,value],i)=>`<span class="ag-pay is-positive" ${g.series&&i===Math.max(0,step-1)?'aria-current="step"':''}><small>${label}</small><b>${agNumber(value)}×</b></span>`).join('');}
 function afterRender(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',pending=info?.phase==='done'&&!info.settled,main=$('ag-main');
  $('ag-title').classList.toggle('ag-long-title',g.name.length>15);
@@ -40,6 +40,8 @@ function afterRender(){
  $('screen-ag').classList.toggle('is-bowling',a.game==='bowling');
  $('screen-ag').classList.toggle('is-balloon',a.game==='balloon');
  $('screen-ag').classList.toggle('is-race',a.game==='race');
+ $('screen-ag').classList.toggle('is-rps',a.game==='rps');
+ $('screen-ag').classList.toggle('is-fishing',a.game==='fishing');
  $('screen-ag').classList.toggle('g-live',Boolean(live));
  $('ag-balloon-pump').hidden=a.game!=='balloon';
  $('ag-chicken-step').hidden=a.game!=='chicken'||!live;
@@ -68,7 +70,9 @@ function afterRender(){
  }
  if(a.game==='race'&&!pending){main.disabled=agLocked()||!RaceScene.ready();main.textContent=a.animating?'Заезд идёт…':a.pending?'Подождите…':RaceScene.ready()?'Начать гонку ⚑':RaceScene.loadingLabel();}
  if(a.game==='slots'&&!pending)main.textContent=a.animating?'Барабаны крутятся…':'Крутить';
- if(a.game==='coin'&&!live&&!pending)main.textContent=a.animating?'Монета в воздухе…':'Начать раунд';
+ if(a.game==='coin'&&!live&&!pending)main.textContent=a.animating?'Монета в воздухе…':a.pending?'Подождите…':'Бросить монету';
+ if(a.game==='rps'&&!live&&!pending)main.textContent=a.animating?'Раскрываем жесты…':a.pending?'Подождите…':'Сделать ход';
+ if(a.game==='fishing'&&!pending)main.textContent=a.animating?'Ловим рыбу…':a.pending?'Подождите…':'Забросить удочку';
  if(!live)return;
  const locked=agLocked();
  main.disabled=locked;main.classList.toggle('is-cash',Boolean(g.series));
@@ -160,10 +164,16 @@ function coinFace(side,prefix){
  const emblem=side===1?'<path d="m100 48 15 32 35 5-25 25 6 36-31-17-31 17 6-36-25-25 35-5Z"/>':'<path d="M54 71Q84 36 116 57L108 66Q139 59 149 82L158 99Q139 88 121 99L138 106Q129 126 106 130L111 150Q90 139 83 119L69 136 72 113 52 122 62 98 44 105 58 82 44 86Z"/><path d="M103 78L124 75 116 84Z" fill="#684019"/><circle cx="116" cy="78" r="2" fill="#fff3b0"/>';
  return `<svg viewBox="0 0 200 200" aria-hidden="true"><defs><linearGradient id="${prefix}" x2=".8" y2="1"><stop stop-color="#fff3a4"/><stop offset=".38" stop-color="#f7ca59"/><stop offset=".7" stop-color="#ce8825"/><stop offset="1" stop-color="#ffdb70"/></linearGradient></defs><circle cx="100" cy="103" r="94" fill="#996019"/><circle cx="100" cy="98" r="92" fill="url(#${prefix})" stroke="#ffe9a0" stroke-width="3"/><circle cx="100" cy="98" r="80" fill="none" stroke="#a86b20" stroke-width="3"/><circle cx="100" cy="100" r="77" fill="none" stroke="#ffe39b" stroke-width="2"/><g fill="#e6ad40" stroke="#fff0ac" stroke-width="2" stroke-linejoin="round">${emblem}</g><path d="M29 69A77 77 0 0 1 111 23" fill="none" stroke="#fff9d7" stroke-width="4" stroke-linecap="round" opacity=".7"/></svg>`;
 }
-function coinBoard(info,animating,locked){
- const a=state.ag,v=animating?a.cgPrevious:info,last=v?.last,live=info?.phase==='play',side=last?.opponent??0;
+function coinBoard(info,animating){
+ const a=state.ag,v=animating?a.cgPrevious:info,last=v?.last,side=last?.opponent??a.options.coin.side??0;
  const picks=['Орёл','Решка'];
- return `<div class="cf-panel"><div class="cg-coin-scene"><svg class="cf-landscape" viewBox="0 0 400 300" preserveAspectRatio="none" aria-hidden="true"><path d="M0 190 53 109 93 151 132 117 178 204 230 165 267 99 315 158 367 88 400 169V300H0Z" fill="#1b2d51"/><path d="M0 225 66 188 119 224 175 199 227 240 290 185 337 212 400 177V300H0Z" fill="#152440"/><path d="M0 270Q100 235 200 267T400 257V300H0Z" fill="#192b4b"/></svg><div id="cg-coin-shadow" class="cg-coin-shadow"></div><div class="cg-coin-lift" id="cg-coin-lift"><div class="cg-coin" id="cg-coin" style="transform:rotateY(${side*180}deg)"><div class="cg-coin-side cg-coin-front">${coinFace(0,'cf-front')}</div><div class="cg-coin-side cg-coin-reverse">${coinFace(1,'cf-back')}</div></div></div></div><div class="cf-result" role="status" aria-live="polite"><div><small>${animating?'Бросаем монету…':last?'Результат':'Ваш выбор'}</small><b>${animating?'…':last?picks[side]:picks[a.options.coin.side]}</b></div><div><small>${live?'Можно забрать':'Выплата'}</small><b>${v?.phase==='play'?money(v.available||0):v?.phase==='done'?money(v.payout||0):'—'}</b></div></div></div>${live?`<div class="cf-choices"><p>Выберите сторону следующего броска</p><div class="cg-choices">${picks.map((label,i)=>button(coinFace(i,'cf-pick-'+i)+`<span>${label}</span>`,i,locked,'cf-pick')).join('')}</div></div>`:''}`;
+ return `<div class="cf-panel"><div class="cg-coin-scene"><div id="cg-coin-shadow" class="cg-coin-shadow"></div><div class="cg-coin-lift" id="cg-coin-lift"><i class="cf-coin-edge" aria-hidden="true"></i><div class="cg-coin" id="cg-coin"><div class="cg-coin-side cg-coin-front" ${side===1?'hidden':''}>${coinFace(0,'cf-front')}</div><div class="cg-coin-side cg-coin-reverse" ${side===0?'hidden':''}>${coinFace(1,'cf-back')}</div></div></div></div><div class="cf-result" role="status" aria-live="polite"><div><b>${animating?'Монета в воздухе…':last?picks[side]:'Ваш выбор: '+picks[side]}</b></div></div></div>`;
+}
+function rpsBoard(info,animating){
+ const v=animating?state.ag.cgPrevious:info,last=v?.last,choice=last?.choice??state.ag.options.rps.side??0,opponent=last?.opponent??0;
+ const status=animating?'Камень, ножницы, бумага…':last?.tie?'Ничья':last?last.safe?'Ваш ход выиграл':'Соперник выиграл':'Выберите свой жест';
+ const note=last?.tie?'Серия сохранена — сделайте следующий ход':!last?'Камень бьёт ножницы · ножницы бьют бумагу · бумага бьёт камень':v?.phase==='play'?'Продолжайте серию или заберите выигрыш':'';
+ return `<div class="rps-scene"><div class="rps-duel"><div class="rps-player${last?.safe?' is-winner':''}"><span id="cg-hand-you" class="rps-hand">${DuelArt.hand(choice,'rps-you')}</span><small>ВЫ</small></div><b class="rps-versus">VS</b><div class="rps-player is-house${last&&!last.tie&&!last.safe?' is-winner':''}"><span id="cg-hand-house" class="rps-hand">${DuelArt.hand(opponent,'rps-house','rose')}</span><small>СОПЕРНИК</small></div></div><div class="rps-caption" role="status" aria-live="polite"><b>${status}</b><small>${note}</small></div></div>`;
 }
 const slotSymbol=n=>`<span class="cs-symbol cs-symbol-${n}" role="img" aria-label="${['Рубин','Колокол','Виноград','Звезда','Семёрка','Крокодил'][n]}"></span>`;
 function andarCard(c){
@@ -185,7 +195,7 @@ function board(){
  else if(a.game==='sicbo')html=sicboBoard(info,a.animating,locked);
  else if(a.game==='chicken')html=chickenBoard(info,a.animating);
  else if(a.game==='coin')html=coinBoard(info,a.animating,locked);
- else if(a.game==='rps')html=`<div class="cg-scene cg-rps-scene">${plaque('ТВОЙ ХОД')}<div class="cg-rps"><div><span id="cg-hand-you">${art(['rock','paper','scissors'][last?.choice??0])}</span><small>ТЫ</small></div><b>VS</b><div><span id="cg-hand-house">${art(['rock','paper','scissors'][last?.opponent??0])}</span><small>СОПЕРНИК</small></div></div></div>${caption(last?.tie?'Ничья — серия сохранена':'Камень · бумага · ножницы')}${live?`<div class="cg-choices">${['Камень','Бумага','Ножницы'].map((n,i)=>button(n,i,locked)).join('')}</div>`:''}`;
+ else if(a.game==='rps')html=rpsBoard(info,a.animating);
  else if(a.game==='slots'){
   const grid=d?.grid||[0,1,2,5,5,3,4,0,1],old=a.cgPrevious?.detail?.grid||[0,1,2,5,5,3,4,0,1];
   html=`<div class="cg-scene cg-slots-scene"><div class="cg-slot-machine">${[0,1,2].map(col=>{const result=[grid[col],grid[col+3],grid[col+6]],strip=a.animating?[...result,...Array.from({length:15},(_,i)=>(i*5+col)%6),old[col],old[col+3],old[col+6]]:result;return `<div class="cg-reel"><div class="cg-reel-strip" data-cg-reel="${col}" style="--symbols:${strip.length};transform:translateY(${a.animating?-18/21*100:0}%)">${strip.map((n,i)=>`<div class="cg-slot-cell ${done&&d?.lines?.[i]?.payout?'is-line-win':''}">${slotSymbol(n)}</div>`).join('')}</div></div>`;}).join('')}<div class="cg-reel-shade"></div></div><div class="cg-slot-footer"><i></i><span>3 ЛИНИИ</span><i></i></div><div class="cs-result" role="status" aria-live="polite"><div><small>Ставка</small><b>${info?.bet?money(info.bet):'—'}</b></div><div><small>Выигрыш</small><b>${done?money(info.payout):'—'}</b></div></div></div>`;
@@ -195,8 +205,7 @@ function board(){
  else if(a.game==='bowling')html=BowlingScene.board(info,a.animating);
  else if(a.game==='balloon')html=BalloonScene.board(info,a.animating,locked,seriesTable('balloon',a.options.balloon),a.cgPrevious);
  else if(a.game==='race')html=RaceScene.board(info,a.animating,a.options.race.side);
- else if(a.game==='pinball')html=`<div class="cg-scene cg-pinball-scene"><div class="cg-pinball">${plaque('AMETHYST')}<div class="cg-pinball-rail"></div>${CasinoMotion.bumpers.map(([x,y],i)=>`<div class="cg-bumper" data-cg-bumper="${i}" style="left:${x}%;top:${y}%">${art('pinball')}</div>`).join('')}<i class="cg-flipper cg-flipper-left"></i><i class="cg-flipper cg-flipper-right"></i><div class="cg-pinball-ball" id="cg-pinball-ball"></div><div class="cg-drain"></div></div></div>${caption(`Отскоков: ${visibleStep}`)}${live?`<div class="cg-choices">${button('Левая лопатка',0,locked)}${button('Правая лопатка',1,locked)}</div>`:''}`;
- else if(a.game==='fishing')html=`<div class="cg-scene cg-fishing">${plaque('DEEP WATER')}<div class="cg-fishing-line" id="cg-fishing-line"><i></i></div><div id="cg-fish" class="cg-fish">${art('fish')}</div><div class="cg-bubbles"><i></i><i></i><i></i></div><b class="cg-fishing-prize">${done?d.prize?agNumber(d.prize)+'×':'Пусто':''}</b></div>${caption(done?'Улов поднят':'Забрось удочку и открой свой улов')}`;
+ else if(a.game==='fishing')html=FishingScene.board(info,a.animating);
  $('ag-stage').innerHTML=`<div class="cg-board cg-game-${g.kind} ${a.animating?'is-animating':''}">${html}</div>`;
  if(a.game==='darts'){DartsGame.paint();return;}
  if(a.game==='race'){paint(info||{},a.animating?a.cgTime||0:done?1:0);return;}
@@ -220,8 +229,8 @@ function paint(info,t){
  });
  if(game==='sicbo'&&typeof SicboScene!=='undefined'){const host=el('#sb-scene');if(host){const rendered=SicboScene.render(host,d.dice||[3,4,5],a.animating?f.dice:null);host.classList.toggle('is-rendered',rendered);}}
  if(game==='chicken')ChickenScene.paint(stage,info,a.cgPrevious,t,a.animating);
- if(game==='coin'){transform('#cg-coin',`rotateY(${f.angle}deg)`);transform('#cg-coin-lift',`translateY(${f.y}px)`);transform('#cg-coin-shadow',`scale(${f.shadow})`);}
- if(game==='rps'){for(const [id,index] of [['you',last.choice],['house',last.opponent]]){const node=el('#cg-hand-'+id);if(node){const key=f.reveal?['rock','paper','scissors'][index??0]:'rock';if(node.dataset.hand!==key){node.innerHTML=art(key);node.dataset.hand=key;}node.style.transform=`translateY(${f.y}px) scale(${f.scale})`;}}}
+ if(game==='coin'){const cos=Math.cos(f.angle*Math.PI/180),front=el('.cg-coin-front'),back=el('.cg-coin-reverse');if(front)front.hidden=cos<0;if(back)back.hidden=cos>=0;transform('#cg-coin',`scaleX(${Math.max(.018,Math.abs(cos))})`);transform('#cg-coin-lift',`translateY(${f.y}px)`);transform('#cg-coin-shadow',`scale(${f.shadow})`);}
+ if(game==='rps'){for(const [id,index] of [['you',last.choice],['house',last.opponent]]){const node=el('#cg-hand-'+id);if(node){const hand=f.reveal?index??0:0;if(node.dataset.hand!==String(hand)){node.innerHTML=DuelArt.hand(hand,'rps-'+id,id==='house'?'rose':'violet');node.dataset.hand=String(hand);}node.style.transform=`translateY(${f.y}px) rotate(${f.reveal?0:(id==='house'?-1:1)*Math.sin(t*28)*5}deg) scale(${f.scale})`;}}}
  if(game==='slots'&&a.animating)f.reels.forEach((r,i)=>{transform(`[data-cg-reel="${i}"]`,`translateY(${(r.position-18)/21*100}%)`);toggle(`[data-cg-reel="${i}"]`,'is-spinning',!r.settled);});
  if(game==='andar'){
   const count=t===1?d.dealt?.length||0:f.count;
@@ -233,8 +242,7 @@ function paint(info,t){
  if(game==='bowling')BowlingScene.render(el('.bw-viewport'),info,t);
  if(game==='balloon')BalloonScene.paint(stage,info,a.cgPrevious,t);
  if(game==='race')RaceScene.paint(stage,info,t);
- if(game==='pinball'){style('#cg-pinball-ball','left',f.x+'%');style('#cg-pinball-ball','top',f.y+'%');CasinoMotion.bumpers.forEach((_,i)=>toggle(`[data-cg-bumper="${i}"]`,'is-impact',f.impact&&i===last.bumper));transform(last.choice?'.cg-flipper-right':'.cg-flipper-left',`rotate(${t<.25?(last.choice?-1:1)*28*Math.sin(t/.25*Math.PI):0}deg)`);}
- if(game==='fishing'){style('#cg-fishing-line','height',f.hookY+'%');style('#cg-fish','left',f.fishX+'%');style('#cg-fish','top',f.fishY+'%');style('#cg-fish','opacity',f.reveal?1:0);transform('#cg-fish',`translate(-50%,-50%) rotate(${f.caught?-30:Math.sin(t*16)*5}deg)`);}
+ if(game==='fishing')FishingScene.paint(stage,info,t);
 }
 function animate(info){
  const a=state.ag,game=a.game,token=++a.token,reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;

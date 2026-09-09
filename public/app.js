@@ -617,6 +617,7 @@ function showTable() {
   closeRaisePanel();
   $('screen-lobby').classList.add('hidden');
   $('screen-table').classList.remove('hidden');
+  $('table-balance').textContent = money(state.balance);
   // Новый стол — новая история анимаций: иначе чужие ставки прилетят
   // фишками в первый же кадр.
   state.fx.hand = null;
@@ -1541,6 +1542,8 @@ function renderBaccarat() {
   for (const button of $('bc-chip-row').children) button.disabled = bc.dealing;
   for (const zoneEl of document.querySelectorAll('.bc-zone')) {
     const amount = bc.bets.get(zoneEl.dataset.zone) || 0;
+    zoneEl.classList.toggle('is-selected',amount>0);
+    zoneEl.setAttribute('aria-pressed',String(amount>0));
     let stack = zoneEl.querySelector('.bc-stack');
     if (!amount) { if (stack) stack.remove(); continue; }
     if (stack && Number(stack.dataset.amount) === amount) continue;
@@ -2222,7 +2225,7 @@ function renderActiveGames() {
     card.innerHTML = `
       <div class="game-card-top">
         ${icon(blackjack ? 'club' : 'spade', 'icon-sm')}
-        <span>${blackjack ? 'Блекджек' : "Texas Hold'em"}</span>
+        <span>${blackjack ? 'Blackjack' : "Texas Hold'em"}</span>
       </div>
       <div class="game-card-title">${escapeHtml(room.title)}</div>
       <div class="game-card-rows">
@@ -2254,7 +2257,7 @@ function renderWins() {
   list.innerHTML = state.wins.slice(0, 8).map((win, index) => {
     const blackjack = win.game === 'blackjack';
     const icon = icons[blackjack ? 'blackjack' : 'holdem'];
-    const label = { ...Object.fromEntries(Object.entries(CasinoRules.games).map(([id,g])=>[id,g.name])), plinko:'Plinko', tower:'Башня', keno:'Кено', dragon:'Дракон и Тигр', crash: 'Crash', hilo: 'Hilo', blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti', omaha: 'Omaha' }[win.game] || 'Poker';
+    const label = { ...Object.fromEntries(Object.entries(CasinoRules.games).map(([id,g])=>[id,g.name])), plinko:'Plinko', tower:'Tower', keno:'Keno', dragon:'Dragon & Tiger', crash: 'Crash', hilo: 'Hilo', blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti', omaha: 'Omaha' }[win.game] || 'Poker';
     return `
     <div class="mk-win" style="--i:${index}">
       <span class="mk-win-icon" style="background-image:url('/img/lobby/win-${icon}.png')"></span>
@@ -2357,7 +2360,7 @@ function renderTable() {
   const room = state.room;
   if (!room) return;
 
-  $('room-title').textContent = room.title || `Стол ${room.code}`;
+  $('room-title').textContent = room.house ? (GameCatalog.names[room.game]||'Poker') : room.title || `Table ${room.code}`;
   // В омахе по четыре карты на руках — карты героя и соперников ужимаются.
   $('screen-table').classList.toggle('is-omaha', room.game === 'omaha');
 
@@ -2371,9 +2374,9 @@ function renderTable() {
   if (room.status === 'betting') tail = 'Ставка';
   else if (room.status === 'playing' && phases[room.phase]) tail = phases[room.phase];
 
-  const pokerName = room.game === 'omaha' ? 'Омаха' : 'Холдем';
+  const pokerName = room.game === 'omaha' ? 'Omaha' : 'Texas Hold’em';
   $('room-subtitle').textContent = blackjack
-    ? `Блекджек · ${money(room.settings.minBet)}–${money(room.settings.maxBet)} · ${tail}`
+    ? `Blackjack · ${money(room.settings.minBet)}–${money(room.settings.maxBet)} · ${tail}`
     : `${pokerName} · ${money(room.settings.smallBlind)}/${money(room.settings.bigBlind)} · ${tail}`;
 
   // Комбинацию победителя считаем до отрисовки: её подсвечивают и борд,
@@ -3136,6 +3139,7 @@ function renderControls(room) {
   const you = room.you;
   if (typeof you.balance === 'number') {
     state.balance = you.balance;
+    $('table-balance').textContent = money(you.balance);
     renderAccount();
   }
   const seated = you.seatIndex !== null;
@@ -3897,7 +3901,7 @@ function bindUi() {
   }
   on('wins-all', 'click', () => toast('Полная лента выигрышей — скоро'));
   for (const card of document.querySelectorAll('.lb-game[data-open], .mk-game[data-open]')) {
-    card.addEventListener('click', () => { haptic('light'); openGame(card.dataset.open); });
+    card.addEventListener('click', () => { haptic('light'); const game=card.dataset.open;if(game==='blackjack')openBlackjack();else if(game==='roulette')openRoulette();else if(game==='baccarat')openBaccarat();else openGame(game); });
   }
   on('tour-more', 'click', () => showTab('tournaments'));
   on('tour-to-games', 'click', () => showTab('games'));

@@ -1,0 +1,12 @@
+.fs-scene { height:var(--scene-height,430px); min-height:250px; display:flex; flex-direction:column; }
+.fs-water { display:block; width:100%; flex:1; min-height:0; }
+.fs-status { flex:none; min-height:44px; text-align:center; display:flex; flex-direction:column; gap:5px; padding:2px 8px 9px; }
+.fs-status b { font:600 15px/1.2 var(--font); color:#e1d9f3; }
+.fs-status small { color:#8f88a8; font:400 11px var(--font); }
+.fs-status small:empty { display:none; }
+.fs-catches { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; padding:5px 5px 9px; flex:none; }
+.fs-catches > span { display:flex; gap:6px; justify-content:center; align-items:center; height:30px; background:#1c1d36; border:1px solid #8874ab30; border-radius:10px; color:#c6bbdd; }
+.fs-catches i { display:block; width:8px; height:8px; border-radius:50%; background:var(--catch); box-shadow:inset 0 1px 0 #ffffff99; }
+.fs-catches b { font:600 12px var(--font); }
+.fs-catches .is-current { color:#fff; background:#4a396c; border-color:var(--catch); }
+#screen-ag.is-fishing #ag-paytable,#screen-ag.is-fishing #ag-settings { display:none!important; }

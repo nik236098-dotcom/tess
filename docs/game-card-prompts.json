@@ -1,0 +1,169 @@
+{
+  "method": "image_gen built-in",
+  "style": "Approved chunky 3D minigame catalog covers, live English titles",
+  "cards": [
+    {
+      "id": "racing",
+      "name": "Racing",
+      "prompt": "Use case: stylized-concept. Asset type: production mobile casino mini-game catalog cover. Create exactly ONE full-bleed portrait 3:4 illustration. Style reference: the provided two approved tiles; match their clean premium chunky stylized 3D toy rendering, polished bevels, simple readable silhouette and saturated studio lighting. Do not reproduce their two-panel layout. Subject: A chunky blue toy sports car with lilac racing stripe, real chunky wheels and a small waving checkered finish flag behind it, on a curved strip of track. Palette: electric cobalt blue. Composition: object fills the upper 75% of the single portrait canvas, attractive three-quarter perspective and soft contact shadows. Bottom 22% remains simple shaded color free of objects so the site can overlay the title \"Racing\" using real text. Full bleed background in same saturated hue with one subtle curved shape. No border, no frame, no phone, no UI, no buttons, no typography, no letters, no text or logos, no photorealism, no watermark. High quality original game artwork cohesive with the reference.",
+      "asset": "public/img/game-cards/racing.webp"
+    },
+    {
+      "id": "plinko",
+      "name": "Plinko",
+      "prompt": "Use case: stylized-concept. Asset type: production mobile casino mini-game catalog cover. Create exactly ONE full-bleed portrait 3:4 illustration. Style reference: the provided two approved tiles; match their clean premium chunky stylized 3D toy rendering, polished bevels, simple readable silhouette and saturated studio lighting. Do not reproduce their two-panel layout. Subject: A thick purple triangular Plinko board with orderly rows of round ivory pegs, a glowing pink ball bouncing down and chunky pink and violet receiving pockets. Palette: rich ultraviolet purple. Composition: object fills the upper 75% of the single portrait canvas, attractive three-quarter perspective and soft contact shadows. Bottom 22% remains simple shaded color free of objects so the site can overlay the title \"Plinko\" using real text. Full bleed background in same saturated hue with one subtle curved shape. No border, no frame, no phone, no UI, no buttons, no typography, no letters, no text or logos, no photorealism, no watermark. High quality original game artwork cohesive with the reference.",
+      "asset": "public/img/game-cards/plinko.webp"
+    },
+    {
+      "id": "fishing",
+      "name": "Fishing",
+      "prompt": "Use case: stylized-concept. Asset type: production mobile casino mini-game catalog cover. Create exactly ONE full-bleed portrait 3:4 illustration. Style reference: the provided two approved tiles; match their clean premium chunky stylized 3D toy rendering, polished bevels, simple readable silhouette and saturated studio lighting. Do not reproduce their two-panel layout. Subject: A lively orange and golden stylized fish curving out of a splash of turquoise water toward a rounded red-white fishing float and curved rod; generous attractive toy-like rounded forms. Palette: bright teal and deep turquoise. Composition: object fills the upper 75% of the single portrait canvas, attractive three-quarter perspective and soft contact shadows. Bottom 22% remains simple shaded color free of objects so the site can overlay the title \"Fishing\" using real text. Full bleed background in same saturated hue with one subtle curved shape. No border, no frame, no phone, no UI, no buttons, no typography, no letters, no text or logos, no photorealism, no watermark. High quality original game artwork cohesive with the reference.",
+      "asset": "public/img/game-cards/fishing.webp"
+    },
+    {
+      "id": "coin",
+      "name": "Coin Flip",
+      "prompt": "Use case: stylized-concept. Asset type: production mobile casino mini-game catalog cover. Create exactly ONE full-bleed portrait 3:4 illustration. Style reference: the provided two approved tiles; match their clean premium chunky stylized 3D toy rendering, polished bevels, simple readable silhouette and saturated studio lighting. Do not reproduce their two-panel layout. Subject: One oversized thick golden coin flipping at a three-quarter angle, clear embossed eagle silhouette on the coin face and beautifully milled edge, small sparkle. Palette: amber gold and deep violet. Composition: object fills the upper 75% of the single portrait canvas, attractive three-quarter perspective and soft contact shadows. Bottom 22% remains simple shaded color free of objects so the site can overlay the title \"Coin Flip\" using real text. Full bleed background in same saturated hue with one subtle curved shape. No border, no frame, no phone, no UI, no buttons, no typography, no letters, no text or logos, no photorealism, no watermark. High quality original game artwork cohesive with the reference.",
+      "asset": "public/img/game-cards/coin.webp"
+    },
+    {
+      "id": "rps",
+      "name": "Rock Paper Scissors",
+      "prompt": "Use case: stylized-concept. Asset type: production mobile casino mini-game catalog cover. Create exactly ONE full-bleed portrait 3:4 illustration. Style reference: the provided two approved tiles; match their clean premium chunky stylized 3D toy rendering, polished bevels, simple readable silhouette and saturated studio lighting. Do not reproduce their two-panel layout. Subject: Three friendly chunky 3D hand symbols, a closed rock fist, an open paper palm with five fingers, a scissors hand with two extended fingers. Smooth ivory toy hands arranged triangularly, no human bodies. Palette: violet and coral pink. Composition: object fills the upper 75% of the single portrait canvas, attractive three-quarter perspective and soft contact shadows. Bottom 22% remains simple shaded color free of objects so the site can overlay the title \"Rock Paper Scissors\" using real text. Full bleed background in same saturated hue with one subtle curved shape. No border, no frame, no phone, no UI, no buttons, no typography, no letters, no text or logos, no photorealism, no watermark. High quality original game artwork cohesive with the reference.",
+      "asset": "public/img/game-cards/rps.webp"
+    },
+    {
+      "id": "chicken",
+      "name": "Chicken",
+      "prompt": "Use case: stylized-concept. Asset type: production mobile casino mini-game catalog cover. Create exactly ONE full-bleed portrait 3:4 illustration. Style reference: the provided two approved tiles; match their clean premium chunky stylized 3D toy rendering, polished bevels, simple readable silhouette and saturated studio lighting. Do not reproduce their two-panel layout. Subject: A cute rounded white cartoon chicken with red comb and golden beak stepping across a small slate road beside a round manhole, with a small toy red car behind. Palette: mint emerald green. Composition: object fills the upper 75% of the single portrait canvas, attractive three-quarter perspective and soft contact shadows. Bottom 22% remains simple shaded color free of objects so the site can overlay the title \"Chicken\" using real text. Full bleed background in same saturated hue with one subtle curved shape. No border, no frame, no phone, no UI, no buttons, no typography, no letters, no text or logos, no photorealism, no watermark. High quality original game artwork cohesive with the reference.",
+      "asset": "public/img/game-cards/chicken.webp"
+    },
+    {
+      "id": "holdem",
+      "name": "Texas Hold'em",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: Two chunky classic playing cards with an ace spade and ace heart, a few glossy red and ivory poker chips, balanced central arrangement. Palette: crimson red and wine. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Texas Hold'em\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/holdem.webp"
+    },
+    {
+      "id": "omaha",
+      "name": "Omaha",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: Four chunky classic playing cards in a fan with spades, hearts, clubs and diamonds, two glossy mint poker chips. Palette: deep emerald green. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Omaha\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/omaha.webp"
+    },
+    {
+      "id": "blackjack",
+      "name": "Blackjack",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: Two thick rounded ivory playing cards, an ace spade and a king heart, clear classic ranks and suits, poised in a bold fan, small metallic gold 21 token. Palette: rich royal blue and violet. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Blackjack\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/blackjack.webp"
+    },
+    {
+      "id": "baccarat",
+      "name": "Baccarat",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: Two classic ivory playing cards with red and black suits resting against two short elegant stacks of burgundy and ivory chips, simple bold shapes. Palette: ruby red and burgundy. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Baccarat\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/baccarat.webp"
+    },
+    {
+      "id": "roulette",
+      "name": "Roulette",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: A beautifully crafted chunky miniature European roulette wheel with red black and green pockets, gold central spindle and one glossy ivory ball on the rim, tilted toward viewer. Palette: vibrant ruby red. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Roulette\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/roulette.webp"
+    },
+    {
+      "id": "mines",
+      "name": "Mines",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: A large luminous faceted emerald crystal with two smaller emeralds and a single cute charcoal spherical mine with short soft rounded spikes, on a subtle raised square tile. Palette: bright emerald and forest green. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Mines\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/mines.webp"
+    },
+    {
+      "id": "nvuti",
+      "name": "Nvuti",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: A chunky rounded purple slider gauge with a large circular lavender glowing knob at three quarters and a floating ivory numbered cube with 75 on its front, sleek toy-like shapes. Palette: electric purple and periwinkle. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Nvuti\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/nvuti.webp"
+    },
+    {
+      "id": "hilo",
+      "name": "Hilo",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: Two rounded classic ivory playing cards, a red nine of diamonds and a black ace of spades, with a thick three dimensional up arrow and down arrow in lilac. Palette: bright rose pink and violet. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Hilo\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/hilo.webp"
+    },
+    {
+      "id": "crash",
+      "name": "Crash",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: A friendly chunky small white rocket with violet nose and fins following a vivid luminous rising curve toward the upper right, soft golden thrust plume. Palette: electric magenta and purple. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Crash\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/crash.webp"
+    },
+    {
+      "id": "tower",
+      "name": "Tower",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: A chunky stylized violet castle tower of stacked rounded blocks and steps, crowned by a glowing orange-gold faceted crystal; premium mobile toy game style. Palette: vibrant orange amber. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Tower\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/tower.webp"
+    },
+    {
+      "id": "keno",
+      "name": "Keno",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: Three glossy colored rounded numbered lottery balls in pink, violet and ivory, marked 7, 21 and 36, next to a thick purple numbered grid tile. Palette: bright violet and lavender. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Keno\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/keno.webp"
+    },
+    {
+      "id": "dragon",
+      "name": "Dragon & Tiger",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: A friendly fierce stylized golden Chinese dragon head facing a rounded orange tiger head, clearly separated, with one ivory playing card between them. Toy sculptures, not realistic animals. Palette: burnt orange and ruby. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Dragon & Tiger\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/dragon.webp"
+    },
+    {
+      "id": "diamonds",
+      "name": "Diamonds",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: Three large glossy faceted toy gemstones, violet, pink and golden, floating in a simple triangular cluster with sparkling polished edges. Palette: rich pink magenta. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Diamonds\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/diamonds.webp"
+    },
+    {
+      "id": "videopoker",
+      "name": "Video Poker",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: A clean bold fan of five chunky ivory playing cards with an ace, king, queen, jack and ten and small clear spade suits, one soft golden star. Palette: bright teal and royal blue. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Video Poker\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/videopoker.webp"
+    },
+    {
+      "id": "sicbo",
+      "name": "Sic Bo",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: Exactly three chunky polished ivory dice with dark round inset pips tumbling in a coherent triangular cluster with soft contact shadows, a slim red dice tray below. Palette: bright coral red. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Sic Bo\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/sicbo.webp"
+    },
+    {
+      "id": "slots",
+      "name": "Croc Slots",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: A cute chunky purple miniature three-reel slot machine, three golden lucky sevens in its windows, mint green side casing and golden rounded lever, original design. Palette: saturated jade green. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Croc Slots\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/slots.webp"
+    },
+    {
+      "id": "andar",
+      "name": "Andar Bahar",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: A central upright ivory ace of spades playing card between two small separate card piles, one red-backed and one blue-backed, classic round corners. Palette: vibrant sapphire and purple. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Andar Bahar\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/andar.webp"
+    },
+    {
+      "id": "darts",
+      "name": "Darts",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: A chunky circular dart target with concentric crimson violet and ivory rings, one violet-finned dart firmly planted upright in its center, tilted toy rendering. Palette: vibrant red and deep violet. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Darts\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/darts.webp"
+    },
+    {
+      "id": "bowling",
+      "name": "Bowling",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: One glossy purple bowling ball with three proper finger holes in the foreground, three rounded ivory bowling pins with red neck stripes behind on a short miniature lane. Palette: royal violet and lilac. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Bowling\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/bowling.webp"
+    },
+    {
+      "id": "balloon",
+      "name": "Balloon",
+      "prompt": "Use case: stylized-concept. Production game catalog cover, exactly ONE full bleed portrait image 3:4. Follow the approved reference's clean chunky stylized 3D mini-game objects, polished bevels, rounded forms, saturated studio lighting. Never reproduce its two-panel layout. Subject: A large glossy lilac inflated balloon with a tied neck connected by a curved flexible hose to a charming chunky purple hand pump with ivory handle. Palette: bright coral pink and plum. Large iconic objects fill upper 75%, with soft contact shadows. Bottom 22% stays clear shaded color so the website will overlay the title \"Balloon\" with live text. Background a saturated complementary hue with a subtle curved shape. Single portrait. No typography except specified ranks/numbers on objects, no title, no text, no branding, no watermark, no border, no frame, no UI, no photo realism. Cohesive high quality original illustration.",
+      "asset": "public/img/game-cards/balloon.webp"
+    }
+  ],
+  "scene_assets": [
+    {
+      "asset": "public/img/race/car-v2.webp",
+      "export": "WebP with alpha; trim visible object at alpha > 64 and resize to maximum 350×420; transparent native-SVG fallback in race-scene.js.",
+      "art_brief": "One premium stylized 3D toy sports racing car, blue lacquer and white racing stripes, rear elevated view, nose pointing away/up. True transparent background including around the shadow, no ground plane, no text, no numbers. Compact chunky silhouette, glossy reflections, distinct tyres, spoiler and rear lights. Designed to drive into a perspective four-lane minigame track; centered with clear padding."
+    }
+  ]
+}

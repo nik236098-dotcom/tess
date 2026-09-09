@@ -8,3 +8,10 @@ test('all 24 finishing orders follow the server, every car advances continuously
  }
 });
 test('winner is not exposed until animation finishes and reduced motion shows final result',()=>{const info={phase:'done',detail:{winner:2,order:[2,0,3,1]}};assert.doesNotMatch(race.board(info,true,0),/Первым финишировал/);assert.match(race.board(info,false,0),/Первым финишировал №3/);assert.ok(race.frame(info,1).cars.every(c=>c.finished));});
+test('a finish is recorded exactly when the nose crosses the drawn finish line, with no car overlap',()=>{
+ for(const order of permutations([0,1,2,3]))for(let i=0;i<=300;i++){
+  const f=race.frame({detail:{order}},i/300);
+  for(const car of f.cars)assert.equal(car.finished,car.noseY<=race.geometry.finishY);
+  for(let lane=1;lane<4;lane++){const a=f.cars[lane-1],b=f.cars[lane];assert.ok(a.x+35*a.scale<b.x-35*b.scale);}
+ }
+});

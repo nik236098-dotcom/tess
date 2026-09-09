@@ -1,0 +1,17 @@
+/* Real text over original artwork stays sharp at every tile size. */
+#tab-games:not(.hidden) { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; padding-bottom:20px; }
+#tab-games > .lb-sh,#tab-games > .rules { grid-column:1/-1; }
+#tab-games .lb-sh { margin:6px 0 2px; }
+#casino-catalog.cg-catalog { display:contents; }
+.game-tile { position:relative; display:block; width:100%; min-width:0; aspect-ratio:3/4; padding:0; overflow:hidden; border:0; border-radius:18px; background:#24204c; color:#fff; cursor:pointer; isolation:isolate; -webkit-tap-highlight-color:transparent; box-shadow:0 5px 12px #03041626; }
+.game-tile > img { display:block; width:100%; height:100%; object-fit:cover; transition:transform .22s ease; }
+.game-tile:after { content:''; position:absolute; inset:53% 0 0; background:linear-gradient(transparent,#0b092419); pointer-events:none; }
+.game-tile-title { position:absolute; bottom:8%; left:7%; right:7%; z-index:1; text-align:center; text-transform:uppercase; color:white; font:800 clamp(17px,5.6vw,28px)/1.05 var(--font); letter-spacing:-.6px; text-shadow:0 2px 4px #09092626; text-wrap:balance; }
+.game-tile-title.is-long { font-size:clamp(15px,4.7vw,23px); letter-spacing:-.45px; }
+.game-tile:active > img { transform:scale(1.025); }
+.game-tile:focus-visible { outline:3px solid #c7b4ff; outline-offset:3px; }
+.mk-game .mk-game-art { background-size:cover!important; background-position:center!important; border-radius:12px!important; }
+.mk-game b { font-family:var(--font); }
+@media(min-width:620px) { #tab-games:not(.hidden) { grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; } }
+@media(min-width:940px) { #tab-games:not(.hidden) { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media(prefers-reduced-motion:reduce) { .game-tile > img { transition:none; } }

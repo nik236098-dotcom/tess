@@ -121,10 +121,12 @@ class Accounts {
     let balance = account.balance;
     const rounds = { ...oldRounds };
     let changed = false;
-    for (const game of ['cases', 'collection', 'scratch', 'limbo']) {
+    for (const game of ['cases', 'collection', 'scratch', 'limbo', 'pinball']) {
       const r = oldRounds[game];
       if (!r || r.settled || r.retired || !['play', 'done'].includes(r.phase)) continue;
-      const credit = r.phase === 'play' ? r.bet : r.payout;
+      // Preserve earned Pinball cashout as well as untouched stakes.
+      const earned = game === 'pinball' && r.step > 0 ? r.coefficients?.[r.step - 1] : 1;
+      const credit = r.phase === 'play' ? Math.floor(r.bet * Math.round((earned ?? 1) * 100) / 100) : r.payout;
       if (!Number.isSafeInteger(credit) || credit < 0 || balance + credit > MAX_BALANCE) continue;
       balance += credit;
       rounds[game] = { ...r, retired: true, retiredFrom: r.phase, phase: 'done', settled: true,

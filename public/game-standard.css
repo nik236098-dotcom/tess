@@ -80,7 +80,7 @@
 #screen-ag.game-standard .ag-panel .cg-choices { padding:0; border:0; background:none; gap:7px; }
 .game-standard .g-live-choices .cg-action { display:flex; align-items:center; justify-content:center; gap:8px; min-height:46px; padding:5px; font:700 15px var(--font); }
 .game-standard .g-live-choices svg { flex:none; width:32px; height:32px; }
-#screen-ag.game-standard :is(.cf-choices,.cg-game-rps > .cg-choices,.cg-game-pinball > .cg-choices) { display:none; }
+#screen-ag.game-standard :is(.cf-choices,.cg-game-rps > .cg-choices) { display:none; }
 /* Keep actual outcomes on the scene; the shared result owns payout totals. */
 #screen-ag.game-standard :is(.ch-result,.cs-result,.dm-result) { display:none; }
 #screen-ag.game-standard :is(.cf-result,.ab-result) { display:block; padding:6px; }

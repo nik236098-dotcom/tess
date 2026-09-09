@@ -16,18 +16,22 @@
   <link rel="stylesheet" href="/darts.css?v=1" />
   <link rel="stylesheet" href="/bowling.css?v=3" />
   <link rel="stylesheet" href="/balloon.css?v=3" />
-  <link rel="stylesheet" href="/race.css?v=1" />
+  <link rel="stylesheet" href="/race.css?v=2" />
   <link rel="stylesheet" href="/chicken.css?v=4" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/croc-theme.css?v=1" />
   <link rel="stylesheet" href="/amethyst.css?v=1" />
-  <link rel="stylesheet" href="/game-standard.css?v=5" />
+  <link rel="stylesheet" href="/game-standard.css?v=6" />
   <script src="/game-result.js?v=3"></script>
   <link rel="stylesheet" href="/premium-tables.css?v=2" />
+  <link rel="stylesheet" href="/game-shell.css?v=1" />
+  <link rel="stylesheet" href="/game-catalog.css?v=1" />
+  <link rel="stylesheet" href="/fishing.css?v=1" />
+  <link rel="stylesheet" href="/duel-games.css?v=1" />
   <script src="/roulette-view.js?v=1"></script>
   <script src="/classic-cards.js?v=1"></script>
   <script src="/blackjack-deal.js?v=1"></script>
-  <script defer src="/game-layout.js?v=2"></script>
+  <script defer src="/game-layout.js?v=3"></script>
 </head>
 <body>
   <!-- Один набор иконок на всё приложение: контурные, 24×24, currentColor.
@@ -103,26 +107,26 @@
                 <button id="games-all" class="mk-link mk-link-games">Все игры<i class="mk-arrow"></i></button>
                 <div class="mk-games">
                   <button class="mk-game" data-open="holdem" style="--i:0">
-                    <span class="mk-game-art" style="background-image:url('/img/lobby/game-0.png')"></span>
+                    <span class="mk-game-art" style="background-image:url('/img/game-cards/holdem.webp')"></span>
                     <b>Poker</b>
                     <span class="mk-game-meta"><i class="mk-person"></i><em data-online="holdem">—</em></span>
                     <span class="mk-game-go"></span>
                   </button>
                   <button class="mk-game" data-open="blackjack" style="--i:1">
-                    <span class="mk-game-art" style="background-image:url('/img/lobby/game-1.png')"></span>
+                    <span class="mk-game-art" style="background-image:url('/img/game-cards/blackjack.webp')"></span>
                     <b>Blackjack</b>
                     <span class="mk-game-meta"><i class="mk-person"></i><em data-online="blackjack">—</em></span>
                     <span class="mk-game-go"></span>
                   </button>
-                  <button class="mk-game" data-soon="Рулетка" style="--i:2">
-                    <span class="mk-game-art" style="background-image:url('/img/lobby/game-2.png')"></span>
+                  <button class="mk-game" data-open="roulette" style="--i:2">
+                    <span class="mk-game-art" style="background-image:url('/img/game-cards/roulette.webp')"></span>
                     <b>Roulette</b>
                     <span class="mk-game-meta"><i class="mk-person"></i><em>—</em></span>
                     <span class="mk-game-go"></span>
                   </button>
-                  <button class="mk-game" data-soon="Кости" style="--i:3">
-                    <span class="mk-game-art mk-game-art-cut" style="background-image:url('/img/lobby/game-3.png')"></span>
-                    <b>Dice</b>
+                  <button class="mk-game" data-arcade="sicbo" style="--i:3">
+                    <span class="mk-game-art mk-game-art-cut" style="background-image:url('/img/game-cards/sicbo.webp')"></span>
+                    <b>Sic Bo</b>
                     <span class="mk-game-meta"><i class="mk-person"></i><em>—</em></span>
                     <span class="mk-game-go"></span>
                   </button>
@@ -148,125 +152,19 @@
           <div id="tab-games" class="tab-panel hidden">
             <div class="lb-sh"><h2>Игры</h2></div>
 
-            <button id="play-holdem" class="lb-play lb-play-poker">
-              <span class="lb-play-art" aria-hidden="true">
-                <i class="lb-mini lb-mini-1">A<b>♠</b></i>
-                <i class="lb-mini lb-mini-2 red">A<b>♥</b></i>
-                <i class="lb-chipart lb-chipart-red"></i>
-              </span>
-              <span class="lb-play-body">
-                <span class="lb-hero-kicker">Texas Hold'em</span>
-                <b>Покер</b>
-                <span>Блайнды $0.05 / $0.10 · вход $10 · до 8 игроков</span>
-                <span class="lb-play-foot">
-                  <span class="lb-game-meta"><svg class="icon icon-sm"><use href="#i-users"></use></svg><em data-online="holdem">—</em></span>
-                  <span class="lb-play-cta">Сесть за стол<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
-                </span>
-              </span>
-            </button>
-
-            <button id="play-omaha" class="lb-play lb-play-poker lb-play-omaha">
-              <span class="lb-play-art" aria-hidden="true">
-                <i class="lb-mini lb-mini-1">K<b>♠</b></i>
-                <i class="lb-mini lb-mini-2 red">K<b>♦</b></i>
-                <i class="lb-chipart lb-chipart-red"></i>
-              </span>
-              <span class="lb-play-body">
-                <span class="lb-hero-kicker">Omaha</span>
-                <b>Омаха</b>
-                <span>4 карты на руках · блайнды $0.05 / $0.10 · вход $10 · до 8 игроков</span>
-                <span class="lb-play-foot">
-                  <span class="lb-game-meta"><svg class="icon icon-sm"><use href="#i-users"></use></svg><em data-online="omaha">—</em></span>
-                  <span class="lb-play-cta">Сесть за стол<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
-                </span>
-              </span>
-            </button>
-
-            <button id="play-blackjack" class="lb-play lb-play-bj">
-              <span class="lb-play-art" aria-hidden="true">
-                <i class="lb-mini lb-mini-3">J<b>♣</b></i>
-                <i class="lb-mini lb-mini-4 red">A<b>♥</b></i>
-                <i class="lb-21">21</i>
-              </span>
-              <span class="lb-play-body">
-                <span class="lb-hero-kicker">Blackjack</span>
-                <b>Блекджек</b>
-                <span>Против дилера · до 21 · ставки $1 – $100 000</span>
-                <span class="lb-play-foot">
-                  <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
-                </span>
-              </span>
-            </button>
-
-            <button id="play-baccarat" class="lb-play lb-play-bc">
-              <span class="lb-play-art" aria-hidden="true">
-                <i class="lb-mini lb-mini-3 red">9<b>♥</b></i>
-                <i class="lb-mini lb-mini-4">K<b>♠</b></i>
-                <i class="lb-21 lb-bc-tag">TIE</i>
-              </span>
-              <span class="lb-play-body">
-                <span class="lb-hero-kicker">Baccarat</span>
-                <b>Баккара</b>
-                <span>Player · Banker · Tie · ставки $1 – $100 000</span>
-                <span class="lb-play-foot">
-                  <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
-                </span>
-              </span>
-            </button>
-
-            <button id="play-roulette" class="lb-play lb-play-rl">
-              <span class="lb-play-art lb-game-roulette" aria-hidden="true"><i class="lb-wheel"></i></span>
-              <span class="lb-play-body">
-                <span class="lb-hero-kicker">Roulette</span>
-                <b>Рулетка</b>
-                <span>Европейская · одно зеро · ставки $1 – $100 000</span>
-                <span class="lb-play-foot">
-                  <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
-                </span>
-              </span>
-            </button>
-
-            <button id="play-mines" class="lb-play lb-play-mn">
-              <span class="lb-play-art lb-mn-art" aria-hidden="true">
-                <i class="lb-mn-grid">
-                  <b></b><b></b><b></b>
-                  <b></b><b class="gem"></b><b></b>
-                  <b></b><b></b><b class="mine"></b>
-                </i>
-              </span>
-              <span class="lb-play-body">
-                <span class="lb-hero-kicker">Mines</span>
-                <b>Мины</b>
-                <span>Поле 5×5 · от 1 до 24 мин · забери выигрыш вовремя</span>
-                <span class="lb-play-foot">
-                  <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
-                </span>
-              </span>
-            </button>
-
-            <button id="play-nvuti" class="lb-play lb-play-nv">
-              <span class="lb-play-art lb-nv-art" aria-hidden="true">
-                <i class="lb-nv-scale"><b></b><em>75</em></i>
-              </span>
-              <span class="lb-play-body">
-                <span class="lb-hero-kicker">Nvuti</span>
-                <b>Nvuti</b>
-                <span>Шкала 1–100 · меньше или больше · до x19.4</span>
-                <span class="lb-play-foot">
-                  <span class="lb-play-cta">Играть<svg class="icon icon-sm"><use href="#i-arrow-right"></use></svg></span>
-                </span>
-              </span>
-            </button>
-
-            <button id="play-hilo" class="lb-play lb-play-hl">
-              <span class="lb-play-art hl-lobby-art" aria-hidden="true"><i class="lb-mini lb-mini-1" data-pip="♠">A<b>♠</b></i><i class="lb-mini lb-mini-2 red" data-pip="♥">K<b>♥</b></i><i class="hl-art-direction hl-art-up">↑</i><i class="hl-art-direction hl-art-down">↓</i></span>
-              <span class="lb-play-body"><span class="lb-hero-kicker">Hilo</span><b>Выше или ниже</b><span>Угадай следующую карту · забирай выигрыш</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span>
-            </button>
-            <button id="play-crash" class="lb-play lb-play-cr"><span class="lb-play-art lb-cr-art" aria-hidden="true"><svg viewBox="0 0 110 100"><path d="M5 85Q66 82 100 16L100 85Z" fill="#946be933"/><path d="M5 85Q66 82 100 16" fill="none" stroke="#bb9aff" stroke-width="5" stroke-linecap="round"/><circle cx="100" cy="16" r="5" fill="#fff"/><text x="8" y="36" fill="#eee5ff" font-size="24" font-weight="bold">2.00×</text></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Crash</span><b>Crash</b><span>Одиночный раунд · растущий коэффициент · автостоп</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
-<button type="button" data-arcade="plinko" class="lb-play lb-play-ag"><span class="lb-play-art ag-lobby-art" aria-hidden="true"><svg viewBox="0 0 112 120"><g fill="#baa0dc"><circle cx="55.0" cy="26" r="3"/><circle cx="45.0" cy="44" r="3"/><circle cx="65.0" cy="44" r="3"/><circle cx="35.0" cy="62" r="3"/><circle cx="55.0" cy="62" r="3"/><circle cx="75.0" cy="62" r="3"/><circle cx="25.0" cy="80" r="3"/><circle cx="45.0" cy="80" r="3"/><circle cx="65.0" cy="80" r="3"/><circle cx="85.0" cy="80" r="3"/><circle cx="15.0" cy="98" r="3"/><circle cx="35.0" cy="98" r="3"/><circle cx="55.0" cy="98" r="3"/><circle cx="75.0" cy="98" r="3"/><circle cx="95.0" cy="98" r="3"/></g><circle cx="60" cy="48" r="8" fill="#f8dcff"/><path d="M7 110H103" stroke="#c393f2" stroke-width="8" stroke-linecap="round"/></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Plinko</span><b>Plinko</b><span>Светящийся шарик · три уровня риска</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
-<button type="button" data-arcade="tower" class="lb-play lb-play-ag"><span class="lb-play-art ag-lobby-art" aria-hidden="true"><svg viewBox="0 0 112 120"><path d="M20 105V80H32V56H44V32H56V8H68V32H80V56H92V105Z" fill="#4d326d" stroke="#bf8ced" stroke-width="2"/><path d="M20 80H92M32 56H80M44 32H68" stroke="#9868c0" stroke-width="2"/><path d="M48 19L56 3 64 19 56 25Z" fill="#ecbc73"/><path d="M43 105V86Q56 67 69 86V105" fill="#ba86f5"/></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Tower</span><b>Башня</b><span>Девять этажей · забирай выигрыш</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
-<button type="button" data-arcade="keno" class="lb-play lb-play-ag"><span class="lb-play-art ag-lobby-art" aria-hidden="true"><svg viewBox="0 0 112 120"><rect x="9" y="14" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="23" y="34" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">1</text><rect x="42" y="14" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="56" y="34" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">4</text><rect x="75" y="14" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="89" y="34" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">7</text><rect x="9" y="47" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="23" y="67" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">10</text><rect x="42" y="47" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="56" y="67" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">13</text><rect x="75" y="47" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="89" y="67" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">16</text><rect x="9" y="80" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="23" y="100" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">19</text><rect x="42" y="80" width="28" height="28" rx="7" fill="#8960b5" stroke="#bc88e7"/><text x="56" y="100" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">22</text><rect x="75" y="80" width="28" height="28" rx="7" fill="#372343" stroke="#bc88e7"/><text x="89" y="100" text-anchor="middle" fill="#efddff" font-size="14" font-weight="bold">25</text></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Keno</span><b>Кено</b><span>Выбирай числа · лови совпадения</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
-<button type="button" data-arcade="dragon" class="lb-play lb-play-ag"><span class="lb-play-art ag-lobby-art" aria-hidden="true"><svg viewBox="0 0 112 120"><g transform="rotate(-12 34 67)"><rect x="9" y="24" width="48" height="76" rx="7" fill="#faf6ff"/><text x="16" y="44" fill="#20182e" font-size="19" font-weight="bold">A</text><text x="22" y="79" fill="#20182e" font-size="33">♠</text></g><g transform="rotate(12 80 65)"><rect x="56" y="21" width="48" height="76" rx="7" fill="#fff7fc"/><text x="63" y="42" fill="#d3264c" font-size="19" font-weight="bold">K</text><text x="69" y="77" fill="#d3264c" font-size="30">♥</text></g></svg></span><span class="lb-play-body"><span class="lb-hero-kicker">Dragon & Tiger</span><b>Дракон и Тигр</b><span>Две карты · старшая побеждает</span><span class="lb-play-foot"><span class="lb-play-cta">Играть →</span></span></span></button>
+<button type="button" id="play-holdem" class="game-tile" aria-label="Texas Hold&#x27;em"><img src="/img/game-cards/holdem.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Texas Hold&#x27;em</span></button>
+<button type="button" id="play-omaha" class="game-tile" aria-label="Omaha"><img src="/img/game-cards/omaha.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Omaha</span></button>
+<button type="button" id="play-blackjack" class="game-tile" aria-label="Blackjack"><img src="/img/game-cards/blackjack.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Blackjack</span></button>
+<button type="button" id="play-baccarat" class="game-tile" aria-label="Baccarat"><img src="/img/game-cards/baccarat.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Baccarat</span></button>
+<button type="button" id="play-roulette" class="game-tile" aria-label="Roulette"><img src="/img/game-cards/roulette.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Roulette</span></button>
+<button type="button" id="play-mines" class="game-tile" aria-label="Mines"><img src="/img/game-cards/mines.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Mines</span></button>
+<button type="button" id="play-nvuti" class="game-tile" aria-label="Nvuti"><img src="/img/game-cards/nvuti.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Nvuti</span></button>
+<button type="button" id="play-hilo" class="game-tile" aria-label="Hilo"><img src="/img/game-cards/hilo.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Hilo</span></button>
+<button type="button" id="play-crash" class="game-tile" aria-label="Crash"><img src="/img/game-cards/crash.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Crash</span></button>
+<button type="button" data-arcade="plinko" class="game-tile" aria-label="Plinko"><img src="/img/game-cards/plinko.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Plinko</span></button>
+<button type="button" data-arcade="tower" class="game-tile" aria-label="Tower"><img src="/img/game-cards/tower.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Tower</span></button>
+<button type="button" data-arcade="keno" class="game-tile" aria-label="Keno"><img src="/img/game-cards/keno.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Keno</span></button>
+<button type="button" data-arcade="dragon" class="game-tile" aria-label="Dragon &amp; Tiger"><img src="/img/game-cards/dragon.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title is-long">Dragon &amp; Tiger</span></button>
 <div id="casino-catalog" class="cg-catalog" aria-label="Мини-игры"></div>
             <details class="card rules" id="rules-card">
               <summary>Правила и порядок комбинаций</summary>
@@ -462,7 +360,7 @@
             <!-- Помощь -->
             <div id="help-card" class="card hidden">
               <h2>Помощь</h2>
-              <p class="hint">Холдем и блекджек на деньги. Баланс пополняется и выводится криптой один к одному.</p>
+              <p class="hint">Texas Hold’em и Blackjack. Баланс пополняется и выводится криптой один к одному.</p>
               <div class="chips-actions">
                 <button id="help-history" class="btn btn-surface">История операций</button>
                 <button id="help-rules" class="btn btn-surface">Правила игры</button>
@@ -496,7 +394,7 @@
     </section>
 
     <!-- ═══ Стол ═══ -->
-    <section id="screen-table" class="screen hidden">
+    <section id="screen-table" class="game-surface screen hidden">
       <!-- Игровой экран: один общий фон казино на весь экран, поверх него
            шапка, стол на фиксированном месте и панель управления снизу. -->
       <header class="topbar">
@@ -505,8 +403,9 @@
         </button>
         <button id="btn-code" class="title-block">
           <div id="room-title" class="room-title">Стол</div>
-          <div id="room-subtitle" class="room-subtitle">Холдем</div>
+          <div id="room-subtitle" class="room-subtitle">Texas Hold’em</div>
         </button>
+        <div class="game-wallet table-wallet"><span>Баланс</span><b id="table-balance">$0.00</b></div>
         <div class="tb-actions">
           <button id="btn-log" class="tb-btn" title="История и чат">
             <svg class="icon icon-sm"><use href="#i-chat"></use></svg>
@@ -665,9 +564,9 @@
 
     <!-- Блекджек против дилера: экран собран по макету 1 в 1 на холсте 390×653,
          фон — сам макет без нарисованных карт и кнопок (img/bj-bg.webp). -->
-    <section id="screen-bj" class="screen bj-screen premium-table hidden">
+    <section id="screen-bj" class="game-surface screen bj-screen premium-table hidden">
       <div id="bj-canvas" class="bj-canvas" data-phase="bet">
-        <header class="pt-header"><button id="bj-back" class="bj-back" aria-label="В лобби"><svg class="icon"><use href="#i-chevron-left"></use></svg></button><h1>Блекджек</h1><div id="bj-balance" class="bj-balance"><b id="bj-balance-value">$0.00</b><svg class="icon"><use href="#i-wallet"></use></svg></div></header>
+        <header class="pt-header"><button id="bj-back" class="bj-back" aria-label="В лобби"><svg class="icon"><use href="#i-chevron-left"></use></svg></button><h1>Blackjack</h1><div id="bj-balance" class="bj-balance"><span>Баланс</span><b id="bj-balance-value">$0.00</b><svg class="icon"><use href="#i-wallet"></use></svg></div></header>
         <div class="pt-felt">
           <div class="pt-deck" aria-hidden="true"><span>♠</span></div>
           <div class="pt-dealer"><div class="pt-hand-label">Дилер <span id="bj-dealer-total" class="bj-pill hidden"></span></div><div id="bj-dealer-cards" class="bj-cards bj-dealer-cards"></div></div>
@@ -700,9 +599,9 @@
       </div>
     </section>
 
-    <section id="screen-rl" class="screen bj-screen premium-table hidden">
+    <section id="screen-rl" class="game-surface screen bj-screen premium-table hidden">
       <div id="rl-canvas" class="bj-canvas rl-canvas">
-        <header class="pt-header"><button id="rl-back" class="bj-back" aria-label="В лобби"><svg class="icon"><use href="#i-chevron-left"></use></svg></button><h1>Рулетка</h1><div id="rl-balance" class="bj-balance"><b id="rl-balance-value">$0.00</b><svg class="icon"><use href="#i-wallet"></use></svg></div></header>
+        <header class="pt-header"><button id="rl-back" class="bj-back" aria-label="В лобби"><svg class="icon"><use href="#i-chevron-left"></use></svg></button><h1>Roulette</h1><div id="rl-balance" class="bj-balance"><span>Баланс</span><b id="rl-balance-value">$0.00</b><svg class="icon"><use href="#i-wallet"></use></svg></div></header>
         <div class="pt-wheel-space"><div id="rl-wheel" class="rl-wheel"></div></div>
         <div id="rl-history" class="pt-history" aria-label="Последние числа"></div>
         <div id="rl-result" class="hidden"></div>
@@ -727,10 +626,10 @@
          только живое: баланс, подписи и счёт сторон, карты, плашка итога,
          фишки на зонах, рамка выбранной фишки, точки истории. Все
          координаты — с макета, умноженные на k. -->
-    <section id="screen-bc" class="screen bj-screen hidden">
+    <section id="screen-bc" class="game-surface screen bj-screen hidden">
       <div id="bc-canvas" class="bj-canvas bc-canvas">
-        <button id="bc-back" class="bc-hit bc-back" aria-label="В лобби"></button>
-        <div id="bc-balance" class="bc-balance"><b id="bc-balance-value">$0.00</b></div>
+        <button id="bc-back" class="bc-hit bc-back" aria-label="В лобби"><svg class="icon"><use href="#i-chevron-left"></use></svg></button><h1 class="bc-title">Baccarat</h1>
+        <div id="bc-balance" class="bc-balance"><span>Баланс</span><b id="bc-balance-value">$0.00</b></div>
 
         <div id="bc-table" class="bc-table is-idle">
           <span class="bc-side-label bc-side-player">PLAYER</span>
@@ -743,19 +642,19 @@
         </div>
 
         <div id="bc-zones" class="bc-zones">
-          <button type="button" class="bc-zone" data-zone="playerPerfectPair" style="--x:47;--y:654;--w:174;--h:127;--r:-4deg"></button>
-          <button type="button" class="bc-zone" data-zone="playerPair" style="--x:47;--y:772;--w:153;--h:126;--r:-4deg"></button>
-          <button type="button" class="bc-zone" data-zone="player" style="--x:195;--y:695;--w:201;--h:214;--r:-2deg"></button>
-          <button type="button" class="bc-zone" data-zone="tie" style="--x:398;--y:713;--w:143;--h:196;--r:0deg"></button>
-          <button type="button" class="bc-zone" data-zone="banker" style="--x:544;--y:695;--w:201;--h:214;--r:2deg"></button>
-          <button type="button" class="bc-zone" data-zone="bankerPerfectPair" style="--x:720;--y:654;--w:174;--h:127;--r:4deg"></button>
-          <button type="button" class="bc-zone" data-zone="bankerPair" style="--x:741;--y:772;--w:153;--h:126;--r:4deg"></button>
+          <button type="button" class="bc-zone" data-zone="playerPerfectPair" style="--x:47;--y:654;--w:174;--h:127;--r:-4deg"><span class="bc-zone-label"><strong>PERFECT PAIR</strong><small>50:1</small></span></button>
+          <button type="button" class="bc-zone" data-zone="playerPair" style="--x:47;--y:772;--w:153;--h:126;--r:-4deg"><span class="bc-zone-label"><strong>PLAYER PAIR</strong><small>11:1</small></span></button>
+          <button type="button" class="bc-zone" data-zone="player" style="--x:195;--y:695;--w:201;--h:214;--r:-2deg"><span class="bc-zone-label"><strong>PLAYER</strong><small>1:1</small></span></button>
+          <button type="button" class="bc-zone" data-zone="tie" style="--x:398;--y:713;--w:143;--h:196;--r:0deg"><span class="bc-zone-label"><strong>TIE</strong><small>8:1</small></span></button>
+          <button type="button" class="bc-zone" data-zone="banker" style="--x:544;--y:695;--w:201;--h:214;--r:2deg"><span class="bc-zone-label"><strong>BANKER</strong><small>0.95:1</small></span></button>
+          <button type="button" class="bc-zone" data-zone="bankerPerfectPair" style="--x:720;--y:654;--w:174;--h:127;--r:4deg"><span class="bc-zone-label"><strong>PERFECT PAIR</strong><small>50:1</small></span></button>
+          <button type="button" class="bc-zone" data-zone="bankerPair" style="--x:741;--y:772;--w:153;--h:126;--r:4deg"><span class="bc-zone-label"><strong>BANKER PAIR</strong><small>11:1</small></span></button>
         </div>
 
         <div id="bc-history" class="bc-history"></div>
 
-        <button id="bc-place" type="button" class="bc-hit bc-deal" aria-label="Deal"></button>
-        <button id="bc-clear" type="button" class="bc-hit bc-clear" aria-label="Clear"></button>
+        <div class="bc-controls-bg" aria-hidden="true"></div><button id="bc-place" type="button" class="bc-hit bc-deal" aria-label="Deal">Deal</button>
+        <button id="bc-clear" type="button" class="bc-hit bc-clear" aria-label="Clear">Clear</button>
         <div id="bc-chip-frame" class="bc-chip-frame" aria-hidden="true"></div>
         <div id="bc-chip-row" class="bc-chip-row"></div>
       </div>
@@ -763,7 +662,7 @@
 
     <!-- Mines: обычный прокручиваемый экран — поле сверху, параметры ставки
          ниже; раунд целиком на сервере, клиент только показывает состояние. -->
-    <section id="screen-mn" class="screen mn-screen hidden">
+    <section id="screen-mn" class="game-surface screen mn-screen hidden">
       <div class="mn-bg" aria-hidden="true">
         <svg class="icon mn-suit-1"><use href="#i-spade"></use></svg>
         <svg class="icon mn-suit-2"><use href="#i-club"></use></svg>
@@ -806,7 +705,7 @@
 
     <!-- Nvuti: те же компоненты, что у Mines (экран, шапка, панель ставки);
          своё — шкала 1–100 с курсором цели и маркером результата. -->
-    <section id="screen-nv" class="screen mn-screen hidden">
+    <section id="screen-nv" class="game-surface screen mn-screen hidden">
       <div class="mn-bg" aria-hidden="true">
         <svg class="icon mn-suit-1"><use href="#i-spade"></use></svg>
         <svg class="icon mn-suit-2"><use href="#i-club"></use></svg>
@@ -863,8 +762,8 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <script src="/amethyst.js?v=1"></script>
-  <section id="screen-hl" class="screen game-standard mn-screen hidden">
+  <script src="/amethyst.js?v=2"></script>
+  <section id="screen-hl" class="game-surface screen game-standard mn-screen hidden">
     <div class="mn-bg" aria-hidden="true"><svg class="icon mn-suit-1"><use href="#i-spade"></use></svg><svg class="icon mn-suit-2"><use href="#i-club"></use></svg></div>
     <div class="mn-page hl-page">
       <header class="mn-head"><button id="hl-back" class="mn-iconbtn" aria-label="В лобби">‹</button><b class="mn-title">Hilo <span class="mn-spark">✦</span></b><div class="mn-balance"><span>Баланс</span><b id="hl-balance">$0.00</b></div></header>
@@ -882,7 +781,7 @@
       <details class="hl-rules"><summary>Как играть</summary><p>Туз — младшая карта, король — старшая. Для карт от 2 до дамы равная карта выигрывает в обоих направлениях. На тузе: «Выше» (92,31%) или «Равно» (7,69%). На короле: «Равно» (7,69%) или «Ниже» (92,31%). При выборе «Выше» на тузе и «Ниже» на короле повтор карты проигрывает. Каждая следующая карта выбирается независимо из 52 карт. Пропуск бесплатный и не меняет множитель. Выплата включает ставку; множитель рассчитывается по вероятности всей выигрышной серии с удержанием 1% один раз, без повторного удержания на каждом ходе. Лимит 10 000× — автоматическая выплата. До первого выбора ставку можно вернуть.</p></details>
     </div>
   </section>
-  <section id="screen-cr" class="screen game-standard mn-screen hidden">
+  <section id="screen-cr" class="game-surface screen game-standard mn-screen hidden">
     <div class="mn-bg" aria-hidden="true"><svg class="icon mn-suit-1"><use href="#i-spade"/></svg><svg class="icon mn-suit-2"><use href="#i-club"/></svg></div>
     <div class="mn-page cr-page">
       <header class="mn-head"><button id="cr-back" class="mn-iconbtn" aria-label="В лобби">‹</button><b class="mn-title">Crash <span class="mn-spark">✦</span></b><div class="mn-balance"><span>Баланс</span><b id="cr-balance">$0.00</b></div></header>
@@ -906,7 +805,7 @@
       <details class="cr-rules"><summary>Как играть</summary><p>После ставки начинается ваш раунд. Коэффициент растёт от 1.00×. Заберите выплату до краша или заранее включите автостоп. Если краш наступил раньше, ставка проигрывает. Автостоп на точном значении краша засчитывается. Краш может произойти сразу на 1.00×. Выплата включает ставку. Максимум — 1 000 000×, при достижении выплата автоматическая. Потеря связи не останавливает раунд; автостоп продолжает работать на сервере.</p></details>
     </div>
   </section>
-  <section id="screen-ag" class="screen game-standard mn-screen hidden">
+  <section id="screen-ag" class="game-surface screen game-standard mn-screen hidden">
     <div class="mn-bg" aria-hidden="true"><svg class="icon mn-suit-1"><use href="#i-spade"/></svg><svg class="icon mn-suit-2"><use href="#i-club"/></svg></div>
     <div class="mn-page ag-page">
       <header class="mn-head"><button id="ag-back" class="mn-iconbtn" aria-label="В лобби">‹</button><b id="ag-title" class="mn-title">Игры</b><div class="mn-balance"><span>Баланс</span><b id="ag-balance">$0.00</b></div></header>
@@ -933,25 +832,28 @@
     </div>
   </section>
   <script src="/plinko-motion.js?v=2"></script>
-  <script src="/casino-rules.js?v=6"></script>
-  <script src="/casino-art.js?v=4"></script>
-  <script src="/casino-motion.js?v=16"></script>
+  <script src="/casino-rules.js?v=7"></script>
+  <script src="/casino-art.js?v=5"></script>
+  <script src="/casino-motion.js?v=17"></script>
   <script src="/sicbo-scene.js?v=1"></script>
-  <script src="/chicken-scene.js?v=3"></script>
+  <script src="/chicken-scene.js?v=4"></script>
   <script src="/darts-rules.js?v=1"></script>
   <script src="/darts-scene.js?v=3"></script>
   <script src="/darts-audio.js?v=2"></script>
   <script src="/darts-game.js?v=3"></script>
   <script src="/bowling-physics.js?v=1"></script>
   <script src="/bowling-scene.js?v=3"></script>
-<script src="/balloon-scene.js?v=3"></script>
-<script src="/race-scene.js?v=1"></script>
-<script src="/casino-ui.js?v=28"></script>
-  <script src="/arcade.js?v=21"></script>
+<script src="/balloon-scene.js?v=4"></script>
+<script src="/race-scene.js?v=2"></script>
+<script src="/fishing-scene.js?v=1"></script>
+<script src="/duel-art.js?v=1"></script>
+<script src="/game-catalog.js?v=1"></script>
+<script src="/casino-ui.js?v=29"></script>
+  <script src="/arcade.js?v=22"></script>
   <script src="/crash.js?v=2"></script>
   <script src="/hilo.js?v=4"></script>
   <script src="/client-connection.js?v=1"></script>
   <script src="/telegram-display.js?v=1"></script>
-  <script src="/app.js?v=109"></script>
+  <script src="/app.js?v=110"></script>
 </body>
 </html>

@@ -19,6 +19,7 @@ trap recover ERR
 pgit checkout --detach "$target"
 node --check server/index.js
 node --check public/app.js
+node --check public/amethyst.js
 node --check public/client-connection.js
 node --check public/telegram-display.js
 node --check public/crash.js
@@ -42,6 +43,26 @@ node --check public/bowling-physics.js
 node --check public/bowling-scene.js
 node --check public/balloon-scene.js
 node --check public/race-scene.js
+node --check public/fishing-scene.js
+node --check public/duel-art.js
+node --check public/game-catalog.js
+node --check public/game-layout.js
+node --check public/game-result.js
+node --check public/classic-cards.js
+node --check public/blackjack-deal.js
+node --check public/roulette-view.js
+node --check server/accounts.js
+node - <<'JS'
+const fs = require('node:fs');
+const catalog = require('./public/game-catalog');
+for (const id of Object.keys(catalog.names)) {
+  const path = `public/img/game-cards/${catalog.file(id)}.webp`;
+  if (!fs.statSync(path).size) throw new Error(`Empty game artwork: ${path}`);
+}
+for (const path of ['public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp']) {
+  if (!fs.statSync(path).size) throw new Error(`Empty game asset: ${path}`);
+}
+JS
 systemctl start poker
 systemctl is-active --quiet poker
 trap - ERR

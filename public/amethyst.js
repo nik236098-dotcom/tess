@@ -8,15 +8,17 @@ function syncAmethyst() {
   const active = amethystActive();
   screen.classList.toggle('amethyst-theme', active);
   const header = screen.querySelector('.topbar'), footer = screen.querySelector('.controls');
-  if (active && header.parentElement !== canvas) { canvas.append(header, footer); }
-  else if (!active && header.parentElement === canvas) {
-    screen.prepend(header); screen.querySelector('.table-wrap').after(footer);
-  }
+  // The header is real-size UI, even when the table composition scales down.
+  if (header.parentElement !== screen) screen.prepend(header);
+  if (active && footer.parentElement !== canvas) canvas.append(footer);
+  else if (!active && footer.parentElement === canvas) screen.querySelector('.table-wrap').after(footer);
   if (!canvas.querySelector('.am-emblem')) {
     const emblem = document.createElement('div'); emblem.className = 'am-emblem'; emblem.setAttribute('aria-hidden', 'true'); canvas.append(emblem);
   }
 }
 function fitAmethyst() {
+  const screen=$('screen-table'),header=screen.querySelector('.topbar');
+  screen.style.setProperty('--poker-head',Math.max(0,header.getBoundingClientRect().bottom-screen.getBoundingClientRect().top)+'px');
   const box = $('table-viewport').getBoundingClientRect();
   if (box.width < 2 || box.height < 2) return;
   const scale = Math.min(box.width / 768, box.height / 1536);
@@ -44,7 +46,7 @@ function amSeatPosition(position, count) {
 }
 function renderAmethystSeats(room) {
   const container = $('seats'); container.replaceChildren();
-  $('room-title').innerHTML = 'Poker<span>Gena</span><i aria-hidden="true">♛</i>';
+  $('room-title').textContent = room.game === 'omaha' ? 'Omaha' : 'Texas Hold’em';
   const count = room.seats.length, offset = room.you.seatIndex ?? 0;
   const winners = winnerIdSet(room);
   for (const seat of room.seats) {

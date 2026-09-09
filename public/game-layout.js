@@ -15,6 +15,7 @@
       frame=0;const width=viewport.clientWidth,height=viewport.clientHeight;
       if(!width||!height)return;
       stage.style.width=width+'px';
+      stage.style.setProperty('--scene-height',height+'px');
       const natural=stage.scrollHeight;
       const scale=Math.min(1,height/Math.max(1,natural));
       stage.style.transform=`translate(-50%,-50%) scale(${scale})`;

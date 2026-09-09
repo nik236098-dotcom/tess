@@ -1,0 +1,127 @@
+/* The approved flat shell: game art on one midnight canvas, controls below. */
+:root { --game-bg:#111329; --wallet-gold:#f2c96b; }
+.screen.game-surface { background:var(--game-bg)!important; }
+.game-surface .mn-bg { display:none!important; }
+.game-surface :is(.mn-board-card,.ag-game-shell,.cf-panel,.ab-panel,.vp-hand-panel,.vp-paytable,.dm-panel,.sb-panel) {
+  background:transparent!important; border:0!important; box-shadow:none!important; border-radius:0!important;
+}
+#screen-ag.game-surface .ag-board { padding:8px 0!important; }
+.game-surface :is(.hl-history-panel,.dm-paytable) { border:0!important; background:none!important; box-shadow:none!important; }
+.game-surface .hl-history-panel { padding-top:8px; }
+.game-surface :is(.ch-panel,.ch-scene,.cg-coin-scene,.cf-result,.ab-result,.bl-scene,.rc-scene) { background:transparent!important; box-shadow:none!important; }
+.game-surface .cf-landscape { display:none; }
+.game-surface .cf-result::before,.game-surface .ab-result::before { display:none; }
+.game-surface .mn-spark { display:none; }
+.game-surface .mn-title { min-width:0; text-shadow:none; }
+.game-surface .mn-head .mn-title { min-width:min-content; white-space:normal; line-height:1.15; overflow-wrap:normal; font-size:clamp(18px,5.3vw,24px)!important; }
+.game-surface .mn-head .ag-long-title { font-size:clamp(14px,4vw,19px)!important; }
+.game-surface .mn-head { gap:8px; flex-wrap:wrap; }
+.game-surface .mn-head .mn-balance { margin-left:auto; }
+/* Nvuti's rectangular balance badge is the source for every game header. */
+.game-surface :is(.mn-balance,.bj-balance,.bc-balance,.game-wallet) {
+  height:38px; min-height:38px; padding:0 11px!important; flex:none; width:auto;
+  display:flex; align-items:center; gap:7px; white-space:nowrap;
+  border-radius:12px!important; border:1px solid #9682ff66!important;
+  background:#181a3ad9!important; box-shadow:inset 0 1px 0 #ffffff0f!important;
+  font-family:var(--font); box-sizing:border-box;
+}
+.game-surface :is(.mn-balance,.bj-balance,.bc-balance,.game-wallet) > span {
+  display:inline!important; color:#a9a6d6; font:500 11px/1 var(--font);
+}
+.game-surface :is(.mn-balance,.bj-balance,.bc-balance,.game-wallet) > b {
+  color:var(--wallet-gold)!important; font:800 14px/1 var(--font)!important;
+  font-variant-numeric:tabular-nums; text-shadow:none!important;
+}
+.game-surface :is(.mn-balance,.bj-balance,.bc-balance,.game-wallet) > .icon { display:none; }
+.game-surface :is(.mn-balance,.bj-balance,.bc-balance,.game-wallet).is-up > b { color:#5cff6a!important; }
+.game-surface :is(.mn-balance,.bj-balance,.bc-balance,.game-wallet).is-down > b { color:#ff6b7a!important; }
+.game-surface :is(button,input,select) { -webkit-tap-highlight-color:transparent; }
+.game-surface :is(.mn-main,.cg-action,.ag-choice,.bj-bet-btn,.bj-act) { isolation:isolate; -webkit-appearance:none; appearance:none; }
+.game-surface :is(.mn-main,.cg-action):active:not(:disabled) { transform:none!important; }
+.game-surface .mn-main.is-cash {
+  background:linear-gradient(180deg,#5ff26a,#2bcf45 55%,#1fae36)!important;
+  color:#06200d!important; border-color:#96ffa099!important;
+  box-shadow:inset 0 1px 0 #ffffff66,0 3px 10px #14782835!important;
+}
+.game-surface .mn-main.is-cash:active:not(:disabled) { box-shadow:inset 0 2px 5px #06200d33!important; }
+.game-surface .mn-panel .mn-main { overflow:hidden; }
+.game-surface .mn-page > details:not([open]) { border:0!important; box-shadow:none!important; background:none!important; padding:2px 4px!important; }
+.game-surface .mn-page > details > summary { min-height:24px; display:list-item; }
+.game-surface .ag-paytable { scrollbar-width:none; }
+.game-surface .ag-paytable::-webkit-scrollbar { display:none; }
+.game-surface .ag-paytable:focus-visible { outline:1px solid #a994ef; outline-offset:2px; border-radius:8px; }
+.game-surface .ag-pay { min-width:66px; }
+.game-surface .cg-choices { min-width:0; }
+.game-surface .cg-choices > button { min-width:0; }
+.game-surface .ag-label-row { flex-wrap:wrap; row-gap:2px; }
+.game-surface .ag-label-row #ag-limit { white-space:nowrap; }
+.game-surface .game-wallet { margin-left:auto; }
+#screen-bj.game-surface .pt-felt { border:0; border-radius:0; background:none; box-shadow:none; }
+#screen-bj.game-surface .pt-felt::before { display:none; }
+.game-surface.premium-table .pt-header { flex-wrap:wrap; height:auto; min-height:44px; }
+.game-surface.premium-table .pt-header h1 { text-align:left; min-width:min-content; font:700 clamp(16px,4.5vw,23px)/1.1 var(--font); }
+.game-surface.premium-table .bj-back { width:36px; border-radius:12px; border:1px solid #9682ff59; background:#181a3acc; }
+.game-surface.premium-table .bj-balance { max-width:none; margin-left:auto; }
+.game-surface.premium-table { --pt-primary:linear-gradient(180deg,#8d7ff8,#6a5ae8 55%,#5a4be0); }
+.game-surface.premium-table .pt-controls { background:linear-gradient(180deg,#141636f5,#0e102af5); border-color:#9682ff59; }
+.game-surface #hl-skip { min-height:32px; }
+.game-surface .hl-table { max-height:none; }
+.game-surface .bl-panel { background:none!important; }
+#screen-table.game-surface::before { display:none; }
+#screen-table.game-surface .topbar { background:var(--game-bg); border-bottom:0; }
+#screen-table.game-surface .title-block { grid-column:2/4; }
+#screen-table.game-surface .table-wallet { grid-column:1/3; grid-row:2; justify-self:start; margin:0; }
+#screen-table.game-surface .tb-actions { grid-column:3; grid-row:2; justify-self:end; }
+/* The poker table may scale; its header and wallet must stay readable. */
+#screen-table.game-surface.amethyst-theme .topbar { position:relative; inset:auto; width:100%; height:auto; padding:calc(var(--safe-top) + 6px) 12px 8px; display:grid; grid-template-columns:30px minmax(0,1fr) auto; gap:8px; }
+#screen-table.game-surface.amethyst-theme .title-block { position:static; width:auto; height:auto; text-align:left; }
+#screen-table.game-surface.amethyst-theme .room-title { font:700 20px/1.2 var(--font); letter-spacing:-.3px; }
+#screen-table.game-surface.amethyst-theme .room-subtitle { margin:3px 0 0; font:400 10px/1.3 var(--font); text-shadow:none; color:#a9a2c4; }
+#screen-table.game-surface.amethyst-theme .tb-btn { position:static; width:30px; height:32px; border-radius:10px; }
+#screen-table.game-surface.amethyst-theme .tb-btn .icon { width:18px; height:18px; }
+#screen-table.game-surface.amethyst-theme > .table-wrap { top:var(--poker-head,170px); bottom:var(--safe-bottom); height:auto; }
+#screen-table.game-surface.amethyst-theme .table-canvas { background:none; }
+#screen-table.game-surface.amethyst-theme .table-canvas::before { content:''; display:block; position:absolute; left:30px; right:30px; top:190px; height:1020px; border-radius:47% 47% 38% 38% / 40% 40% 34% 34%; background:#17172f; pointer-events:none; }
+#screen-table.game-surface.amethyst-theme .am-emblem { display:none; }
+/* Baccarat keeps its existing positions and chip controls, now as real UI. */
+#screen-bc.game-surface .bc-canvas { background:none; }
+#screen-bc.game-surface .bc-back { left:12px; top:1px; width:36px; height:38px; border:1px solid #9682ff59; background:#181a3acc; color:#d9d4ff; display:grid; place-items:center; }
+#screen-bc.game-surface .bc-back .icon { width:20px; height:20px; }
+.bc-title { position:absolute; left:57px; top:8px; margin:0; color:#f4f2ff; font:700 22px/1.1 var(--font); letter-spacing:-.5px; }
+#screen-bc.game-surface .bc-balance { left:auto; right:12px; top:1px; }
+#screen-bc.game-surface .bc-shoe { top:55px; left:174px; width:43px; height:62px; border:1px solid #b9a7ed; border-radius:5px; background:repeating-linear-gradient(45deg,#b99aea19 0 1px,transparent 1px 5px),linear-gradient(#534775,#26213e); box-shadow:2px 2px 0 #2a2543,3px 3px 0 #a598cc,5px 5px 0 #28213f,6px 6px 0 #766891; }
+#screen-bc.game-surface .bc-shoe::after { content:'♠'; position:absolute; inset:4px; border:1px solid #9f8ab5; border-radius:3px; display:grid; place-items:center; color:#c5b3e9; font-size:23px; }
+#screen-bc.game-surface .bc-zone { background:linear-gradient(150deg,#28223d,#1c1931); border:1px solid #7d6b9c; color:#c3b4e0; }
+#screen-bc.game-surface .bc-zone[data-zone="player"] { color:#aca3fa; border-color:#8881c8; }
+#screen-bc.game-surface .bc-zone[data-zone="banker"] { color:#e6a0b2; border-color:#9c6b87; }
+#screen-bc.game-surface .bc-zone[data-zone="tie"] { color:#a5d6bf; border-color:#679283; }
+.bc-zone-label { pointer-events:none; display:flex; flex-direction:column; gap:5px; align-items:center; justify-content:center; font:600 10px/1.1 var(--font); padding:2px; }
+.bc-zone-label strong { font-size:inherit; }
+.bc-zone-label small { font-size:12px; }
+#screen-bc.game-surface .bc-zone:is([data-zone="player"],[data-zone="banker"],[data-zone="tie"]) .bc-zone-label { font-size:14px; }
+#screen-bc.game-surface .bc-zone:active { filter:brightness(1.15); }
+#screen-bc.game-surface .bc-zone.is-selected { box-shadow:inset 0 0 0 1px #bc9aef; }
+#screen-bc.game-surface .bc-zone.is-selected .bc-zone-label { transform:translateY(-10px); }
+.bc-controls-bg { position:absolute; left:14px; top:424px; width:362px; height:139px; border:1px solid #9682ff59; border-radius:20px; background:linear-gradient(180deg,#141636f5,#0e102af5); pointer-events:none; }
+#screen-bc.game-surface .bc-deal { background:linear-gradient(180deg,#8d7ff8,#6a5ae8 55%,#5a4be0); border:1px solid #c8b9ff8c; box-shadow:inset 0 1px 0 #ffffff59; color:#fff; font:700 18px var(--font); }
+#screen-bc.game-surface .bc-clear { background:#191a34; border:1px solid #9682ff59; color:#c8bfdf; font:600 13px var(--font); }
+#screen-bc.game-surface :is(.bc-deal,.bc-clear):disabled { opacity:.45; cursor:default; }
+#screen-bc.game-surface .bc-history i { opacity:1; background:#322e49; box-shadow:none; }
+#screen-bc.game-surface .bc-history i.player { background:#9280e6; }
+#screen-bc.game-surface .bc-history i.banker { background:#d7809b; }
+#screen-bc.game-surface .bc-history i.tie { background:#78c6a3; }
+#screen-bc.game-surface .bc-chip-frame { border-color:#bd9aff; box-shadow:0 0 5px #bd9aff44; border-radius:50%; }
+/* Keep the original Mines/Nvuti controls; reclaim empty spacing on short phones. */
+@media (min-height:560px) and (max-height:800px) {
+  :is(#screen-mn,#screen-nv).game-surface .mn-page { gap:8px; }
+  :is(#screen-mn,#screen-nv).game-surface .mn-board-card { padding-top:12px; padding-bottom:12px; }
+  :is(#screen-mn,#screen-nv).game-surface .mn-panel { padding-top:12px; padding-bottom:12px; }
+  #screen-nv.game-surface .nv-scale { margin-top:42px; padding-bottom:72px; }
+}
+@media(max-width:360px) {
+  .game-surface :is(.mn-balance,.bj-balance,.game-wallet) { padding:0 8px!important; gap:5px; }
+  .game-surface :is(.mn-balance,.bj-balance,.game-wallet) > span { font-size:10px; }
+  .game-surface :is(.mn-balance,.bj-balance,.game-wallet) > b { font-size:12px!important; }
+  .game-surface .mn-head .mn-title { font-size:20px; }
+  .game-surface .mn-head .ag-long-title { font-size:14px; }
+}

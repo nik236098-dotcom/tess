@@ -21,7 +21,7 @@
    <linearGradient id="bl-grip" x2="0" y2="1"><stop stop-color="#53647a"/><stop offset=".22" stop-color="#26364a"/><stop offset=".75" stop-color="#0a1423"/><stop offset="1" stop-color="#2e3d50"/></linearGradient>
    <filter id="bl-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4"/></filter><linearGradient id="bl-shine" x2="100%" y2="100%"><stop stop-color="#fff" stop-opacity=".85"/><stop offset="1" stop-color="#d7edff" stop-opacity="0"/></linearGradient>
    <radialGradient id="bl-gloss"><stop stop-color="#f1f9ff" stop-opacity=".9"/><stop offset=".55" stop-color="#c9e8ff" stop-opacity=".35"/><stop offset="1" stop-color="#b0dfff" stop-opacity="0"/></radialGradient><linearGradient id="bl-floor" x2="0" y2="100%"><stop stop-color="#102844"/><stop offset="1" stop-color="#071325"/></linearGradient><radialGradient id="bl-shadow"><stop stop-color="#020915" stop-opacity=".9"/><stop offset="1" stop-color="#020915" stop-opacity="0"/></radialGradient>
-  </defs><rect width="360" height="390" fill="url(#bl-room)"/><path d="M0 325Q180 300 360 325V390H0Z" fill="url(#bl-floor)"/>
+  </defs><rect width="360" height="390" fill="var(--game-bg,#111329)"/>
   <ellipse cx="130" cy="350" rx="103" ry="20" fill="url(#bl-shadow)"/><ellipse cx="278" cy="354" rx="66" ry="19" fill="url(#bl-shadow)"/>
   <path d="M131 286C129 328 174 366 214 346S248 330 260 332" fill="none" stroke="#030e1d" stroke-width="8"/><path d="M131 286C129 328 174 366 214 346S248 330 260 332" fill="none" stroke="#3e6487" stroke-width="3"/>
   <g id="bl-balloon"><path d="M131 284C113 268 38 222 29 149C18 68 62 19 128 18C199 16 242 72 231 149C222 218 150 268 131 284Z" fill="url(#bl-latex)" stroke="#56a3f1" stroke-opacity=".6" stroke-width="1.2"/>

@@ -1,5 +1,5 @@
 'use strict';
-const AG_NAMES = { plinko: 'Plinko', tower: 'Башня', keno: 'Кено', dragon: 'Дракон и Тигр' };
+const AG_NAMES = { plinko: 'Plinko', tower: 'Tower', keno: 'Keno', dragon: 'Dragon & Tiger' };
 const AG_SUBTITLES = { plinko: 'Пусть шарик найдёт свой путь', tower: 'Выбирай безопасные плитки и поднимайся выше', keno: 'Выбери числа — проверь совпадения', dragon: 'На чьей стороне старшая карта?' };
 const AG_RULES = {
   plinko: 'Шарик проходит 10 рядов: на каждом шанс поворота влево или вправо равен 50%. Выплата — ставка × коэффициент ячейки. Уровень риска меняет таблицу выплат. Выбери 1, 5, 10 или 25 шариков. Сумма в поле — ставка на один шарик; общая ставка и выплата складываются по всему запуску. Результат определяет сервер, анимация показывает его путь.',
@@ -34,6 +34,7 @@ function openArcade(game) {
   $('screen-ag').classList.toggle('is-darts',game==='darts');
   $('screen-ag').classList.toggle('is-bowling',game==='bowling');
   $('screen-ag').classList.toggle('is-balloon',game==='balloon');
+  for(const id of ['race','rps','fishing'])$('screen-ag').classList.toggle('is-'+id,game===id);
   $('ag-chicken-step').hidden=true;
   $('screen-ag').classList.remove('vp-is-live');
   if(agCatalog())CasinoUI.prepare(game);
@@ -87,6 +88,8 @@ function onArcadeState(message) {
     a.animating=true; renderArcade(); agAnimateResult(message); return;
   }
   renderArcade();
+  // A submitted opening move plays the chosen side once after the saved stake.
+  if(action==='start'&&message.accepted!==false&&message.phase==='play'&&['coin','rps'].includes(a.game)&&!message.last){agRequest('pick',{index:a.options[a.game].side});return;}
   if(message.phase==='done'&&(changed||(!previous?.settled&&message.settled))) agResult();
   if(a.game==='tower'&&message.phase==='play'&&(changed||action==='open')) agScrollTower();
 }
