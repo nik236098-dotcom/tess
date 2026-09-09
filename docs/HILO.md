@@ -10,10 +10,28 @@ written in the same accounts.json payload. Normal shutdown cashes out active
 rounds. As with the existing account system, disk write errors are logged.
 
 A is low, K high. Independent uniform draws from 52 cards with replacement.
-Ties win in both directions. Directions with probability 1 are disabled.
-The next multiplier is previous × 0.97 / probability, rounded down to six decimals;
-payout is rounded down to whole cents. Maximum multiplier 10,000× cashes out
-automatically. A prediction that could overflow the existing account balance limit is rejected before drawing; a cashout that cannot fit remains saved. Skipping is free. Cashing out before a prediction returns the bet.
+For ranks 2–Q, both directions include equality. For A, high means strictly
+higher (12/13), low means same (1/13). For K, high means same (1/13), low
+means strictly lower (12/13). Button labels and symbols follow these rules.
+
+A new sequence applies a 1% edge once: first winning multiplier is 0.99 / p,
+subsequent winning multipliers are previous / p. Skip leaves it unchanged.
+Payout is floored to cents, compensating only for binary floating-point noise
+at whole-cent boundaries. Earned legacy multipliers survive round restoration.
+The 10,000× cap and account capacity protection remain project-specific.
+Cashout before a prediction returns the stake. Old clients must reload before
+making predictions under the new rules (rulesVersion 2).
+
+Public references:
+- https://stake.com/casino/games/hilo (A/K exceptions and 99% RTP)
+- https://stake.com/blog/how-to-play-hilo-on-stake
+- https://stake.com/provably-fair/game-events (independent 52-card outcomes)
+
+This is our implementation of the published gameplay, not Stake's proprietary
+server code. We keep the project's cryptographic RNG, payout limits and free
+skip behavior; this does not implement Stake's seed verification protocol.
+The one-time edge follows the stated sequence RTP mathematically; the full
+vendor payout algorithm is not published in these references.
 
 Amounts: 10–10,000,000 cents. Revisions reject duplicate/stale commands.
 

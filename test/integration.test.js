@@ -383,6 +383,9 @@ test('Hilo: invalid bets, duplicate requests, reconnect and cashout preserve the
   a.send({ type: 'hl_start', amount: 100, revision: initial.revision });
   const live = await a.wait(byType('hl'));
   assert.strictEqual(live.balance, auth.balance - 100);
+  a.send({ type: 'hl_pick', direction: 'high', revision: live.revision });
+  await a.wait(byType('error')); const oldClient = await a.wait(byType('hl'));
+  assert.deepStrictEqual(oldClient, live, 'old rules must not silently consume a prediction');
   a.send({ type: 'hl_start', amount: 100, revision: initial.revision });
   await a.wait(byType('error')); const duplicate = await a.wait(byType('hl'));
   assert.strictEqual(duplicate.balance, live.balance);

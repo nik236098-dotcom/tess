@@ -3,15 +3,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { HiloGame, HiloError } = require('../server/hilo/game');
 const make = (...ranks) => new HiloGame({ rng: () => ({ rank: ranks.shift() || 8, suit: 's' }) });
-test('every rank: inclusive high/low odds agree with all 13 outcomes', () => {
+test('every rank: both choices agree with all 13 outcomes including A/K exceptions', () => {
   for (let rank = 1; rank <= 13; rank++) {
     for (const direction of ['high', 'low']) {
       let wins = 0;
       for (let next = 1; next <= 13; next++) {
         const g = make(rank, next); g.start(100, 0);
-        if (g.odds(direction) === 1) { assert.throws(() => g.pick(direction, 1), HiloError); continue; }
         const p = g.odds(direction); g.pick(direction, 1);
-        if (g.phase === 'play') { wins++; assert.ok(g.multiplier * p <= .97 + 1e-10); }
+        if (g.phase === 'play') { wins++; assert.ok(g.multiplier * p <= .99 + 1e-10); }
       }
       const g = make(rank);
       if (g.odds(direction) < 1) assert.equal(wins / 13, g.odds(direction));
@@ -26,7 +25,7 @@ test('stale requests, invalid bets, second start and duplicate cashout cannot mu
   assert.throws(() => g.pick('high', 0), HiloError);
   assert.throws(() => g.pick('bad', 1), HiloError);
   g.pick('high', 1); g.cashout(g.revision);
-  assert.equal(g.payout, 210);
+  assert.equal(g.payout, 214);
   assert.throws(() => g.cashout(g.revision), HiloError);
 });
 test('skip preserves bet and multiplier; loss pays zero; a new round resets history', () => {
@@ -46,5 +45,22 @@ test('saved round restores its visible card, revision and earned payout', () => 
   const g = make(8, 8); g.start(100, 0); g.pick('high', 1);
   const recovered = make(2); recovered.restore(JSON.parse(JSON.stringify(g.snapshot())));
   assert.deepEqual(recovered.state(), g.state());
-  recovered.cashout(recovered.revision); assert.equal(recovered.payout, 210);
+  recovered.cashout(recovered.revision); assert.equal(recovered.payout, 214);
+});
+test('ace and king have a 12/13 direction and 1/13 equality; ties lose in strict direction', () => {
+  for (const [rank, direction, same] of [[1,'high','low'],[13,'low','high']]) {
+    const g=make(rank,rank); g.start(100,0);
+    assert.equal(g.odds(direction),12/13); assert.equal(g.odds(same),1/13);
+    assert.equal(g.mode(same),'same'); g.pick(direction,1);
+    assert.equal(g.result,'lose');
+    const equal=make(rank,rank); equal.start(100,0); equal.pick(same,1);
+    assert.equal(equal.phase,'play'); assert.ok(Math.abs(equal.multiplier-12.87)<1e-10);
+    equal.cashout(equal.revision); assert.equal(equal.payout,1287);
+  }
+});
+test('the 1% deduction applies once to a sequence, including after skips and recovery', () => {
+  const g=make(1,1,1,1); g.start(100,0); g.pick('low',1); g.skip(g.revision);
+  const restored=make(1,1); restored.restore(g.snapshot()); restored.pick('low',restored.revision);
+  assert.ok(Math.abs(restored.multiplier-167.31)<1e-10);
+  restored.cashout(restored.revision); assert.equal(restored.payout,16731);
 });

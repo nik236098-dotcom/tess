@@ -28,7 +28,7 @@ function hlRequest(action, extra = {}) {
   }
   hl.pendingAction = action;
   hl.busy = true; haptic('light'); renderHilo();
-  send({ type: `hl_${action}`, revision: hl.info.revision, ...extra });
+  send({ type: `hl_${action}`, revision: hl.info.revision, rulesVersion: 2, ...extra });
 }
 async function onHiloState(message) {
   const hl = state.hl;
@@ -75,7 +75,12 @@ function renderHilo() {
   $('hl-balance').textContent = money(state.balance);
   if (!hl.animating) $('hl-deck').innerHTML = info ? hlCard(info.card) : '<div class="hl-loading">Загрузка…</div>';
   for (const [id, probability] of [['high', info?.high], ['low', info?.low]]) {
-    $(`hl-${id}`).disabled = locked || !live || probability === 1;
+    $(`hl-${id}`).disabled = locked || !live;
+    const rank = info?.card.rank;
+    const mode = info?.[`${id}Mode`] || (rank === 1 ? (id === 'high' ? 'higher' : 'same') : rank === 13 ? (id === 'high' ? 'same' : 'lower') : (id === 'high' ? 'higherEqual' : 'lowerEqual'));
+    const labels = { higher: 'Выше', lower: 'Ниже', same: 'Равно', higherEqual: 'Выше или<br>равно', lowerEqual: 'Ниже или<br>равно' };
+    $(`hl-${id}-label`).innerHTML = labels[mode];
+    $(`hl-${id}-icon`).setAttribute('d', mode === 'same' ? 'M3 5h18M3 11h18' : id === 'high' ? 'M3 13 12 4 21 13' : 'm3 3 9 9 9-9');
     $(`hl-${id}-chance`).textContent = probability ? `${(probability * 100).toFixed(2).replace('.', ',')}%` : '—';
   }
   $('hl-skip').disabled = locked;
@@ -100,7 +105,7 @@ function renderHilo() {
     overlay.innerHTML = ''; delete overlay.dataset.revision;
   }
   const history = $('hl-history');
-  history.innerHTML = (info?.history || []).map(item => `<div class="hl-history-item ${item.won === false ? 'is-loss' : ''}"><span class="hl-history-arrow">${({high:'↑',low:'↓',skip:'»',start:'•'})[item.direction]}</span>${hlCard(item.card)}<small>${item.direction === 'skip' ? 'Пропуск' : item.multiplier.toFixed(2) + '×'}</small></div>`).join('') || '<span class="hl-empty">Здесь появятся ваши карты</span>';
+  history.innerHTML = (info?.history || []).map(item => `<div class="hl-history-item ${item.won === false ? 'is-loss' : ''}"><span class="hl-history-arrow">${item.mode === 'same' ? '=' : ({high:'↑',low:'↓',skip:'»',start:'•'})[item.direction]}</span>${hlCard(item.card)}<small>${item.direction === 'skip' ? 'Пропуск' : item.multiplier.toFixed(2) + '×'}</small></div>`).join('') || '<span class="hl-empty">Здесь появятся ваши карты</span>';
   history.scrollLeft = history.scrollWidth;
 }
 function bindHilo() {

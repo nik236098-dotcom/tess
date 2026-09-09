@@ -895,18 +895,18 @@
       <div id="hl-game" class="mn-board-card hl-game">
         <div class="hl-game-head"><span>Текущая карта</span><button id="hl-skip">Пропустить »</button></div>
         <div class="hl-table"><div id="hl-deck" class="hl-deck"></div><div class="hl-options">
-          <button id="hl-high" class="hl-choice"><svg viewBox="0 0 24 16" aria-hidden="true"><path d="M3 13 12 4 21 13"/></svg><span>Выше или<br>равно</span><strong id="hl-high-chance">—</strong></button>
-          <button id="hl-low" class="hl-choice hl-choice-low"><svg viewBox="0 0 24 16" aria-hidden="true"><path d="m3 3 9 9 9-9"/></svg><span>Ниже или<br>равно</span><strong id="hl-low-chance">—</strong></button>
+          <button id="hl-high" class="hl-choice"><svg viewBox="0 0 24 16" aria-hidden="true"><path id="hl-high-icon" d="M3 13 12 4 21 13"/></svg><span id="hl-high-label">Выше или<br>равно</span><strong id="hl-high-chance">—</strong></button>
+          <button id="hl-low" class="hl-choice hl-choice-low"><svg viewBox="0 0 24 16" aria-hidden="true"><path id="hl-low-icon" d="m3 3 9 9 9-9"/></svg><span id="hl-low-label">Ниже или<br>равно</span><strong id="hl-low-chance">—</strong></button>
         </div></div>
         <div id="hl-overlay" class="mn-overlay hl-win-overlay hidden" role="status" aria-live="polite"></div>
         <div class="hl-stats"><div><span>Множитель</span><b id="hl-multiplier">1.00×</b></div><div><span>Выигрыш</span><b id="hl-win">$0.00</b></div></div>
       </div>
       <div class="hl-history-panel"><h3>История карт</h3><div id="hl-history" class="hl-history"></div></div>
       <div id="hl-panel" class="mn-panel"><button id="hl-main" class="mn-main">Сделать ставку</button><div class="mn-label">Сумма ставки</div><div class="mn-row"><label class="mn-input"><i class="mn-coin">$</i><input id="hl-amount" aria-label="Сумма ставки" inputmode="decimal" value="1,00" autocomplete="off"></label><button class="mn-mod" data-hl-mod="0.5">1/2</button><button class="mn-mod" data-hl-mod="2">2x</button><button class="mn-mod" data-hl-mod="max">Max</button></div><p id="hl-result" class="hl-result" role="status" aria-live="polite"></p></div>
-      <details class="hl-rules"><summary>Как играть</summary><p>Туз — младшая карта, король — старшая. Равная карта выигрывает в обоих направлениях. Каждая следующая карта выбирается независимо из 52 карт. Направление с шансом 100% недоступно. Пропуск бесплатный и не меняет множитель. Выплата включает ставку; после каждого угаданного хода множитель увеличивается с комиссией 3%. Лимит 10 000× — автоматическая выплата. До первого выбора ставку можно вернуть.</p></details>
+      <details class="hl-rules"><summary>Как играть</summary><p>Туз — младшая карта, король — старшая. Для карт от 2 до дамы равная карта выигрывает в обоих направлениях. На тузе: «Выше» (92,31%) или «Равно» (7,69%). На короле: «Равно» (7,69%) или «Ниже» (92,31%). При выборе «Выше» на тузе и «Ниже» на короле повтор карты проигрывает. Каждая следующая карта выбирается независимо из 52 карт. Пропуск бесплатный и не меняет множитель. Выплата включает ставку; множитель рассчитывается по вероятности всей выигрышной серии с удержанием 1% один раз, без повторного удержания на каждом ходе. Лимит 10 000× — автоматическая выплата. До первого выбора ставку можно вернуть.</p></details>
     </div>
   </section>
-  <script src="/hilo.js?v=2"></script>
+  <script src="/hilo.js?v=3"></script>
   <script src="/app.js?v=96"></script>
 </body>
 </html>

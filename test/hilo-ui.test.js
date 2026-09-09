@@ -7,7 +7,7 @@ const vm = require('node:vm');
 function harness(rejectAnimation = false) {
   const elements = new Map(); const floating = new Set(); let calls = 0;
   const element = () => ({ innerHTML: '', textContent: '', disabled: false, dataset: {}, scrollWidth: 100,
-    classList: { toggle() {}, add() {}, remove() {} },
+    classList: { toggle() {}, add() {}, remove() {} }, setAttribute() {},
     querySelector: () => element(), append: next => floating.add(next), remove() { floating.delete(this); },
     animate() { calls++; if (rejectAnimation) throw Error('animation unavailable'); return { finished: Promise.resolve(), cancel() {} }; },
   });
@@ -37,4 +37,15 @@ test('cashout shows Mines-style winnings, new round clears it, unchanged render 
   assert.match(h.$('hl-overlay').innerHTML,/×2.00/); assert.match(h.$('hl-overlay').innerHTML,/2.00/);
   const markup=h.$('hl-overlay').innerHTML; h.context.renderHilo(); assert.equal(h.$('hl-overlay').innerHTML,markup);
   await h.context.onHiloState(snap(2)); assert.equal(h.$('hl-overlay').innerHTML,'');
+});
+test('A/K keep both buttons enabled and label the equality choice honestly', async () => {
+  for (const rank of [1,13]) {
+    const h=harness(); const message=snap(0);message.card.rank=rank;
+    message.high=rank===1?12/13:1/13;message.low=rank===1?1/13:12/13;
+    await h.context.onHiloState(message);
+    assert.equal(h.$('hl-high').disabled,false);assert.equal(h.$('hl-low').disabled,false);
+    assert.equal(h.$(rank===1?'hl-low-label':'hl-high-label').innerHTML,'Равно');
+    assert.equal(h.$(rank===1?'hl-high-label':'hl-low-label').innerHTML,rank===1?'Выше':'Ниже');
+    assert.equal(h.$(rank===1?'hl-high-chance':'hl-low-chance').textContent,'92,31%');
+  }
 });

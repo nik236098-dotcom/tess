@@ -971,12 +971,13 @@ function createApp(options = {}) {
         accounts.withdraw(client.user.id, amount);
         game.start(amount, message.revision);
       } else if (message.type === 'hl_pick') {
-        const next = Math.min(10000, game.multiplier * 0.97 / game.odds(message.direction));
-        if (accounts.balanceOf(client.user.id) + Math.floor(game.bet * next) > MAX_BALANCE) throw new HiloError('Достигнут лимит баланса. Заберите текущий выигрыш');
+        if (message.rulesVersion !== 2) throw new HiloError('Правила Hilo обновлены. Закройте и откройте мини-приложение');
+        const next = game.nextMultiplier(message.direction);
+        if (accounts.balanceOf(client.user.id) + game.payoutAt(next) > MAX_BALANCE) throw new HiloError('Достигнут лимит баланса. Заберите текущий выигрыш');
         game.pick(message.direction, message.revision);
       } else if (message.type === 'hl_skip') game.skip(message.revision);
       else {
-        if (accounts.balanceOf(client.user.id) + Math.floor(game.bet * game.multiplier) > MAX_BALANCE) throw new HiloError('Выплата сохранена. Для получения уменьшите баланс счёта');
+        if (accounts.balanceOf(client.user.id) + game.payoutAt() > MAX_BALANCE) throw new HiloError('Выплата сохранена. Для получения уменьшите баланс счёта');
         game.cashout(message.revision);
       }
       if (game.phase === 'done' && !game.settled) {
@@ -1146,7 +1147,7 @@ function createApp(options = {}) {
     }
     // Settle active Hilo rounds on a normal service restart.
     for (const [userId, game] of hiloGames) {
-      if (game.phase === 'play' && !game.settled && accounts.balanceOf(userId) + Math.floor(game.bet * game.multiplier) <= MAX_BALANCE) {
+      if (game.phase === 'play' && !game.settled && accounts.balanceOf(userId) + game.payoutAt() <= MAX_BALANCE) {
         game.cashout(game.revision); game.settled = true;
         accounts.deposit(userId, game.payout);
         accounts.get(userId).hiloRound = game.snapshot();
