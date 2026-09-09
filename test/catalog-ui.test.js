@@ -9,7 +9,7 @@ function harness(id){
  const ctx=vm.createContext({state,$,document:{querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},performance:{now:()=>0},structuredClone,
  send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),haptic(){},toast(){},
  requestAnimationFrame:f=>{const id=++next;frames.set(id,f);return id;},cancelAnimationFrame:id=>frames.delete(id)});
- for(const file of ['casino-rules','casino-art','casino-motion','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
+ for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
  vm.runInContext(`CasinoUI.prepare('${id}');`,ctx);ctx.bindArcade();
  const deliver=round=>ctx.onArcadeState({game:id,config:game.config(id),balance:100000,...game.publicState(id,round),requestId:state.ag.pending?.id});
  const advance=(now=10000)=>{const list=[...frames.values()];frames.clear();for(const f of list)f(now);};
@@ -150,7 +150,6 @@ test('Sic Bo choices lock during a throw; real totals appear only after all dice
  assert.match(html,/Сумма<\/small><b>12<\/b>/);assert.match(html,/Выплата<\/small><b>\$2.00/);
  assert.match(html,/aria-label="Сумма 12"/);assert.equal(h.$('ag-overlay').innerHTML,'');
  assert.equal(h.$('ag-main').textContent,'Бросить кубики');
- const faces=[...html.matchAll(/data-face-value="(\d)"/g)].map(m=>Number(m[1]));assert.equal(faces.length,18);
- for(let i=0;i<3;i++){const cube=faces.slice(i*6,i*6+6);assert.equal(new Set(cube).size,6);assert.equal(cube[4],r.detail.dice[i]);for(let j=0;j<6;j+=2)assert.equal(cube[j]+cube[j+1],7);}
+ assert.match(html,/id="sb-scene"/);assert.match(html,/aria-label="Кубики 3, 4, 5"/);assert.ok(!html.includes('sb-face'));
  h.click('ag-stage','sbSide','triple');assert.equal(h.state.ag.options.sicbo.side,'triple');
 });
