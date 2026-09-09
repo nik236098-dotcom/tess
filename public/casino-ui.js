@@ -8,7 +8,7 @@ const button=(label,index,disabled=false,cls='')=>`<button type="button" class="
 function prepare(game){if(!isGame(game))return;state.ag.options[game]??=structuredClone(definitions[game].defaults);state.ag.held=[];state.ag.cgTime=0;state.ag.cgPrevious=null;}
 function setup(){
  const host=$('casino-catalog');if(!host)return;
- host.innerHTML=CasinoRules.ids.map(id=>{const g=definitions[id];return `<button type="button" data-arcade="${id}" class="cg-launch"><span class="cg-launch-art">${CasinoArt.cover(id)}</span><span class="cg-launch-name">${g.name}</span><small>${g.tag}</small></button>`;}).join('');
+ host.innerHTML=CasinoRules.ids.map(id=>{const g=definitions[id];return `<button type="button" data-arcade="${id}" class="cg-launch"><span class="cg-launch-art">${id==='diamonds'?`<span class="dm-cover">${flatDiamond(1)}${flatDiamond(0)}${flatDiamond(2)}</span>`:CasinoArt.cover(id)}</span><span class="cg-launch-name">${g.name}</span><small>${g.tag}</small></button>`;}).join('');
 }
 function settings(){
  const a=state.ag,g=current(),options=a.options[a.game],disabled=agLocked()||a.info?.phase==='play',attr=disabled?'disabled':'';
@@ -26,6 +26,8 @@ function paytable(){const a=state.ag,g=current();const table=g.series?seriesTabl
 function afterRender(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',pending=info?.phase==='done'&&!info.settled,main=$('ag-main');
  $('ag-title').classList.toggle('ag-long-title',g.name.length>15);
+ $('screen-ag').classList.toggle('is-diamonds',a.game==='diamonds');
+ if(a.game==='diamonds')$('ag-subtitle').textContent='Собери одинаковые кристаллы';
  if(!live)return;
  const locked=agLocked();
  main.disabled=locked;main.classList.toggle('is-cash',Boolean(g.series));
@@ -50,11 +52,27 @@ function dice(n,i=0){return `<div class="cg-die" data-cg-die="${i}"><div class="
 const caption=text=>`<p class="cg-caption">${text}</p>`;
 const plaque=text=>`<div class="cg-scene-plaque">${text}</div>`;
 const particles=()=>`<div class="cg-particles" aria-hidden="true">${Array.from({length:12},(_,i)=>`<i style="--n:${i};--a:${i*30}deg"></i>`).join('')}</div>`;
+const diamondPatterns=[[0,0,0,0,0],[0,0,0,0,1],[0,0,0,1,1],[0,0,0,1,2],[0,0,1,1,2],[0,0,1,2,3],[0,1,2,3,4]];
+const diamondLabels=['Пять одинаковых','Четыре одинаковых','Фулл-хаус','Три одинаковых','Две пары','Пара','Нет совпадений'];
+const diamondPays=[50,5,4,3,2,.1,0];
+function flatDiamond(n){
+ const palette=['#a547f5','#32d5ca','#f5c840','#ef456b','#71d841','#528ff3','#ee85d3'];
+ return `<svg class="dm-gem" viewBox="0 0 100 88" aria-hidden="true" style="color:${palette[n%7]}"><path d="M22 8H78L98 37 50 86 2 37Z" fill="currentColor"/><path d="M22 8L32 37H2Z" fill="#fff" opacity=".22"/><path d="M22 8H50L32 37Z" fill="#fff" opacity=".55"/><path d="M50 8H78L68 37Z" fill="#fff" opacity=".24"/><path d="M50 8L68 37H32Z" fill="#fff" opacity=".1"/><path d="M78 8L98 37H68Z" fill="#180632" opacity=".19"/><path d="M2 37H32L50 86Z" fill="#17052c" opacity=".25"/><path d="M68 37H98L50 86Z" fill="#18052f" opacity=".35"/><path d="M32 37H68L50 86Z" fill="#fff" opacity=".08"/></svg>`;
+}
+function diamondResult(info){
+ const gems=info?.detail?.gems||[];
+ const counts=new Map();for(const n of gems)counts.set(n,(counts.get(n)||0)+1);
+ return {row:diamondPays.indexOf(info?.multiplier),matched:gems.map(n=>(counts.get(n)||0)>1)};
+}
+function diamondBoard(info,animating){
+ const done=info?.phase==='done'&&!animating,result=diamondResult(info),gems=info?.detail?.gems;
+ return `<div class="dm-panel"><div class="dm-gems">${Array.from({length:5},(_,i)=>`<div class="dm-tile ${done&&result.matched[i]?'is-match':''}"><div class="dm-gem-motion" data-cg-gem="${i}">${flatDiamond(gems?.[i]??i)}</div></div>`).join('')}</div><div class="dm-result" role="status" aria-live="polite"><span class="dm-combination">${done?`${diamondLabels[result.row]} · ${agNumber(info.multiplier)}×`:animating?'Открываем кристаллы…':'Собери одинаковые кристаллы'}</span><b>${done?money(info.payout):'—'}</b><small>${done?'Выплата':'Результат раунда'}</small></div><div class="dm-paytable" role="table" aria-label="Комбинации и коэффициенты">${diamondPatterns.map((pattern,i)=>`<div class="dm-pay-row ${done&&result.row===i?'is-selected':''}" role="row" ${done&&result.row===i?'aria-current="true"':''}><span role="cell">${diamondLabels[i]}</span><span class="dm-example" role="cell" aria-label="Пример комбинации">${pattern.map(flatDiamond).join('')}</span><b role="cell">${diamondPays[i]}×</b></div>`).join('')}</div></div>`;
+}
 function board(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',locked=agLocked(),d=info?.detail,done=info?.phase==='done'&&!a.animating,step=info?.step||0;
  const visual=a.animating?a.cgPrevious:info,last=visual?.last,visibleStep=visual?.step||0;
  let html='';
- if(a.game==='diamonds')html=`<div class="cg-scene cg-jewel-scene">${plaque('DIAMONDS')}<div class="cg-gems">${(d?.gems||[1,5,2,4,0]).map(gem).join('')}</div><div class="cg-jewel-tray"></div>${particles()}</div>${caption(done?`Комбинация · ${agNumber(info.multiplier)}×`:'Пять кристаллов · семь цветов')}`;
+ if(a.game==='diamonds')html=diamondBoard(info,a.animating);
  else if(a.game==='videopoker')html=`<div class="cg-scene cg-card-table">${plaque('JACKS OR BETTER')}<div class="cg-cards">${Array.from({length:5},(_,i)=>{const held=(a.held||[]).includes(i);return `<button type="button" class="cg-card ${held?'is-held':''}" data-cg-hold="${i}" ${!live||locked?'disabled':''} aria-pressed="${held}" aria-label="Оставить карту ${i+1}">${turnCard(info?.cards?.[i],info?.cards&&!a.animating?180:0)}<small>${live?held?'ОСТАВИТЬ':'ВЫБРАТЬ':info?.held?.includes(i)?'ОСТАВЛЕНА':''}</small></button>`;}).join('')}</div></div>${caption(done?d?.combination||'Раздача завершена':'Отметь карты для сохранения · один обмен')}`;
  else if(a.game==='limbo')html=`<div class="cg-scene cg-limbo"><div class="cg-starfield"></div><div class="cg-limbo-readout"><small>ТЕКУЩИЙ КОЭФФИЦИЕНТ</small><b id="cg-limbo-value">${done?agNumber(d.value):'1.00'}×</b><span>Цель ${agNumber(a.options.limbo.target)}×</span></div><div id="cg-rocket" class="cg-rocket">${art('orbit')}<i class="cg-exhaust"></i></div><div class="cg-orbit-line"></div>${particles()}</div>`;
  else if(a.game==='sicbo')html=`<div class="cg-scene cg-dice-scene">${plaque('SIC BO')}<div class="cg-dice">${(done?d.dice:[1,3,5]).map(dice).join('')}</div><div class="cg-dice-tray"></div></div>${caption(done?`Сумма ${d.sum}${d.triple?' · Тройка':''}`:'Три кубика · выбери исход перед броском')}`;
@@ -136,5 +154,5 @@ function bind(){
  $('ag-stage').addEventListener('click',boardEvent);
 
 }
-return {isGame,prepare,setup,settings,paytable,afterRender,main,board,animate,changed,bind,seriesTable,paint};
+return {isGame,prepare,setup,settings,paytable,afterRender,main,board,animate,changed,bind,seriesTable,paint,diamondResult};
 })();

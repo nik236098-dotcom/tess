@@ -19,7 +19,7 @@
  function frame(game,info,previous,t){
   t=clamp(t);const d=info.detail||{},last=info.last||{},p=ease(t);
   switch(game){
-   case 'diamonds':return {items:Array.from({length:5},(_,i)=>{const u=phase(t,i*.09,.6+i*.09);return {y:(1-out(u))*-105,rotation:(1-u)*(-25+i*9),opacity:Math.min(1,u*5),settled:u===1};})};
+   case 'diamonds':return {items:Array.from({length:5},(_,i)=>{const u=phase(t,i*.12,.5+i*.12),fall=phase(u,0,.7),bounce=phase(u,.7,1);return {y:u<.7?-62*(1-out(fall)):-5*Math.sin(bounce*Math.PI),rotation:0,opacity:Math.min(1,u*6),settled:u===1};})};
    case 'videopoker':return {cards:Array.from({length:5},(_,i)=>{const kept=info.phase==='done'&&info.held?.includes(i);const u=phase(t,i*.07,.65+i*.07);return {flip:kept?180:180*ease(u),y:kept?0:(1-out(u))*-45};})};
    case 'limbo':return {value:Math.exp(Math.log(Math.max(1,d.value||1))*out(t)),x:12+76*t,y:82-65*t*t};
    case 'sicbo':return {dice:Array.from({length:3},(_,i)=>{const u=phase(t,0,.72+i*.09);return {angle:(1-out(u))*(720+i*180),y:-70*Math.sin(u*Math.PI)*(1-u),scale:.8+.2*out(u),settled:u===1};})};

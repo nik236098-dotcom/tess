@@ -69,3 +69,18 @@ test('scene markup uses project textures and generated assets rather than placeh
  assert.match(fs.readFileSync('public/casino-ui.css','utf8'),/img\/catalog\/objects.webp/);
  for(const asset of ['objects','environments'])assert.ok(fs.statSync(`public/img/catalog/${asset}.webp`).size>10000);
 });
+
+test('Diamonds matches the approved table and highlights only the actual combination after revealing',()=>{
+ const fixtures=[[[0,0,0,0,0],'Пять одинаковых',5],[[0,0,0,0,1],'Четыре одинаковых',4],[[0,0,0,1,1],'Фулл-хаус',5],[[0,0,0,1,2],'Три одинаковых',3],[[0,0,1,1,2],'Две пары',4],[[0,0,1,2,3],'Пара',2],[[0,1,2,3,4],'Нет совпадений',0]];
+ for(const [gems,label,matches] of fixtures){
+  const h=harness('diamonds');h.deliver(game.initial());h.ctx.agRequest('start');let i=0;
+  const r=game.start('diamonds',game.initial(),100,{},0,()=>gems[i++]);r.settled=true;h.deliver(r);
+  assert.ok(!h.$('ag-stage').innerHTML.includes('is-selected'),'no outcome highlight before reveal');
+  h.advance();const html=h.$('ag-stage').innerHTML;
+  assert.equal((html.match(/class="dm-tile is-match"/g)||[]).length,matches,label);
+  assert.equal((html.match(/class="dm-pay-row is-selected"/g)||[]).length,1,label);
+  assert.equal((html.match(/role="row"/g)||[]).length,7);
+  assert.ok(html.includes(label));assert.ok(!html.includes('cg-jewel-tray'));assert.ok(!html.includes('cg-sprite'));
+  assert.equal(h.$('ag-overlay').innerHTML,'','inline result should not be covered by an overlay');
+ }
+});

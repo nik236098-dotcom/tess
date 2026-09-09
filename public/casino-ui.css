@@ -73,3 +73,40 @@
 #screen-ag .ag-overlay.is-win{animation:cg-win-enter .45s cubic-bezier(.16,.85,.25,1) both}
 @keyframes cg-win-enter{from{opacity:0;translate:0 12px;scale:.92}to{opacity:1;translate:0 0;scale:1}}
 @media(prefers-reduced-motion:reduce){#screen-ag .ag-overlay.is-win{animation:none}}
+/* Approved Diamonds mockup: flat facets, five tiles, inline result and full table. */
+#screen-ag.is-diamonds .ag-status,#screen-ag.is-diamonds .ag-stats,#screen-ag.is-diamonds #ag-settings,#screen-ag.is-diamonds #ag-paytable{display:none}
+#screen-ag.is-diamonds .ag-board{padding:12px;border-radius:19px;background:linear-gradient(150deg,#1c1731,#121023);box-shadow:inset 0 1px 0 #d0b2ff13}
+#screen-ag.is-diamonds .ag-stage{overflow:visible}
+#screen-ag.is-diamonds .mn-title{font-size:30px;letter-spacing:-.7px}
+#screen-ag.is-diamonds .mn-balance span{display:none}
+#screen-ag.is-diamonds .ag-subtitle{font-size:13px}
+#screen-ag.is-diamonds .ag-panel{display:flex;flex-direction:column;gap:10px;background:linear-gradient(145deg,#1c1630,#110e20);border-radius:17px}
+#screen-ag.is-diamonds .ag-panel .ag-label-row{order:0}
+#screen-ag.is-diamonds .ag-panel .mn-row{order:1}
+#screen-ag.is-diamonds .ag-panel .mn-main{order:2;min-height:52px;background:linear-gradient(150deg,#ad7afd,#7935ed);box-shadow:inset 0 2px 2px #efdcff70,0 4px 12px #6c22c92a}
+#screen-ag.is-diamonds .ag-panel .ag-note{order:3}
+#screen-ag.is-diamonds [data-ag-amount=max]{display:none}
+#screen-ag.is-diamonds .mn-input .mn-coin{background:transparent;box-shadow:none;color:#f4edff}
+#screen-ag.is-diamonds .mn-mod{width:48px;border-radius:12px}
+#screen-ag.is-diamonds .ag-rules{padding:14px;border:1px solid #aa85cb30;border-radius:14px;background:#151024}
+.dm-panel{width:100%;min-width:0;padding:7px 0 0}
+.dm-gems{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.dm-tile{min-width:0;aspect-ratio:.92;border:1px solid #8c68b344;border-radius:12px;background:linear-gradient(145deg,#231936,#171026);display:grid;place-items:center;overflow:hidden;box-shadow:inset 0 1px 1px #ce9ff814}
+.dm-tile.is-match{border-color:#c783ff;box-shadow:inset 0 0 12px #853ee22a,0 0 8px #a956ef38}
+.dm-gem-motion{width:91%;aspect-ratio:100/88;will-change:transform,opacity}
+.dm-gem{display:block;width:100%;height:auto;aspect-ratio:100/88;filter:drop-shadow(0 3px 2px #09031140)}
+.dm-result{height:137px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;min-width:0}
+.dm-combination{display:block;max-width:100%;padding:7px 12px;min-height:29px;border:1px solid #a768ed8c;border-radius:15px;background:linear-gradient(120deg,#392052,#2b1944);color:#dec4f7;font:700 12px/1.2 var(--font);text-align:center;overflow-wrap:anywhere}
+.dm-result>b{color:#fff;font:800 clamp(29px,9vw,42px)/1.05 var(--font);letter-spacing:-1px;max-width:100%;overflow-wrap:anywhere}
+.dm-result>small{color:#a590bd;font-size:12px}
+.dm-paytable{border:1px solid #8b65ac3d;border-radius:12px;overflow:hidden}
+.dm-pay-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.05fr) 39px;align-items:center;gap:5px;min-height:40px;padding:7px 9px;border-bottom:1px solid #a783bb21;position:relative}
+.dm-pay-row:last-child{border-bottom:0}
+.dm-pay-row>span:first-child{font:500 11px/1.3 var(--font);color:#e0d6ec;overflow-wrap:anywhere}
+.dm-pay-row>b{text-align:right;font:800 13px var(--font);color:#f1e8fc;white-space:nowrap}
+.dm-example{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px}
+.dm-pay-row.is-selected{background:#67429540;box-shadow:inset 0 0 0 1px #c084ff;border-radius:9px}
+.dm-pay-row.is-selected>span:first-child{font-weight:800;color:#f3e5ff}
+@media(max-width:360px){#screen-ag.is-diamonds .ag-board{padding:9px}.dm-pay-row{padding:7px 6px;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 34px;gap:4px}.dm-pay-row>span:first-child{font-size:10px}.dm-pay-row>b{font-size:12px}.dm-result{height:130px}.dm-gems{gap:5px}.dm-tile{border-radius:10px}.dm-combination{font-size:11px}}
+@media(prefers-reduced-motion:reduce){.dm-gem-motion{will-change:auto}}
+.dm-cover{display:flex;position:relative;height:100%;align-items:center;justify-content:center;gap:0}.dm-cover .dm-gem{width:52%;flex:0 0 52%;margin:0 -11%;transform:translateY(8px) rotate(-13deg)}.dm-cover .dm-gem:nth-child(2){z-index:1;transform:translateY(-9px);filter:drop-shadow(0 6px 6px #a352f03d)}.dm-cover .dm-gem:nth-child(3){transform:translateY(9px) rotate(13deg)}
