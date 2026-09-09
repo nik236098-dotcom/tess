@@ -3,8 +3,26 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const {games,ids}=require('../public/casino-rules'),game=require('../server/arcade/game');
 function harness(id){
  const elements=new Map(),frames=new Map(),sent=[];let next=0;
- const element=()=>({innerHTML:'',textContent:'',value:'1,00',disabled:false,dataset:{},style:{},attributes:{},listeners:{},classList:{add(){},remove(){},toggle(){}},setAttribute(k,v){this.attributes[k]=v;},querySelector(){return element();},querySelectorAll(){return [];},addEventListener(type,fn){(this.listeners[type]??=[]).push(fn);},dispatch(type,target){for(const fn of this.listeners[type]||[])fn({target});}});
+ const element=()=>{const classes=new Set();return {innerHTML:'',textContent:'',value:'1,00',disabled:false,hidden:false,dataset:{},style:{},attributes:{},listeners:{},classList:{add:c=>classes.add(c),remove:c=>classes.delete(c),contains:c=>classes.has(c),toggle(c,on){if(on??!classes.has(c))classes.add(c);else classes.delete(c);}},setAttribute(k,v){this.attributes[k]=v;},querySelector(){return element();},querySelectorAll(){return [];},addEventListener(type,fn){(this.listeners[type]??=[]).push(fn);},dispatch(type,target){for(const fn of this.listeners[type]||[])fn({target});}};};
  const $=id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);};
+ // Retain card/face identities between clicks; replacing stage.innerHTML destroys them.
+ const stage=$('ag-stage');let stageHtml='',cardNodes=[];stage.writes=0;
+ Object.defineProperty(stage,'innerHTML',{get:()=>stageHtml,set(html){
+  stageHtml=html;stage.writes++;cardNodes=[...html.matchAll(/<button\b([^>]*data-cg-hold="(\d+)"[^>]*)>([\s\S]*?)<\/button>/g)].map(([,attrs,index,body])=>{
+   const node=element();node.dataset.cgHold=index;node.disabled=/\bdisabled\b/.test(attrs);
+   for(const [,key,value] of attrs.matchAll(/(aria-[\w-]+)="([^"]*)"/g))node.setAttribute(key,value);
+   if(/\bis-held\b/.test(attrs))node.classList.add('is-held');
+   const parts=new Map();for(const cls of ['vp-card-motion','vp-card-front','vp-card-back','vp-card-art','vp-held-check','vp-hold-label']){
+    const part=element(),tag=body.match(new RegExp(`<[^>]*class="${cls}(?: [^"]*)?"[^>]*>`));
+    part.hidden=Boolean(tag&&/\bhidden\b/.test(tag[0]));parts.set('.'+cls,part);
+   }
+   parts.get('.vp-card-art').innerHTML=body.match(/<span class="vp-card-art[\s\S]*?<\/span><\/span>/)?.[0]||'';
+   parts.get('.vp-hold-label').textContent=body.match(/<small class="vp-hold-label">([^<]*)/)?.[1]||'';
+   node.querySelector=s=>parts.get(s)||null;node.closest=s=>s==='[data-cg-hold]'?node:null;return node;
+  });
+ }});
+ stage.querySelector=s=>{const match=s.match(/^\[data-cg-hold="(\d+)"\](?: (.*))?$/);if(!match)return element();const node=cardNodes[Number(match[1])];return match[2]?node?.querySelector(match[2]):node;};
+ stage.querySelectorAll=s=>s==='button'?cardNodes:[];
  const state={connected:true,balance:100000,ag:{game:id,info:null,pending:null,animating:false,token:0,raf:null,options:{}}};
  const ctx=vm.createContext({state,$,document:{querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},performance:{now:()=>0},structuredClone,
  send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),haptic(){},toast(){},
@@ -13,7 +31,7 @@ function harness(id){
  vm.runInContext(`CasinoUI.prepare('${id}');`,ctx);ctx.bindArcade();
  const deliver=round=>ctx.onArcadeState({game:id,config:game.config(id),balance:100000,...game.publicState(id,round),requestId:state.ag.pending?.id});
  const advance=(now=10000)=>{const list=[...frames.values()];frames.clear();for(const f of list)f(now);};
- const click=(container,key,value)=>{const target={dataset:{[key]:value},disabled:false,closest:selector=>selector===`[data-${key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())}]`?target:null};$(container).dispatch('click',target);};
+ const click=(container,key,value)=>{const target=key==='cgHold'&&cardNodes[Number(value)]||{dataset:{[key]:value},disabled:false,closest:selector=>selector===`[data-${key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())}]`?target:null};$(container).dispatch('click',target);};
  return {ctx,state,$,sent,deliver,advance,frames,click};
 }
 for(const id of ids)test(`${id}: every board renders, actions send once, animations finish, reconnect state stays playable`,()=>{
@@ -91,8 +109,9 @@ test('videopoker keeps zero to five selected cards, shows the exact exchange cou
  const labels=['Заменить 5 карт','Заменить 4 карты','Заменить 3 карты','Заменить 2 карты','Заменить 1 карту','Оставить все карты'];
  for(let held=0;held<=5;held++){
   assert.equal(h.$('ag-main').textContent,labels[held]);
-  assert.equal((h.$('ag-stage').innerHTML.match(/aria-pressed="true"/g)||[]).length,held);
-  assert.equal((h.$('ag-stage').innerHTML.match(/class="vp-held-check"/g)||[]).length,held);
+  const cards=h.$('ag-stage').querySelectorAll('button');
+  assert.equal(cards.filter(c=>c.attributes['aria-pressed']==='true').length,held);
+  assert.equal(cards.filter(c=>!c.querySelector('.vp-held-check').hidden).length,held);
   if(held<5)h.click('ag-stage','cgHold',String(held));
  }
  h.click('ag-stage','cgHold','2');assert.equal(h.$('ag-main').textContent,'Заменить 1 карту');
@@ -124,16 +143,56 @@ test('videopoker shows all nine payouts, previews the hand and reveals the final
  assert.equal(h.$('ag-main').textContent,'Сделать ставку');
 });
 
-test('every ordinary playing-card face referenced by videopoker exists in the bundled SVG deck',()=>{
- const h=harness('videopoker'),deck=fs.readFileSync('public/img/classic/deck.svg','utf8');
- const references=new Set();
+test('all 52 videopoker cards show readable Baccarat-style ranks and suits without external face assets',()=>{
+ const h=harness('videopoker'),faces=new Set();
  for(const suit of ['s','c','h','d'])for(let rank=2;rank<=14;rank++){
   const r=game.start('videopoker',game.initial(),100,{},0,n=>n-1);
   r.cards[0]={rank,suit};h.state.ag.info=null;h.deliver(r);h.advance();
-  const id=h.$('ag-stage').innerHTML.match(/href="\/img\/classic\/deck.svg#([^"]+)"/)[1];
-  assert.ok(deck.includes(`id="${id}"`),`${rank} ${suit} has a real face`);references.add(id);
+  const html=h.$('ag-stage').innerHTML,face=html.match(/class="vp-card-art([^"]*)"[^>]*><span class="vp-rank">([^<]+)<\/span><span class="vp-suit-sm">([^<]+)<\/span><span class="vp-suit">([^<]+)<\/span>/);
+  assert.ok(face,`${rank} ${suit} is inline and readable`);
+  assert.equal(face[2],({14:'A',13:'K',12:'Q',11:'J'})[rank]||String(rank));
+  assert.equal(face[3],{s:'♠',c:'♣',h:'♥',d:'♦'}[suit]);assert.equal(face[4],face[3]);
+  assert.equal(face[1].includes('is-red'),suit==='h'||suit==='d');
+  assert.ok(!html.includes('<use ')&&!html.includes('<img '));faces.add(face[0]);
  }
- assert.equal(references.size,52);
+ assert.equal(faces.size,52);
+});
+
+test('repeated hold/unhold preserves all five visible face nodes and only updates selection',()=>{
+ const h=harness('videopoker');h.deliver(game.start('videopoker',game.initial(),100,{},0,n=>n-1));h.advance();
+ const stage=h.$('ag-stage'),cards=stage.querySelectorAll('button'),faces=cards.map(c=>c.querySelector('.vp-card-art')),writes=stage.writes;
+ const content=faces.map(c=>c.innerHTML);
+ for(let cycle=0;cycle<4;cycle++)for(let i=0;i<5;i++){
+  h.click('ag-stage','cgHold',String(i));const kept=cycle%2===0;
+  assert.equal(stage.writes,writes,'selection must not rebuild the board');
+  assert.equal(stage.querySelector(`[data-cg-hold="${i}"]`),cards[i]);
+  assert.equal(cards[i].classList.contains('is-held'),kept);
+  assert.equal(cards[i].attributes['aria-pressed'],String(kept));
+  assert.ok(cards[i].attributes['aria-label'].endsWith(kept?', оставить':', заменить'));
+  assert.equal(cards[i].querySelector('.vp-held-check').hidden,!kept);
+  assert.equal(cards[i].querySelector('.vp-hold-label').textContent,kept?'ОСТАВИТЬ':'ЗАМЕНИТЬ');
+  cards.forEach((c,n)=>{assert.equal(c.querySelector('.vp-card-art'),faces[n]);assert.equal(faces[n].innerHTML,content[n]);assert.equal(c.querySelector('.vp-card-front').hidden,false);assert.equal(c.querySelector('.vp-card-back').hidden,true);});
+ }
+ assert.equal(h.sent.length,0,'selecting cards never sends a draw or a bet');
+});
+
+test('videopoker reveals 2D faces and never flips held cards during an exchange',()=>{
+ const h=harness('videopoker');h.deliver(game.initial());h.ctx.agRequest('start');
+ const r=game.start('videopoker',game.initial(),100,{},0,n=>n-1);h.deliver(r);
+ let cards=h.$('ag-stage').querySelectorAll('button');
+ assert.ok(cards.every(c=>c.querySelector('.vp-card-front').hidden));
+ h.click('ag-stage','cgHold','0');assert.equal(h.state.ag.held.length,0,'no selection during deal');
+ h.advance();cards=h.$('ag-stage').querySelectorAll('button');
+ assert.ok(cards.every(c=>!c.querySelector('.vp-card-front').hidden));
+ h.click('ag-stage','cgHold','0');h.$('ag-main').dispatch('click',{});
+ const done=game.actGame('videopoker',r,'ag_pick',[0],r.revision);done.settled=true;h.deliver(done);
+ cards=h.$('ag-stage').querySelectorAll('button');
+ assert.equal(cards[0].querySelector('.vp-card-front').hidden,false);
+ assert.equal(cards[0].querySelector('.vp-card-motion').style.transform,'none');
+ assert.ok(cards.slice(1).every(c=>c.querySelector('.vp-card-front').hidden));
+ h.advance();cards=h.$('ag-stage').querySelectorAll('button');
+ assert.ok(cards.every(c=>!c.querySelector('.vp-card-front').hidden&&c.querySelector('.vp-card-back').hidden));
+ assert.ok(cards.every(c=>c.querySelector('.vp-card-motion').style.transform==='none'));
 });
 
 test('Sic Bo choices lock during a throw; real totals appear only after all dice settle',()=>{

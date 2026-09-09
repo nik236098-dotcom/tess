@@ -76,13 +76,13 @@ function diamondBoard(info,animating){
  const done=info?.phase==='done'&&!animating,result=diamondResult(info),gems=info?.detail?.gems;
  return `<div class="dm-panel"><div class="dm-gems">${Array.from({length:5},(_,i)=>`<div class="dm-tile ${done&&result.matched[i]?'is-match':''}"><div class="dm-gem-motion" data-cg-gem="${i}">${flatDiamond(gems?.[i]??i)}</div></div>`).join('')}</div><div class="dm-result" role="status" aria-live="polite"><span class="dm-combination">${done?`${diamondLabels[result.row]} · ${agNumber(info.multiplier)}×`:animating?'Открываем кристаллы…':'Собери одинаковые кристаллы'}</span><b>${done?money(info.payout):'—'}</b><small>${done?'Выплата':'Результат раунда'}</small></div><div class="dm-paytable" role="table" aria-label="Комбинации и коэффициенты">${diamondPatterns.map((pattern,i)=>`<div class="dm-pay-row ${done&&result.row===i?'is-selected':''}" role="row" ${done&&result.row===i?'aria-current="true"':''}><span role="cell">${diamondLabels[i]}</span><span class="dm-example" role="cell" aria-label="Пример комбинации">${pattern.map((_,j)=>flatDiamond(done&&result.row===i?result.example[j]:null)).join('')}</span><b role="cell">${diamondPays[i]}×</b></div>`).join('')}</div></div>`;
 }
-function classicCard(c){
- if(!c)return '<div class="vp-card-back"></div>';
- const suit={s:'spade',c:'club',h:'heart',d:'diamond'}[c.suit];
- const rank=({14:'1',13:'king',12:'queen',11:'jack'})[c.rank]||String(c.rank);
- return `<svg class="vp-card-art" viewBox="0 0 169.075 244.640" aria-hidden="true"><use href="/img/classic/deck.svg#${suit}_${rank}"/></svg>`;
+function videoCard(c){
+ if(!c)return '';
+ const suit={s:'♠',c:'♣',h:'♥',d:'♦'}[c.suit],rank=({14:'A',13:'K',12:'Q',11:'J'})[c.rank]||String(c.rank);
+ return `<span class="vp-card-art${c.suit==='h'||c.suit==='d'?' is-red':''}" aria-hidden="true"><span class="vp-rank">${rank}</span><span class="vp-suit-sm">${suit}</span><span class="vp-suit">${suit}</span></span>`;
 }
-function videoCover(){return `<span class="vp-cover">${classicCard({rank:14,suit:'s'})}${classicCard({rank:13,suit:'h'})}</span>`;}
+function videoCover(){return `<span class="vp-cover">${videoCard({rank:14,suit:'s'})}${videoCard({rank:13,suit:'h'})}</span>`;}
+function videoCardName(c,i){return c?`${({14:'Туз',13:'Король',12:'Дама',11:'Валет'})[c.rank]||c.rank} ${{s:'пик',c:'треф',h:'червей',d:'бубен'}[c.suit]}`:`Карта ${i+1}`;}
 function videoHandName(info){
  const hand=info?.hand;if(!hand)return '';
  if(hand.multiplier!==1)return hand.name;
@@ -97,8 +97,8 @@ function videoBoard(info,animating,locked){
  const note=done?`Выплата ${money(info.payout)}`:live?'Текущая комбинация':'Можно заменить до 5 карт';
  const cards=Array.from({length:5},(_,i)=>{
   const kept=info?.phase==='done'?info.held?.includes(i):(a.held||[]).includes(i),c=info?.cards?.[i];
-  const name=c?`${({14:'Туз',13:'Король',12:'Дама',11:'Валет'})[c.rank]||c.rank} ${{s:'пик',c:'треф',h:'червей',d:'бубен'}[c.suit]}`:`Карта ${i+1}`;
-  return `<button type="button" class="vp-card ${kept?'is-held':''}" data-cg-hold="${i}" ${!live||locked?'disabled':''} aria-pressed="${Boolean(kept)}" aria-label="${name}${live?kept?', оставить':', заменить':''}"><span class="cg-card-turn" style="transform:rotateY(${c&&(!animating||kept&&info.phase==='done')?180:0}deg)"><span class="vp-card-back"></span><span class="vp-card-front">${classicCard(c)}</span></span>${kept?'<span class="vp-held-check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m4 8 3 3 5-6"/></svg></span>':''}<small>${live?kept?'ОСТАВИТЬ':'ЗАМЕНИТЬ':info?.phase==='done'?kept?'ОСТАВЛЕНА':'НОВАЯ':'—'}</small></button>`;
+  const name=videoCardName(c,i),face=Boolean(c&&(!animating||kept&&info.phase==='done'));
+  return `<button type="button" class="vp-card ${kept?'is-held':''}" data-cg-hold="${i}" ${!live||locked?'disabled':''} aria-pressed="${Boolean(kept)}" aria-label="${name}${live?kept?', оставить':', заменить':''}"><span class="vp-card-motion"><span class="vp-card-back" ${face?'hidden':''}></span><span class="vp-card-front" ${face?'':'hidden'}>${videoCard(c)}</span></span><span class="vp-held-check" aria-hidden="true" ${kept?'':'hidden'}><svg viewBox="0 0 16 16"><path d="m4 8 3 3 5-6"/></svg></span><small class="vp-hold-label">${live?kept?'ОСТАВИТЬ':'ЗАМЕНИТЬ':info?.phase==='done'?kept?'ОСТАВЛЕНА':'НОВАЯ':'—'}</small></button>`;
  }).join('');
  const crown='<svg class="vp-crown" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 5 4 4-7 4 7 5-4-3 12H6ZM6 21h12"/></svg>';
  const table=[...definitions.videopoker.table].reverse().map(([label,value])=>`<div class="vp-pay-tile${value===800?' is-royal':''}${selected===value?' is-selected':''}" role="listitem" ${selected===value?'aria-current="true"':''}>${value===800?crown:''}<span>${label}</span><b>${value}×</b></div>`).join('');
@@ -144,7 +144,12 @@ function paint(info,t){
  const transform=(selector,value)=>style(selector,'transform',value);
  const toggle=(selector,name,value)=>el(selector)?.classList.toggle(name,value);
  if(game==='diamonds')f.items.forEach((v,i)=>{transform(`[data-cg-gem="${i}"]`,`translateY(${v.y}px) rotate(${v.rotation}deg)`);style(`[data-cg-gem="${i}"]`,'opacity',v.opacity);});
- if(game==='videopoker')f.cards.forEach((v,i)=>{transform(`[data-cg-hold="${i}"] .cg-card-turn`,`translateY(${v.y}px) rotateY(${v.flip}deg)`);});
+ if(game==='videopoker')f.cards.forEach((v,i)=>{
+  const selector=`[data-cg-hold="${i}"]`,front=el(selector+' .vp-card-front'),back=el(selector+' .vp-card-back');
+  // A 2D flip keeps the resting face out of WebKit's backface/compositing path.
+  transform(selector+' .vp-card-motion',v.flip===180&&v.y===0?'none':`translateY(${v.y}px) scaleX(${Math.max(.025,Math.abs(Math.cos(v.flip*Math.PI/180)))})`);
+  if(front)front.hidden=v.flip<90;if(back)back.hidden=v.flip>=90;
+ });
  if(game==='sicbo'&&typeof SicboScene!=='undefined'){const host=el('#sb-scene');if(host){const rendered=SicboScene.render(host,d.dice||[3,4,5],a.animating?f.dice:null);host.classList.toggle('is-rendered',rendered);}}
  if(game==='chicken'){style('#cg-chicken','left',f.x+'%');transform('#cg-chicken',`translate(-50%,${f.y}px) ${f.impact?'rotate(-75deg) scale(.7)':''}`);style('#cg-road-car','top',f.carY+'%');style('#cg-road-car','left',(last.safe===false?32:70)+'%');toggle('.cg-road','is-impact',f.impact);}
  if(game==='coin'){transform('#cg-coin',`rotateY(${f.angle}deg)`);transform('#cg-coin-lift',`translateY(${f.y}px)`);transform('#cg-coin-shadow',`scale(${f.shadow})`);}
@@ -187,7 +192,16 @@ function boardEvent(event){
   return;
  }
  if(!isGame(a.game)||agLocked()||a.info?.phase!=='play')return;
- const hold=event.target.closest('[data-cg-hold]');if(hold){a.held??=[];const n=Number(hold.dataset.cgHold),i=a.held.indexOf(n);if(i<0)a.held.push(n);else a.held.splice(i,1);renderArcade();return;}
+ const hold=event.target.closest('[data-cg-hold]');if(hold){
+  const n=Number(hold.dataset.cgHold);if(a.game!=='videopoker'||hold.disabled||!Number.isInteger(n)||n<0||n>=5)return;
+  a.held??=[];const i=a.held.indexOf(n),kept=i<0;if(kept)a.held.push(n);else a.held.splice(i,1);
+  // Preserve every face node and its paint state when selecting a card.
+  hold.classList.toggle('is-held',kept);hold.setAttribute('aria-pressed',String(kept));
+  hold.setAttribute('aria-label',videoCardName(a.info.cards[n],n)+(kept?', оставить':', заменить'));
+  hold.querySelector('.vp-held-check').hidden=!kept;
+  hold.querySelector('.vp-hold-label').textContent=kept?'ОСТАВИТЬ':'ЗАМЕНИТЬ';
+  renderArcade(false);return;
+ }
  const pick=event.target.closest('[data-cg-pick]');if(pick&&!pick.disabled)agRequest('pick',{index:Number(pick.dataset.cgPick)});
 
 }

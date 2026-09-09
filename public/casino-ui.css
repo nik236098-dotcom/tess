@@ -127,15 +127,19 @@
 .vp-hand-panel{padding:14px 10px 12px;border-color:#a46de970;background:linear-gradient(145deg,#241939,#171228)}
 .vp-hand-panel h2,.vp-paytable h2{margin:0 0 16px;text-align:left;font:700 18px/1.4 var(--font);color:#f2eafd}
 .vp-cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;padding:3px 0 28px}
-.vp-card{display:block;position:relative;min-width:0;aspect-ratio:169.075/244.64;border:0;padding:0;border-radius:6px;background:transparent;perspective:700px;cursor:pointer;touch-action:manipulation}
-.vp-card .cg-card-turn{display:block;height:100%;width:100%}
-.vp-card-front,.vp-card-back{position:absolute;inset:0;border-radius:6px;backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden;box-shadow:0 3px 8px #05020e66}
-.vp-card-front{display:block;background:white;transform:rotateY(180deg)}
-.vp-card-art{display:block;width:100%;height:100%;pointer-events:none}
+.vp-card{display:block;position:relative;min-width:0;aspect-ratio:169.075/244.64;border:0;padding:0;border-radius:6px;background:transparent;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.vp-card-motion{display:block;position:relative;height:100%;width:100%}
+.vp-card-front,.vp-card-back{display:block;position:absolute;inset:0;border-radius:6px;overflow:hidden;box-shadow:0 3px 8px #05020e66}
+.vp-card-front[hidden],.vp-card-back[hidden],.vp-held-check[hidden]{display:none}
+.vp-card-art{display:block;position:relative;width:100%;height:100%;border-radius:6px;overflow:hidden;pointer-events:none;user-select:none;background:linear-gradient(160deg,#fff 0%,#f3f4f8 60%,#e3e5ec 100%);color:#101018;box-shadow:inset 0 0 0 1px #10101814}
+.vp-card-art.is-red{color:#e0202c}
+.vp-rank{position:absolute;left:9%;top:5%;font:800 clamp(18px,5.5vw,26px)/1 var(--font);letter-spacing:-.03em}
+.vp-suit-sm{position:absolute;left:10%;top:33%;font-size:clamp(10px,3vw,14px);line-height:1}
+.vp-suit{position:absolute;left:50%;top:70%;transform:translate(-50%,-50%);font-size:clamp(29px,8.5vw,42px);line-height:1}
 .vp-card-back{background:repeating-linear-gradient(45deg,#a676c414 0 2px,transparent 2px 7px),linear-gradient(140deg,#67328d,#281240);border:1px solid #b790d0;box-shadow:inset 0 0 0 4px #30183f,inset 0 0 0 5px #be8bde50,0 3px 7px #06020e77}
 .vp-card.is-held{outline:2px solid #a875fc;outline-offset:2px;box-shadow:0 0 0 4px #8550ce38,0 0 12px #8843ef30}
-.vp-card small{position:absolute;top:calc(100% + 9px);left:-3px;right:-3px;min-height:18px;display:grid;place-items:center;padding:3px 1px;border-radius:12px;color:#aa96c6;font:700 8px/1.1 var(--font);white-space:nowrap}
-.vp-card.is-held small{color:#bd8dff}
+.vp-hold-label{position:absolute;top:calc(100% + 9px);left:-3px;right:-3px;min-height:18px;display:grid;place-items:center;padding:3px 1px;border-radius:12px;color:#aa96c6;font:700 8px/1.1 var(--font);white-space:nowrap}
+.vp-card.is-held .vp-hold-label{color:#bd8dff}
 .vp-held-check{position:absolute;top:-6px;right:-5px;z-index:2;display:grid;place-items:center;width:19px;height:19px;border:1.5px solid #f1dfff;border-radius:50%;background:linear-gradient(140deg,#b47cff,#7c39ed);box-shadow:0 2px 5px #15052566;pointer-events:none}
 .vp-held-check svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .vp-card:disabled{opacity:1;cursor:default}
@@ -151,8 +155,7 @@
 .vp-pay-tile.is-selected{border-color:#b679f7;background:linear-gradient(100deg,#62409588,#512e7888);color:#f2dfff;box-shadow:inset 0 0 10px #9c57ee16}
 .vp-pay-tile.is-selected>span:before{content:'';display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:50%;background:#b173ff;box-shadow:0 0 6px #ad70f544}
 .vp-cover{display:block;position:relative;height:100%;width:100%;max-width:140px;margin:auto}.vp-cover>.vp-card-art{position:absolute;width:56%;height:82%;top:8%;left:14%;transform:rotate(-14deg);filter:drop-shadow(0 7px 9px #04010988)}.vp-cover>.vp-card-art+.vp-card-art{left:42%;top:13%;transform:rotate(13deg)}
-@media(max-width:360px){.vp-hand-panel{padding:12px 8px}.vp-hand-panel h2,.vp-paytable h2{font-size:16px}.vp-cards{gap:6px}.vp-card small{font-size:7px;left:-2px;right:-2px}.vp-pay-grid{gap:6px}.vp-pay-tile{padding:7px 6px;font-size:11px;min-height:40px}.vp-pay-tile b{font-size:13px}.vp-hand-status b{font-size:13px}}
-@media(prefers-reduced-motion:reduce){.vp-card .cg-card-turn{will-change:auto}}
+@media(max-width:360px){.vp-hand-panel{padding:12px 8px}.vp-hand-panel h2,.vp-paytable h2{font-size:16px}.vp-cards{gap:6px}.vp-hold-label{font-size:7px;left:-2px;right:-2px}.vp-pay-grid{gap:6px}.vp-pay-tile{padding:7px 6px;font-size:11px;min-height:40px}.vp-pay-tile b{font-size:13px}.vp-hand-status b{font-size:13px}}
 /* Sic Bo: smooth project background, a fixed tray and rigid six-face dice. */
 #screen-ag.is-sicbo{background:linear-gradient(165deg,#100d24,#181132);isolation:isolate}
 #screen-ag.is-sicbo .mn-bg{background:none;filter:none}
