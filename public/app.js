@@ -267,7 +267,7 @@ function toCents(input) {
 async function boot() {
   if (tg) {
     tg.ready();
-    tg.expand();
+    TelegramDisplay.start(tg);
     applyTelegramTheme();
     tg.onEvent('themeChanged', applyTelegramTheme);
     // Обработчик системной кнопки «назад» регистрируем один раз.

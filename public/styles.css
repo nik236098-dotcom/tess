@@ -99,8 +99,10 @@
   --sh-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 
   /* ——— Прочее ——— */
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: calc(max(env(safe-area-inset-top, 0px), var(--tg-safe-area-inset-top, 0px)) + var(--tg-content-safe-area-inset-top, 0px));
+  --safe-bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px)) + var(--tg-content-safe-area-inset-bottom, 0px));
+  --safe-left: calc(max(env(safe-area-inset-left, 0px), var(--tg-safe-area-inset-left, 0px)) + var(--tg-content-safe-area-inset-left, 0px));
+  --safe-right: calc(max(env(safe-area-inset-right, 0px), var(--tg-safe-area-inset-right, 0px)) + var(--tg-content-safe-area-inset-right, 0px));
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
@@ -4177,3 +4179,7 @@ body:has(#screen-table:not(.hidden)) .toast {
 .lb-nv-scale b { position: absolute; left: 0; top: 0; bottom: 0; width: 70%; border-radius: 999px; background: linear-gradient(90deg, #8a8cff, #4a4dff); box-shadow: 0 0 12px rgba(90, 100, 255, 0.7); }
 .lb-nv-scale b::after { content: ''; position: absolute; right: -10px; top: 50%; width: 20px; height: 20px; margin-top: -10px; border-radius: 50%; background: radial-gradient(circle, #fff 0 36%, #6a72ff 38% 100%); border: 2px solid #fff; box-shadow: 0 0 0 2px #4a4dff, 0 0 12px rgba(110, 120, 255, 0.9); }
 .lb-nv-scale em { position: absolute; left: 70%; bottom: 22px; transform: translateX(-50%); padding: 3px 7px; border-radius: 6px; border: 1px solid rgba(150, 160, 255, 0.8); background: #14163d; color: #fff; font: 800 11px/1 var(--font); font-style: normal; }
+
+/* Telegram updates its safe-area variables when entering fullscreen or rotating. */
+.tg-fullscreen .screen{padding-left:var(--safe-left);padding-right:var(--safe-right)}
+.tg-fullscreen .mn-screen{padding-bottom:var(--safe-bottom)}
