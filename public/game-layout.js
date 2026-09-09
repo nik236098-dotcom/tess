@@ -5,8 +5,9 @@
     const tables=new ResizeObserver(()=>{
       if(typeof fitBlackjack==='function')fitBlackjack();
       if(typeof fitBaccarat==='function')fitBaccarat();
+      if(typeof fitRoulette==='function')fitRoulette();
     });
-    for(const id of ['screen-bj','screen-bc']){const screen=document.getElementById(id);if(screen)tables.observe(screen);}
+    for(const id of ['screen-bj','screen-bc','screen-rl']){const screen=document.getElementById(id);if(screen)tables.observe(screen);}
     const viewport=document.getElementById('ag-scene-viewport'),stage=document.getElementById('ag-stage');
     if(!viewport||!stage)return;
     let frame=0;

@@ -39,8 +39,8 @@ const state = {
   bjBet: 0,
   bjBetTouched: false,
   buyIn: { open: false, mode: 'sit', seat: null, amount: 0, touched: false },
-  bj: { view: null, bet: 500, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null, typing: false, typed: '' },
-  rl: { open: false, info: null, amount: 1000, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
+  bj: { view: null, bet: 100, pending: false, open: false, dealerShown: null, revealing: false, timers: [], shownBalance: null, typing: false, typed: '' },
+  rl: { open: false, info: null, amount: 100, pending: false, resultRevision: 0, bets: new Map(), spinning: false, angle: 0, shownBalance: null, typing: false, typed: '', raf: null },
   bc: { open: false, info: null, chip: 1000, bets: new Map(), dealing: false, timers: [], shownBalance: null, round: null, pendingHistory: null },
   mn: { open: false, info: null, amount: 100, mines: 3, busy: false, reveal: null, shownBalance: null },
   ag: { game:null, info:null, pending:null, animating:false, token:0, raf:null, options:{ plinko:{risk:"medium"}, tower:{level:"easy"}, keno:{picks:[]}, dragon:{side:"dragon"} } },
@@ -327,6 +327,9 @@ function connect() {
     onMessage:handleMessage,
     onDisconnect:event=>{
       state.connected=false;
+      state.rl.pending=false;state.bj.pending=false;
+      if(state.rl.open)renderRoulette();
+      if(state.bj.open)renderBlackjack();
       if(state.ag.game==='darts')DartsGame.stop();
       if(state.hl.open)renderHilo();
       if(state.ag.game)renderArcade();
@@ -375,6 +378,8 @@ function handleMessage(message) {
     case 'auth_ok':
       state.connected = true;
       state.user = message.user;
+      if(state.bj.open)send({type:'bj_open'});
+      if(state.rl.open)send({type:'rl_open'});
       if (state.hl.open) send({ type: 'hl_open' });
       if (state.cr.open) send({type:'cr_open'});
       if (state.ag.game) agOpenRequest();
@@ -503,6 +508,9 @@ function handleMessage(message) {
       }
       break;
     case 'error':
+      state.rl.pending=false;state.bj.pending=false;
+      if(state.rl.open)renderRoulette();
+      if(state.bj.open)renderBlackjack();
       state.topup.busy = false;
       state.payout.busy = false;
       if(state.ag.game) { state.ag.pending=null; renderArcade(); }
@@ -633,13 +641,10 @@ const BJ_PRESETS = [500, 1000, 2500, 5000, 10000];
 const BJ_SUITS = { s: '♠', h: '♥', d: '♦', c: '♣' };
 
 function fitBlackjack() {
-  const screen = $('screen-bj');
-  if (!screen || screen.classList.contains('hidden')) return;
-  const w = screen.clientWidth || window.innerWidth;
-  const style=getComputedStyle(screen);
-  const available=screen.clientHeight-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom);
-  const scale = Math.min(w / 390, available / 760);
-  $('bj-canvas').style.setProperty('--bj', scale.toFixed(4));
+  const screen=$('screen-bj');
+  if(!screen||screen.classList.contains('hidden'))return;
+  const field=screen.querySelector('.pt-felt').getBoundingClientRect();
+  screen.style.setProperty('--pt-result-y',(field.top+field.height*.48)+'px');
 }
 
 function openBlackjack() {
@@ -672,12 +677,17 @@ function bjCard(code) {
     node.innerHTML = '<span class="bj-suit">♠</span>';
     return node;
   }
-  const rank = code[0] === 'T' ? '10' : code[0];
-  const suitChar = code[1];
-  const suit = BJ_SUITS[suitChar] || '♠';
-  node.className = `bj-card${suitChar === 'h' || suitChar === 'd' ? ' red' : ''}`;
-  node.innerHTML = `<span class="bj-rank">${rank}</span><span class="bj-suit-sm">${suit}</span><span class="bj-suit">${suit}</span>`;
+  const rank=({A:'1',T:'10',J:'jack',Q:'queen',K:'king'})[code[0]]||code[0];
+  const suit=({s:'spade',h:'heart',d:'diamond',c:'club'})[code[1]];
+  node.className='bj-card'+(['h','d'].includes(code[1])?' red':'');
+  node.innerHTML=`<svg class="pt-card-face" viewBox="0 0 169.075 244.64" role="img" aria-label="${code}"><use href="/img/classic/deck.svg#${suit}_${rank}"></use></svg>`;
   return node;
+}
+
+function submitBjBet() {
+  if(state.bj.pending||state.bj.revealing||state.bj.view?.phase==='play'||!state.connected)return;
+  state.bj.pending=true;GameResult.hide($('bj-result'));renderBlackjack();
+  send({type:'bj_bet',amount:state.bj.bet});
 }
 
 function bjBetRange() {
@@ -687,20 +697,18 @@ function bjBetRange() {
   return { min, max };
 }
 
-// Шаг −/+ всегда один доллар.
+// Модификаторы суммы: половина, удвоение и максимум.
 function stepBjBet(direction) {
-  const view = state.bj.view;
-  if (view && view.phase === 'play') return;
-  const { min, max } = bjBetRange();
-  state.bj.bet = clamp(state.bj.bet + direction * 100, min, max);
-  haptic('light');
-  renderBlackjack();
+  if(state.bj.view?.phase==='play'||state.bj.revealing||state.bj.pending)return;
+  const {min,max}=bjBetRange();
+  state.bj.bet=clamp(direction===0?max:direction<0?Math.floor(state.bj.bet/2):state.bj.bet*2,min,max);
+  haptic('light');renderBlackjack();
 }
 
 // Пресеты складываются: $5, потом $10 — получается $15.
 function addBjBet(value) {
   const view = state.bj.view;
-  if (view && view.phase === 'play') return;
+  if ((view && view.phase === 'play') || state.bj.revealing || state.bj.pending) return;
   const { min, max } = bjBetRange();
   state.bj.bet = clamp(state.bj.bet + value, min, max);
   haptic('light');
@@ -710,7 +718,7 @@ function addBjBet(value) {
 // ——— Своя панель ввода суммы ———
 function openBjKeypad() {
   const view = state.bj.view;
-  if (view && view.phase === 'play') return;
+  if ((view && view.phase === 'play') || state.bj.revealing || state.bj.pending) return;
   state.bj.typing = true;
   state.bj.typed = '';
   $('bj-keypad').classList.remove('hidden');
@@ -753,6 +761,7 @@ function closeBjKeypad(apply) {
 // столом, а не всё сразу. Итог и баланс показываем после последней.
 function onBlackjackState(message) {
   const prev = state.bj.view;
+  state.bj.pending=false;
   state.bj.view = message;
   if (message.phase !== 'bet') state.bj.bet = message.bet;
   state.balance = message.balance;
@@ -907,32 +916,15 @@ function renderBlackjack() {
   document.querySelector('.bj-bet').classList.toggle('is-locked', playing);
   $('bj-minus').disabled = playing;
   $('bj-plus').disabled = playing;
-  const presets = $('bj-presets');
-  const { max } = bjBetRange();
-  if (!presets.children.length) {
-    for (const value of BJ_PRESETS) {
-      const button = document.createElement('button');
-      button.className = 'bj-preset';
-      button.textContent = `$${value / 100}`;
-      button.dataset.value = String(value);
-      button.addEventListener('click', () => {
-        addBjBet(value);
-        button.classList.add('is-pressed');
-        setTimeout(() => button.classList.remove('is-pressed'), 180);
-      });
-      presets.appendChild(button);
-    }
-  }
-  for (const button of presets.children) {
-    button.disabled = playing || state.bj.bet >= max;
-  }
+  const locked=playing||revealing||state.bj.pending||!state.connected;
+  for(const id of ['bj-minus','bj-plus','bj-max','bj-bet-amount'])$(id).disabled=locked;
 
   // Кнопки: во время раздачи — четыре действия, до неё — DEAL, после — NEW HAND.
   const options = view.options || {};
   for (const action of ['hit', 'stand', 'double', 'split']) {
     const button = $(`bj-${action}`);
     button.classList.toggle('hidden', !playing);
-    button.disabled = !options[action];
+    button.disabled = !options[action] || state.bj.pending || revealing || !state.connected;
   }
   $('bj-canvas').dataset.phase = phase;
   const deal = $('bj-deal');
@@ -940,7 +932,8 @@ function renderBlackjack() {
   deal.classList.remove('is-loading');
   const { min } = bjBetRange();
   const short = state.balance < state.bj.bet || state.balance < min;
-  deal.disabled = short;
+  deal.disabled = short || state.bj.pending || !state.connected;
+  $('bj-next').disabled = short || state.bj.pending || revealing || !state.connected;
   const sub = $('bj-deal-sub');
   sub.classList.toggle('hidden', phase !== 'bet' || !short);
   sub.textContent = 'Недостаточно средств';
@@ -949,9 +942,10 @@ function renderBlackjack() {
   // Баланс: после ставки сразу, после раздачи — когда дилер открыл карты.
   if (!(done && revealing)) bjShowBalance(view.balance, !done);
 
+  fitBlackjack();
   // Итог раздачи — после того, как дилер открыл все карты.
   const result = $('bj-result');
-  if (done && view.results && !revealing) {
+  if (done && view.results && !revealing && !state.bj.pending) {
     const r = view.results;
     GameResult.show(result,{...r,description:r.hands.some(h=>h.outcome==='blackjack')?'Блэкджек':r.hands.length>1?`Завершено рук: ${r.hands.length}`:''},JSON.stringify(r));
   } else {
@@ -963,129 +957,24 @@ function bjOutcome(outcome) {
   return { win: 'WIN', blackjack: 'BLACKJACK', lose: 'LOSE', push: 'PUSH', bust: 'BUST' }[outcome] || '';
 }
 
-// ——— Рулетка ———
-// Холст 390×653 по макету. Колесо в макете нарисовано в перспективе,
-// поэтому вращается только кольцо с числами: слой-эллипс распрямляем по
-// Y, поворачиваем и сжимаем обратно. Шарик считаем в «плоских» координатах
-// диска и проецируем на эллипс тем же коэффициентом.
-
-// Плоское колесо сверху: единицы макета (941 px ширины), центр (470,512).
-// На холсте 390×653 всё умножается на k = 0.41445.
-const RL_K = 390 / 941;
-const RL_CX = 470 * RL_K;
-const RL_CY = (512 - 96) * RL_K;
-const RL_ZERO_ANGLE = -90;                 // зеро сверху
-const RL_POCKET = 360 / 37;
-const RL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
-const RL_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-const RL_R_TRACK = 270 * RL_K;             // дорожка между кольцом чисел и свечением
-const RL_R_POCKET = 174 * RL_K;            // кольцо лунок
+// ——— Рулетка: responsive SVG geometry and deterministic animation ———
 const RL_SPIN_MS = 7200;
-const RL_PRESETS = [100, 500, 1000, 2500, 10000];
-
-function rlColour(n) {
-  return n === 0 ? 'green' : RL_RED.has(n) ? 'red' : 'black';
-}
-
-// Колесо — SVG в единицах макета: кольцо чисел r 205..245, лунки r 150..200,
-// сердцевина с лучами и втулкой. Вращается группа #rl-rotor.
+function rlColour(n) { return RouletteView.colour(n); }
 function buildRouletteWheel() {
-  const box = $('rl-wheel');
-  if (box.children.length) return;
-  const fill = { red: '#b9172c', black: '#14101f', green: '#0f6f47' };
-  const deep = { red: '#6d0f1c', black: '#0a0712', green: '#0a4a30' };
-  const seg = (r0, r1, a0, a1, colour) => {
-    const p = (r, a) => `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`;
-    return `<path d="M${p(r0, a0)} L${p(r1, a0)} A${r1},${r1} 0 0 1 ${p(r1, a1)} L${p(r0, a1)} A${r0},${r0} 0 0 0 ${p(r0, a0)} Z" fill="${colour}"/>`;
-  };
-  let rotor = '';
-  let labels = '';
-  RL_ORDER.forEach((n, i) => {
-    const c = RL_ZERO_ANGLE + i * RL_POCKET;
-    const a0 = ((c - RL_POCKET / 2) * Math.PI) / 180;
-    const a1 = ((c + RL_POCKET / 2) * Math.PI) / 180;
-    const col = rlColour(n);
-    rotor += seg(205, 245, a0, a1, fill[col]);
-    rotor += seg(150, 200, a0, a1, deep[col]);
-    const rad = (c * Math.PI) / 180;
-    labels += `<text class="num" x="${(225 * Math.cos(rad)).toFixed(2)}" y="${(225 * Math.sin(rad)).toFixed(2)}" text-anchor="middle" dominant-baseline="central" transform="rotate(${(c + 90).toFixed(2)} ${(225 * Math.cos(rad)).toFixed(2)} ${(225 * Math.sin(rad)).toFixed(2)})">${n}</text>`;
-  });
-  // разделители карманов
-  let lines = '';
-  for (let i = 0; i < 37; i++) {
-    const a = ((RL_ZERO_ANGLE + i * RL_POCKET - RL_POCKET / 2) * Math.PI) / 180;
-    lines += `<line x1="${(150 * Math.cos(a)).toFixed(2)}" y1="${(150 * Math.sin(a)).toFixed(2)}" x2="${(245 * Math.cos(a)).toFixed(2)}" y2="${(245 * Math.sin(a)).toFixed(2)}" stroke="rgba(190,150,255,0.55)" stroke-width="1.2"/>`;
-  }
-  let rays = '';
-  for (let i = 0; i < 16; i++) {
-    const a = (i * 22.5 * Math.PI) / 180;
-    const len = i % 2 ? 95 : 140;
-    rays += `<line x1="${(34 * Math.cos(a)).toFixed(2)}" y1="${(34 * Math.sin(a)).toFixed(2)}" x2="${(len * Math.cos(a)).toFixed(2)}" y2="${(len * Math.sin(a)).toFixed(2)}" stroke="rgba(190,150,255,${i % 2 ? 0.16 : 0.3})" stroke-width="${i % 2 ? 1.5 : 2.5}"/>`;
-  }
-  const pointer = (rot) => `<polygon points="0,-318 -7,-300 7,-300" fill="#cdb0ff" transform="rotate(${rot})"/>`;
-  box.innerHTML = `<svg viewBox="-320 -320 640 640" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <filter id="rl-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="4"/></filter>
-      <radialGradient id="rl-core" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#1b0d33"/><stop offset="1" stop-color="#0a0514"/></radialGradient>
-      <radialGradient id="rl-hub" cx="40%" cy="35%" r="65%"><stop offset="0" stop-color="#b08cff"/><stop offset="0.5" stop-color="#5a2fd0"/><stop offset="1" stop-color="#2a1160"/></radialGradient>
-    </defs>
-    <circle r="300" fill="none" stroke="#7a3cff" stroke-width="9" opacity="0.9" filter="url(#rl-glow)"/>
-    <circle r="300" fill="none" stroke="#b48cff" stroke-width="2.5"/>
-    <circle r="270" fill="#0d0718"/>
-    <circle r="252" fill="none" stroke="rgba(190,150,255,0.5)" stroke-width="1.5"/>
-    ${pointer(0)}${pointer(90)}${pointer(180)}${pointer(270)}
-    <g id="rl-rotor">
-      <circle r="245" fill="#12091f"/>
-      ${rotor}
-      <circle r="150" fill="url(#rl-core)"/>
-      ${rays}
-      <circle r="200" fill="none" stroke="rgba(190,150,255,0.6)" stroke-width="1.5"/>
-      <circle r="205" fill="none" stroke="rgba(190,150,255,0.35)" stroke-width="1"/>
-      <circle r="150" fill="none" stroke="rgba(190,150,255,0.6)" stroke-width="1.5"/>
-      ${lines}
-      ${labels}
-      <circle r="36" fill="url(#rl-hub)" stroke="#c9adff" stroke-width="2"/>
-      <circle r="22" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
-      <circle r="9" fill="#e6d8ff"/>
-    </g>
-  </svg>`;
+  const box=$('rl-wheel');
+  if(!box.children.length)box.innerHTML=RouletteView.wheel();
 }
-
-// Клетки поля в px холста: зеро, три ряда 1-4-7 / 2-5-8 / 3-6-9, «2 to 1»,
-// шесть внешних ставок. Координаты сняты с макета.
-function rlCells() {
-  const X = (x) => x * RL_K;
-  const Y = (y) => (y - 96) * RL_K;
-  const cells = [];
-  const rows = [833, 898, 963, 1028];
-  const col0 = 100;
-  const colW = (830 - 100) / 12;
-  cells.push({ key: 'straight:0', type: 'straight', value: 0, x: X(35), y: Y(rows[0]), w: X(col0) - X(35), h: Y(rows[3]) - Y(rows[0]), label: '0', cls: 'green' });
-  for (let c = 0; c < 12; c++) {
-    for (let r = 0; r < 3; r++) {
-      const n = 3 * c + (r + 1);
-      cells.push({ key: `straight:${n}`, type: 'straight', value: n, x: X(col0 + c * colW), y: Y(rows[r]), w: X(colW), h: Y(rows[r + 1]) - Y(rows[r]), label: String(n), cls: rlColour(n) });
-    }
-  }
-  [1, 2, 3].forEach((column, r) => {
-    cells.push({ key: `column:${column}`, type: 'column', value: column, x: X(830), y: Y(rows[r]), w: X(905) - X(830), h: Y(rows[r + 1]) - Y(rows[r]), label: '2 to 1', cls: 'dark small' });
-  });
-  const outside = [
-    ['low', 35, 183, '1 – 18'], ['even', 183, 327, 'Even'], ['red', 327, 470, '<svg class="diamond" viewBox="0 0 22 12"><path d="M11 0 L22 6 L11 12 L0 6 Z" fill="#d9243b"/></svg>'],
-    ['black', 470, 613, '<svg class="diamond" viewBox="0 0 22 12"><path d="M11 0.8 L20.5 6 L11 11.2 L1.5 6 Z" fill="#0d0814" stroke="#cbb8f0" stroke-width="1"/></svg>'],
-    ['odd', 613, 757, 'Odd'], ['high', 757, 905, '19 – 36'],
-  ];
-  for (const [type, a, b, label] of outside) {
-    cells.push({ key: `${type}:`, type, value: null, x: X(a), y: Y(1043), w: X(b) - X(a), h: Y(1152) - Y(1043), label, cls: 'dark outside' });
-  }
-  return cells;
-}
+function rlCells() { return RouletteView.cells(); }
 
 function fitRoulette() {
-  const screen = $('screen-rl');
-  if (!screen || screen.classList.contains('hidden')) return;
-  const w = screen.clientWidth || window.innerWidth;
-  $('rl-canvas').style.setProperty('--bj', (w / 390).toFixed(4));
+  const screen=$('screen-rl');
+  if(!screen||screen.classList.contains('hidden'))return;
+  const space=screen.querySelector('.pt-wheel-space');
+  if(space){
+    $('rl-wheel').style.setProperty('--wheel-size',Math.min(space.clientWidth,space.clientHeight/.88)+'px');
+    const field=space.getBoundingClientRect();
+    screen.style.setProperty('--pt-result-y',(field.top+field.height*.75)+'px');
+  }
 }
 
 function openRoulette() {
@@ -1116,27 +1005,15 @@ function closeRoulette() {
 }
 
 function buildRouletteCells() {
-  const box = $('rl-cells');
-  if (box.children.length) return;
-  const X = (x) => x * RL_K;
-  const Y = (y) => (y - 96) * RL_K;
-  for (const [x0, x1, y0, y1] of [[35, 905, 833, 1028], [35, 905, 1043, 1152]]) {
-    const frame = document.createElement('div');
-    frame.className = 'rl-frame';
-    frame.style.cssText = `left:${X(x0).toFixed(2)}px;top:${Y(y0).toFixed(2)}px;width:${(X(x1) - X(x0)).toFixed(2)}px;height:${(Y(y1) - Y(y0)).toFixed(2)}px`;
-    box.appendChild(frame);
-  }
-  for (const cell of rlCells()) {
-    const node = document.createElement('div');
-    node.className = `rl-cell ${cell.cls}`;
-    node.dataset.key = cell.key;
-    node.style.left = `${cell.x.toFixed(2)}px`;
-    node.style.top = `${cell.y.toFixed(2)}px`;
-    node.style.width = `${cell.w.toFixed(2)}px`;
-    node.style.height = `${cell.h.toFixed(2)}px`;
-    node.innerHTML = `<span class="rl-cell-label">${cell.label}</span>`;
-    node.addEventListener('click', () => placeRlBet(cell, node));
-    box.appendChild(node);
+  const box=$('rl-cells');
+  if(box.children.length)return;
+  for(const cell of rlCells()) {
+    const node=document.createElement('button');
+    node.type='button';node.className=`rl-cell ${cell.cls}`;node.dataset.key=cell.key;
+    node.style.gridColumn=cell.column;node.style.gridRow=cell.row;
+    node.innerHTML=`<span class="rl-cell-label">${cell.label}</span>`;
+    node.setAttribute('aria-label',cell.type==='straight'?`Число ${cell.value}`:cell.type==='red'?'Красное':cell.type==='black'?'Чёрное':cell.label);
+    node.addEventListener('click',()=>placeRlBet(cell,node));box.appendChild(node);
   }
 }
 
@@ -1154,15 +1031,18 @@ function rlTotal() {
 }
 
 function placeRlBet(cell, node) {
-  if (state.rl.spinning) return;
-  const { min } = rlRange();
+  if (state.rl.spinning || state.rl.pending || !state.connected) return;
+  const { min,max } = rlRange();
   const amount = Math.max(min, state.rl.amount);
   if (rlTotal() + amount > state.balance) {
     toast('Недостаточно средств');
     haptic('error');
     return;
   }
+  GameResult.hide($('rl-result'));
+  for(const field of $('rl-cells').children)field.classList.remove('is-win');
   const current = state.rl.bets.get(cell.key);
+  if((current?.amount||0)+amount>max){toast('Достигнут лимит ставки на поле');return;}
   state.rl.bets.set(cell.key, { type: cell.type, value: cell.value, amount: (current ? current.amount : 0) + amount });
   node.classList.add('is-hit');
   setTimeout(() => node.classList.remove('is-hit'), 160);
@@ -1171,15 +1051,14 @@ function placeRlBet(cell, node) {
 }
 
 function stepRlAmount(direction) {
-  if (state.rl.spinning) return;
-  const { min, max } = rlRange();
-  state.rl.amount = clamp(state.rl.amount + direction * 100, min, max);
-  haptic('light');
-  renderRoulette();
+  if(state.rl.spinning||state.rl.pending)return;
+  const {min,max}=rlRange();
+  state.rl.amount=clamp(direction===0?max:direction<0?Math.floor(state.rl.amount/2):state.rl.amount*2,min,max);
+  haptic('light');renderRoulette();
 }
 
 function addRlAmount(value) {
-  if (state.rl.spinning) return;
+  if (state.rl.spinning || state.rl.pending) return;
   const { min, max } = rlRange();
   state.rl.amount = clamp(state.rl.amount + value, min, max);
   haptic('light');
@@ -1187,7 +1066,7 @@ function addRlAmount(value) {
 }
 
 function openRlKeypad() {
-  if (state.rl.spinning) return;
+  if (state.rl.spinning || state.rl.pending) return;
   state.rl.typing = true;
   state.rl.typed = '';
   $('rl-keypad').classList.remove('hidden');
@@ -1245,6 +1124,7 @@ function rlShowBalance(target, immediate = false) {
 }
 
 function onRouletteState(message) {
+  state.rl.pending=false;
   state.rl.info = message;
   state.balance = message.balance;
   renderAccount();
@@ -1257,90 +1137,48 @@ function onRouletteState(message) {
 }
 
 // Угол кармана с числом n на распрямлённом диске (0 — вверх, по часовой).
-function rlPocketAngle(n) {
-  const index = RL_ORDER.indexOf(n);
-  return RL_ZERO_ANGLE + index * RL_POCKET;
-}
+function rlPocketAngle(n) { return RouletteView.pocket(n); }
 
-function rlBallAt(angleDeg, r) {
-  const a = (angleDeg * Math.PI) / 180;
-  const ball = $('rl-ball');
-  ball.style.left = `${(RL_CX + r * Math.cos(a)).toFixed(2)}px`;
-  ball.style.top = `${(RL_CY + r * Math.sin(a)).toFixed(2)}px`;
+function rlBallAt(angleDeg,r) {
+  const a=angleDeg*Math.PI/180;
+  $('rl-ball').setAttribute('transform',`translate(${(r*Math.cos(a)).toFixed(4)} ${(r*Math.sin(a)).toFixed(4)})`);
+  state.rl.ballAngle=angleDeg;state.rl.ballRadius=r;
 }
 
 // Запуск: число уже известно. Колесо крутится по часовой и тормозит,
 // шарик бежит против часовой по внешней дорожке, затем сваливается в
 // карман и дальше едет вместе с колесом.
 function startRouletteSpin(spin) {
-  const rl = state.rl;
-  if (rl.raf) cancelAnimationFrame(rl.raf);
-  rl.spinning = true;
-  rl.result = null;
-  $('rl-canvas').classList.add('is-spinning');
-  $('rl-result').classList.add('hidden');
-  // Баланс: ставки уже списаны — показываем сразу, выигрыш придёт после остановки.
-  rlShowBalance(state.balance - (spin.payout || 0));
-  renderRoulette();
-
-  const startAngle = rl.angle;
-  const wheelTurns = 4 + Math.random() * 1.5;
-  const endAngle = startAngle + wheelTurns * 360 + Math.random() * 360;
-  const ballTurns = 7 + Math.random() * 2;
-  const ballStart = endAngle + rlPocketAngle(spin.number) + ballTurns * 360; // против часовой → угол убывает
-  const t0 = performance.now();
-  const ball = $('rl-ball');
-  ball.classList.remove('hidden');
-  const ease = (t) => 1 - Math.pow(1 - t, 3);
-
-  const frame = (now) => {
-    const t = Math.min(1, (now - t0) / RL_SPIN_MS);
-    const wheel = startAngle + (endAngle - startAngle) * ease(t);
-    const rotor = document.getElementById('rl-rotor');
-    if (rotor) rotor.setAttribute('transform', `rotate(${wheel.toFixed(2)})`);
-    // Свободный бег шарика: тормозит раньше колеса.
-    const tb = Math.min(1, t / 0.86);
-    const free = ballStart - (ballStart - (endAngle + rlPocketAngle(spin.number))) * ease(tb);
-    const locked = wheel + rlPocketAngle(spin.number);
-    let angle = free;
-    let r = RL_R_TRACK;
-    if (t >= 0.72) {
-      const k = Math.min(1, (t - 0.72) / 0.14);
-      angle = free * (1 - k) + locked * k;
-      const drop = k < 0.7 ? k / 0.7 : 1 - 0.12 * Math.sin(((k - 0.7) / 0.3) * Math.PI); // маленький подскок
-      r = RL_R_TRACK + (RL_R_POCKET - RL_R_TRACK) * drop;
-    }
-    rlBallAt(angle, r);
-    if (t < 1) {
-      rl.raf = requestAnimationFrame(frame);
-      return;
-    }
-    rl.raf = null;
-    rl.angle = endAngle % 360;
-    finishRouletteSpin(spin);
+  const rl=state.rl;
+  if(rl.raf)cancelAnimationFrame(rl.raf);
+  rl.pending=false;rl.spinning=true;rl.result=null;
+  buildRouletteWheel();
+  $('rl-canvas').classList.add('is-spinning');GameResult.hide($('rl-result'));
+  rlShowBalance(state.balance-(spin.payout||0));renderRoulette();
+  const motion=RouletteView.plan(spin.number,rl.angle,rl.ballAngle??-90,rl.ballRadius??264);
+  const started=performance.now(),duration=reducedMotion()?0:RL_SPIN_MS;
+  const rotor=$('rl-rotor');$('rl-ball').classList.remove('hidden');
+  const frame=now=>{
+    const t=duration?Math.min(1,Math.max(0,(now-started)/duration)):1;
+    const pose=RouletteView.sample(motion,t);
+    rotor.setAttribute('transform',`rotate(${pose.wheel.toFixed(4)})`);
+    rl.angle=pose.wheel;rlBallAt(pose.ball,pose.radius);
+    if(t<1){rl.raf=requestAnimationFrame(frame);return;}
+    rl.raf=null;finishRouletteSpin(spin);
   };
-  rl.raf = requestAnimationFrame(frame);
+  rl.raf=requestAnimationFrame(frame);
 }
 
 function finishRouletteSpin(spin) {
-  const rl = state.rl;
-  rl.spinning = false;
-  rl.result = spin;
+  const rl=state.rl;rl.spinning=false;rl.result=spin;
   $('rl-canvas').classList.remove('is-spinning');
-  haptic(spin.net > 0 ? 'success' : 'light');
-  const result = $('rl-result');
-  const colour = spin.colour;
-  const label = spin.net > 0 ? `WIN +${money(spin.net)}` : spin.net === 0 ? 'PUSH' : `LOSE −${money(-spin.net)}`;
-  result.className = `rl-result${spin.net < 0 ? ' lose' : ''}`;
-  result.innerHTML = `<span class="rl-num ${colour}">${spin.number}</span><span>${label}</span>`;
-  result.classList.remove('hidden');
+  haptic(spin.net>0?'success':'light');
+  const bet=spin.bets.reduce((total,b)=>total+b.amount,0);
+  GameResult.show($('rl-result'),{bet,payout:spin.payout,description:`Выпало ${spin.number}`},(rl.resultRevision=(rl.resultRevision||0)+1));
   rlShowBalance(state.balance);
-  // Подсветка выигравших клеток, фишки убираем.
-  const winners = new Set(spin.bets.filter((b) => b.won).map((b) => `${b.type}:${b.value === null ? '' : b.value}`));
-  for (const node of $('rl-cells').children) node.classList.toggle('is-win', winners.has(node.dataset.key));
-  setTimeout(() => { for (const node of $('rl-cells').children) node.classList.remove('is-win'); }, 2600);
-  rl.bets.clear();
-  renderRoulette();
+  const winners=new Set(spin.bets.filter(b=>b.won).map(b=>`${b.type}:${b.value===null?'':b.value}`));
+  for(const node of $('rl-cells').children)node.classList.toggle('is-win',winners.has(node.dataset.key));
+  rl.bets.clear();renderRoulette();
 }
 
 // Подпись на фишке: коротко, без лишних нулей ($5, $12.5, $1.2k).
@@ -1352,51 +1190,28 @@ function rlChipText(cents) {
 }
 
 function renderRoulette() {
-  if (!state.rl.open) return;
-  const rl = state.rl;
-  const spinning = rl.spinning;
-  const amount = $('rl-amount');
-  if (!spinning) {
-    const { min, max } = rlRange();
-    rl.amount = clamp(rl.amount, min, max);
+  if(!state.rl.open)return;
+  const rl=state.rl,locked=rl.spinning||rl.pending||!state.connected;
+  if(!locked){const {min,max}=rlRange();rl.amount=clamp(rl.amount,min,max);}
+  $('rl-amount').textContent=rl.typing?(rl.typed?`$${rl.typed}`:'$'):money(rl.amount);
+  for(const id of ['rl-minus','rl-plus','rl-max','rl-amount','rl-clear'])$(id).disabled=locked;
+  for(const node of $('rl-cells').children){
+    const bet=rl.bets.get(node.dataset.key);node.disabled=locked;
+    node.classList.toggle('is-selected',Boolean(bet));node.setAttribute('aria-pressed',String(Boolean(bet)));
+    let label=node.querySelector('.rl-selection-amount');
+    if(!bet){if(label)label.remove();node.removeAttribute('title');continue;}
+    if(!label){label=document.createElement('span');label.className='rl-selection-amount';node.appendChild(label);}
+    label.textContent=rlChipText(bet.amount);node.title=`Ставка ${money(bet.amount)}`;
   }
-  amount.textContent = rl.typing ? (rl.typed ? `$${rl.typed}` : '$') : money(rl.amount);
-  $('rl-minus').disabled = spinning;
-  $('rl-plus').disabled = spinning;
-  const presets = $('rl-presets');
-  if (!presets.children.length) {
-    for (const value of RL_PRESETS) {
-      const button = document.createElement('button');
-      button.className = 'bj-preset';
-      button.textContent = `$${value / 100}`;
-      button.addEventListener('click', () => {
-        addRlAmount(value);
-        button.classList.add('is-pressed');
-        setTimeout(() => button.classList.remove('is-pressed'), 180);
-      });
-      presets.appendChild(button);
-    }
+  if(!rl.spinning){
+    const history=rl.info?.history||[];
+    $('rl-history').innerHTML=history.slice(0,5).map((n,i)=>`<span class="${rlColour(n)}${i===0?' latest':''}">${n}</span>`).join('');
   }
-  for (const button of presets.children) button.disabled = spinning;
-
-  // Фишки на клетках.
-  for (const node of $('rl-cells').children) {
-    const bet = rl.bets.get(node.dataset.key);
-    let chip = node.querySelector('.rl-chip');
-    if (!bet) { if (chip) chip.remove(); continue; }
-    if (!chip) { chip = document.createElement('i'); chip.className = 'rl-chip'; node.appendChild(chip); }
-    const text = rlChipText(bet.amount);
-    if (chip.textContent !== text) chip.textContent = text;
-    chip.classList.toggle('is-long', text.length === 4);
-    chip.classList.toggle('is-xlong', text.length >= 5);
-  }
-
-  const total = rlTotal();
-  $('rl-total').textContent = `На столе ${money(total)}`;
-  $('rl-clear').classList.toggle('hidden', !total || spinning);
-  const spinBtn = $('rl-spin');
-  spinBtn.classList.remove('is-loading');
-  spinBtn.disabled = spinning || !total || total > state.balance;
+  const total=rlTotal();$('rl-total').textContent=`На поле ${money(total)}`;
+  $('rl-clear').classList.toggle('hidden',!total);
+  const spin=$('rl-spin');spin.classList.toggle('is-loading',Boolean(rl.pending));
+  spin.disabled=locked||!total||total>state.balance;
+  spin.querySelector('b').textContent=rl.spinning?'Вращение…':rl.pending?'Подождите…':'Крутить';
 }
 
 // ——— Баккара ———
@@ -4020,6 +3835,7 @@ function bindUi() {
   on('rl-back', 'click', closeRoulette);
   on('rl-minus', 'click', () => stepRlAmount(-1));
   on('rl-plus', 'click', () => stepRlAmount(1));
+  on('rl-max', 'click', () => stepRlAmount(0));
   on('rl-amount', 'click', () => openRlKeypad());
   document.querySelectorAll('#rl-keypad [data-key]').forEach((button) => {
     button.addEventListener('click', (event) => { event.stopPropagation(); rlKey(button.dataset.key); });
@@ -4030,14 +3846,15 @@ function bindUi() {
     closeRlKeypad(true);
   });
   on('rl-spin', 'click', (event) => {
-    if (state.rl.spinning || !state.rl.bets.size) return;
-    markBusy(event.currentTarget);
+    if (state.rl.spinning || state.rl.pending || !state.connected || !state.rl.bets.size) return;
+    state.rl.pending=true;GameResult.hide($('rl-result'));renderRoulette();
     send({ type: 'rl_spin', bets: Array.from(state.rl.bets.values()).map((b) => ({ type: b.type, value: b.value, amount: b.amount })) });
   });
-  on('rl-clear', 'click', () => { state.rl.bets.clear(); haptic('light'); renderRoulette(); });
+  on('rl-clear', 'click', () => { if(state.rl.spinning||state.rl.pending)return; state.rl.bets.clear(); haptic('light'); renderRoulette(); });
   on('bj-back', 'click', closeBlackjack);
   on('bj-minus', 'click', () => stepBjBet(-1));
   on('bj-plus', 'click', () => stepBjBet(1));
+  on('bj-max', 'click', () => stepBjBet(0));
   // Сумму можно написать руками: тап по полю открывает свою панель цифр.
   on('bj-bet-amount', 'click', () => openBjKeypad());
   document.querySelectorAll('#bj-keypad [data-key]').forEach((button) => {
@@ -4049,18 +3866,12 @@ function bindUi() {
     if (event.target.closest('#bj-keypad') || event.target.closest('#bj-bet-amount')) return;
     closeBjKeypad(true);
   });
-  on('bj-deal', 'click', (event) => {
-    markBusy(event.currentTarget);
-    send({ type: 'bj_bet', amount: state.bj.bet });
-  });
-  on('bj-next', 'click', () => {
-    state.bj.dealerShown = [];
-    $('bj-dealer-cards').innerHTML = '';
-    send({ type: 'bj_next' });
-  });
+  on('bj-deal', 'click', () => submitBjBet());
+  on('bj-next', 'click', () => submitBjBet());
   document.querySelectorAll('.bj-act[data-action]').forEach((button) => {
     button.addEventListener('click', () => {
-      haptic('light');
+      if(state.bj.pending||!state.connected)return;
+      state.bj.pending=true;renderBlackjack();haptic('light');
       send({ type: 'bj_action', action: button.dataset.action });
     });
   });

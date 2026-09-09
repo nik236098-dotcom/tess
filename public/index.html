@@ -23,7 +23,9 @@
   <link rel="stylesheet" href="/amethyst.css?v=1" />
   <link rel="stylesheet" href="/game-standard.css?v=5" />
   <script src="/game-result.js?v=3"></script>
-  <script defer src="/game-layout.js?v=1"></script>
+  <link rel="stylesheet" href="/premium-tables.css?v=1" />
+  <script src="/roulette-view.js?v=1"></script>
+  <script defer src="/game-layout.js?v=2"></script>
 </head>
 <body>
   <!-- Один набор иконок на всё приложение: контурные, 24×24, currentColor.
@@ -661,26 +663,31 @@
 
     <!-- Блекджек против дилера: экран собран по макету 1 в 1 на холсте 390×653,
          фон — сам макет без нарисованных карт и кнопок (img/bj-bg.webp). -->
-    <section id="screen-bj" class="screen game-standard bj-screen hidden">
-      <div id="bj-canvas" class="bj-canvas">
-        <div id="bj-balance" class="bj-balance"><span>Баланс</span><b id="bj-balance-value">$0.00</b></div>
-        <button id="bj-back" class="bj-back" title="В лобби">
-          <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
-        </button>
-        <div id="bj-dealer-total" class="bj-pill bj-dealer-total hidden">10</div>
-        <div id="bj-dealer-cards" class="bj-cards bj-dealer-cards"></div>
-        <div id="bj-result" class="bj-result hidden"></div>
-        <div id="bj-hand-total" class="bj-pill bj-hand-total hidden">16</div>
-        <div id="bj-hands" class="bj-hands"></div>
-
-        <div class="bj-bet">
-          <button id="bj-minus" class="bj-step" aria-label="Меньше">−</button>
-          <div class="bj-bet-text"><span id="bj-bet-label">Bet</span><b id="bj-bet-amount" role="button">$5.00</b></div>
-          <button id="bj-plus" class="bj-step" aria-label="Больше">+</button>
+    <section id="screen-bj" class="screen bj-screen premium-table hidden">
+      <div id="bj-canvas" class="bj-canvas" data-phase="bet">
+        <header class="pt-header"><button id="bj-back" class="bj-back" aria-label="В лобби"><svg class="icon"><use href="#i-chevron-left"></use></svg></button><h1>Блекджек</h1><div id="bj-balance" class="bj-balance"><b id="bj-balance-value">$0.00</b><svg class="icon"><use href="#i-wallet"></use></svg></div></header>
+        <div class="pt-felt">
+          <div class="pt-deck" aria-hidden="true"><span>♠</span></div>
+          <div class="pt-dealer"><div class="pt-hand-label">Дилер <span id="bj-dealer-total" class="bj-pill hidden"></span></div><div id="bj-dealer-cards" class="bj-cards bj-dealer-cards"></div></div>
+          <div class="pt-table-rule" aria-hidden="true">BLACKJACK PAYS 3:2</div>
+          <div class="pt-player"><div class="pt-hand-label">Вы <span id="bj-hand-total" class="bj-pill hidden"></span></div><div id="bj-hands" class="bj-hands"></div></div>
         </div>
-        <div id="bj-presets" class="bj-presets"></div>
-        <!-- Своя цифровая панель вместо системной клавиатуры: в Telegram на iOS
-             она сдвигала экран и не возвращала обратно. -->
+        <div id="bj-result" class="hidden"></div>
+        <div class="pt-controls">
+          <div class="pt-action-slot">
+            <div class="bj-actions">
+              <button id="bj-hit" class="bj-act" data-action="hit"><b>Ещё</b></button>
+              <button id="bj-stand" class="bj-act" data-action="stand"><b>Хватит</b></button>
+              <button id="bj-double" class="bj-act" data-action="double"><b>Удвоить</b></button>
+              <button id="bj-split" class="bj-act" data-action="split"><b>Разделить</b></button>
+            </div>
+            <button id="bj-deal" class="bj-bet-btn"><b>Сделать ставку</b></button>
+            <button id="bj-next" class="bj-act bj-wide hidden"><b>Сделать ставку</b></button>
+            <div id="bj-deal-sub" class="bj-deal-sub hidden"></div>
+          </div>
+          <div class="pt-stake-label"><span>Сумма ставки</span></div>
+    <div class="bj-bet "><div class="bj-bet-text"><span class="pt-currency" aria-hidden="true">$</span><button type="button" id="bj-bet-amount" aria-label="Сумма ставки">$1.00</button></div><button id="bj-minus" class="bj-step" aria-label="Уменьшить вдвое">½</button><button id="bj-plus" class="bj-step" aria-label="Увеличить вдвое">2×</button><button id="bj-max" class="bj-step">Max</button></div>
+        </div>
         <div id="bj-keypad" class="bj-keypad hidden">
           <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
           <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
@@ -688,66 +695,21 @@
           <button data-key=".">.</button><button data-key="0">0</button><button data-key="back" aria-label="Стереть">⌫</button>
           <button data-key="ok" class="bj-key-ok">Готово</button>
         </div>
-
-        <div class="bj-actions">
-          <button id="bj-hit" class="bj-act bj-hit" data-action="hit">
-            <i class="bj-ico"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="13" height="18" rx="2"/><path d="M10.5 9v6M7.5 12h6"/></svg></i>
-            <b>HIT</b><small>Take a card</small>
-          </button>
-          <button id="bj-stand" class="bj-act bj-stand" data-action="stand">
-            <i class="bj-ico"><svg viewBox="0 0 24 24"><path d="M8 12V5.5a1.5 1.5 0 0 1 3 0V11M11 5a1.5 1.5 0 0 1 3 0v6M14 6a1.5 1.5 0 0 1 3 0v6M17 8a1.5 1.5 0 0 1 3 0v6c0 3.5-2.5 6-6 6h-1c-2 0-3.5-1-4.5-2.5L5 13.5a1.6 1.6 0 0 1 2.5-2L8 12"/></svg></i>
-            <b>STAND</b><small>Keep your hand</small>
-          </button>
-          <button id="bj-double" class="bj-act bj-double" data-action="double">
-            <i class="bj-ico bj-ico-text">2×</i>
-            <b>DOUBLE</b><small>Double your bet</small>
-          </button>
-          <button id="bj-split" class="bj-act bj-split" data-action="split">
-            <i class="bj-ico"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="10" height="14" rx="2" transform="rotate(-12 8 13)"/><rect x="11" y="4" width="10" height="14" rx="2" transform="rotate(12 16 11)"/></svg></i>
-            <b>SPLIT</b><small>Split your hand</small>
-          </button>
-        </div>
-        <!-- До раздачи — по макету «чистого стола»: кнопка Bet с пиками по краям -->
-        <button id="bj-deal" class="bj-bet-btn hidden">
-          <span class="bj-spade">♠</span><b>Bet</b><span class="bj-spade">♠</span>
-        </button>
-        <div id="bj-deal-sub" class="bj-deal-sub hidden"></div>
-        <div class="bj-actions bj-actions-after">
-          <button id="bj-next" class="bj-act bj-split bj-wide hidden">
-            <i class="bj-ico"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.5-5.8M20 12a8 8 0 0 1-13.5 5.8M17.5 3v3.5H14M6.5 21v-3.5H10"/></svg></i>
-            <b>NEW HAND</b><small>Play again</small>
-          </button>
-        </div>
       </div>
     </section>
 
-    <!-- Рулетка: плоский макет сверху, собран кодом по его координатам
-         (холст 390×653): колесо и поле — SVG/DOM, поэтому диск крутится
-         без разрывов, а цифры на нём настоящие. -->
-    <section id="screen-rl" class="screen bj-screen hidden">
+    <section id="screen-rl" class="screen bj-screen premium-table hidden">
       <div id="rl-canvas" class="bj-canvas rl-canvas">
-        <div class="rl-deco" aria-hidden="true">
-          <i class="rl-arc rl-arc-1"></i><i class="rl-arc rl-arc-2"></i>
-          <b class="rl-spade rl-spade-tl">♠</b><b class="rl-spade rl-spade-tr">♠</b><b class="rl-spade rl-spade-bl">♠</b><b class="rl-spade rl-spade-br">♠</b>
+        <header class="pt-header"><button id="rl-back" class="bj-back" aria-label="В лобби"><svg class="icon"><use href="#i-chevron-left"></use></svg></button><h1>Рулетка</h1><div id="rl-balance" class="bj-balance"><b id="rl-balance-value">$0.00</b><svg class="icon"><use href="#i-wallet"></use></svg></div></header>
+        <div class="pt-wheel-space"><div id="rl-wheel" class="rl-wheel"></div></div>
+        <div id="rl-history" class="pt-history" aria-label="Последние числа"></div>
+        <div id="rl-result" class="hidden"></div>
+        <div id="rl-cells" class="rl-cells" role="group" aria-label="Поле ставок"></div>
+        <div class="pt-controls">
+          <button id="rl-spin" class="bj-bet-btn rl-spin"><b>Крутить</b></button>
+          <div class="pt-stake-label"><span>Размер фишки</span><span id="rl-total">На поле $0.00</span><button id="rl-clear" class="rl-clear hidden" aria-label="Очистить ставки">↶</button></div>
+    <div class="bj-bet rl-bet"><div class="bj-bet-text"><span class="pt-currency" aria-hidden="true">$</span><button type="button" id="rl-amount" aria-label="Размер фишки">$1.00</button></div><button id="rl-minus" class="bj-step" aria-label="Уменьшить вдвое">½</button><button id="rl-plus" class="bj-step" aria-label="Увеличить вдвое">2×</button><button id="rl-max" class="bj-step">Max</button></div>
         </div>
-        <div class="rl-title"><span class="rl-title-line"></span><b>ROULETTE</b><span class="rl-title-line"></span></div>
-        <div class="rl-subtitle">SPIN · BET · WIN</div>
-        <div class="rl-side rl-side-l">PLAY<br>SMART</div>
-        <div class="rl-side rl-side-r">GOOD<br>LUCK</div>
-        <div id="rl-balance" class="bj-balance"><span>Баланс</span><b id="rl-balance-value">$0.00</b></div>
-        <button id="rl-back" class="bj-back" title="В лобби">
-          <svg class="icon icon-sm"><use href="#i-chevron-left"></use></svg>
-        </button>
-        <div id="rl-wheel" class="rl-wheel"></div>
-        <div id="rl-ball" class="rl-ball hidden"></div>
-        <div id="rl-result" class="rl-result hidden"></div>
-        <div id="rl-cells" class="rl-cells"></div>
-        <div class="bj-bet rl-bet">
-          <button id="rl-minus" class="bj-step" aria-label="Меньше">−</button>
-          <div class="bj-bet-text"><b id="rl-amount" role="button">$10.00</b></div>
-          <button id="rl-plus" class="bj-step" aria-label="Больше">+</button>
-        </div>
-        <div id="rl-presets" class="bj-presets rl-presets"></div>
         <div id="rl-keypad" class="bj-keypad rl-keypad hidden">
           <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
           <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
@@ -755,10 +717,6 @@
           <button data-key=".">.</button><button data-key="0">0</button><button data-key="back" aria-label="Стереть">⌫</button>
           <button data-key="ok" class="bj-key-ok">Готово</button>
         </div>
-        <button id="rl-spin" class="bj-bet-btn rl-spin">
-          <span class="rl-chip-ico"></span><b>Spin</b><span class="rl-chip-ico"></span>
-        </button>
-        <div id="rl-foot" class="rl-foot"><span id="rl-total">На столе $0.00</span><button id="rl-clear" class="rl-clear hidden">сбросить</button></div>
       </div>
     </section>
 
@@ -992,6 +950,6 @@
   <script src="/hilo.js?v=4"></script>
   <script src="/client-connection.js?v=1"></script>
   <script src="/telegram-display.js?v=1"></script>
-  <script src="/app.js?v=107"></script>
+  <script src="/app.js?v=108"></script>
 </body>
 </html>
