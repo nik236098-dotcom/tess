@@ -34,7 +34,7 @@
     return {x,y:y+(370-y)*(1-travel),scale:.72+1.1*(1-travel),opacity:t<dartsTiming.launch?0:Math.min(1,u*12),hit:t>=dartsTiming.impact,rotation:0,ripple:phase(t,dartsTiming.impact,.88)};
    }
    case 'bowling':return (typeof module==='object'&&module.exports?require('./bowling-scene'):root.BowlingScene).frame(info,t);
-   case 'balloon':{const old=previous?.step||0,now=info.step||old;return {scale:1+.018*(old+(now-old)*out(phase(t,0,.7))),pump:Math.sin(phase(t,0,.55)*Math.PI),burst:last.safe===false&&t>.68,burstProgress:phase(t,.68,1)};}
+   case 'balloon':return (typeof module==='object'&&module.exports?require('./balloon-scene'):root.BalloonScene).frame(info,previous,t);
    case 'race':return {cars:[0,1,2,3].map(i=>{const rank=d.order?.indexOf(i)??i;return {y:85-(70-rank*7)*ease(t)+(t===1?0:Math.sin(t*9+i)*4*Math.sin(t*Math.PI)),finished:t===1};})};
    case 'pinball':return pinball(last,t,previous);
    case 'fishing':{const u=phase(t,.16,.68),haul=out(phase(t,.7,1));return {hookY:8+61*ease(u)-57*haul,fishX:105-55*out(phase(t,.28,.7)),fishY:69-57*haul,reveal:t>.36&&Boolean(d.prize),caught:t>.7};}

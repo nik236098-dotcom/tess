@@ -27,7 +27,7 @@ function harness(id){
  const ctx=vm.createContext({state,$,document:{querySelectorAll:()=>[]},window:{matchMedia:()=>({matches:false})},performance:{now:()=>0},structuredClone,
  send:m=>sent.push(m),money:n=>'$'+((n||0)/100).toFixed(2),toCents:v=>Math.round(Number(v.replace(',','.'))*100),haptic(){},toast(){},
  requestAnimationFrame:f=>{const id=++next;frames.set(id,f);return id;},cancelAnimationFrame:id=>frames.delete(id)});
- for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-physics','bowling-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
+ for(const file of ['casino-rules','casino-art','casino-motion','sicbo-scene','chicken-scene','darts-rules','darts-scene','darts-audio','darts-game','bowling-physics','bowling-scene','balloon-scene','casino-ui','arcade'])vm.runInContext(fs.readFileSync(`public/${file}.js`,'utf8'),ctx);
  // DOM harness has no graphics context; GPU rendering is checked separately.
  vm.runInContext('BowlingScene.render=()=>true;BowlingScene.ready=()=>true;',ctx);
  vm.runInContext(`CasinoUI.prepare('${id}');`,ctx);ctx.bindArcade();
@@ -340,4 +340,16 @@ test('bowling: saved winnings appear when settlement arrives at the same revisio
  assert.equal(h.$('ag-overlay').innerHTML,'');
  r.settled=true;h.deliver(r);
  assert.match(h.$('ag-overlay').innerHTML,/×443/);
+});
+
+test('balloon pump locks repeat clicks and cashout, then restores controls and shared winnings',()=>{
+ const h=harness('balloon');h.deliver(game.initial());h.$('ag-main').dispatch('click',{});
+ let r=game.start('balloon',game.initial(),100,{level:'easy'},0,n=>n-1);r.order=Array(24).fill(true).concat(false);h.deliver(r);
+ assert.match(h.$('ag-stage').innerHTML,/bl-handle/);
+ h.click('ag-stage','cgPick','0');h.click('ag-stage','cgPick','0');assert.equal(h.sent.length,2);
+ r=game.actGame('balloon',r,'ag_pick',0,r.revision);h.deliver(r);
+ assert.equal(h.$('ag-main').disabled,true);assert.match(h.$('ag-stage').innerHTML,/Надуваем/);
+ h.advance();assert.equal(h.$('ag-main').disabled,false);assert.match(h.$('ag-stage').innerHTML,/Успешных качков: 1/);
+ h.$('ag-main').dispatch('click',{});r=game.actGame('balloon',r,'ag_cashout',null,r.revision);r.settled=true;h.deliver(r);
+ assert.match(h.$('ag-overlay').className,/is-win/);assert.match(h.$('ag-stage').innerHTML,/Раунд завершён/);
 });
