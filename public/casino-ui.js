@@ -56,7 +56,7 @@ const diamondPatterns=[[0,0,0,0,0],[0,0,0,0,1],[0,0,0,1,1],[0,0,0,1,2],[0,0,1,1,
 const diamondLabels=['Пять одинаковых','Четыре одинаковых','Фулл-хаус','Три одинаковых','Две пары','Пара','Нет совпадений'];
 const diamondPays=[50,5,4,3,2,.1,0];
 function flatDiamond(n){
- if(n==null)return '<svg class="dm-gem dm-gem-empty" viewBox="0 0 100 88" aria-hidden="true"><path d="M22 8H78L98 37 50 86 2 37Z M2 37H98 M22 8L32 37 50 86 68 37 78 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>';
+ if(n==null)return '<svg class="dm-gem dm-gem-empty" viewBox="0 0 100 88" aria-hidden="true"><path d="M22 8H78L98 37 50 86 2 37Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>';
  const palette=['#a547f5','#32d5ca','#f5c840','#ef456b','#71d841','#528ff3','#ee85d3'];
  return `<svg class="dm-gem" viewBox="0 0 100 88" aria-hidden="true" style="color:${palette[n%7]}"><path d="M22 8H78L98 37 50 86 2 37Z" fill="currentColor"/><path d="M22 8L32 37H2Z" fill="#fff" opacity=".22"/><path d="M22 8H50L32 37Z" fill="#fff" opacity=".55"/><path d="M50 8H78L68 37Z" fill="#fff" opacity=".24"/><path d="M50 8L68 37H32Z" fill="#fff" opacity=".1"/><path d="M78 8L98 37H68Z" fill="#180632" opacity=".19"/><path d="M2 37H32L50 86Z" fill="#17052c" opacity=".25"/><path d="M68 37H98L50 86Z" fill="#18052f" opacity=".35"/><path d="M32 37H68L50 86Z" fill="#fff" opacity=".08"/></svg>`;
 }
