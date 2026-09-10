@@ -43,6 +43,7 @@ node --check public/bowling-physics.js
 node --check public/bowling-scene.js
 node --check public/balloon-scene.js
 node --check public/race-scene.js
+node --check public/race-renderer.js
 node --check public/fishing-scene.js
 node --check public/duel-art.js
 node --check public/game-catalog.js
@@ -59,7 +60,7 @@ for (const id of Object.keys(catalog.names)) {
   const path = `public/img/game-cards/${catalog.file(id)}.webp`;
   if (!fs.statSync(path).size) throw new Error(`Empty game artwork: ${path}`);
 }
-for (const path of ['public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp']) {
+for (const path of ['public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp', 'public/tower.css', 'public/andar.css', 'public/img/rps/rock-v2.webp', 'public/img/rps/paper-v2.webp', 'public/img/rps/scissors-v2.webp']) {
   if (!fs.statSync(path).size) throw new Error(`Empty game asset: ${path}`);
 }
 JS

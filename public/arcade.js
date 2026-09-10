@@ -108,7 +108,7 @@ function agPayoutTable() {
   const a=state.ag, cfg=a.info?.config; if(!cfg) return '';
   let values=[];
   if(a.game==='plinko') return ''; // The pocket labels already show every payout.
-  else if(a.game==='tower') values=cfg.tables[a.options.tower.level].map((n,i)=>[`${i+1} этаж`,n]);
+  else if(a.game==='tower') return ''; // Every floor shows its own multiplier.
   else if(a.game==='keno') values=(cfg.tables[a.options.keno.picks.length]||[]).map((n,i)=>[`${i} совп.`,n]);
   else return '<span class="ag-table-note">A &lt; 2 &lt; … &lt; Q &lt; K · при ничьей возврат стороне ½ ставки</span>';
   if(!values.length) return '<span class="ag-table-note">Выбери числа — здесь появятся коэффициенты</span>';
@@ -153,10 +153,11 @@ function agBoard() {
     }).join('');
     stage.innerHTML=`<svg viewBox="0 0 ${g.width} ${g.height}" class="ag-plinko-svg" role="img" aria-label="Поле Plinko, 10 рядов"><defs><radialGradient id="ag-ball-glow"><stop stop-color="#fff"/><stop offset=".45" stop-color="#f8e4ff"/><stop offset="1" stop-color="#b184f5"/></radialGradient></defs>${pins}${pockets}<circle id="ag-pin-impact" r="6" opacity="0" fill="none" stroke="#f3d4ff" stroke-width="2"/>${(info?.balls||[{}]).map((ball,i)=>`<circle id="${i?'ag-ball-'+i:'ag-ball'}" cx="${slot>=0?PlinkoMotion.slotX(ball.slot??slot):g.center}" cy="${slot>=0?PlinkoMotion.restY:g.startY}" r="${g.ballRadius}" opacity="${a.animating&&i?0:1}" fill="url(#ag-ball-glow)"/>`).join('')}</svg>`;
   } else if(a.game==='tower') {
-    const old=stage.querySelector('.ag-tower-scroll')?.scrollTop;
+    const previous=stage.querySelector('.ag-tower-scroll');
+    const old=previous?.dataset.level===a.options.tower.level?previous.scrollTop:undefined;
     const round=info?.options?.level===a.options.tower.level?info:null;
     const table=info?.config.tables[a.options.tower.level]||Array(9).fill(0), columns=info?.config.levels[a.options.tower.level].columns||4, floor=round?.floor||0;
-    stage.innerHTML=`<div class="ag-tower-scroll"><div class="ag-tower-rows">${Array.from({length:9},(_,i)=>8-i).map(row=>{
+    stage.innerHTML=`<div class="ag-tower-scroll" data-level="${a.options.tower.level}" tabindex="0" role="region" aria-label="Этажи Tower, прокрутка вверх"><div class="ag-tower-rows">${Array.from({length:9},(_,i)=>8-i).map(row=>{
       const step=round?.steps?.[row], current=round?.phase==='play'&&row===floor;
       return `<div class="ag-floor ${current?'is-current':''}" data-floor="${row}" style="--ag-columns:${columns}"><span class="ag-floor-label">${row===8?'♛':row+1}</span>${Array.from({length:columns},(_,i)=>i).map(col=>{
         const trap=round?.revealed?.[row]?.includes(col), picked=step?.index===col, disabled=agLocked()||!current;
@@ -185,9 +186,12 @@ function agDuelCard(side,index) {
   const a=state.ag, info=a.info, card=info?.cards?.[index];
   return `<div class="ag-duel-card ${!a.animating&&card?'is-revealed':''} ${!a.animating&&info?.winner===side?'is-winner':''}" data-ag-card="${index}"><div class="ag-card-turn"><div class="ag-card-back"><svg class="icon"><use href="#i-${side==='dragon'?'spade':'club'}"/></svg></div><div class="ag-card-front">${card?hlCard(card):''}</div></div></div>`;
 }
-function agScrollTower() {
-  const box=$('ag-stage').querySelector('.ag-tower-scroll'), row=$('ag-stage').querySelector('.is-current');
-  if(box&&row)box.scrollTo({top:Math.max(0,row.offsetTop-box.offsetTop-box.clientHeight*.58),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+function agScrollTower(behavior='smooth') {
+  const stage=$('ag-stage'), box=stage.querySelector('.ag-tower-scroll');
+  const a=state.ag,round=a.info?.options?.level===a.options.tower.level?a.info:null;
+  const floor=round?.phase==='play'?round.floor:Math.max(0,(round?.steps?.length||1)-1);
+  const row=stage.querySelector('.is-current')||stage.querySelector(`[data-floor="${Math.min(8,floor)}"]`);
+  if(box&&row)box.scrollTo({top:Math.max(0,row.offsetTop-box.offsetTop+(row.offsetHeight||0)/2-box.clientHeight*.72),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':behavior});
 }
 function agAnimateResult(info) {
   if(agCatalog())return CasinoUI.animate(info);

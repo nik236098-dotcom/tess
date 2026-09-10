@@ -62,7 +62,8 @@ test('opening the Tower select does not destroy it; a change updates tiles, payo
   assert.equal(h.state.ag.options.tower.level,'medium');
   assert.match(h.$('ag-stage').innerHTML,/--ag-columns:3/);
   assert.match(settings.innerHTML,/value="medium" selected/);
-  assert.match(h.$('ag-paytable').innerHTML,/1.47×/);
+  assert.equal(h.$('ag-paytable').innerHTML,'');
+  assert.match(h.$('ag-stage').innerHTML,/class="ag-floor-pay">1.47×/);
   assert.match(h.$('ag-limit').textContent,/\$1000.00/);
   h.state.balance=200000;
   h.maxButton.listeners.click();assert.equal(h.$('ag-amount').value,'1000,00');

@@ -12,7 +12,7 @@ function setup(){
 }
 function settings(){
  const a=state.ag,g=current(),options=a.options[a.game],disabled=agLocked()||a.info?.phase==='play',attr=disabled?'disabled':'';
- const artLabel=(name,value,prefix)=>a.game==='coin'?coinFace(value,prefix)+`<span>${name}</span>`:a.game==='rps'?DuelArt.hand(value,prefix)+`<span>${name}</span>`:a.game==='race'?`<i class="rc-choice-mark" style="--car-color:${RaceScene.carColors[value]}" aria-hidden="true"></i><span>№${Number(value)+1}</span>`:name;
+ const artLabel=(name,value,prefix)=>a.game==='coin'?coinFace(value,prefix)+`<span>${name}</span>`:a.game==='rps'?DuelArt.hand(value,prefix)+`<span>${name}</span>`:a.game==='race'?`<i class="rc-choice-mark" style="--car-color:${RaceScene.carColors[value]}" aria-hidden="true"></i><span>№${Number(value)+1}</span>`:a.game==='andar'?`<span>${value==='andar'?'Andar':'Bahar'}</span><small>${agNumber(g.table[value==='andar'?0:1][1])}×</small>`:name;
  if(a.info?.phase==='play'&&['coin','rps'].includes(a.game)){
   return `<div class="cg-choices g-live-choices">${g.choices.map(([label,i])=>button(artLabel(label,i,'live-'+a.game+'-'+i),i,agLocked())).join('')}</div>`;
  }
@@ -25,7 +25,7 @@ function seriesTable(game,options){
  else max=20;
  return Array.from({length:max},(_,i)=>{p*=size?(size-bad-i)/(size-i):game==='coin'||game==='rps'?.5:.8;return Math.floor((.98/p+1e-10)*100)/100;});
 }
-function paytable(){const a=state.ag,g=current();if(['race','fishing'].includes(a.game))return '';const table=g.series?seriesTable(a.game,a.options[a.game]).map((n,i)=>[`${i+1} шаг`,n]):g.table;const step=(a.animating?a.cgPrevious:a.info)?.step||0;return (table||[]).map(([label,value],i)=>`<span class="ag-pay is-positive" ${g.series&&i===Math.max(0,step-1)?'aria-current="step"':''}><small>${label}</small><b>${agNumber(value)}×</b></span>`).join('');}
+function paytable(){const a=state.ag,g=current();if(['race','fishing','andar'].includes(a.game))return '';const table=g.series?seriesTable(a.game,a.options[a.game]).map((n,i)=>[`${i+1} шаг`,n]):g.table;const step=(a.animating?a.cgPrevious:a.info)?.step||0;return (table||[]).map(([label,value],i)=>`<span class="ag-pay is-positive" ${g.series&&i===Math.max(0,step-1)?'aria-current="step"':''}><small>${label}</small><b>${agNumber(value)}×</b></span>`).join('');}
 function afterRender(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',pending=info?.phase==='done'&&!info.settled,main=$('ag-main');
  $('ag-title').classList.toggle('ag-long-title',g.name.length>15);
@@ -177,14 +177,14 @@ function rpsBoard(info,animating){
 }
 const slotSymbol=n=>`<span class="cs-symbol cs-symbol-${n}" role="img" aria-label="${['Рубин','Колокол','Виноград','Звезда','Семёрка','Крокодил'][n]}"></span>`;
 function andarCard(c){
- if(!c)return `<span class="ab-card-back" role="img" aria-label="Рубашка карты"><svg viewBox="0 0 100 144" aria-hidden="true"><rect x="6" y="6" width="88" height="132" rx="3" fill="none" stroke="#b4c9f2"/><rect x="10" y="10" width="80" height="124" rx="2" fill="none" stroke="#769ada"/><path d="M50 16Q18 29 16 72Q18 115 50 128Q82 115 84 72Q82 29 50 16ZM50 26 76 72 50 118 24 72ZM16 16 84 128M84 16 16 128" fill="none" stroke="#9bb9e8" stroke-width=".8"/><g fill="none" stroke="#9bb9e8" stroke-width=".8">${Array.from({length:8},(_,i)=>`<ellipse cx="50" cy="72" rx="12" ry="40" transform="rotate(${i*22.5} 50 72)"/>`).join('')}</g><path d="m50 59 9 13-9 13-9-13Z" fill="#abc9f0"/></svg></span>`;
+ if(!c)return `<span class="ab-card-back" role="img" aria-label="Рубашка карты"><svg viewBox="0 0 100 144" aria-hidden="true"><rect x="6" y="6" width="88" height="132" rx="3" fill="none" stroke="#d2bee9"/><rect x="10" y="10" width="80" height="124" rx="2" fill="none" stroke="#a78cc4"/><path d="M50 16Q18 29 16 72Q18 115 50 128Q82 115 84 72Q82 29 50 16ZM50 26 76 72 50 118 24 72ZM16 16 84 128M84 16 16 128" fill="none" stroke="#bda4d8" stroke-width=".8"/><g fill="none" stroke="#bda4d8" stroke-width=".8">${Array.from({length:8},(_,i)=>`<ellipse cx="50" cy="72" rx="12" ry="40" transform="rotate(${i*22.5} 50 72)"/>`).join('')}</g><path d="m50 59 9 13-9 13-9-13Z" fill="#d6beed"/></svg></span>`;
  const rank=({14:'A',13:'K',12:'Q',11:'J'})[c.rank]||String(c.rank),suit={s:'♠',c:'♣',h:'♥',d:'♦'}[c.suit];
- return `<span class="ab-card-art${c.suit==='h'||c.suit==='d'?' is-red':''}" role="img" aria-label="${videoCardName(c,0)}"><span class="ab-rank">${rank}</span><span class="ab-suit-sm">${suit}</span><span class="ab-suit">${suit}</span></span>`;
+ return `<span class="ab-card-art${c.suit==='h'||c.suit==='d'?' is-red':''}" role="img" aria-label="${videoCardName(c,0)}"><span class="ab-rank">${rank}</span><span class="ab-suit-sm">${suit}</span><span class="ab-suit">${suit}</span><span class="ab-corner-bottom">${rank}<i>${suit}</i></span></span>`;
 }
 function andarPile(pile){return pile.length?`<span class="ab-pile-card${pile.length>1?' is-stacked':''}${pile.length>2?' is-deep':''}">${andarCard(pile.at(-1))}</span>`:'';}
 function andarBoard(info,animating){
  const d=info?.detail,done=info?.phase==='done'&&!animating;
- return `<div class="ab-panel"><div class="cg-andar"><span class="ab-center-label">Главная карта</span><div class="cg-center-card">${andarCard(d?.center)}</div><div class="ab-deck">${andarCard(null)}</div><div class="cg-andar-sides">${['andar','bahar'].map((side,i)=>{const pile=done?d.dealt.filter((_,n)=>n%2===i):[];return `<div class="${done&&d.winner===side?'is-winner':''}" data-cg-side="${i}"><b>${i?'БАХАР':'АНДАР'}</b><div class="cg-small-card" id="cg-andar-${i}">${andarPile(pile)}</div><small id="cg-andar-count-${i}">${done&&d.winner===side?'✓ Совпадение':pile.length?pile.length+' карт':'Ждём раздачу'}</small></div>`;}).join('')}</div><div class="cg-flying-card" id="cg-flying-card"></div></div><div class="ab-result" role="status" aria-live="polite"><div><small>Результат</small><b>${done?d.winner==='andar'?'Андар':'Бахар':animating?'Раздача…':'—'}</b></div><div><small>Выплата</small><b>${done?money(info.payout):'—'}</b></div></div></div>`;
+ return `<div class="ab-panel"><div class="cg-andar"><span class="ab-center-label">Главная карта</span><div class="cg-center-card">${andarCard(d?.center)}</div><div class="ab-deck">${andarCard(null)}</div><div class="cg-andar-sides">${['andar','bahar'].map((side,i)=>{const pile=done?d.dealt.filter((_,n)=>n%2===i):[];return `<div class="${done&&d.winner===side?'is-winner':''}" data-cg-side="${i}"><b>${i?'BAHAR':'ANDAR'}</b><div class="cg-small-card" id="cg-andar-${i}">${andarPile(pile)}</div><small id="cg-andar-count-${i}">${done&&d.winner===side?'✓ Совпадение':pile.length?pile.length+' карт':'Ждём раздачу'}</small></div>`;}).join('')}</div><div class="cg-flying-card" id="cg-flying-card"></div></div><div class="ab-result" role="status" aria-live="polite"><div><small>Результат</small><b>${done?d.winner==='andar'?'Андар':'Бахар':animating?'Раздача…':'На какой стороне совпадёт ранг?'}</b></div><div><small>Выплата</small><b>${done?money(info.payout):'—'}</b></div></div></div>`;
 }
 function board(){
  const a=state.ag,g=current(),info=a.info,live=info?.phase==='play',locked=agLocked(),d=info?.detail,done=info?.phase==='done'&&!a.animating,step=info?.step||0;
@@ -234,8 +234,8 @@ function paint(info,t){
  if(game==='slots'&&a.animating)f.reels.forEach((r,i)=>{transform(`[data-cg-reel="${i}"]`,`translateY(${(r.position-18)/21*100}%)`);toggle(`[data-cg-reel="${i}"]`,'is-spinning',!r.settled);});
  if(game==='andar'){
   const count=t===1?d.dealt?.length||0:f.count;
-  for(let side=0;side<2;side++){const pile=(d.dealt||[]).slice(0,count).filter((_,i)=>i%2===side),node=el('#cg-andar-'+side),label=el('#cg-andar-count-'+side);if(node&&node.dataset.count!==String(pile.length)){node.innerHTML=andarPile(pile);node.dataset.count=String(pile.length);}if(label)label.textContent=pile.length+' карт';}
-  const moving=el('#cg-flying-card');if(moving){const c=d.dealt?.[f.index];if(moving.dataset.index!==String(f.index)){moving.innerHTML=andarCard(c);moving.dataset.index=String(f.index);}moving.style.opacity=t<.15||f.complete?0:1;const u=f.flight*f.flight*(3-2*f.flight);moving.style.left=(64+((f.index%2?75:25)-64)*u)+'%';moving.style.top=(26+44*u-5*Math.sin(u*Math.PI))+'%';moving.style.transform=`translate(-50%,-50%) rotate(0deg)`;}
+  for(let side=0;side<2;side++){const pile=(d.dealt||[]).slice(0,count).filter((_,i)=>i%2===side),node=el('#cg-andar-'+side),label=el('#cg-andar-count-'+side);if(node&&node.dataset.count!==String(pile.length)){node.innerHTML=andarPile(pile);node.dataset.count=String(pile.length);}if(label)label.textContent=t===1&&d.winner===['andar','bahar'][side]?'✓ Совпадение · '+pile.length:pile.length+' карт';}
+  const moving=el('#cg-flying-card');if(moving){const c=d.dealt?.[f.index];if(moving.dataset.index!==String(f.index)){moving.innerHTML=andarCard(c);moving.dataset.index=String(f.index);}moving.style.opacity=t<.15||f.complete?0:1;const u=f.flight*f.flight*(3-2*f.flight);moving.style.left=(86+((f.index%2?75:25)-86)*u)+'%';moving.style.top=(25+50*u-5*Math.sin(u*Math.PI))+'%';moving.style.transform=`translate(-50%,-50%) rotate(0deg)`;}
  }
 
  if(game==='darts')DartsScene.paint(stage,f,info);

@@ -10,12 +10,19 @@
     for(const id of ['screen-bj','screen-bc','screen-rl']){const screen=document.getElementById(id);if(screen)tables.observe(screen);}
     const viewport=document.getElementById('ag-scene-viewport'),stage=document.getElementById('ag-stage');
     if(!viewport||!stage)return;
-    let frame=0;
+    let frame=0,towerSize='';
     function fit(){
       frame=0;const width=viewport.clientWidth,height=viewport.clientHeight;
       if(!width||!height)return;
       stage.style.width=width+'px';
       stage.style.setProperty('--scene-height',height+'px');
+      if(stage.classList.contains('ag-tower')){
+        stage.style.transform='translate(-50%,-50%)';
+        const size=width+':'+height;
+        if(towerSize!==size){towerSize=size;if(typeof agScrollTower==='function')agScrollTower('auto');}
+        return;
+      }
+      towerSize='';
       const natural=stage.scrollHeight;
       const scale=Math.min(1,height/Math.max(1,natural));
       stage.style.transform=`translate(-50%,-50%) scale(${scale})`;

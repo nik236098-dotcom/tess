@@ -19,3 +19,8 @@
 #screen-ag.is-race .ag-choice { display:flex; flex-direction:column; gap:5px; align-items:center; font-size:15px; }
 .rc-choice-mark { display:block; width:22px; height:7px; border-radius:4px; background:var(--car-color); box-shadow:inset 0 1px 0 #ffffff88; }
 @media(prefers-reduced-motion:reduce) { .rc-car { will-change:auto; } }
+
+.rc-viewport { position:relative; flex:1; min-height:0; overflow:hidden; }
+.rc-canvas { display:block; width:100%; height:100%; }
+.rc-viewport .rc-fallback { position:absolute; inset:0; width:100%; height:100%; }
+.rc-has-canvas .rc-fallback { display:none; }

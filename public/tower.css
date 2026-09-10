@@ -1,0 +1,15 @@
+/* A real scroll viewport: large floors climb past the fixed betting controls. */
+#screen-ag.game-standard .ag-stage.ag-tower { height:var(--scene-height,400px); overflow:hidden; }
+.ag-tower .ag-tower-scroll { height:100%; padding:0 3px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#6b5a9955 transparent; }
+.ag-tower .ag-tower-scroll:focus-visible { outline:1px solid #a994ef; outline-offset:-2px; border-radius:10px; }
+.ag-tower .ag-tower-rows { gap:12px; padding:14px 0; }
+.ag-tower .ag-floor { grid-template-columns:16px repeat(var(--ag-columns,4),minmax(0,1fr)) 69px; min-height:90px; gap:7px; padding:7px 4px; border-radius:15px; }
+.ag-tower .ag-floor-label { color:#9e94bd; font-size:13px; }
+.ag-tower .ag-floor-pay { color:#cfc4ed; font-size:13px; font-variant-numeric:tabular-nums; }
+.ag-tower .ag-tile { height:72px; min-height:72px; border-radius:13px; font-size:30px; box-shadow:inset 0 1px 0 #ffffff0b,0 3px 7px #0002; }
+.ag-tower .ag-floor.is-current { border-color:#a18ae066; background:#8c6bef12; }
+.ag-tower .ag-floor.is-current .ag-tile { border-color:#b49aea99; background:linear-gradient(155deg,#5c478a,#362957); color:#e9d9ff; }
+.ag-tower .ag-floor.is-current .ag-floor-pay { color:#f1e8ff; }
+.ag-tower .ag-tile.is-safe { background:linear-gradient(155deg,#39685c,#243e3c); border-color:#65ba9c; color:#a8f3cf; }
+.ag-tower .ag-tile.is-trap { color:#e4a1b0; background:#41273b; border-color:#915368; }
+@media(max-width:350px) { .ag-tower .ag-floor { grid-template-columns:12px repeat(var(--ag-columns,4),minmax(0,1fr)) 61px; gap:5px; padding-inline:2px; }.ag-tower .ag-floor-pay { font-size:11px; } }

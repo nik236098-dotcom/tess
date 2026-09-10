@@ -1,0 +1,36 @@
+/* Classic cards dealt directly on the same midnight canvas as every game. */
+#screen-ag.is-andar.game-surface .ab-panel { overflow:visible; }
+#screen-ag.is-andar.game-surface .cg-andar { height:max(220px,var(--scene-height,410px)); aspect-ratio:auto; border:0; border-radius:0; background:none; box-shadow:none; }
+#screen-ag.is-andar.game-surface .cg-andar::before,
+#screen-ag.is-andar.game-surface .cg-andar::after { content:none; display:none; }
+#screen-ag.is-andar .ab-center-label { top:max(0px,calc(25% - 15.2cqw - 20px)); color:#b6accd; font:500 12px var(--font); }
+#screen-ag.is-andar .cg-center-card { left:39.5%; top:25%; width:21%; height:auto; aspect-ratio:169.075/244.640; transform:translateY(-50%); }
+#screen-ag.is-andar .ab-deck { top:25%; left:75.5%; width:21%; transform:translateY(-50%); border-radius:7px; box-shadow:-1px 2px #d2c7e5,-3px 4px #85739e,-5px 6px #443953; }
+
+#screen-ag.is-andar .ab-card-back { border:2px solid #d5c7ed; border-radius:7px; background:repeating-linear-gradient(45deg,#c4a8ed09 0 1px,transparent 1px 4px),linear-gradient(145deg,#655089,#332749); box-shadow:inset 0 0 0 1px #8d76ad; }
+#screen-ag.is-andar .ab-card-art { border-radius:7px; background:linear-gradient(155deg,#fff,#f4f1f7); color:#191724; box-shadow:0 4px 8px #06061555,inset 0 0 0 1px #fff8; }
+#screen-ag.is-andar .ab-card-art.is-red { color:#c91c3f; }
+#screen-ag.is-andar .ab-rank { font:700 31cqw/1 Georgia,serif; }
+#screen-ag.is-andar .ab-suit-sm { top:26%; font-size:22cqw; }
+#screen-ag.is-andar .ab-suit { top:51%; font-size:64cqw; }
+.ab-corner-bottom { position:absolute; right:8%; bottom:5%; display:flex; flex-direction:column; align-items:center; transform:rotate(180deg); font:700 27cqw/1 Georgia,serif; }
+.ab-corner-bottom i { font:20cqw/1 Georgia,serif; }
+#screen-ag.is-andar .cg-andar-sides { left:0; right:0; top:48%; height:52%; gap:0; }
+#screen-ag.is-andar .cg-andar-sides > div { padding:0; background:none; border:0; border-radius:0; box-shadow:none; }
+#screen-ag.is-andar .cg-andar-sides b { color:#c9bfdd; font:700 14px var(--font); letter-spacing:1.3px; }
+#screen-ag.is-andar .cg-small-card { top:51.923%; left:50%; width:42%; height:auto; aspect-ratio:169.075/244.640; transform:translate(-50%,-50%); }
+#screen-ag.is-andar .cg-small-card:empty::before { content:'♧'; position:absolute; inset:0; display:grid; place-items:center; color:#61517155; font:42px Georgia,serif; }
+#screen-ag.is-andar .cg-andar-sides small { bottom:0; color:#a196b5; }
+#screen-ag.is-andar .cg-andar-sides .is-winner { border:0; background:none; box-shadow:none; }
+#screen-ag.is-andar .cg-andar-sides .is-winner b { color:#f2cf86; }
+#screen-ag.is-andar .cg-andar-sides .is-winner .cg-small-card { filter:drop-shadow(0 0 8px #ac80e44d); }
+#screen-ag.is-andar .cg-andar-sides .is-winner small { color:#ccbae6; }
+#screen-ag.is-andar .cg-flying-card { width:21%; left:86%; top:25%; }
+#screen-ag.is-andar .ab-result { min-height:28px; margin-top:6px; padding:0!important; color:#cfc3e6; }
+#screen-ag.is-andar .ab-result b { font:600 15px var(--font)!important; color:#cfc3e6; }
+
+#screen-ag.is-andar .ag-choice { display:flex; flex-direction:column; align-items:center; gap:4px; }
+#screen-ag.is-andar .ag-choice small { font:700 15px var(--font); color:inherit; }
+
+/* The matched side is highlighted on the cards; the shared overlay reports the result. */
+#screen-ag.is-andar.game-standard .ab-result { display:none!important; }
