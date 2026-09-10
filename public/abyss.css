@@ -172,3 +172,11 @@
 .ax-bonus-rays { background:repeating-conic-gradient(from 5deg,transparent 0deg 14deg,#64def530 18deg 23deg,transparent 28deg 40deg); }
 .ax-bonus-particles i { width:calc(5px + var(--i)*.6px); height:calc(5px + var(--i)*.6px); border:1px solid #82d9ff99; background:radial-gradient(circle at 30% 25%,#ccf6ffb0,#496dc329 55%,#ae8cff80); box-shadow:0 0 9px #68bfff80; }
 @media(max-height:700px) { .ax-console-readout { padding-bottom:8px; }.ax-utilities { margin-top:0; }.ax-celebration .ax-confirm,.ax-bonus-intro .ax-confirm { margin-top:16px; } }
+
+.ax-buy-stake { margin:18px auto 12px; max-width:290px; }
+.ax-buy-stake label { display:block; margin-bottom:8px; color:#a6bfd1; font:400 12px var(--font); }
+.ax-buy-stake > div { display:flex; align-items:center; gap:12px; }
+.ax-buy-stake button { flex:0 0 44px; height:44px; border:0; border-radius:50%; background:#8e78ea26; color:#d7caff; font-size:26px; touch-action:manipulation; }
+.ax-buy-stake button:disabled { opacity:.3; cursor:default; }
+.ax-buy-stake select { min-width:0; flex:1; height:44px; color:#fff; color-scheme:dark; background:#102238; border:1px solid #6986a355; border-radius:10px; padding:0 10px; text-align:center; font:700 19px var(--font); }
+.ax-buy-stake select:focus-visible { outline:2px solid #c1e9ff; outline-offset:3px; }

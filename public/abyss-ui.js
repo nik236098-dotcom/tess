@@ -112,14 +112,14 @@ const AbyssUI=(()=>{
  }
  function close(focus=true){const node=document.getElementById('ax-dialog');if(node)node.remove();if(focus)returnFocus?.focus();returnFocus=null;}
  function show(kind){
-  close(false);returnFocus=document.activeElement;
+  const previousFocus=returnFocus||document.activeElement;close(false);returnFocus=previousFocus;
   const info=state.ag.info;if(!info)return;
   let body='';
   if(kind==='menu'){body=`<h2>Настройки слота</h2><div class="ax-menu-list"><button type="button" data-ax="sound"><span>Музыка и эффекты</span><b>${sound.settings().muted?'Выкл':'›'}</b></button><button type="button" data-ax="rules"><span>Правила и выплаты</span><b>›</b></button>${state.isAdmin&&info.phase!=='play'&&info.settled!==false?'<button type="button" data-ax="test-bonus"><span>Тест бонуса · Wild + Scatter</span><b>›</b></button>':''}</div>`;}
   else if(kind==='sound'){const p=sound.settings();body=`<h2>Звук погружения</h2><button type="button" data-ax="mute" class="ax-confirm">${p.muted?'Включить звук':'Выключить звук'}</button><label class="ax-volume">Музыка<input data-ax-volume="music" type="range" min="0" max="100" value="${Math.round(p.music*100)}"></label><label class="ax-volume">Эффекты<input data-ax-volume="effects" type="range" min="0" max="100" value="${Math.round(p.effects*100)}"></label>`;}
   else if(kind==='stake')body=`<h2>Ставка за вращение</h2><div class="ax-stake-summary"><small>Выбрано</small><strong>${money(bet)}</strong><span>Bonus Buy · ${money(bet*R.buyCost)}</span></div><p>Полная стоимость · все 20 линий</p><div class="ax-stakes">${R.stakes.map(n=>`<button type="button" data-ax-stake="${n}" aria-pressed="${n===bet}">${money(n)}</button>`).join('')}</div>`;
   else if(kind==='test-bonus')body=`<h2>Тест бонуса · Wild + Scatter</h2><p>Только для администратора. Три Scatter откроют 8 бесплатных вращений. В тесте чаще выпадают Wild и повторные Scatter: комбинации повышают множитель, а Scatter добавляют вращения. Поля случайные, максимум не гарантирован.</p><div class="ax-price"><span>Стоимость запуска · ${money(bet)} × 100</span><strong>${money(bet*R.buyCost)}</strong></div><p>С баланса спишется стоимость бонуса; фактический выигрыш будет зачислен после завершения, максимум ${money(bet*R.maxWin)}. Следующий обычный бонус работает со стандартными вероятностями.</p><button type="button" data-ax="confirm-test" class="ax-confirm" ${bet*R.buyCost>state.balance?'disabled':''}>Запустить тест</button>`;
-  else if(kind==='buy')body=`<img class="ax-dialog-art" src="/img/abyss/scatter.webp" alt=""><h2>Сигнал из глубины</h2><p>8 бесплатных вращений<br>Растущий множитель до 10×</p><div class="ax-price"><span>Ставка ${money(bet)} × 100</span><strong>${money(bet*R.buyCost)}</strong></div><p>Эта сумма будет списана с баланса. Покупка не гарантирует выигрыш.</p><button type="button" data-ax="confirm-buy" class="ax-confirm" ${bet*R.buyCost>state.balance?'disabled':''}>${bet*R.buyCost>state.balance?'Недостаточно средств':'Купить за '+money(bet*R.buyCost)}</button>`;
+  else if(kind==='buy')body=`<img class="ax-dialog-art" src="/img/abyss/scatter.webp" alt=""><h2>Сигнал из глубины</h2><p>8 бесплатных вращений<br>Растущий множитель до 10×</p><div class="ax-buy-stake"><label for="ax-buy-unit">Ставка за вращение</label><div><button type="button" data-ax="buy-minus" aria-label="Уменьшить ставку бонуса" ${bet===R.stakes[0]?'disabled':''}>−</button><select id="ax-buy-unit" aria-label="Ставка бонуса">${R.stakes.map(n=>`<option value="${n}" ${n===bet?'selected':''}>${money(n)}</option>`).join('')}</select><button type="button" data-ax="buy-plus" aria-label="Увеличить ставку бонуса" ${bet===R.stakes.at(-1)?'disabled':''}>+</button></div></div><div class="ax-price" aria-live="polite"><span>Стоимость бонуса · ${money(bet)} × ${R.buyCost}</span><strong>${money(bet*R.buyCost)}</strong></div><p>Эта сумма будет списана с баланса. Покупка не гарантирует выигрыш.</p><button type="button" data-ax="confirm-buy" class="ax-confirm" ${bet*R.buyCost>state.balance?'disabled':''}>${bet*R.buyCost>state.balance?'Недостаточно средств':'Купить за '+money(bet*R.buyCost)}</button>`;
   else if(kind==='bonus')body=`<div class="ax-bonus-rays" aria-hidden="true"></div><div class="ax-bonus-particles" aria-hidden="true">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div><h2>ВЫ ВЫИГРАЛИ</h2><div class="ax-bonus-count">${info.bonus.remaining}</div><p class="ax-bonus-label">бесплатных вращений</p><button type="button" data-ax="spin" class="ax-confirm">Нажмите, чтобы начать</button>`;
   else body=`<h2>Символы и выплаты</h2><p>За 3 / 4 / 5 подряд слева направо.<br>Множители ниже — от ставки одной линии.</p><div class="ax-payments">${R.symbols.slice(0,9).map(s=>`<div><img src="/img/abyss/${s.id}.webp" alt=""><span>${s.name}</span><b>${s.pay.join(' / ')}×</b></div>`).join('')}</div><h3>20 выигрышных линий</h3><div class="ax-payline-guide">${R.lines.map((line,i)=>`<div><small>${i+1}</small><svg viewBox="0 0 100 60" aria-label="Линия ${i+1}"><polyline points="${line.map((row,col)=>`${col*20+10},${row*20+10}`).join(' ')}"/></svg></div>`).join('')}</div><p>${$('ag-rules-text').textContent}</p>`;
   const overlay=document.createElement('div');overlay.id='ax-dialog';overlay.className='ax-dialog'+(kind==='bonus'?' ax-bonus-intro':'');if(kind==='bonus')overlay.dataset.ax='spin';overlay.innerHTML=`<section role="dialog" aria-modal="true" aria-label="${kind==='stake'?'Выбор ставки':kind==='buy'?'Покупка бонуса':'Abyss Protocol'}">${kind==='bonus'?'':'<button type="button" class="ax-close" data-ax="close" aria-label="Закрыть">×</button>'}${body}</section>`;$('screen-ag').appendChild(overlay);overlay.querySelector('button:not(:disabled)')?.focus();
@@ -139,6 +139,7 @@ const AbyssUI=(()=>{
   if(state.ag.info?.phase==='play'||state.ag.info?.settled===false)return;
   if(action==='test-bonus'){if(state.isAdmin)show(action);return;}
   if(action==='stake'||action==='buy'){show(action);return;}
+  if(action==='buy-minus'||action==='buy-plus'){const index=R.stakes.indexOf(bet);changeBuyStake(R.stakes[index+(action==='buy-plus'?1:-1)],action);return;}
   if(action==='confirm-buy'||action==='confirm-test'){
    if(action==='confirm-test'&&!state.isAdmin)return;
    if(bet*R.buyCost>state.balance||!ready)return;
@@ -147,6 +148,14 @@ const AbyssUI=(()=>{
   const index=R.stakes.indexOf(bet),chosen=button.dataset.axStake?Number(button.dataset.axStake):R.stakes[Math.max(0,Math.min(R.stakes.length-1,index+(action==='plus'?1:-1)))];
   if(R.stakes.includes(chosen)){bet=chosen;prefs();close();render(false);}
  });
+ function changeBuyStake(value,focusAction){
+  if(state.ag.game!=='abyss'||agLocked()||entering||celebrating||state.ag.info?.phase==='play'||state.ag.info?.settled===false||!R.stakes.includes(value))return;
+  bet=value;prefs();render(false);show('buy');
+  const dialog=document.getElementById('ax-dialog');
+  const target=focusAction?dialog?.querySelector(`[data-ax="${focusAction}"]:not(:disabled)`):null;
+  (target||dialog?.querySelector('#ax-buy-unit'))?.focus();
+ }
+ document.addEventListener('change',event=>{if(event.target.id==='ax-buy-unit')changeBuyStake(Number(event.target.value));});
  document.addEventListener('input',event=>{const kind=event.target.dataset?.axVolume;if(state.ag.game==='abyss'&&['music','effects'].includes(kind))sound.configure({[kind]:Number(event.target.value)/100});});
  document.addEventListener('keydown',event=>{
   if(celebrating&&event.key==='Tab'){event.preventDefault();document.querySelector('[data-ax=finish-win]')?.focus();return;}
