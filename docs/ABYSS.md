@@ -70,3 +70,7 @@ Verification: 29 Abyss tests pass, including counter timing, first/second tap, m
 Large wins now play a dedicated major-key fanfare, with additional bell/harmonic layers for MEGA and EPIC. This cue is distinct from the ordinary payout and bonus-entry sounds. The current Abyss test suite has 31 passing tests.
 
 BIG/MEGA/EPIC also announce their title using an available English device speech voice, preferring a natural/male voice when present. Voice follows effects volume, mute and leaving the game. Speech synthesis is optional: unsupported browsers retain the musical fanfare. Voice timbre/availability depends on the device; this is not a bundled studio recording.
+
+## Soundtrack revision after listening feedback
+
+Removed the short triangle arpeggio, high bell pulse and repeated spin-start melody. Base and bonus now share sustained minor/add9 pad voicings with slow attacks, subtle detuned layers, drifting low-pass filtering and a low bass bed. Bonus adds rounded low kick, muted tonal percussion and a sparse sustained lead. No noise samples or chip-wave music are used. Scatter cues and spoken win announcements remain separate from the music. Programmatic tests cover audio lifecycle and scheduling; the mix has not been auditioned on the user's phone.

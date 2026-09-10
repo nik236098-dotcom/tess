@@ -8,8 +8,27 @@
   function allowed(){return active&&!settings.muted&&ctx?.state==='running'&&!env.document?.hidden;}
   function track(source,nodes=[]){voices.add(source);source.onended=()=>{voices.delete(source);for(const n of [source,...nodes])try{n.disconnect();}catch{}};return source;}
   function stopVoice(v){if(v)try{v.stop();}catch{}}
-  function tone(freq,at,duration,level=.1,bus=effects,type='sine'){
-   if(!allowed())return null;const o=ctx.createOscillator(),g=ctx.createGain();o.type=type;o.frequency.setValueAtTime(freq,at);g.gain.setValueAtTime(.0001,at);g.gain.exponentialRampToValueAtTime(Math.max(.0002,level),at+.025);g.gain.exponentialRampToValueAtTime(.0001,at+duration);o.connect(g);g.connect(bus);if(bus===effects)g.connect(verb);track(o,[g]);o.start(at);o.stop(at+duration+.04);return o;
+  function tone(freq,at,duration,level=.1,bus=effects,type='sine',attack=.025,sustain=false){
+   if(!allowed())return null;
+   const o=ctx.createOscillator(),g=ctx.createGain(),peak=Math.max(.0002,level),nodes=[g];
+   o.type=type;o.frequency.setValueAtTime(freq,at);
+   g.gain.setValueAtTime(.0001,at);g.gain.exponentialRampToValueAtTime(peak,at+attack);
+   if(sustain)g.gain.setValueAtTime(peak*.85,at+duration*.58);
+   g.gain.exponentialRampToValueAtTime(.0001,at+duration);o.connect(g);
+   if(sustain){
+    const filter=ctx.createBiquadFilter();filter.type='lowpass';filter.frequency.setValueAtTime(900,at);filter.frequency.linearRampToValueAtTime(650,at+duration);filter.Q.value=.35;
+    g.connect(filter);filter.connect(bus);nodes.push(filter);
+    o.frequency.linearRampToValueAtTime(freq*1.001,at+duration);
+   }else g.connect(bus);
+   if(bus===effects)g.connect(verb);
+   track(o,nodes);o.start(at);o.stop(at+duration+.04);return o;
+  }
+  function pad(notes,at,bus,level){
+   for(const f of notes){
+    tone(f,at,5.8,level,bus,'sine',1.1,true);
+    tone(f*.9985,at+.06,5.65,level*.35,bus,'sine',1.25,true);
+    tone(f*2,at+.12,5.4,level*.16,bus,'sine',1.4,true);
+   }
   }
   function reelMotor(){
    if(!allowed())return null;
@@ -29,15 +48,24 @@
   }
   function chord(notes,level=.075,spacing=.08,duration=1.1){if(!allowed())return;notes.forEach((f,i)=>tone(f,ctx.currentTime+i*spacing,duration,level));}
   function ambience(){
-   if(!allowed())return;const now=ctx.currentTime,bases=[73.416,65.406,58.27,65.406],base=bases[Math.floor(step/4)%4];
-   [1,1.5,2.4].forEach((r,i)=>tone(base*r,now+i*.12,4.5,.075,baseMusic));
-   const notes=[293.665,440,349.228,523.251,440,349.228,261.626,329.628];tone(notes[step%8],now+.35,2.7,.026,baseMusic);
-   // 100 BPM feature: major arpeggio, bell melody and clean tonal percussion.
-   const bar=Math.floor(step/2)%4,root=[146.832,195.998,220,164.814][bar],third=bar===3?1.2:1.25;
-   const pattern=[2,2*third,3,4,3,2*third,2,3];
-   pattern.forEach((ratio,i)=>{tone(root*ratio,now+i*.3,.42,.045,bonusMusic,'triangle');if(i%2===0)tone(root*ratio*2,now+i*.3,.65,.016,bonusMusic);});
-   [0,.6,1.2,1.8].forEach(at=>{tone(root/2,now+at,.22,.075,bonusMusic);tone(880,now+at+.3,.075,.016,bonusMusic);});
-   [1,third,1.5].forEach(r=>tone(root*r,now,2.4,.025,bonusMusic));step++;
+   if(!allowed())return;const now=ctx.currentTime,bar=Math.floor(step/2)%4;
+   // Sustained minor/add9 voicings, slowly moving layered pads: no chip arpeggio.
+   const chords=[[146.832,174.614,220,329.628],[130.813,164.814,195.998,293.665],[116.541,146.832,174.614,261.626],[130.813,174.614,195.998,293.665]];
+   if(step%2===0){
+    pad(chords[bar],now,baseMusic,.022);
+    pad(chords[bar],now,bonusMusic,.035);
+    tone(chords[bar][0]/2,now,5.5,.055,baseMusic,'sine',.65,true);
+    // A sparse, soft lead floats above the bonus bed instead of eighth-note bells.
+    tone([440,392,349.228,391.995][bar],now+.45,3.8,.028,bonusMusic,'sine',.45,true);
+   }
+   // Rounded low kick and muted percussion provide energy without bright bleeps or noise.
+   [0,.6,1.2,1.8].forEach(at=>{
+    const kick=tone(105,now+at,.32,.14,bonusMusic,'sine',.009);
+    kick?.frequency.exponentialRampToValueAtTime(48,now+at+.16);
+    tone(chords[bar][0]/2,now+at+.22,.48,.055,bonusMusic,'sine',.055);
+   });
+   [.61,1.81].forEach(at=>{tone(185,now+at,.11,.036,bonusMusic,'sine',.006);tone(310,now+at,.065,.012,bonusMusic,'sine',.006);});
+   step++;
   }
   function setMode(bonus){
    const next=bonus===true;if(next===featureMode)return;featureMode=next;
@@ -54,9 +82,9 @@
    if(ctx.state!=='running')ctx.resume()?.then(begin).catch(()=>{});else begin();
    }catch{} // Sound support never affects a wager.
   }
-  function halt(){if(announcement){try{env.speechSynthesis.cancel();}catch{}announcement=null;}active=false;env.clearInterval(loop);loop=0;for(const v of [...voices])stopVoice(v);voices.clear();spinVoice=null;tension=null;if(ctx?.state==='running')ctx.suspend()?.catch(()=>{});}
+  function halt(){if(announcement){try{env.speechSynthesis.cancel();}catch{}announcement=null;}active=false;env.clearInterval(loop);loop=0;step=0;for(const v of [...voices])stopVoice(v);voices.clear();spinVoice=null;tension=null;if(ctx?.state==='running')ctx.suspend()?.catch(()=>{});}
   function configure(p){for(const k of ['music','effects'])if(Number.isFinite(p[k]))settings[k]=Math.max(0,Math.min(1,p[k]));if(typeof p.muted==='boolean')settings.muted=p.muted;save();if(settings.muted)halt();else unlock();}
-  function spinning(on){stopVoice(spinVoice);spinVoice=null;if(on){spinVoice=reelMotor();chord([293.665,440,587.33],.032,.045,.23);}}
+  function spinning(on){stopVoice(spinVoice);spinVoice=null;if(on)spinVoice=reelMotor();}
   function anticipation(on){if(!on){stopVoice(tension);tension=null;return;}if(tension||!allowed())return;tension=tone(220,ctx.currentTime,6,.12);if(tension)tension.frequency.exponentialRampToValueAtTime(740,ctx.currentTime+5);}
   function announce(text){
    if(!allowed()||settings.effects<=0||!env.speechSynthesis||!env.SpeechSynthesisUtterance)return;
