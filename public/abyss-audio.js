@@ -19,10 +19,10 @@
    for(let i=0;i<length;i++){
     const t=i/ctx.sampleRate,local=t%.08,hit=Math.floor(t/.08);
     const envelope=local<.028?Math.sin(Math.PI*local/.028)**2*Math.exp(-local*80):0;
-    d[i]=.035*Math.sin(2*Math.PI*100*t)+envelope*(.42*Math.sin(2*Math.PI*(240+hit%2*25)*local)+.10*Math.sin(2*Math.PI*480*local));
+    d[i]=.035*Math.sin(2*Math.PI*100*t)+envelope*(.42*Math.sin(2*Math.PI*(360+hit%2*40)*local)+.10*Math.sin(2*Math.PI*720*local));
    }
    const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();
-   source.buffer=b;source.loop=true;filter.type='lowpass';filter.frequency.value=850;filter.Q.value=.5;
+   source.buffer=b;source.loop=true;filter.type='lowpass';filter.frequency.value=1400;filter.Q.value=.5;
    gain.gain.setValueAtTime(.0001,ctx.currentTime);gain.gain.linearRampToValueAtTime(.18,ctx.currentTime+.07);
    source.connect(filter);filter.connect(gain);gain.connect(effects);track(source,[filter,gain]);source.start();
    return {stop(){gain.gain.cancelScheduledValues?.(ctx.currentTime);gain.gain.setValueAtTime(gain.gain.value,ctx.currentTime);gain.gain.linearRampToValueAtTime(.0001,ctx.currentTime+.045);source.stop(ctx.currentTime+.05);}};
@@ -32,12 +32,12 @@
    if(!allowed())return;const now=ctx.currentTime,bases=[73.416,65.406,58.27,65.406],base=bases[Math.floor(step/4)%4];
    [1,1.5,2.4].forEach((r,i)=>tone(base*r,now+i*.12,4.5,.075,baseMusic));
    const notes=[293.665,440,349.228,523.251,440,349.228,261.626,329.628];tone(notes[step%8],now+.35,2.7,.026,baseMusic);
-   // Bonus arrangement: a moving arpeggio and a low pulse, not a louder base loop.
-   const root=[146.832,130.813,116.541,130.813][Math.floor(step/2)%4];
-   const pattern=[1,1.5,2,2.4,3,2.4,2,1.5];
-   pattern.forEach((ratio,i)=>tone(root*ratio,now+i*.3,.48,.032,bonusMusic,'triangle'));
-   [0,.6,1.2,1.8].forEach(at=>tone(root/2,now+at,.24,.06,bonusMusic));
-   tone(root*2,now,3,.035,bonusMusic);step++;
+   // 100 BPM feature: major arpeggio, bell melody and clean tonal percussion.
+   const bar=Math.floor(step/2)%4,root=[146.832,195.998,220,164.814][bar],third=bar===3?1.2:1.25;
+   const pattern=[2,2*third,3,4,3,2*third,2,3];
+   pattern.forEach((ratio,i)=>{tone(root*ratio,now+i*.3,.42,.045,bonusMusic,'triangle');if(i%2===0)tone(root*ratio*2,now+i*.3,.65,.016,bonusMusic);});
+   [0,.6,1.2,1.8].forEach(at=>{tone(root/2,now+at,.22,.075,bonusMusic);tone(880,now+at+.3,.075,.016,bonusMusic);});
+   [1,third,1.5].forEach(r=>tone(root*r,now,2.4,.025,bonusMusic));step++;
   }
   function setMode(bonus){
    const next=bonus===true;if(next===featureMode)return;featureMode=next;
@@ -56,16 +56,16 @@
   }
   function halt(){active=false;env.clearInterval(loop);loop=0;for(const v of [...voices])stopVoice(v);voices.clear();spinVoice=null;tension=null;if(ctx?.state==='running')ctx.suspend()?.catch(()=>{});}
   function configure(p){for(const k of ['music','effects'])if(Number.isFinite(p[k]))settings[k]=Math.max(0,Math.min(1,p[k]));if(typeof p.muted==='boolean')settings.muted=p.muted;save();if(settings.muted)halt();else unlock();}
-  function spinning(on){stopVoice(spinVoice);spinVoice=null;if(on)spinVoice=reelMotor();}
+  function spinning(on){stopVoice(spinVoice);spinVoice=null;if(on){spinVoice=reelMotor();chord([293.665,440,587.33],.032,.045,.23);}}
   function anticipation(on){if(!on){stopVoice(tension);tension=null;return;}if(tension||!allowed())return;tension=tone(220,ctx.currentTime,6,.12);if(tension)tension.frequency.exponentialRampToValueAtTime(740,ctx.currentTime+5);}
   function play(kind,value=1){
    if(!allowed())return;
-   if(kind==='stop'){tone(150,ctx.currentTime,.085,.055);tone(300,ctx.currentTime,.055,.018);}
+   if(kind==='stop'){tone(330,ctx.currentTime,.09,.055);tone(660,ctx.currentTime,.12,.022);}
    else if(kind==='wild')chord([220,330,660],.07,.045,.65);
-   else if(kind==='scatter')chord([392,493.883,587.33].slice(0,Math.min(3,value)),.075,.075,.8);
+   else if(kind==='scatter'){const lift=2**(Math.min(2,Math.max(0,value-1))*2/12);chord([523.251,659.255,783.991].map(f=>f*lift),.075,.055,.85);tone(1046.502*lift,ctx.currentTime,.5,.025);}
    else if(kind==='match')chord([440,554.365,659.255],.045,.045,.45);
    else if(kind==='win')chord(value>=50?[293.665,440,587.33,739.99,880]:[293.665,440,587.33],value>=50?.11:.055,.11,value>=50?2:1);
-   else if(kind==='bonus')chord([220,293.665,440,587.33,880],.1,.13,2);
+   else if(kind==='bonus')chord([293.665,369.994,440,587.33,739.989,880],.09,.1,1.8);
    else if(kind==='multiplier')chord([523.251,659.255,880],.06,.07,.65);
    else if(kind==='summary')chord([146.832,220,293.665,440,587.33],.09,.13,2.5);
   }

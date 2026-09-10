@@ -18,3 +18,9 @@ test('unsupported audio never prevents gameplay configuration',()=>{const a=crea
 test('bonus arrangement switches without duplicating the music scheduler and survives mute',()=>{
  const h=harness();h.audio.setMode(true);assert.equal(h.audio.mode(),true);h.audio.unlock();const first=h.nodes.length;h.audio.setMode(true);h.audio.setMode(false);assert.equal(h.audio.mode(),false);assert.equal(h.nodes.length,first);assert.equal(h.intervals.size,1);h.audio.configure({muted:true});h.audio.setMode(true);assert.equal(h.audio.mode(),true);assert.equal(h.intervals.size,0);
 });
+
+test('even the first Scatter plays a complete bright cue, while mute suppresses it',()=>{
+ const h=harness();h.audio.unlock();const before=h.nodes.length;h.audio.play('scatter',1);
+ assert.equal(h.nodes.length-before,4);assert.ok(h.nodes.slice(before).every(n=>n.started));
+ h.audio.configure({muted:true});const muted=h.nodes.length;h.audio.play('scatter',1);assert.equal(h.nodes.length,muted);
+});

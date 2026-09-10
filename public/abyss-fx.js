@@ -7,7 +7,7 @@ const AbyssFX=(()=>{
  function count(node,total,duration,complete=()=>{}){
   const start=performance.now();let stopped=false,id=0;
   const finish=()=>{if(stopped)return;stopped=true;cancelAnimationFrame(id);frames.delete(id);node.textContent=money(total);complete();};
-  const tick=now=>{frames.delete(id);if(stopped||!node.isConnected)return;const t=reduced()?1:Math.min(1,(now-start)/duration);node.textContent=money(Math.round(total*(1-(1-t)**3)));if(t===1){finish();return;}id=requestAnimationFrame(tick);frames.add(id);};
+  const tick=now=>{frames.delete(id);if(stopped||!node.isConnected)return;const t=reduced()?1:Math.min(1,(now-start)/duration);node.textContent=money(Math.round(total*t));if(t===1){finish();return;}id=requestAnimationFrame(tick);frames.add(id);};
   id=requestAnimationFrame(tick);frames.add(id);return finish;
  }
  function spinWin(info){
@@ -21,8 +21,9 @@ const AbyssFX=(()=>{
  function celebrate(info,kind,onDone){
   clear();done=onDone;const total=kind==='summary'?info.payout:info.detail.win,ratio=total/info.unitBet;
   const title=kind==='summary'?'Бонус завершён':ratio>=500?'EPIC WIN':ratio>=100?'MEGA WIN':'BIG WIN';
-  const overlay=document.createElement('div');overlay.className='ax-celebration';overlay.innerHTML=`<section role="dialog" aria-modal="true" aria-label="${title}"><div class="ax-bonus-rays" aria-hidden="true"></div><div class="ax-bonus-particles" aria-hidden="true">${Array.from({length:18},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div><h2>${title}</h2><p>${kind==='summary'?(info.detail.capped?'Максимум 2500× · ':'Общий выигрыш · ')+'вращений: '+info.bonus.played:'Выигрыш за вращение'}</p><strong class="ax-total-count"></strong><span class="ax-total-x">${Number(ratio.toFixed(2))}× от ставки</span><button type="button" data-ax="finish-win" class="ax-confirm">Показать сумму</button><small>Нажмите, чтобы пропустить подсчёт</small></section>`;
-  document.getElementById('screen-ag').appendChild(overlay);const button=overlay.querySelector('button');counterFinish=count(overlay.querySelector('.ax-total-count'),total,kind==='summary'?2800:2200,()=>{counterFinish=null;button.textContent='Продолжить';overlay.querySelector('section > small').textContent='';});button.focus();
+  const overlay=document.createElement('div');overlay.className='ax-celebration';overlay.dataset.ax='finish-win';overlay.innerHTML=`<section role="dialog" aria-modal="true" aria-label="${title}"><div class="ax-bonus-rays" aria-hidden="true"></div><div class="ax-bonus-particles" aria-hidden="true">${Array.from({length:18},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div><h2>${title}</h2><strong class="ax-total-count" style="--amount-size:${Math.min(18,135/money(total).length)}vw">${money(0)}</strong><span class="ax-total-x" hidden>${Number(ratio.toFixed(2))}×</span>${kind==='summary'?`<p>Бесплатных вращений: ${info.bonus.played}</p>`:''}<button type="button" data-ax="finish-win" class="ax-confirm">Нажмите, чтобы показать сумму</button><small></small></section>`;
+  document.getElementById('screen-ag').appendChild(overlay);const button=overlay.querySelector('button');counterFinish=count(overlay.querySelector('.ax-total-count'),total,kind==='summary'?12000:9000,()=>{counterFinish=null;overlay.querySelector('.ax-total-x').hidden=false;button.textContent='Нажмите, чтобы продолжить';});button.focus();
+
  }
  function finish(){if(counterFinish){counterFinish();return false;}const callback=done;clear();callback?.();return true;}
  return {clear,spinWin,feature,celebrate,finish};
