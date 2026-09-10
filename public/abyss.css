@@ -140,3 +140,5 @@
 #screen-ag.is-abyss.ax-feature-mode.game-surface { background:radial-gradient(ellipse at 50% 18%,#7354b96b,transparent 65%),linear-gradient(180deg,#17103455 0%,#21144255 35%,#14102e99 67%,#070d20ee 100%),url('/img/abyss/station.webp') center top/cover no-repeat!important; }
 #screen-ag.is-abyss.ax-feature-mode .ax-window { background:linear-gradient(135deg,#30224c80,#11223b88); }
 #screen-ag.is-abyss.ax-feature-mode .ax-signal small { color:#c5b2f1; }
+
+.ax-test-bonus { display:block; width:100%; margin-top:6px; padding:8px; border:1px dashed #9d8cca80; border-radius:9px; background:#211b3980; color:#c6b8ee; font-size:11px; }

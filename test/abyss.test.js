@@ -73,3 +73,26 @@ test('purchased Scatter vary across three distinct reels and all rows without un
  for(let i=0;i<300;i++){const r=G.start('abyss',G.initial(),20,{buyBonus:true},0,rng);const cells=r.detail.grid.flatMap((n,i)=>n===R.scatter?[i]:[]);assert.equal(cells.length,3);assert.equal(new Set(cells.map(i=>i%5)).size,3);assert.equal(A.evaluate(r.detail.grid,20).payout,0);assert.equal(r.bet,2000);assert.equal(r.bonus.remaining,8);cells.forEach(i=>{columns.add(i%5);rows.add(Math.floor(i/5));});layouts.add(cells.join(','));}
  assert.ok(layouts.size>50);assert.equal(columns.size,5);assert.equal(rows.size,3);
 });
+
+test('max bonus test rejects forged requests and finishes eight persisted spins at exactly 2500x once',()=>{
+ const h=service(10000),buy={type:'ag_start',amount:20,options:{buyBonus:true,testMax:true},revision:0};
+ assert.throws(()=>h.run(buy),/администратору/);assert.equal(h.account.balance,10000);assert.equal(h.saved.length,0);
+ h.accounts.isAdmin=id=>id==='qa';h.run(buy);
+ assert.equal(h.account.balance,8000);assert.equal(h.messages.at(-1).detail.scatterCount,3);assert.equal(h.messages.at(-1).bonus.played,0);
+ for(let i=0;i<8;i++){
+  // Recreate the service from the saved round to exercise resume without a client-side flag.
+  const engine=createArcadeService({accounts:h.accounts,noteWin:w=>h.wins.push(w),rng:()=>0});
+  const message={type:'ag_pick',game:'abyss',index:0,revision:h.messages.at(-1).revision};
+  engine.handle({user:{id:'qa'},send:m=>h.messages.push(m)},message);
+  const view=h.messages.at(-1);assert.equal(view.bonus.played,i+1);assert.equal(view.detail.usedMultiplier,i+1);
+  assert.equal(view.phase,i===7?'done':'play');assert.equal(h.account.balance,i===7?58000:8000);
+  assert.throws(()=>h.run(message));assert.equal(h.account.balance,i===7?58000:8000);
+ }
+ assert.equal(h.messages.at(-1).payout,50000);assert.equal(h.messages.at(-1).detail.capped,true);
+ h.run({type:'ag_open'});assert.equal(h.account.balance,58000);
+ h.run({...buy,options:{buyBonus:true},revision:h.messages.at(-1).revision});
+ assert.equal(h.messages.at(-1).options.testMax,undefined);
+});
+test('max test options cannot be enabled with a paid base spin or a nonboolean flag',()=>{
+ for(const options of [{testMax:true},{buyBonus:true,testMax:'true'},{buyBonus:true,testMax:1}])assert.throws(()=>G.start('abyss',G.initial(),20,options,0));
+});

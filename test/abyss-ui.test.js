@@ -58,3 +58,10 @@ test('a capped bonus payout shows the limit instead of an incorrect uncapped equ
  const html=h.$('ag-stage').innerHTML;
  assert.ok(html.includes('Достигнут максимум 2500×'));assert.ok(!html.includes('$1.00 × 9 = $1.00'));
 });
+
+test('max bonus button is visible only to admins outside an active bonus',()=>{
+ const h=harness(Array(15).fill(0));h.deliver();h.advance(3000);
+ assert.ok(!h.$('ag-settings').innerHTML.includes('data-ax="test-bonus"'));
+ h.state.isAdmin=true;h.ctx.ui.render(false);assert.ok(h.$('ag-settings').innerHTML.includes('data-ax="test-bonus"'));
+ h.state.ag.info.phase='play';h.ctx.ui.render(false);assert.ok(!h.$('ag-settings').innerHTML.includes('data-ax="test-bonus"'));
+});

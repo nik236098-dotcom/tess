@@ -2,7 +2,7 @@
 const { ArcadeError, GAMES, config, initial, start, actGame, publicState } = require('./game');
 const { MAX_BALANCE } = require('../accounts');
 
-function createArcadeService({ accounts, noteWin, rng }) {
+function createArcadeService({ accounts, noteWin, rng, isAdmin = user => accounts.isAdmin?.(user.id) === true }) {
   function handle(client, message) {
     const game = message.game;
     if (!GAMES.includes(game)) throw new ArcadeError('Игра не найдена');
@@ -14,6 +14,7 @@ function createArcadeService({ accounts, noteWin, rng }) {
     let newlyPaid = false;
     try {
       if (message.type === 'ag_start') {
+        if (game === 'abyss' && message.options?.testMax && !isAdmin(client.user)) throw new ArcadeError('Тест бонуса доступен только администратору');
         if (!Number.isSafeInteger(message.amount) || balance < message.amount) throw new ArcadeError('Недостаточно средств или неверная сумма');
         next = start(game, previous, message.amount, message.options, message.revision, rng);
         if (balance < next.bet) throw new ArcadeError(game==='abyss'?'Недостаточно средств для покупки бонуса':'Недостаточно средств на все шарики');

@@ -965,7 +965,7 @@ function createApp(options = {}) {
   }
 
   // Hilo uses the same cent-based account ledger as Mines.
-  const arcade = createArcadeService({ accounts, noteWin });
+  const arcade = createArcadeService({ accounts, noteWin, isAdmin });
   const crash = createCrashService({ accounts, clients: clientsByUser, noteWin });
   const hiloGames = new Map();
   function hiloGame(client) {

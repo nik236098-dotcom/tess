@@ -24,7 +24,9 @@ function finish(r){
 }
 function spin(r,rng){
  const bonusSpin=r.bonus.remaining>0,usedMultiplier=bonusSpin?r.bonus.multiplier:1;
- const grid=Array.from({length:15},()=>draw(bonusSpin?R.bonusWeights:R.baseWeights,rng));
+ const grid=bonusSpin&&r.options.testMax
+  ? (r.bonus.played===R.freeSpins-1?Array(15).fill(R.wild):[0,0,0,3,4,5,6,7,1,2,3,4,5,6,7])
+  : Array.from({length:15},()=>draw(bonusSpin?R.bonusWeights:R.baseWeights,rng));
  const evaluated=evaluate(grid,r.unitBet),rawWin=evaluated.payout*usedMultiplier;
  const win=Math.min(rawWin,r.unitBet*R.maxWin-r.payout);r.payout+=win;
  if(bonusSpin){r.bonus.remaining--;r.bonus.played++;if(win>0)r.bonus.multiplier=Math.min(R.maxMultiplier,r.bonus.multiplier+1);}
@@ -38,9 +40,10 @@ function spin(r,rng){
 function start(previous,amount,options,revision,rng=randomInt){
  check(previous,revision);if(previous.phase==='play'||!previous.settled)fail('Сначала завершите текущий раунд');
  if(!Number.isSafeInteger(amount)||!R.stakes.includes(amount))fail('Выберите ставку из списка');
- if(!options||typeof options!=='object'||Array.isArray(options)||('buyBonus'in options&&typeof options.buyBonus!=='boolean'))fail('Некорректные настройки');
+ if(!options||typeof options!=='object'||Array.isArray(options)||('buyBonus'in options&&typeof options.buyBonus!=='boolean')||('testMax'in options&&typeof options.testMax!=='boolean'))fail('Некорректные настройки');
  const bought=options.buyBonus===true;
- const r={version:1,game:'abyss',revision:revision+1,phase:'play',settled:false,unitBet:amount,bet:amount*(bought?R.buyCost:1),payout:0,multiplier:0,result:null,history:previous.history||[],options:{buyBonus:bought},bonus:{remaining:0,awarded:0,played:0,multiplier:1}};
+ if(options.testMax&&!bought)fail('Тест запускается только как бонусная игра');
+ const r={version:1,game:'abyss',revision:revision+1,phase:'play',settled:false,unitBet:amount,bet:amount*(bought?R.buyCost:1),payout:0,multiplier:0,result:null,history:previous.history||[],options:{buyBonus:bought,...(options.testMax?{testMax:true}:{})},bonus:{remaining:0,awarded:0,played:0,multiplier:1}};
  if(!bought)return spin(r,rng);
  r.bonus.remaining=R.freeSpins;r.bonus.awarded=R.freeSpins;
  const grid=Array.from({length:15},()=>draw(R.baseWeights.slice(0,8),rng));const columns=[0,1,2,3,4];
