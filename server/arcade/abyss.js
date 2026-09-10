@@ -43,7 +43,8 @@ function start(previous,amount,options,revision,rng=randomInt){
  const r={version:1,game:'abyss',revision:revision+1,phase:'play',settled:false,unitBet:amount,bet:amount*(bought?R.buyCost:1),payout:0,multiplier:0,result:null,history:previous.history||[],options:{buyBonus:bought},bonus:{remaining:0,awarded:0,played:0,multiplier:1}};
  if(!bought)return spin(r,rng);
  r.bonus.remaining=R.freeSpins;r.bonus.awarded=R.freeSpins;
- const grid=Array.from({length:15},()=>draw(R.baseWeights.slice(0,8),rng));for(const cell of [1,7,13])grid[cell]=R.scatter;
+ const grid=Array.from({length:15},()=>draw(R.baseWeights.slice(0,8),rng));const columns=[0,1,2,3,4];
+ for(let i=0;i<3;i++){const col=columns.splice(rng(columns.length),1)[0];grid[rng(3)*5+col]=R.scatter;}
  // The purchased trigger awards the feature only: never display an unpaid line win.
  if(evaluate(grid,amount).payout)grid.forEach((n,i)=>{if(n!==R.scatter)grid[i]=(i%5+Math.floor(i/5)*3)%8;});
  r.detail={grid,lines:[],win:0,rawWin:0,scatterCount:3,triggered:R.freeSpins,bonusSpin:false,usedMultiplier:1,bought:true,capped:false};

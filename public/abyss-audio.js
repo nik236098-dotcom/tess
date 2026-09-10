@@ -1,7 +1,7 @@
 'use strict';
 (function(root){
  function create(env){
-  let ctx=null,master=null,music=null,effects=null,verb=null,active=false,loop=0,step=0,spinVoice=null,tension=null;
+  let ctx=null,master=null,music=null,baseMusic=null,bonusMusic=null,featureMode=false,effects=null,verb=null,active=false,loop=0,step=0,spinVoice=null,tension=null;
   let settings={music:.32,effects:.65,muted:false};const voices=new Set();
   try{const p=JSON.parse(env.localStorage?.getItem('abyss-sound')||'{}');for(const k of ['music','effects'])if(Number.isFinite(p[k]))settings[k]=Math.max(0,Math.min(1,p[k]));settings.muted=p.muted===true;}catch{}
   const save=()=>{try{env.localStorage?.setItem('abyss-sound',JSON.stringify(settings));}catch{}};
@@ -30,12 +30,23 @@
   function chord(notes,level=.075,spacing=.08,duration=1.1){if(!allowed())return;notes.forEach((f,i)=>tone(f,ctx.currentTime+i*spacing,duration,level));}
   function ambience(){
    if(!allowed())return;const now=ctx.currentTime,bases=[73.416,65.406,58.27,65.406],base=bases[Math.floor(step/4)%4];
-   [1,1.5,2.4].forEach((r,i)=>tone(base*r,now+i*.12,4.5,.075,music));
-   const notes=[293.665,440,349.228,523.251,440,349.228,261.626,329.628];tone(notes[step%8],now+.35,2.7,.026,music);step++;
+   [1,1.5,2.4].forEach((r,i)=>tone(base*r,now+i*.12,4.5,.075,baseMusic));
+   const notes=[293.665,440,349.228,523.251,440,349.228,261.626,329.628];tone(notes[step%8],now+.35,2.7,.026,baseMusic);
+   // Bonus arrangement: a moving arpeggio and a low pulse, not a louder base loop.
+   const root=[146.832,130.813,116.541,130.813][Math.floor(step/2)%4];
+   const pattern=[1,1.5,2,2.4,3,2.4,2,1.5];
+   pattern.forEach((ratio,i)=>tone(root*ratio,now+i*.3,.48,.032,bonusMusic,'triangle'));
+   [0,.6,1.2,1.8].forEach(at=>tone(root/2,now+at,.24,.06,bonusMusic));
+   tone(root*2,now,3,.035,bonusMusic);step++;
+  }
+  function setMode(bonus){
+   const next=bonus===true;if(next===featureMode)return;featureMode=next;
+   if(!ctx||!baseMusic)return;
+   for(const [bus,value] of [[baseMusic,next?0:1],[bonusMusic,next?1:0]]){bus.gain.cancelScheduledValues?.(ctx.currentTime);bus.gain.setValueAtTime(bus.gain.value,ctx.currentTime);bus.gain.linearRampToValueAtTime(value,ctx.currentTime+.8);}
   }
   function unlock(){
    active=true;
-   try{if(!ctx){const Audio=env.AudioContext||env.webkitAudioContext;if(!Audio)return;ctx=new Audio();master=ctx.createGain();const limiter=ctx.createDynamicsCompressor();limiter.threshold.value=-16;limiter.knee.value=12;limiter.ratio.value=5;master.connect(limiter);limiter.connect(ctx.destination);music=ctx.createGain();effects=ctx.createGain();music.connect(master);effects.connect(master);
+   try{if(!ctx){const Audio=env.AudioContext||env.webkitAudioContext;if(!Audio)return;ctx=new Audio();master=ctx.createGain();const limiter=ctx.createDynamicsCompressor();limiter.threshold.value=-16;limiter.knee.value=12;limiter.ratio.value=5;master.connect(limiter);limiter.connect(ctx.destination);music=ctx.createGain();effects=ctx.createGain();music.connect(master);effects.connect(master);baseMusic=ctx.createGain();bonusMusic=ctx.createGain();baseMusic.gain.value=featureMode?0:1;bonusMusic.gain.value=featureMode?1:0;baseMusic.connect(music);bonusMusic.connect(music);
     const delay=ctx.createDelay(1),feedback=ctx.createGain();verb=ctx.createGain();verb.gain.value=.15;delay.delayTime.value=.23;feedback.gain.value=.2;verb.connect(delay);delay.connect(feedback);feedback.connect(delay);delay.connect(effects);
    }
    master.gain.value=settings.muted?0:.7;music.gain.value=settings.music;effects.gain.value=settings.effects;
@@ -58,7 +69,7 @@
    else if(kind==='multiplier')chord([523.251,659.255,880],.06,.07,.65);
    else if(kind==='summary')chord([146.832,220,293.665,440,587.33],.09,.13,2.5);
   }
-  return {unlock,stop:halt,configure,settings:()=>({...settings}),spinning,anticipation,play};
+  return {unlock,setMode,mode:()=>featureMode,stop:halt,configure,settings:()=>({...settings}),spinning,anticipation,play};
  }
  if(typeof module==='object'&&module.exports)module.exports={create};else root.AbyssAudio=create(root);
 })(globalThis);

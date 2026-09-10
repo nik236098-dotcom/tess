@@ -6,7 +6,7 @@ Separate underwater slot (`abyss`), alongside the existing Croc Slots. Ten origi
 
 Five reels, three rows, 20 permanent left-to-right paylines. Three to five matching symbols pay; only the highest-paying interpretation of each line is awarded. Wild substitutes ordinary symbols. Scatter never substitutes. The complete symbol table, paylines, weights and allowed stakes are versioned in `public/abyss-rules.js`.
 
-The large circular button starts one paid spin. Stake presets begin at $0.20, $0.40, $0.60, $0.80 and $1.00; all values divide into 20 whole-cent line bets. Dedicated minus/plus buttons and a preset sheet replace the generic mini-game betting panel. Turbo changes animation duration only. There is no paid autoplay. A synthesized underwater soundtrack and event effects are controlled separately in sound settings.
+The large circular button starts one paid spin. Stake presets begin at $0.20, $0.40, $0.60, $0.80 and $1.00; all values divide into 20 whole-cent line bets. A single stake tile opens the preset sheet, which also previews the corresponding Bonus Buy cost. Turbo changes animation duration only. There is no paid autoplay. A synthesized underwater soundtrack and event effects are controlled separately in sound settings.
 
 Three or more Scatter award eight free spins. The bonus starts at 1×; each winning free spin raises the next spin's multiplier by one, up to 10×. Three or more Scatter during the bonus add four spins, with at most 40 awarded spins per feature. Total round payout is capped at 2500 times the selected spin stake.
 
@@ -30,7 +30,7 @@ Presentation regression checks: `node --test test/abyss-ui.test.js test/abyss.te
 
 Run `node scripts/abyss-math.js 100000`. The deterministic offline audit enumerates the single-line base distribution and simulates 100,000 complete bonus rounds using the production evaluator. Results are recorded in `abyss-math-audit.json`.
 
-For version 1: base-game return estimate 95.73%; Bonus Buy return estimate 96.96% (95% Monte Carlo interval approximately 96.40–97.52%). Exact base line return is 79.8343%; the trigger probability is approximately 0.16395%. The base estimate adds the simulated bonus expectation to the exact line expectation; the shared round cap can reduce it slightly. These are development estimates, not certified RTP or a promised individual return.
+For version 1: base-game return estimate 95.71%; Bonus Buy return estimate 96.85% (95% Monte Carlo interval approximately 96.29–97.41%). Exact base line return is 79.8343%; the trigger probability is approximately 0.16395%. The base estimate adds the simulated bonus expectation to the exact line expectation; the shared round cap can reduce it slightly. These are development estimates, not certified RTP or a promised individual return.
 
 ## Verification
 
@@ -39,3 +39,12 @@ For version 1: base-game return estimate 95.73%; Bonus Buy return estimate 96.96
 - Chromium with the actual arcade service: confirmed purchase, stopped three-Scatter board before the entry sheet, two forced winning free spins reaching the cap, one credit, and reopening a second saved purchase without another debit or automatic spin.
 - Controls fit 320×740, 390×844 and 430×932 viewports with Telegram safe areas. Generated symbols and entry sheet inspected on the rendered mobile screen.
 - `scripts/crash-update.sh` checks new scripts and all symbol/scene/card assets before restarting the server.
+
+
+## Console and bonus arrangement update
+
+The lower console now has a payout header with one settings menu and three main positions: stake, centered spin, Bonus Buy. Sound, speed and rules are in the menu. During a bonus the side tiles show remaining spins and pause/resume. The feature has its own arpeggiated soundtrack and low rhythmic pulse, with an 800 ms crossfade from/to the calmer base arrangement; the shared music volume controls both. The reel frame and title gain a violet accent during the feature.
+
+Purchased trigger boards place the three guaranteed Scatter on three randomly chosen distinct reels, each with a random row. Rows may repeat naturally. The decorative board still never shows unpaid winning lines. Price, eight initial free spins and feature odds are unchanged. The reproducible Monte Carlo audit was refreshed because drawing the cosmetic positions consumes additional random numbers.
+
+Verified 19 focused tests, including 300 purchases with varied layouts, all reels/rows represented, exact cost, and no unpaid line wins. Reference review used the official mobile screenshot and feature description at https://www.playngo.com/games/rich-wilde-and-the-book-of-dead and official rules at https://www.pragmaticplay.com/en/games/gates-of-olympus/. Live demo entry remained blocked by automatic approval review of the age confirmation, even after the user's explicit authorization. No live demo-play claim is made. The cloud browser also rejected the local QA URL with ERR_BLOCKED_BY_CLIENT; this revision's new console was checked with the DOM harness, not a fresh browser screenshot.

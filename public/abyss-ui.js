@@ -12,20 +12,21 @@ const AbyssUI=(()=>{
  }
  function prepare(){
   stop();try{const p=JSON.parse(localStorage.getItem('abyss-prefs')||'{}');if(R.stakes.includes(p.bet))bet=p.bet;turbo=p.turbo===true;}catch{}
-  state.ag.options.abyss={buyBonus:false};balance=state.balance;$('ag-amount').value=(bet/100).toFixed(2);assets();
+  sound.setMode?.(false);state.ag.options.abyss={buyBonus:false};balance=state.balance;$('ag-amount').value=(bet/100).toFixed(2);assets();
  }
  function stop(){running=false;entering=false;celebrating=false;sound.stop();fx.clear();clearTimeout(timer);timer=0;close(false);}
  function controls(){
   const a=state.ag,info=a.info,bonus=info?.phase==='play',pending=info?.phase==='done'&&!info.settled,locked=agLocked()||entering||celebrating;
-  const value=bonus?info.unitBet:bet,price=bet*R.buyCost;
-  return `<div class="ax-controls"><div class="ax-readout"><span>${bonus?'БОНУС · ОБЩИЙ ВЫИГРЫШ':'ВЫИГРЫШ'}<b>${money((a.animating?a.cgPrevious:info)?.payout||0)}</b></span><div class="ax-tools"><button type="button" data-ax="sound" class="ax-info ax-sound" aria-label="Настройки звука" aria-pressed="${!sound.settings().muted}">${sound.settings().muted?'♪̸':'♪'}</button><button type="button" data-ax="rules" class="ax-info" aria-label="Правила и выплаты">i</button></div></div><div class="ax-control-row"><div class="ax-bet"><small>${bonus?'БЕСПЛАТНЫЕ ВРАЩЕНИЯ':'СТАВКА ЗА ВРАЩЕНИЕ'}</small>${bonus?`<strong>${(a.animating?a.cgPrevious:info)?.bonus?.remaining??info.bonus.remaining} <em>осталось</em></strong>`:`<div><button type="button" data-ax="minus" aria-label="Уменьшить ставку" ${locked||pending||bet===R.stakes[0]?'disabled':''}>−</button><button type="button" data-ax="stake" class="ax-bet-value" ${locked||pending?'disabled':''}>${money(value)}<small>⌄</small></button><button type="button" data-ax="plus" aria-label="Увеличить ставку" ${locked||pending||bet===R.stakes.at(-1)?'disabled':''}>+</button></div>`}</div><button type="button" class="ax-spin${a.animating?' is-spinning':''}" data-ax="spin" aria-label="${pending?'Получить сохранённую выплату':bonus?'Продолжить бесплатные вращения':'Вращать за '+money(bet)}" ${locked||loading?'disabled':''}>${icon}</button><button type="button" data-ax="turbo" class="ax-turbo${turbo?' is-on':''}" aria-pressed="${turbo}" ${locked?'disabled':''}><span>ϟ</span>ТУРБО</button></div><div class="ax-footer"><button type="button" class="ax-buy" data-ax="buy" ${locked||bonus||pending||!ready?'disabled':''}><span>BONUS BUY</span><b>${money(price)}</b></button>${bonus?`<button type="button" data-ax="pause" class="ax-pause" aria-pressed="${!running}">${running?'Пауза':'Продолжить'}</button>`:''}<span class="ax-control-note" role="status">${!state.connected?'Восстанавливаем связь…':loading?'Загружаем символы…':failed?'Нажмите ↻ для повторной загрузки':pending?'Выплата сохранена':a.pending?'Сохраняем вращение…':a.animating?'Погружение…':bonus?entering?'Три Scatter · бонус открыт':running?'Бонус идёт автоматически':'Нажмите ↻, чтобы продолжить':'20 линий · '+(turbo?'турбо':'обычная скорость')}</span></div></div>`;
+  const visual=a.animating?a.cgPrevious:info,price=bet*R.buyCost;
+  const status=!state.connected?'Восстанавливаем связь…':loading?'Загружаем символы…':failed?'Нажмите вращение для повторной загрузки':pending?'Выплата сохранена':a.pending?'Сохраняем вращение…':a.animating?'Барабаны вращаются':bonus?entering?'Бонус открыт':running?'Бесплатные вращения':'Бонус на паузе':'20 линий · '+(turbo?'турбо':'обычная скорость');
+  return `<div class="ax-controls ax-console${bonus?' is-feature':''}"><div class="ax-console-readout"><span>${bonus?'Общий выигрыш бонуса':'Выигрыш'}<b>${money(visual?.payout||0)}</b></span><button type="button" data-ax="menu" class="ax-menu-button" aria-label="Настройки слота">•••</button></div><div class="ax-console-actions">${bonus?`<div class="ax-console-tile ax-remaining"><small>Осталось</small><strong>${visual?.bonus?.remaining??info.bonus.remaining}</strong><span>вращений</span></div>`:`<button type="button" data-ax="stake" class="ax-console-tile" ${locked||pending?'disabled':''}><small>Ставка</small><strong>${money(bet)}</strong><span>Изменить ‹</span></button>`}<button type="button" class="ax-spin${a.animating?' is-spinning':''}" data-ax="spin" aria-label="${pending?'Получить сохранённую выплату':bonus?'Продолжить бесплатные вращения':'Вращать за '+money(bet)}" ${locked||loading?'disabled':''}>${icon}</button>${bonus?`<button type="button" data-ax="pause" class="ax-console-tile ax-feature-control" ${celebrating||entering?'disabled':''}><small>Бонус</small><strong>${running?'Ⅱ':'▷'}</strong><span>${running?'Пауза':'Продолжить'}</span></button>`:`<button type="button" data-ax="buy" class="ax-console-tile ax-feature-control" ${locked||pending||!ready?'disabled':''}><small>Bonus Buy</small><strong>${money(price)}</strong><span>8 вращений</span></button>`}</div><div class="ax-console-status" role="status"><i class="${bonus?'is-feature':''}"></i>${status}</div></div>`;
  }
  function render(board=true){
   const a=state.ag,info=a.info;if(a.game!=='abyss')return;
   if(!a.animating)balance=state.balance;$('ag-balance').textContent=money(balance);
   $('ag-amount').value=(bet/100).toFixed(2);$('ag-paytable').innerHTML='';$('ag-settings').innerHTML=controls();
   $('ag-main').disabled=agLocked();$('ag-rules-text').textContent='Abyss Protocol: 5 барабанов, 3 ряда, 20 постоянных линий. Выплаты слева направо за 3–5 одинаковых символов; Wild заменяет любой символ, кроме Scatter. На каждой линии оплачивается одна лучшая комбинация. Ставка за линию — 1/20 общей ставки. Три и более Scatter дают 8 бесплатных вращений. В бонусе Wild встречается чаще, множитель начинается с 1× и после каждого выигрышного вращения растёт на 1, максимум 10×. Повторные 3 Scatter добавляют 4 вращения; за один бонус не более 40. Bonus Buy стоит 100 общих ставок: три Scatter на вводном вращении открывают тот же бонус; вводное вращение не даёт денежной выплаты. Максимальная общая выплата — 2500 ставок за вращение. Турбо влияет только на анимацию. Весь раунд и выплата сохраняются сервером.';
-  GameResult.hide($('ag-overlay'));
+  GameResult.hide($('ag-overlay'));$('screen-ag').classList?.toggle?.('ax-feature-mode',info?.phase==='play'||celebrating&&info?.bonus?.played>0);
   if(!board)return;
   const visual=a.animating?a.cgPrevious:info,grid=info?.detail?.grid||idle,old=visual?.detail?.grid||idle;
   const wins=new Set(!a.animating?info?.detail?.lines?.flatMap(l=>l.cells)||[]:[]),bonus=visual?.bonus;
@@ -65,7 +66,7 @@ const AbyssUI=(()=>{
   const changed=!previous||previous.revision!==message.revision;
   if(message.accepted===false){running=false;entering=false;sound.spinning(false);sound.anticipation(false);clearTimeout(timer);render();return;}
   if(changed&&(action==='start'||action==='pick')&&message.detail){a.cgPrevious=previous;a.animating=true;a.cgTime=0;fx.clear();sound.spinning(true);render();animate();return;}
-  render();
+  sound.setMode?.(message.phase==='play');render();
  }
  function animate(){
   const a=state.ag,token=++a.token,start=performance.now(),reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches,duration=reduced?0:turbo?1050:2900,total=reelTiming().at(-1).end;
@@ -75,7 +76,7 @@ const AbyssUI=(()=>{
    timing.forEach((s,col)=>{if(t>=s.end&&!sounded.has(col)){sounded.add(col);sound.play('stop');const symbols=[a.info.detail.grid[col],a.info.detail.grid[col+5],a.info.detail.grid[col+10]];if(symbols.includes(R.wild))sound.play('wild');for(const n of symbols)if(n===R.scatter)sound.play('scatter',++scatterSounds);}});
    if(t<total){a.raf=requestAnimationFrame(tick);return;}
    sound.spinning(false);sound.anticipation(false);a.animating=false;a.cgTime=0;entering=!!(a.info.detail.triggered&&!a.info.detail.bonusSpin&&a.info.phase==='play');render();
-   const info=a.info;
+   const info=a.info;if(info.phase==='play')sound.setMode?.(true);
    if(info.detail.win){fx.spinWin(info);sound.play('match');if(info.detail.win/info.unitBet<50&&!(info.phase==='done'&&info.bonus?.played>0))sound.play('win',info.detail.win/info.unitBet);}
    if(info.detail.bonusSpin&&info.bonus.multiplier>info.detail.usedMultiplier){if(!info.detail.triggered)fx.feature('Множитель '+info.bonus.multiplier+'×');sound.play('multiplier');}
    if(info.detail.triggered&&info.detail.bonusSpin){fx.feature('+'+info.detail.triggered+' вращения · '+info.bonus.multiplier+'×');sound.play('bonus');}
@@ -92,12 +93,12 @@ const AbyssUI=(()=>{
  }
  function celebrate(kind){
   celebrating=true;render(false);if(kind!=='summary'||state.ag.info.payout>0)sound.play(kind==='summary'?'summary':'win',100);
-  fx.celebrate(state.ag.info,kind,()=>{celebrating=false;render(false);advanceBonus();});
+  fx.celebrate(state.ag.info,kind,()=>{celebrating=false;if(kind==='summary')sound.setMode?.(false);render(false);advanceBonus();});
  }
  function spin(){
   if(state.ag.game!=='abyss'||agLocked()||entering||celebrating)return;
   if(!ready){assets();return;}
-  const info=state.ag.info;sound.unlock();fx.clear();close(false);
+  const info=state.ag.info;sound.setMode?.(info.phase==='play');sound.unlock();fx.clear();close(false);
   if(info.phase==='done'&&!info.settled){agOpenRequest();render(false);return;}
   if(info.phase==='play'){running=true;agRequest('pick',{index:0});return;}
   running=false;state.ag.options.abyss={buyBonus:false};agRequest('start');
@@ -107,8 +108,9 @@ const AbyssUI=(()=>{
   close(false);returnFocus=document.activeElement;
   const info=state.ag.info;if(!info)return;
   let body='';
-  if(kind==='sound'){const p=sound.settings();body=`<h2>Звук погружения</h2><button type="button" data-ax="mute" class="ax-confirm">${p.muted?'Включить звук':'Выключить звук'}</button><label class="ax-volume">Музыка<input data-ax-volume="music" type="range" min="0" max="100" value="${Math.round(p.music*100)}"></label><label class="ax-volume">Эффекты<input data-ax-volume="effects" type="range" min="0" max="100" value="${Math.round(p.effects*100)}"></label>`;}
-  else if(kind==='stake')body=`<h2>Ставка за вращение</h2><p>Полная стоимость · все 20 линий</p><div class="ax-stakes">${R.stakes.map(n=>`<button type="button" data-ax-stake="${n}" aria-pressed="${n===bet}">${money(n)}</button>`).join('')}</div>`;
+  if(kind==='menu'){body=`<h2>Настройки слота</h2><div class="ax-menu-list"><button type="button" data-ax="turbo" aria-pressed="${turbo}"><span>Быстрое вращение</span><b>${turbo?'Вкл':'Выкл'}</b></button><button type="button" data-ax="sound"><span>Музыка и эффекты</span><b>${sound.settings().muted?'Выкл':'›'}</b></button><button type="button" data-ax="rules"><span>Правила и выплаты</span><b>›</b></button></div>`;}
+  else if(kind==='sound'){const p=sound.settings();body=`<h2>Звук погружения</h2><button type="button" data-ax="mute" class="ax-confirm">${p.muted?'Включить звук':'Выключить звук'}</button><label class="ax-volume">Музыка<input data-ax-volume="music" type="range" min="0" max="100" value="${Math.round(p.music*100)}"></label><label class="ax-volume">Эффекты<input data-ax-volume="effects" type="range" min="0" max="100" value="${Math.round(p.effects*100)}"></label>`;}
+  else if(kind==='stake')body=`<h2>Ставка за вращение</h2><div class="ax-stake-summary"><small>Выбрано</small><strong>${money(bet)}</strong><span>Bonus Buy · ${money(bet*R.buyCost)}</span></div><p>Полная стоимость · все 20 линий</p><div class="ax-stakes">${R.stakes.map(n=>`<button type="button" data-ax-stake="${n}" aria-pressed="${n===bet}">${money(n)}</button>`).join('')}</div>`;
   else if(kind==='buy')body=`<img class="ax-dialog-art" src="/img/abyss/scatter.webp" alt=""><h2>Сигнал из глубины</h2><p>8 бесплатных вращений<br>Растущий множитель до 10×</p><div class="ax-price"><span>Ставка ${money(bet)} × 100</span><strong>${money(bet*R.buyCost)}</strong></div><p>Эта сумма будет списана с баланса. Покупка не гарантирует выигрыш.</p><button type="button" data-ax="confirm-buy" class="ax-confirm" ${bet*R.buyCost>state.balance?'disabled':''}>${bet*R.buyCost>state.balance?'Недостаточно средств':'Купить за '+money(bet*R.buyCost)}</button>`;
   else if(kind==='bonus')body=`<div class="ax-bonus-rays" aria-hidden="true"></div><div class="ax-bonus-particles" aria-hidden="true">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div><img class="ax-dialog-art" src="/img/abyss/scatter.webp" alt=""><h2>Вы выиграли</h2><div class="ax-bonus-count">${info.bonus.remaining}</div><p class="ax-bonus-label">бесплатных вращений</p><p class="ax-bonus-detail">Погружайтесь глубже<br>и повышайте множитель до 10×</p><button type="button" data-ax="spin" class="ax-confirm">Начать</button>`;
   else body=`<h2>Символы и выплаты</h2><p>За 3 / 4 / 5 подряд слева направо.<br>Множители ниже — от ставки одной линии.</p><div class="ax-payments">${R.symbols.slice(0,9).map(s=>`<div><img src="/img/abyss/${s.id}.webp" alt=""><span>${s.name}</span><b>${s.pay.join(' / ')}×</b></div>`).join('')}</div><h3>20 выигрышных линий</h3><div class="ax-payline-guide">${R.lines.map((line,i)=>`<div><small>${i+1}</small><svg viewBox="0 0 100 60" aria-label="Линия ${i+1}"><polyline points="${line.map((row,col)=>`${col*20+10},${row*20+10}`).join(' ')}"/></svg></div>`).join('')}</div><p>${$('ag-rules-text').textContent}</p>`;
@@ -122,10 +124,10 @@ const AbyssUI=(()=>{
   if(celebrating)return;
   if(action==='mute'){sound.configure({muted:!sound.settings().muted});show('sound');render(false);return;}
   if(action==='pause'){if(running){running=false;clearTimeout(timer);timer=0;render(false);}else if(!agLocked()&&!entering)spin();return;}
-  if(action==='close'){close();return;}if(action==='rules'||action==='sound'){running=false;clearTimeout(timer);timer=0;show(action);render(false);return;}
+  if(action==='close'){close();return;}if(action==='rules'||action==='sound'||action==='menu'){running=false;clearTimeout(timer);timer=0;show(action);render(false);return;}
   if(agLocked()||entering)return;
   if(action==='spin'){spin();return;}
-  if(action==='turbo'){turbo=!turbo;prefs();render(false);return;}
+  if(action==='turbo'){turbo=!turbo;prefs();show('menu');render(false);return;}
   if(state.ag.info?.phase==='play'||state.ag.info?.settled===false)return;
   if(action==='stake'||action==='buy'){show(action);return;}
   if(action==='confirm-buy'){

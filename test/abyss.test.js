@@ -68,3 +68,8 @@ test('a purchased bonus survives account reload and its total is credited only o
  engine.handle(client,{type:'ag_pick',game:'abyss',index:0,revision:messages.at(-1).revision});assert.equal(accounts.balanceOf('qa'),before-2000+50000);
  accounts=new Accounts({file});engine=createArcadeService({accounts,noteWin(){}});for(let i=0;i<4;i++)engine.handle(client,{type:'ag_open',game:'abyss'});assert.equal(accounts.balanceOf('qa'),before-2000+50000);assert.equal(messages.at(-1).settled,true);
 });
+test('purchased Scatter vary across three distinct reels and all rows without unpaid line wins',()=>{
+ let seed=89127;const rng=n=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed%n;};const layouts=new Set(),columns=new Set(),rows=new Set();
+ for(let i=0;i<300;i++){const r=G.start('abyss',G.initial(),20,{buyBonus:true},0,rng);const cells=r.detail.grid.flatMap((n,i)=>n===R.scatter?[i]:[]);assert.equal(cells.length,3);assert.equal(new Set(cells.map(i=>i%5)).size,3);assert.equal(A.evaluate(r.detail.grid,20).payout,0);assert.equal(r.bet,2000);assert.equal(r.bonus.remaining,8);cells.forEach(i=>{columns.add(i%5);rows.add(Math.floor(i/5));});layouts.add(cells.join(','));}
+ assert.ok(layouts.size>50);assert.equal(columns.size,5);assert.equal(rows.size,3);
+});

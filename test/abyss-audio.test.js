@@ -15,3 +15,6 @@ test('mute and volumes persist; hidden tabs cannot produce new effects',()=>{
  const h=harness();h.audio.unlock();h.audio.configure({music:.1,effects:.4,muted:true});assert.deepEqual(h.audio.settings(),{music:.1,effects:.4,muted:true});const count=h.nodes.length;h.audio.play('bonus');assert.equal(h.nodes.length,count);assert.equal(h.intervals.size,0);const restored=create(h.env);assert.deepEqual(restored.settings(),h.audio.settings());h.env.document.hidden=true;h.audio.configure({muted:false});h.audio.play('win');assert.equal(h.nodes.length,count);
 });
 test('unsupported audio never prevents gameplay configuration',()=>{const a=create({document:{hidden:false},clearInterval(){}});assert.doesNotThrow(()=>{a.unlock();a.play('wild');a.spinning(true);a.anticipation(true);a.configure({music:0});a.stop();});});
+test('bonus arrangement switches without duplicating the music scheduler and survives mute',()=>{
+ const h=harness();h.audio.setMode(true);assert.equal(h.audio.mode(),true);h.audio.unlock();const first=h.nodes.length;h.audio.setMode(true);h.audio.setMode(false);assert.equal(h.audio.mode(),false);assert.equal(h.nodes.length,first);assert.equal(h.intervals.size,1);h.audio.configure({muted:true});h.audio.setMode(true);assert.equal(h.audio.mode(),true);assert.equal(h.intervals.size,0);
+});

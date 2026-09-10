@@ -120,3 +120,18 @@
 @media(prefers-reduced-motion:reduce) { .ax-spin-win,.ax-feature-toast,.ax-celebration * { animation:none!important; }.ax-win-lines polyline { animation:none;opacity:.7; } }
 
 .ax-payline-guide { display:grid;grid-template-columns:repeat(4,1fr);gap:8px; }.ax-payline-guide > div { background:#10253a;border-radius:8px;padding:5px; }.ax-payline-guide small { display:block;color:#94bfd5; }.ax-payline-guide svg { display:block;width:100%; }.ax-payline-guide polyline { fill:none;stroke:#c4a9ff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round; }
+/* Slot console: two quiet tiles around a centered primary action. */
+.ax-console { padding:12px 10px 8px; border:1px solid #91adce38; border-radius:22px; background:linear-gradient(160deg,#152b42d9,#091827ec); box-shadow:inset 0 1px #c3dafa13,0 8px 30px #0002; }
+.ax-console-readout { display:flex; align-items:center; justify-content:space-between; padding:0 7px 10px; }
+.ax-console-readout > span { display:flex; align-items:baseline; gap:9px; color:#92afc6; font:500 10px var(--font); }.ax-console-readout b { color:#e9d5a5; font:700 21px var(--font); }
+.ax-menu-button { border:0; background:none; color:#b1c7db; padding:0; min-width:40px; min-height:34px; border-radius:12px; font:700 15px var(--font); letter-spacing:2px; }
+.ax-console-actions { display:grid; grid-template-columns:minmax(0,1fr) 92px minmax(0,1fr); gap:10px; align-items:center; }
+.ax-console-tile { min-width:0; height:77px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:5px 2px; border:1px solid #57789655; border-radius:15px; background:linear-gradient(#1a304688,#10253a77); color:#e6edf7; }
+.ax-console-tile small { font:500 10px var(--font); color:#9eb9cf; }.ax-console-tile strong { font:700 clamp(13px,4vw,18px) var(--font); white-space:nowrap; }.ax-console-tile span { font:400 9px var(--font); color:#859fb7; }
+.ax-feature-control { border-color:#79c6d366; background:linear-gradient(#17394a99,#102b3c77); }.ax-feature-control strong { color:#b9eaf0; }
+.ax-remaining strong { font-size:26px; color:#eee0b6; }.ax-console.is-feature { border-color:#ad93dc55; }.ax-console.is-feature .ax-feature-control strong { font-size:23px; }
+.ax-console-status { display:flex; justify-content:center; align-items:center; gap:6px; min-height:26px; padding-top:5px; text-align:center; color:#7d9bb0; font:400 9px var(--font); }.ax-console-status i { width:4px; height:4px; border-radius:50%; background:#7ca6c1; }.ax-console-status i.is-feature { background:#c3a3ff;box-shadow:0 0 7px #b89cff; }
+.ax-menu-list { display:grid; gap:8px; margin-top:20px; }.ax-menu-list button { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:56px; border:1px solid #6283a344; border-radius:13px; padding:12px; background:#142a3f; color:#cbddea; font:500 14px var(--font); }.ax-menu-list b { color:#bfa4ff; }
+.ax-stake-summary { display:flex; flex-direction:column; gap:6px; padding:13px; border-radius:15px; background:#071827; }.ax-stake-summary small { color:#7d9cb6; }.ax-stake-summary strong { font:700 29px var(--font);color:#e3d9ff; }.ax-stake-summary span { font:400 12px var(--font);color:#94bfce; }
+#screen-ag.is-abyss.ax-feature-mode .ax-window { border-color:#b4a4eccc;box-shadow:inset 0 1px #dfd7ff55,0 0 25px #8872cd40;transition:border-color .8s,box-shadow .8s; }
+#screen-ag.is-abyss.ax-feature-mode .ax-brand { color:#e2d7ff;text-shadow:0 0 20px #ab7af866; }

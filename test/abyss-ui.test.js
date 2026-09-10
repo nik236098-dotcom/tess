@@ -28,3 +28,7 @@ test('Big Win starts at 50 times the spin stake, not the 100-stake purchase pric
 test('the final feature shows one cumulative summary, including a zero payout',()=>{
  for(const win of [0,50000]){const h=harness(Array(15).fill(0));Object.assign(h.info,{unitBet:20,payout:win});h.info.bonus.played=8;h.info.detail.win=win;h.deliver();h.advance(3000);assert.deepEqual(h.celebrations,['summary']);}
 });
+test('base console groups stake, centered spin and bonus purchase; secondary buttons live in the menu',()=>{
+ const h=harness(Array(15).fill(0));h.deliver();h.advance(3000);const html=h.$('ag-settings').innerHTML;
+ assert.ok(html.indexOf('data-ax="stake"')<html.indexOf('data-ax="spin"'));assert.ok(html.indexOf('data-ax="spin"')<html.indexOf('data-ax="buy"'));assert.ok(html.includes('data-ax="menu"'));for(const id of ['minus','plus','turbo','sound','rules'])assert.ok(!html.includes('data-ax="'+id+'"'));assert.equal(h.$('ag-amount').value,'0.20');
+});
