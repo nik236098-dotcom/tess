@@ -29,3 +29,12 @@
 .rps-player.is-winner .duel-hand-art { filter:drop-shadow(0 0 9px #b78afb40); }
 .rps-player.is-winner > small { color:#d6c4ff; }
 @media(max-width:360px) { #screen-ag.is-rps .ag-panel :is(.cg-action,.ag-choice) { font-size:11px; } }
+
+/* The gesture images share the same cuff baseline throughout the reveal. */
+.duel-hand-sprite { opacity:0; }
+.rps-rock-ready .duel-hand-art[data-hand="rock"] .duel-hand-sprite { opacity:1; }
+.rps-rock-ready .duel-hand-art[data-hand="rock"] .duel-hand-fallback { opacity:0; }
+.rps-paper-ready .duel-hand-art[data-hand="paper"] .duel-hand-sprite { opacity:1; }
+.rps-paper-ready .duel-hand-art[data-hand="paper"] .duel-hand-fallback { opacity:0; }
+.rps-scissors-ready .duel-hand-art[data-hand="scissors"] .duel-hand-sprite { opacity:1; }
+.rps-scissors-ready .duel-hand-art[data-hand="scissors"] .duel-hand-fallback { opacity:0; }
