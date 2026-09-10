@@ -31,12 +31,10 @@ test('large-win fanfare has dedicated layers that grow across BIG, MEGA and EPIC
  assert.ok(counts[0]>6);assert.ok(counts[1]>counts[0]);assert.ok(counts[2]>counts[1]);
 });
 
-test('slot voice announces the actual win tier in English and obeys effects mute and stop',()=>{
- const h=harness(),spoken=[];let cancelled=0;
- h.env.SpeechSynthesisUtterance=class {constructor(text){this.text=text;}};
- h.env.speechSynthesis={getVoices:()=>[{name:'Daniel',lang:'en-GB'}],speak:u=>spoken.push(u),cancel(){cancelled++;}};
+test('large wins never use the rejected device text-to-speech voice',()=>{
+ const h=harness();let spoken=0;
+ h.env.SpeechSynthesisUtterance=class {};
+ h.env.speechSynthesis={getVoices:()=>[],speak(){spoken++;},cancel(){}};
  h.audio.unlock();for(const ratio of [50,100,500])h.audio.play('bigwin',ratio);
- assert.deepEqual(spoken.map(u=>u.text),['Big win!','Mega win!','Epic win!']);assert.ok(spoken.every(u=>u.lang==='en-GB'&&u.volume===.65));
- h.audio.stop();assert.equal(cancelled,3);h.audio.configure({effects:0});h.audio.play('bigwin',50);assert.equal(spoken.length,3);
- h.audio.configure({muted:true});h.audio.play('bigwin',50);assert.equal(spoken.length,3);
+ assert.equal(spoken,0);h.audio.stop();
 });

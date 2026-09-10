@@ -1,7 +1,7 @@
 'use strict';
 (function(root){
  function create(env){
-  let ctx=null,master=null,music=null,baseMusic=null,bonusMusic=null,featureMode=false,effects=null,verb=null,active=false,loop=0,step=0,spinVoice=null,tension=null,announcement=null;
+  let ctx=null,master=null,music=null,baseMusic=null,bonusMusic=null,featureMode=false,effects=null,verb=null,active=false,loop=0,step=0,spinVoice=null,tension=null;
   let settings={music:.32,effects:.65,muted:false};const voices=new Set();
   try{const p=JSON.parse(env.localStorage?.getItem('abyss-sound')||'{}');for(const k of ['music','effects'])if(Number.isFinite(p[k]))settings[k]=Math.max(0,Math.min(1,p[k]));settings.muted=p.muted===true;}catch{}
   const save=()=>{try{env.localStorage?.setItem('abyss-sound',JSON.stringify(settings));}catch{}};
@@ -82,21 +82,10 @@
    if(ctx.state!=='running')ctx.resume()?.then(begin).catch(()=>{});else begin();
    }catch{} // Sound support never affects a wager.
   }
-  function halt(){if(announcement){try{env.speechSynthesis.cancel();}catch{}announcement=null;}active=false;env.clearInterval(loop);loop=0;step=0;for(const v of [...voices])stopVoice(v);voices.clear();spinVoice=null;tension=null;if(ctx?.state==='running')ctx.suspend()?.catch(()=>{});}
+  function halt(){active=false;env.clearInterval(loop);loop=0;step=0;for(const v of [...voices])stopVoice(v);voices.clear();spinVoice=null;tension=null;if(ctx?.state==='running')ctx.suspend()?.catch(()=>{});}
   function configure(p){for(const k of ['music','effects'])if(Number.isFinite(p[k]))settings[k]=Math.max(0,Math.min(1,p[k]));if(typeof p.muted==='boolean')settings.muted=p.muted;save();if(settings.muted)halt();else unlock();}
   function spinning(on){stopVoice(spinVoice);spinVoice=null;if(on)spinVoice=reelMotor();}
   function anticipation(on){if(!on){stopVoice(tension);tension=null;return;}if(tension||!allowed())return;tension=tone(220,ctx.currentTime,6,.12);if(tension)tension.frequency.exponentialRampToValueAtTime(740,ctx.currentTime+5);}
-  function announce(text){
-   if(!allowed()||settings.effects<=0||!env.speechSynthesis||!env.SpeechSynthesisUtterance)return;
-   try{
-    if(announcement)env.speechSynthesis.cancel();
-    const line=new env.SpeechSynthesisUtterance(text),voices=env.speechSynthesis.getVoices();
-    const english=voices.filter(v=>/^en[-_]/i.test(v.lang));
-    line.voice=english.find(v=>/Daniel|Aaron|Guy|Ryan|Natural/i.test(v.name))||english.find(v=>/^en-US$/i.test(v.lang))||english[0]||null;
-    line.lang=line.voice?.lang||'en-US';line.rate=.86;line.pitch=.85;line.volume=settings.effects;
-    announcement=line;line.onend=line.onerror=()=>{if(announcement===line)announcement=null;};env.speechSynthesis.speak(line);
-   }catch{announcement=null;}
-  }
   function play(kind,value=1){
    if(!allowed())return;
    if(kind==='stop'){tone(330,ctx.currentTime,.09,.055);tone(660,ctx.currentTime,.12,.022);}
@@ -105,7 +94,6 @@
    else if(kind==='match')chord([440,554.365,659.255],.045,.045,.45);
    else if(kind==='win')chord(value>=50?[293.665,440,587.33,739.99,880]:[293.665,440,587.33],value>=50?.11:.055,.11,value>=50?2:1);
    else if(kind==='bigwin'){
-    announce(value>=500?'Epic win!':value>=100?'Mega win!':'Big win!');
     const tier=value>=500?2:value>=100?1:0;
     chord([293.665,369.994,440,587.33,739.989,880],.075,.12,1.8);
     [587.33,739.989,880,1174.66].slice(0,2+tier).forEach((f,i)=>{tone(f,ctx.currentTime+1+i*.18,1.4,.055);tone(f/2,ctx.currentTime+1+i*.18,1.2,.03,effects,'triangle');});

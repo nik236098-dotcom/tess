@@ -74,3 +74,7 @@ BIG/MEGA/EPIC also announce their title using an available English device speech
 ## Soundtrack revision after listening feedback
 
 Removed the short triangle arpeggio, high bell pulse and repeated spin-start melody. Base and bonus now share sustained minor/add9 pad voicings with slow attacks, subtle detuned layers, drifting low-pass filtering and a low bass bed. Bonus adds rounded low kick, muted tonal percussion and a sparse sustained lead. No noise samples or chip-wave music are used. Scatter cues and spoken win announcements remain separate from the music. Programmatic tests cover audio lifecycle and scheduling; the mix has not been auditioned on the user's phone.
+
+## Rejected device voice removed
+
+Removed all device speech synthesis after listening feedback. Large-win musical cues remain; BIG/MEGA/EPIC no longer read their titles with a system voice. The previous device-voice description is historical and superseded. Music is still the existing synthesized arrangement: base and bonus share harmony, which explains the limited contrast. A recorded replacement has not been added: this session has no music-generation capability and an attempted external download could not obtain network approval. No claim of a new recorded soundtrack is made.
