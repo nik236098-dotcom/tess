@@ -65,3 +65,12 @@ test('a single stopped Scatter sounds once even when no bonus is triggered',()=>
  const grid=Array(15).fill(0);grid[0]=9;const h=harness(grid);h.deliver();h.advance(1900);h.advance(2000);h.advance(5000);
  assert.deepEqual(h.sounds.filter(([k])=>k==='scatter'),[['scatter',1]]);
 });
+
+test('animation emits exactly one stop per reel, including an extended Scatter wait',()=>{
+ for(const scatter of [false,true]){
+  const grid=Array(15).fill(0);if(scatter){grid[0]=9;grid[6]=9;}
+  const h=harness(grid);h.deliver();let last=0;
+  for(let ms=100;h.state.ag.animating&&ms<=15000;ms+=100){h.advance(ms);const count=h.sounds.filter(([k])=>k==='stop').length;assert.ok(count>=last);last=count;}
+  assert.equal(h.state.ag.animating,false);assert.equal(last,5);
+ }
+});
