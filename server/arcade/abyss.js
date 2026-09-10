@@ -24,9 +24,9 @@ function finish(r){
 }
 function spin(r,rng){
  const bonusSpin=r.bonus.remaining>0,usedMultiplier=bonusSpin?r.bonus.multiplier:1;
- const grid=bonusSpin&&r.options.testMax
-  ? (r.bonus.played===R.freeSpins-1?Array(15).fill(R.wild):[0,0,0,3,4,5,6,7,1,2,3,4,5,6,7])
-  : Array.from({length:15},()=>draw(bonusSpin?R.bonusWeights:R.baseWeights,rng));
+ // Admin test changes symbol probabilities only; evaluation, retriggers and caps stay shared.
+ const weights=bonusSpin?(r.options.testMax?[120,120,120,120,120,120,120,120,850,300]:R.bonusWeights):R.baseWeights;
+ const grid=Array.from({length:15},()=>draw(weights,rng));
  const evaluated=evaluate(grid,r.unitBet),rawWin=evaluated.payout*usedMultiplier;
  const win=Math.min(rawWin,r.unitBet*R.maxWin-r.payout);r.payout+=win;
  if(bonusSpin){r.bonus.remaining--;r.bonus.played++;if(win>0)r.bonus.multiplier=Math.min(R.maxMultiplier,r.bonus.multiplier+1);}

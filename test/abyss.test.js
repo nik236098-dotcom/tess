@@ -74,25 +74,48 @@ test('purchased Scatter vary across three distinct reels and all rows without un
  assert.ok(layouts.size>50);assert.equal(columns.size,5);assert.equal(rows.size,3);
 });
 
-test('max bonus test rejects forged requests and finishes eight persisted spins at exactly 2500x once',()=>{
+test('boosted bonus rejects forged requests, resumes random spins and credits only the evaluated payout',()=>{
  const h=service(10000),buy={type:'ag_start',amount:20,options:{buyBonus:true,testMax:true},revision:0};
  assert.throws(()=>h.run(buy),/администратору/);assert.equal(h.account.balance,10000);assert.equal(h.saved.length,0);
  h.accounts.isAdmin=id=>id==='qa';h.run(buy);
  assert.equal(h.account.balance,8000);assert.equal(h.messages.at(-1).detail.scatterCount,3);assert.equal(h.messages.at(-1).bonus.played,0);
- for(let i=0;i<8;i++){
-  // Recreate the service from the saved round to exercise resume without a client-side flag.
-  const engine=createArcadeService({accounts:h.accounts,noteWin:w=>h.wins.push(w),rng:()=>0});
-  const message={type:'ag_pick',game:'abyss',index:0,revision:h.messages.at(-1).revision};
+ let seed=123456789;const rng=n=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return Math.floor(seed/4294967296*n);};
+ let count=0;
+ while(h.messages.at(-1).phase==='play'){
+  const previous=h.messages.at(-1);
+  const engine=createArcadeService({accounts:h.accounts,noteWin:w=>h.wins.push(w),rng});
+  const message={type:'ag_pick',game:'abyss',index:0,revision:previous.revision};
   engine.handle({user:{id:'qa'},send:m=>h.messages.push(m)},message);
-  const view=h.messages.at(-1);assert.equal(view.bonus.played,i+1);assert.equal(view.detail.usedMultiplier,i+1);
-  assert.equal(view.phase,i===7?'done':'play');assert.equal(h.account.balance,i===7?58000:8000);
-  assert.throws(()=>h.run(message));assert.equal(h.account.balance,i===7?58000:8000);
+  const view=h.messages.at(-1);assert.equal(view.bonus.played,++count);assert.ok(count<=40);
+  assert.equal(view.detail.usedMultiplier,previous.bonus.multiplier);
+  const evaluated=A.evaluate(view.detail.grid,20).payout*view.detail.usedMultiplier;
+  assert.equal(view.detail.win,Math.min(evaluated,50000-previous.payout));
+  const balance=view.phase==='done'?8000+view.payout:8000;
+  assert.equal(h.account.balance,balance);assert.throws(()=>h.run(message));assert.equal(h.account.balance,balance);
  }
- assert.equal(h.messages.at(-1).payout,50000);assert.equal(h.messages.at(-1).detail.capped,true);
- h.run({type:'ag_open'});assert.equal(h.account.balance,58000);
+ const payout=h.messages.at(-1).payout;
+ h.run({type:'ag_open'});assert.equal(h.account.balance,8000+payout);
  h.run({...buy,options:{buyBonus:true},revision:h.messages.at(-1).revision});
  assert.equal(h.messages.at(-1).options.testMax,undefined);
 });
 test('max test options cannot be enabled with a paid base spin or a nonboolean flag',()=>{
  for(const options of [{testMax:true},{buyBonus:true,testMax:'true'},{buyBonus:true,testMax:1}])assert.throws(()=>G.start('abyss',G.initial(),20,options,0));
+});
+
+test('boosted bonus uses random boards, retriggers and the normal cap without guaranteeing it',()=>{
+ let seed=123456789;const rng=n=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return Math.floor(seed/4294967296*n);};
+ let caps=0,retriggers=0;const lengths=new Set(),boards=new Set();
+ for(let i=0;i<1000;i++){
+  let r=A.start(G.initial(),20,{buyBonus:true,testMax:true},0,rng);
+  while(r.phase==='play'){
+   r=A.act(r,'ag_pick',0,r.revision,rng);boards.add(r.detail.grid.join(','));
+   if(r.detail.triggered)retriggers++;
+   assert.ok(r.bonus.played<=40);assert.ok(r.bonus.multiplier<=10);assert.ok(r.payout<=50000);
+  }
+  if(r.detail.capped)caps++;lengths.add(r.bonus.played);
+ }
+ assert.ok(caps>900&&caps<1000);assert.ok(retriggers>1000);assert.ok(lengths.size>5);assert.ok(boards.size>5000);
+ // The ordinary feature still requests exactly the original bonus weight total.
+ let r=A.start(G.initial(),20,{buyBonus:true},0,()=>0);
+ A.act(r,'ag_pick',0,r.revision,n=>{assert.equal(n,sum(R.bonusWeights));return 0;});
 });
