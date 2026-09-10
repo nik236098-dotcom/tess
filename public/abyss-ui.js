@@ -158,6 +158,7 @@ const AbyssUI=(()=>{
  document.addEventListener('change',event=>{if(event.target.id==='ax-buy-unit')changeBuyStake(Number(event.target.value));});
  document.addEventListener('input',event=>{const kind=event.target.dataset?.axVolume;if(state.ag.game==='abyss'&&['music','effects'].includes(kind))sound.configure({[kind]:Number(event.target.value)/100});});
  document.addEventListener('keydown',event=>{
+  if(state.ag.game!=='abyss')return;
   if(celebrating&&event.key==='Tab'){event.preventDefault();document.querySelector('[data-ax=finish-win]')?.focus();return;}
   if(celebrating&&(event.key==='Escape'||event.key==='Enter'||event.key===' ')){event.preventDefault();fx.finish();return;}
   const dialog=document.getElementById('ax-dialog');if(!dialog)return;

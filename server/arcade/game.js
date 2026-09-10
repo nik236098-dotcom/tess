@@ -2,10 +2,11 @@
 const { randomInt } = require('node:crypto');
 const catalog = require('./catalog');
 const abyss = require('./abyss');
+const features = require('./feature-slots');
 const { MAX_BALANCE } = require('../accounts');
 
 class ArcadeError extends Error {}
-const GAMES = ['plinko', 'tower', 'keno', 'dragon', 'abyss', ...catalog.ids];
+const GAMES = ['plinko', 'tower', 'keno', 'dragon', 'abyss', ...features.ids, ...catalog.ids];
 const MIN_BET = 10;
 const ROWS = 10;
 const FLOORS = 9;
@@ -39,6 +40,7 @@ function maxBet(game, level) {
 }
 function config(game) {
   if (game === 'abyss') return abyss.config();
+  if (features.ids.includes(game)) return features.config(game);
   if (catalog.ids.includes(game)) return catalog.config(game);
   if (!GAMES.includes(game)) throw new ArcadeError('Игра не найдена');
   const base = { minBet: game === 'tower' ? 100 : MIN_BET, maxBet: maxBet(game) };
@@ -90,6 +92,7 @@ function finish(round, multiplier, payout = moneyAt(round.bet, multiplier)) {
 }
 function start(game, previous, amount, options, revision, rng = randomInt) {
   if (game === 'abyss') return abyss.start(previous, amount, options, revision, rng);
+  if (features.ids.includes(game)) return features.start(game, previous, amount, options, revision, rng);
   if (catalog.ids.includes(game)) return catalog.start(game, previous, amount, options, revision, rng);
   config(game); check(previous, revision);
   if (previous.phase === 'play' || !previous.settled) throw new ArcadeError('Сначала завершите предыдущий раунд');
@@ -147,6 +150,7 @@ function actTower(previous, action, index, revision) {
 }
 function publicState(game, round) {
   if (game === 'abyss') return abyss.publicState(round);
+  if (features.ids.includes(game)) return features.publicState(game, round);
   if (catalog.ids.includes(game)) return catalog.publicState(game, round);
   const out = { phase: round.phase, revision: round.revision, settled: round.settled, bet: round.bet,
     payout: round.payout, multiplier: round.multiplier, result: round.result, history: round.history,
@@ -162,6 +166,7 @@ function publicState(game, round) {
 }
 function actGame(game, previous, action, index, revision, rng) {
   if (game === 'abyss') return abyss.act(previous, action, index, revision, rng);
+  if (features.ids.includes(game)) return features.act(game, previous, action, index, revision, rng);
   if (game === 'tower') return actTower(previous, action, index, revision);
   return catalog.act(game, previous, action, index, revision, rng);
 }

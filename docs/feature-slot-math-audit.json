@@ -1,0 +1,24 @@
+{
+  "samples": 20000,
+  "seed": 872331,
+  "unitBet": 100,
+  "bonusCostX": 100,
+  "games": {
+    "cryo": {
+      "meanBonusX": 91.34490749999954,
+      "meanReturnOnBuy": 0.9134490749999954,
+      "standardErrorX": 1.1578895269614817,
+      "maxObservedX": 2500,
+      "meanSpins": 8.05055,
+      "capped": 1
+    },
+    "midnight": {
+      "meanBonusX": 94.1434024999997,
+      "meanReturnOnBuy": 0.941434024999997,
+      "standardErrorX": 0.5613061932603256,
+      "maxObservedX": 880.1,
+      "meanSpins": 8.0549,
+      "capped": 0
+    }
+  }
+}

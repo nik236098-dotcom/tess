@@ -1,5 +1,5 @@
 'use strict';
-const AG_NAMES = { abyss: 'Abyss Protocol', plinko: 'Plinko', tower: 'Tower', keno: 'Keno', dragon: 'Dragon & Tiger' };
+const AG_NAMES = { abyss: 'Abyss Protocol', cryo:'Cryo Vault', midnight:'Midnight Express', plinko: 'Plinko', tower: 'Tower', keno: 'Keno', dragon: 'Dragon & Tiger' };
 const AG_SUBTITLES = { plinko: 'Пусть шарик найдёт свой путь', tower: 'Выбирай безопасные плитки и поднимайся выше', keno: 'Выбери числа — проверь совпадения', dragon: 'На чьей стороне старшая карта?' };
 const AG_RULES = {
   plinko: 'Шарик проходит 10 рядов: на каждом шанс поворота влево или вправо равен 50%. Выплата — ставка × коэффициент ячейки. Уровень риска меняет таблицу выплат. Выбери 1, 5, 10 или 25 шариков. Сумма в поле — ставка на один шарик; общая ставка и выплата складываются по всему запуску. Результат определяет сервер, анимация показывает его путь.',
@@ -8,6 +8,7 @@ const AG_RULES = {
   dragon: 'Из восьми колод (416 карт), перемешанных перед раундом, открывается по одной карте Дракону и Тигру. Старшая побеждает: A — младшая, K — старшая; масть не влияет. Победа стороны: 2×. Ничья: 12× при ставке на ничью. Если поставил на сторону, а вышла ничья — возвращается половина ставки. Выплата включает ставку.',
 };
 if(typeof CasinoRules!=='undefined')for(const [id,game] of Object.entries(CasinoRules.games)){AG_NAMES[id]=game.name;AG_SUBTITLES[id]=game.tag;AG_RULES[id]=game.rules;}
+function agFeature(game){return typeof FeatureSlotsUI!=='undefined'&&FeatureSlotsUI.isGame(game);}
 function agCatalog(){return typeof CasinoUI!=='undefined'&&CasinoUI.isGame(state.ag.game);}
 function agNumber(n) { return Number(n || 0).toFixed(2).replace(/\.00$/, ''); }
 function agLocked() { const a=state.ag; return !state.connected || !a.info || Boolean(a.pending) || a.animating; }
@@ -17,6 +18,7 @@ function agMaxBet() {
 }
 function stopArcade() {
   if(typeof AbyssUI!=='undefined')AbyssUI.stop();
+  if(typeof FeatureSlotsUI!=='undefined')FeatureSlotsUI.stop();
   if(typeof DartsGame!=='undefined')DartsGame.stop();
   if(typeof DartsAudio!=='undefined')DartsAudio.stop();
   const a=state.ag; a.token++; cancelAnimationFrame(a.raf); a.animating=false; a.game=null; a.info=null; a.pending=null;
@@ -39,8 +41,10 @@ function openArcade(game) {
   $('ag-chicken-step').hidden=true;
   $('screen-ag').classList.remove('vp-is-live');
   if(agCatalog())CasinoUI.prepare(game);
-  $('screen-ag').classList.toggle('is-abyss',game==='abyss');
+  $('screen-ag').classList.toggle('is-abyss',game==='abyss'||agFeature(game));
   if(game==='abyss')AbyssUI.prepare();
+  for(const id of ['cryo','midnight'])$('screen-ag').classList.toggle('is-'+id,game===id);
+  if(agFeature(game))FeatureSlotsUI.prepare(game);
   $('screen-lobby').classList.add('hidden'); $('screen-ag').classList.remove('hidden'); $('screen-ag').scrollTop=0;
   stopRoomsPolling(); tg?.BackButton?.show();
   $('ag-title').textContent=AG_NAMES[game]; $('ag-subtitle').textContent=AG_SUBTITLES[game]; $('ag-rules-text').textContent=AG_RULES[game];
@@ -78,6 +82,7 @@ function onArcadeState(message) {
   if(a.game===message.game&&a.info&&message.revision<a.info.revision)return;
   state.balance=message.balance;
   if(a.game==='abyss'&&message.game==='abyss')return AbyssUI.receive(message);
+  if(agFeature(a.game)&&a.game===message.game)return FeatureSlotsUI.receive(message);
   if(a.game!==message.game) return;
   if(a.game==='darts'&&DartsGame.receive(message))return;
   if(a.info && message.revision<a.info.revision) return;
@@ -120,6 +125,7 @@ function agPayoutTable() {
 }
 function renderArcade(board=true) {
   if(state.ag.game==='abyss')return AbyssUI.render(board);
+  if(agFeature(state.ag.game))return FeatureSlotsUI.render(board);
   const a=state.ag;if(!a.game)return;
   const info=a.info, locked=agLocked(), live=info?.phase==='play', pending=info?.phase==='done'&&!info.settled;
   if(!info||info.phase!=='done'||a.animating||a.pending?.action==='start')GameResult.hide($('ag-overlay'));
@@ -253,6 +259,7 @@ function bindArcade() {
   $('ag-back').addEventListener('click',closeArcade);
   $('ag-main').addEventListener('click',()=>{
     if(state.ag.game==='abyss')return AbyssUI.spin();
+    if(agFeature(state.ag.game))return FeatureSlotsUI.spin();
     const info=state.ag.info;if(!info)return;
     if(info.phase==='done'&&!info.settled){agOpenRequest();renderArcade(false);return;}
     if(agCatalog()&&CasinoUI.main())return;
