@@ -6,7 +6,7 @@ Separate underwater slot (`abyss`), alongside the existing Croc Slots. Ten origi
 
 Five reels, three rows, 20 permanent left-to-right paylines. Three to five matching symbols pay; only the highest-paying interpretation of each line is awarded. Wild substitutes ordinary symbols. Scatter never substitutes. The complete symbol table, paylines, weights and allowed stakes are versioned in `public/abyss-rules.js`.
 
-The large circular button starts one paid spin. Stake presets begin at $0.20, $0.40, $0.60, $0.80 and $1.00; all values divide into 20 whole-cent line bets. Dedicated minus/plus buttons and a preset sheet replace the generic mini-game betting panel. Turbo changes animation duration only. There is no paid autoplay or audio.
+The large circular button starts one paid spin. Stake presets begin at $0.20, $0.40, $0.60, $0.80 and $1.00; all values divide into 20 whole-cent line bets. Dedicated minus/plus buttons and a preset sheet replace the generic mini-game betting panel. Turbo changes animation duration only. There is no paid autoplay. A synthesized underwater soundtrack and event effects are controlled separately in sound settings.
 
 Three or more Scatter award eight free spins. The bonus starts at 1×; each winning free spin raises the next spin's multiplier by one, up to 10×. Three or more Scatter during the bonus add four spins, with at most 40 awarded spins per feature. Total round payout is capped at 2500 times the selected spin stake.
 
@@ -20,7 +20,7 @@ The feature pays its cumulative total once at completion. Closing the game or hi
 
 ## Slot presentation
 
-The station artwork fills the entire screen; the raised reels blend into it without the old enclosing frame. Equal-width control columns keep the circular spin button exactly centered. Ordinary win, loss and refund outcomes never open the shared mini-game overlay; payouts remain in the readout and winning symbols highlight on the reels.
+The station artwork fills the entire screen; the raised reels blend into it without the old enclosing frame. Equal-width control columns keep the circular spin button exactly centered. Ordinary win, loss and refund outcomes never open the shared mini-game overlay. Small payouts count briefly over the reels without blocking input; symbols and winning lines illuminate. Wins of at least 50 spin stakes get a skippable celebration.
 
 After two Scatter have stopped, the following reels slow down with an anticipation glow until a third Scatter lands or all reels stop. The same presentation applies to paid spins and Bonus Buy, including unsuccessful two-Scatter spins. Reduced-motion mode skips reel animation and disables celebration effects.
 

@@ -1,7 +1,8 @@
 'use strict';
 const AbyssUI=(()=>{
+ const sound=typeof AbyssAudio==='undefined'?{unlock(){},stop(){},settings:()=>({muted:true}),play(){},spinning(){},anticipation(){}}:AbyssAudio,fx=typeof AbyssFX==='undefined'?{clear(){},spinWin(){},feature(){},celebrate(){},finish(){}}:AbyssFX;
  const R=AbyssRules,idle=[0,1,8,2,3,4,5,6,7,0,2,9,3,1,6];
- let bet=20,turbo=false,running=false,entering=false,timer=0,ready=false,loading=false,failed=false,balance=0,returnFocus=null;
+ let bet=20,turbo=false,running=false,entering=false,celebrating=false,timer=0,ready=false,loading=false,failed=false,balance=0,returnFocus=null;
  const icon='<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M49 23A20 20 0 1 0 51 39" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="m39 22 13 3-1-14" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
  const symbol=(n,win=false)=>`<div class="ax-cell${win?' is-win':''}${n===9?' is-scatter':''}"><img src="/img/abyss/${R.symbols[n].id}.webp" alt="${R.symbols[n].name}" draggable="false">${n===8||n===9?`<b class="ax-symbol-tag${n===9?' is-scatter':''}">${n===8?'WILD':'SCATTER'}</b>`:''}</div>`;
  function prefs(){try{localStorage.setItem('abyss-prefs',JSON.stringify({bet,turbo}));}catch{}}
@@ -13,11 +14,11 @@ const AbyssUI=(()=>{
   stop();try{const p=JSON.parse(localStorage.getItem('abyss-prefs')||'{}');if(R.stakes.includes(p.bet))bet=p.bet;turbo=p.turbo===true;}catch{}
   state.ag.options.abyss={buyBonus:false};balance=state.balance;$('ag-amount').value=(bet/100).toFixed(2);assets();
  }
- function stop(){running=false;entering=false;clearTimeout(timer);timer=0;close(false);}
+ function stop(){running=false;entering=false;celebrating=false;sound.stop();fx.clear();clearTimeout(timer);timer=0;close(false);}
  function controls(){
-  const a=state.ag,info=a.info,bonus=info?.phase==='play',pending=info?.phase==='done'&&!info.settled,locked=agLocked()||entering;
+  const a=state.ag,info=a.info,bonus=info?.phase==='play',pending=info?.phase==='done'&&!info.settled,locked=agLocked()||entering||celebrating;
   const value=bonus?info.unitBet:bet,price=bet*R.buyCost;
-  return `<div class="ax-controls"><div class="ax-readout"><span>${bonus?'БОНУС · ОБЩИЙ ВЫИГРЫШ':'ВЫИГРЫШ'}<b>${money((a.animating?a.cgPrevious:info)?.payout||0)}</b></span><button type="button" data-ax="rules" class="ax-info" aria-label="Правила и выплаты">i</button></div><div class="ax-control-row"><div class="ax-bet"><small>${bonus?'БЕСПЛАТНЫЕ ВРАЩЕНИЯ':'СТАВКА ЗА ВРАЩЕНИЕ'}</small>${bonus?`<strong>${(a.animating?a.cgPrevious:info)?.bonus?.remaining??info.bonus.remaining} <em>осталось</em></strong>`:`<div><button type="button" data-ax="minus" aria-label="Уменьшить ставку" ${locked||pending||bet===R.stakes[0]?'disabled':''}>−</button><button type="button" data-ax="stake" class="ax-bet-value" ${locked||pending?'disabled':''}>${money(value)}<small>⌄</small></button><button type="button" data-ax="plus" aria-label="Увеличить ставку" ${locked||pending||bet===R.stakes.at(-1)?'disabled':''}>+</button></div>`}</div><button type="button" class="ax-spin${a.animating?' is-spinning':''}" data-ax="spin" aria-label="${pending?'Получить сохранённую выплату':bonus?'Продолжить бесплатные вращения':'Вращать за '+money(bet)}" ${locked||loading?'disabled':''}>${icon}</button><button type="button" data-ax="turbo" class="ax-turbo${turbo?' is-on':''}" aria-pressed="${turbo}" ${locked?'disabled':''}><span>ϟ</span>ТУРБО</button></div><div class="ax-footer"><button type="button" class="ax-buy" data-ax="buy" ${locked||bonus||pending||!ready?'disabled':''}><span>BONUS BUY</span><b>${money(price)}</b></button><span class="ax-control-note" role="status">${!state.connected?'Восстанавливаем связь…':loading?'Загружаем символы…':failed?'Нажмите ↻ для повторной загрузки':pending?'Выплата сохранена':a.pending?'Сохраняем вращение…':a.animating?'Погружение…':bonus?entering?'Три Scatter · бонус открыт':running?'Бонус идёт автоматически':'Нажмите ↻, чтобы продолжить':'20 линий · '+(turbo?'турбо':'обычная скорость')}</span></div></div>`;
+  return `<div class="ax-controls"><div class="ax-readout"><span>${bonus?'БОНУС · ОБЩИЙ ВЫИГРЫШ':'ВЫИГРЫШ'}<b>${money((a.animating?a.cgPrevious:info)?.payout||0)}</b></span><div class="ax-tools"><button type="button" data-ax="sound" class="ax-info ax-sound" aria-label="Настройки звука" aria-pressed="${!sound.settings().muted}">${sound.settings().muted?'♪̸':'♪'}</button><button type="button" data-ax="rules" class="ax-info" aria-label="Правила и выплаты">i</button></div></div><div class="ax-control-row"><div class="ax-bet"><small>${bonus?'БЕСПЛАТНЫЕ ВРАЩЕНИЯ':'СТАВКА ЗА ВРАЩЕНИЕ'}</small>${bonus?`<strong>${(a.animating?a.cgPrevious:info)?.bonus?.remaining??info.bonus.remaining} <em>осталось</em></strong>`:`<div><button type="button" data-ax="minus" aria-label="Уменьшить ставку" ${locked||pending||bet===R.stakes[0]?'disabled':''}>−</button><button type="button" data-ax="stake" class="ax-bet-value" ${locked||pending?'disabled':''}>${money(value)}<small>⌄</small></button><button type="button" data-ax="plus" aria-label="Увеличить ставку" ${locked||pending||bet===R.stakes.at(-1)?'disabled':''}>+</button></div>`}</div><button type="button" class="ax-spin${a.animating?' is-spinning':''}" data-ax="spin" aria-label="${pending?'Получить сохранённую выплату':bonus?'Продолжить бесплатные вращения':'Вращать за '+money(bet)}" ${locked||loading?'disabled':''}>${icon}</button><button type="button" data-ax="turbo" class="ax-turbo${turbo?' is-on':''}" aria-pressed="${turbo}" ${locked?'disabled':''}><span>ϟ</span>ТУРБО</button></div><div class="ax-footer"><button type="button" class="ax-buy" data-ax="buy" ${locked||bonus||pending||!ready?'disabled':''}><span>BONUS BUY</span><b>${money(price)}</b></button>${bonus?`<button type="button" data-ax="pause" class="ax-pause" aria-pressed="${!running}">${running?'Пауза':'Продолжить'}</button>`:''}<span class="ax-control-note" role="status">${!state.connected?'Восстанавливаем связь…':loading?'Загружаем символы…':failed?'Нажмите ↻ для повторной загрузки':pending?'Выплата сохранена':a.pending?'Сохраняем вращение…':a.animating?'Погружение…':bonus?entering?'Три Scatter · бонус открыт':running?'Бонус идёт автоматически':'Нажмите ↻, чтобы продолжить':'20 линий · '+(turbo?'турбо':'обычная скорость')}</span></div></div>`;
  }
  function render(board=true){
   const a=state.ag,info=a.info;if(a.game!=='abyss')return;
@@ -62,23 +63,41 @@ const AbyssUI=(()=>{
   if(action)a.pending=null;a.info=message;
   if(message.unitBet&&message.phase==='play')bet=message.unitBet;
   const changed=!previous||previous.revision!==message.revision;
-  if(message.accepted===false){running=false;clearTimeout(timer);render();return;}
-  if(changed&&(action==='start'||action==='pick')&&message.detail){a.cgPrevious=previous;a.animating=true;a.cgTime=0;render();animate();return;}
+  if(message.accepted===false){running=false;entering=false;sound.spinning(false);sound.anticipation(false);clearTimeout(timer);render();return;}
+  if(changed&&(action==='start'||action==='pick')&&message.detail){a.cgPrevious=previous;a.animating=true;a.cgTime=0;fx.clear();sound.spinning(true);render();animate();return;}
   render();
  }
  function animate(){
   const a=state.ag,token=++a.token,start=performance.now(),reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches,duration=reduced?0:turbo?1050:2900,total=reelTiming().at(-1).end;
-  const tick=now=>{if(token!==a.token||a.game!=='abyss')return;const t=duration?Math.min(total,(now-start)/duration):total;a.cgTime=t;paint(t);if(t<total){a.raf=requestAnimationFrame(tick);return;}
-   a.animating=false;a.cgTime=0;entering=!!(a.info.detail.triggered&&!a.info.detail.bonusSpin&&a.info.phase==='play');render();
-   if(a.info.phase==='done'){running=false;return;}
-   if(entering){running=false;timer=setTimeout(()=>{timer=0;entering=false;if(token!==a.token||a.game!=='abyss')return;render(false);show('bonus');},1200);return;}
-   if(running&&!document.hidden)timer=setTimeout(()=>{timer=0;if(state.ag.game==='abyss'&&state.connected&&!agLocked())spin();},turbo?250:750);
+  const sounded=new Set();let scatterSounds=0;
+  const tick=now=>{if(token!==a.token||a.game!=='abyss')return;const t=duration?Math.min(total,(now-start)/duration):total;a.cgTime=t;paint(t);const timing=reelTiming();
+   sound.anticipation(timing.some(s=>s.anticipate&&t>=s.cue&&t<s.end));
+   timing.forEach((s,col)=>{if(t>=s.end&&!sounded.has(col)){sounded.add(col);sound.play('stop');const symbols=[a.info.detail.grid[col],a.info.detail.grid[col+5],a.info.detail.grid[col+10]];if(symbols.includes(R.wild))sound.play('wild');for(const n of symbols)if(n===R.scatter)sound.play('scatter',++scatterSounds);}});
+   if(t<total){a.raf=requestAnimationFrame(tick);return;}
+   sound.spinning(false);sound.anticipation(false);a.animating=false;a.cgTime=0;entering=!!(a.info.detail.triggered&&!a.info.detail.bonusSpin&&a.info.phase==='play');render();
+   const info=a.info;
+   if(info.detail.win){fx.spinWin(info);sound.play('match');if(info.detail.win/info.unitBet<50&&!(info.phase==='done'&&info.bonus?.played>0))sound.play('win',info.detail.win/info.unitBet);}
+   if(info.detail.bonusSpin&&info.bonus.multiplier>info.detail.usedMultiplier){if(!info.detail.triggered)fx.feature('Множитель '+info.bonus.multiplier+'×');sound.play('multiplier');}
+   if(info.detail.triggered&&info.detail.bonusSpin){fx.feature('+'+info.detail.triggered+' вращения · '+info.bonus.multiplier+'×');sound.play('bonus');}
+   if(info.phase==='done'&&info.bonus?.played>0){running=false;celebrate('summary');return;}
+   if(entering){running=false;timer=setTimeout(()=>{timer=0;entering=false;if(token!==a.token||a.game!=='abyss')return;render(false);sound.play('bonus');show('bonus');},1200);return;}
+   if(info.detail.win/info.unitBet>=50){celebrate('big');return;}
+   if(info.phase==='done'){running=false;return;}
+   advanceBonus();
   };a.raf=requestAnimationFrame(tick);
  }
+ function advanceBonus(){
+  clearTimeout(timer);timer=0;
+  if(running&&!document.hidden&&state.ag.info?.phase==='play')timer=setTimeout(()=>{timer=0;if(state.ag.game==='abyss'&&state.connected&&!agLocked()&&!celebrating)spin();},state.ag.info?.detail?.win?1400:turbo?250:750);
+ }
+ function celebrate(kind){
+  celebrating=true;render(false);if(kind!=='summary'||state.ag.info.payout>0)sound.play(kind==='summary'?'summary':'win',100);
+  fx.celebrate(state.ag.info,kind,()=>{celebrating=false;render(false);advanceBonus();});
+ }
  function spin(){
-  if(state.ag.game!=='abyss'||agLocked()||entering)return;
+  if(state.ag.game!=='abyss'||agLocked()||entering||celebrating)return;
   if(!ready){assets();return;}
-  const info=state.ag.info;close(false);
+  const info=state.ag.info;sound.unlock();fx.clear();close(false);
   if(info.phase==='done'&&!info.settled){agOpenRequest();render(false);return;}
   if(info.phase==='play'){running=true;agRequest('pick',{index:0});return;}
   running=false;state.ag.options.abyss={buyBonus:false};agRequest('start');
@@ -88,16 +107,22 @@ const AbyssUI=(()=>{
   close(false);returnFocus=document.activeElement;
   const info=state.ag.info;if(!info)return;
   let body='';
-  if(kind==='stake')body=`<h2>Ставка за вращение</h2><p>Полная стоимость · все 20 линий</p><div class="ax-stakes">${R.stakes.map(n=>`<button type="button" data-ax-stake="${n}" aria-pressed="${n===bet}">${money(n)}</button>`).join('')}</div>`;
+  if(kind==='sound'){const p=sound.settings();body=`<h2>Звук погружения</h2><button type="button" data-ax="mute" class="ax-confirm">${p.muted?'Включить звук':'Выключить звук'}</button><label class="ax-volume">Музыка<input data-ax-volume="music" type="range" min="0" max="100" value="${Math.round(p.music*100)}"></label><label class="ax-volume">Эффекты<input data-ax-volume="effects" type="range" min="0" max="100" value="${Math.round(p.effects*100)}"></label>`;}
+  else if(kind==='stake')body=`<h2>Ставка за вращение</h2><p>Полная стоимость · все 20 линий</p><div class="ax-stakes">${R.stakes.map(n=>`<button type="button" data-ax-stake="${n}" aria-pressed="${n===bet}">${money(n)}</button>`).join('')}</div>`;
   else if(kind==='buy')body=`<img class="ax-dialog-art" src="/img/abyss/scatter.webp" alt=""><h2>Сигнал из глубины</h2><p>8 бесплатных вращений<br>Растущий множитель до 10×</p><div class="ax-price"><span>Ставка ${money(bet)} × 100</span><strong>${money(bet*R.buyCost)}</strong></div><p>Эта сумма будет списана с баланса. Покупка не гарантирует выигрыш.</p><button type="button" data-ax="confirm-buy" class="ax-confirm" ${bet*R.buyCost>state.balance?'disabled':''}>${bet*R.buyCost>state.balance?'Недостаточно средств':'Купить за '+money(bet*R.buyCost)}</button>`;
   else if(kind==='bonus')body=`<div class="ax-bonus-rays" aria-hidden="true"></div><div class="ax-bonus-particles" aria-hidden="true">${Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('')}</div><img class="ax-dialog-art" src="/img/abyss/scatter.webp" alt=""><h2>Вы выиграли</h2><div class="ax-bonus-count">${info.bonus.remaining}</div><p class="ax-bonus-label">бесплатных вращений</p><p class="ax-bonus-detail">Погружайтесь глубже<br>и повышайте множитель до 10×</p><button type="button" data-ax="spin" class="ax-confirm">Начать</button>`;
-  else body=`<h2>Символы и выплаты</h2><p>За 3 / 4 / 5 подряд слева направо.<br>Множители ниже — от ставки одной линии.</p><div class="ax-payments">${R.symbols.slice(0,9).map(s=>`<div><img src="/img/abyss/${s.id}.webp" alt=""><span>${s.name}</span><b>${s.pay.join(' / ')}×</b></div>`).join('')}</div><p>${$('ag-rules-text').textContent}</p>`;
+  else body=`<h2>Символы и выплаты</h2><p>За 3 / 4 / 5 подряд слева направо.<br>Множители ниже — от ставки одной линии.</p><div class="ax-payments">${R.symbols.slice(0,9).map(s=>`<div><img src="/img/abyss/${s.id}.webp" alt=""><span>${s.name}</span><b>${s.pay.join(' / ')}×</b></div>`).join('')}</div><h3>20 выигрышных линий</h3><div class="ax-payline-guide">${R.lines.map((line,i)=>`<div><small>${i+1}</small><svg viewBox="0 0 100 60" aria-label="Линия ${i+1}"><polyline points="${line.map((row,col)=>`${col*20+10},${row*20+10}`).join(' ')}"/></svg></div>`).join('')}</div><p>${$('ag-rules-text').textContent}</p>`;
   const overlay=document.createElement('div');overlay.id='ax-dialog';overlay.className='ax-dialog'+(kind==='bonus'?' ax-bonus-intro':'');overlay.innerHTML=`<section role="dialog" aria-modal="true" aria-label="${kind==='stake'?'Выбор ставки':kind==='buy'?'Покупка бонуса':'Abyss Protocol'}"><button type="button" class="ax-close" data-ax="close" aria-label="Закрыть">×</button>${body}</section>`;$('screen-ag').appendChild(overlay);overlay.querySelector('button:not(:disabled)')?.focus();
  }
  document.addEventListener('click',event=>{
   if(state.ag.game!=='abyss')return;const button=event.target.closest('[data-ax],[data-ax-stake]');if(!button||button.disabled)return;
   const action=button.dataset.ax;
-  if(action==='close'){close();return;}if(action==='rules'){show('rules');return;}
+  sound.unlock();
+  if(action==='finish-win'){fx.finish();return;}
+  if(celebrating)return;
+  if(action==='mute'){sound.configure({muted:!sound.settings().muted});show('sound');render(false);return;}
+  if(action==='pause'){if(running){running=false;clearTimeout(timer);timer=0;render(false);}else if(!agLocked()&&!entering)spin();return;}
+  if(action==='close'){close();return;}if(action==='rules'||action==='sound'){running=false;clearTimeout(timer);timer=0;show(action);render(false);return;}
   if(agLocked()||entering)return;
   if(action==='spin'){spin();return;}
   if(action==='turbo'){turbo=!turbo;prefs();render(false);return;}
@@ -105,16 +130,19 @@ const AbyssUI=(()=>{
   if(action==='stake'||action==='buy'){show(action);return;}
   if(action==='confirm-buy'){
    if(bet*R.buyCost>state.balance||!ready)return;
-   close(false);running=false;state.ag.options.abyss={buyBonus:true};agRequest('start');return;
+   close(false);fx.clear();running=false;state.ag.options.abyss={buyBonus:true};agRequest('start');return;
   }
   const index=R.stakes.indexOf(bet),chosen=button.dataset.axStake?Number(button.dataset.axStake):R.stakes[Math.max(0,Math.min(R.stakes.length-1,index+(action==='plus'?1:-1)))];
   if(R.stakes.includes(chosen)){bet=chosen;prefs();close();render(false);}
  });
+ document.addEventListener('input',event=>{const kind=event.target.dataset?.axVolume;if(state.ag.game==='abyss'&&['music','effects'].includes(kind))sound.configure({[kind]:Number(event.target.value)/100});});
  document.addEventListener('keydown',event=>{
+  if(celebrating&&event.key==='Tab'){event.preventDefault();document.querySelector('[data-ax=finish-win]')?.focus();return;}
+  if(celebrating&&(event.key==='Escape'||event.key==='Enter'||event.key===' ')){event.preventDefault();fx.finish();return;}
   const dialog=document.getElementById('ax-dialog');if(!dialog)return;
   if(event.key==='Escape'){event.preventDefault();close();}
-  if(event.key==='Tab'){const buttons=[...dialog.querySelectorAll('button:not(:disabled)')];if(event.shiftKey&&document.activeElement===buttons[0]){event.preventDefault();buttons.at(-1)?.focus();}else if(!event.shiftKey&&document.activeElement===buttons.at(-1)){event.preventDefault();buttons[0]?.focus();}}
+  if(event.key==='Tab'){const buttons=[...dialog.querySelectorAll('button:not(:disabled),input:not(:disabled)')];if(event.shiftKey&&document.activeElement===buttons[0]){event.preventDefault();buttons.at(-1)?.focus();}else if(!event.shiftKey&&document.activeElement===buttons.at(-1)){event.preventDefault();buttons[0]?.focus();}}
  });
- document.addEventListener('visibilitychange',()=>{if(document.hidden){running=false;entering=false;clearTimeout(timer);timer=0;if(state.ag.game==='abyss')render(false);}});
+ document.addEventListener('visibilitychange',()=>{if(document.hidden){sound.stop();running=false;entering=false;clearTimeout(timer);timer=0;if(state.ag.game==='abyss')render(false);}});
  return {prepare,stop,render,receive,spin,paint};
 })();

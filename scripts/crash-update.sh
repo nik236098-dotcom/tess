@@ -28,6 +28,8 @@ node --check server/crash/service.js
 node --check public/arcade.js
 node --check public/abyss-rules.js
 node --check public/abyss-ui.js
+node --check public/abyss-audio.js
+node --check public/abyss-fx.js
 node --check server/arcade/abyss.js
 node --check public/plinko-motion.js
 node --check server/arcade/game.js
