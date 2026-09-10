@@ -31,6 +31,10 @@ node --check public/abyss-ui.js
 node --check public/abyss-audio.js
 node --check public/abyss-fx.js
 node --check server/arcade/abyss.js
+node --check public/feature-slots-rules.js
+node --check public/feature-slots-ui.js
+node --check public/feature-slots-audio.js
+node --check server/arcade/feature-slots.js
 node --check public/plinko-motion.js
 node --check server/arcade/game.js
 node --check server/arcade/service.js
@@ -62,14 +66,20 @@ node - <<'JS'
 const fs = require('node:fs');
 const catalog = require('./public/game-catalog');
 for (const id of Object.keys(catalog.names)) {
-  const path = `public/img/game-cards/${catalog.file(id)}.webp`;
+  const path = `public${catalog.artwork(id)}`;
   if (!fs.statSync(path).size) throw new Error(`Empty game artwork: ${path}`);
 }
 for (const id of [...require('./public/abyss-rules').symbols.map(s=>s.id),'station']) {
   const path = `public/img/abyss/${id}.webp`;
   if (!fs.statSync(path).size) throw new Error(`Empty Abyss artwork: ${path}`);
 }
-for (const path of ['public/abyss.css', 'public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp', 'public/tower.css', 'public/andar.css', 'public/img/rps/rock-v2.webp', 'public/img/rps/paper-v2.webp', 'public/img/rps/scissors-v2.webp']) {
+for (const [game, rules] of Object.entries(require('./public/feature-slots-rules'))) {
+  for (const id of [...rules.symbols.map(s=>s.id), 'station']) {
+    const path = `public/img/feature-slots/${game}/${id}.svg`;
+    if (!fs.statSync(path).size) throw new Error(`Empty slot artwork: ${path}`);
+  }
+}
+for (const path of ['public/feature-slots.css', 'public/abyss.css', 'public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp', 'public/tower.css', 'public/andar.css', 'public/img/rps/rock-v2.webp', 'public/img/rps/paper-v2.webp', 'public/img/rps/scissors-v2.webp']) {
   if (!fs.statSync(path).size) throw new Error(`Empty game asset: ${path}`);
 }
 JS
