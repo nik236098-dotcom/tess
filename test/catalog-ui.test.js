@@ -68,9 +68,9 @@ test('game choices preserve native inputs and map numeric values to numbers',()=
   h.ctx.agRequest('start');assert.equal(h.sent.at(-1).options[key],value);
  }
 });
-test('catalog launchers contain all 13 distinct games and no baccarat duplicate',()=>{
+test('catalog launchers contain Abyss and all 13 distinct games and no baccarat duplicate',()=>{
  const h=harness('diamonds'),html=h.$('casino-catalog').innerHTML;
- const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,ids);assert.equal(new Set(idsInHtml).size,13);assert.ok(!html.includes('data-arcade="baccarat"'));
+ const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,['abyss',...ids]);assert.equal(new Set(idsInHtml).size,14);assert.ok(!html.includes('data-arcade="baccarat"'));
 });
 test('Chicken step and cashout controls lock duplicate requests and restore a saved round',()=>{
  const h=harness('chicken');h.deliver(game.initial());

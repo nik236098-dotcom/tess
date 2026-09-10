@@ -13,7 +13,7 @@ const roulette = require('./roulette/wheel');
 const baccarat = require('./baccarat/game');
 const { MinesGame, MinesError } = require('./mines/game');
 const nvuti = require('./nvuti/game');
-const { ArcadeError, CatalogError } = require('./arcade/game');
+const { ArcadeError, CatalogError, AbyssError } = require('./arcade/game');
 const { createArcadeService } = require('./arcade/service');
 const { CrashError } = require('./crash/game');
 const { createCrashService } = require('./crash/service');
@@ -334,7 +334,7 @@ function createApp(options = {}) {
       try {
         handleMessage(client, message);
       } catch (error) {
-        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError || error instanceof ArcadeError || error instanceof CatalogError || error instanceof CrashError || error instanceof HiloError || error instanceof MinesError || error instanceof nvuti.NvutiError) {
+        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError || error instanceof ArcadeError || error instanceof CatalogError || error instanceof AbyssError || error instanceof CrashError || error instanceof HiloError || error instanceof MinesError || error instanceof nvuti.NvutiError) {
           client.fail(error.message);
         } else {
           console.error('Ошибка обработки сообщения:', error);

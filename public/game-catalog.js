@@ -1,6 +1,6 @@
 'use strict';
 (function(root){
-  const names={holdem:"Texas Hold'em",omaha:'Omaha',blackjack:'Blackjack',baccarat:'Baccarat',roulette:'Roulette',mines:'Mines',nvuti:'Nvuti',hilo:'Hilo',crash:'Crash',plinko:'Plinko',tower:'Tower',keno:'Keno',dragon:'Dragon & Tiger',diamonds:'Diamonds',videopoker:'Video Poker',sicbo:'Sic Bo',chicken:'Chicken',coin:'Coin Flip',rps:'Rock Paper Scissors',slots:'Croc Slots',andar:'Andar Bahar',darts:'Darts',bowling:'Bowling',balloon:'Balloon',race:'Racing',fishing:'Fishing'};
+  const names={holdem:"Texas Hold'em",omaha:'Omaha',blackjack:'Blackjack',baccarat:'Baccarat',roulette:'Roulette',mines:'Mines',nvuti:'Nvuti',hilo:'Hilo',crash:'Crash',plinko:'Plinko',tower:'Tower',keno:'Keno',dragon:'Dragon & Tiger',diamonds:'Diamonds',videopoker:'Video Poker',sicbo:'Sic Bo',chicken:'Chicken',coin:'Coin Flip',rps:'Rock Paper Scissors',slots:'Croc Slots',andar:'Andar Bahar',darts:'Darts',bowling:'Bowling',balloon:'Balloon',race:'Racing',fishing:'Fishing',abyss:'Abyss Protocol'};
   const file=id=>id==='race'?'racing':id;
   const text=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function tile(id,native=false){

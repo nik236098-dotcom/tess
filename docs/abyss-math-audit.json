@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "seed": 927481,
+  "bonusRounds": 100000,
+  "baseLineReturnExact": 0.798343113386153,
+  "scatterTriggerProbabilityExact": 0.0016394664112818528,
+  "bonusMeanInSpinBets": 96.95917149999933,
+  "bonusMean95CI": [
+    96.4002945139825,
+    97.51804848601616
+  ],
+  "bonusBuyReturnEstimate": 0.9695917149999933,
+  "baseGameReturnEstimate": 0.9573044183261187,
+  "meanFreeSpins": 8.07608,
+  "capHits": 0,
+  "bonusMedian": 71.5,
+  "bonusP95": 269.95,
+  "note": "Offline estimate, not certification. Base game estimate adds the simulated bonus EV to exact line EV; the round cap can slightly lower it."
+}

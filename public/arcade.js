@@ -1,5 +1,5 @@
 'use strict';
-const AG_NAMES = { plinko: 'Plinko', tower: 'Tower', keno: 'Keno', dragon: 'Dragon & Tiger' };
+const AG_NAMES = { abyss: 'Abyss Protocol', plinko: 'Plinko', tower: 'Tower', keno: 'Keno', dragon: 'Dragon & Tiger' };
 const AG_SUBTITLES = { plinko: 'Пусть шарик найдёт свой путь', tower: 'Выбирай безопасные плитки и поднимайся выше', keno: 'Выбери числа — проверь совпадения', dragon: 'На чьей стороне старшая карта?' };
 const AG_RULES = {
   plinko: 'Шарик проходит 10 рядов: на каждом шанс поворота влево или вправо равен 50%. Выплата — ставка × коэффициент ячейки. Уровень риска меняет таблицу выплат. Выбери 1, 5, 10 или 25 шариков. Сумма в поле — ставка на один шарик; общая ставка и выплата складываются по всему запуску. Результат определяет сервер, анимация показывает его путь.',
@@ -16,6 +16,7 @@ function agMaxBet() {
   return a.game==='tower' ? cfg?.maxBets?.[a.options.tower.level] ?? cfg?.maxBet : cfg?.maxBet;
 }
 function stopArcade() {
+  if(typeof AbyssUI!=='undefined')AbyssUI.stop();
   if(typeof DartsGame!=='undefined')DartsGame.stop();
   if(typeof DartsAudio!=='undefined')DartsAudio.stop();
   const a=state.ag; a.token++; cancelAnimationFrame(a.raf); a.animating=false; a.game=null; a.info=null; a.pending=null;
@@ -38,6 +39,8 @@ function openArcade(game) {
   $('ag-chicken-step').hidden=true;
   $('screen-ag').classList.remove('vp-is-live');
   if(agCatalog())CasinoUI.prepare(game);
+  $('screen-ag').classList.toggle('is-abyss',game==='abyss');
+  if(game==='abyss')AbyssUI.prepare();
   $('screen-lobby').classList.add('hidden'); $('screen-ag').classList.remove('hidden'); $('screen-ag').scrollTop=0;
   stopRoomsPolling(); tg?.BackButton?.show();
   $('ag-title').textContent=AG_NAMES[game]; $('ag-subtitle').textContent=AG_SUBTITLES[game]; $('ag-rules-text').textContent=AG_RULES[game];
@@ -74,6 +77,7 @@ function onArcadeState(message) {
   const a=state.ag;
   if(a.game===message.game&&a.info&&message.revision<a.info.revision)return;
   state.balance=message.balance;
+  if(a.game==='abyss'&&message.game==='abyss')return AbyssUI.receive(message);
   if(a.game!==message.game) return;
   if(a.game==='darts'&&DartsGame.receive(message))return;
   if(a.info && message.revision<a.info.revision) return;
@@ -115,6 +119,7 @@ function agPayoutTable() {
   return values.map(([name,n],i)=>`<span class="ag-pay ${n>=1?'is-positive':''}" ${a.game==='tower'&&i===(a.info?.floor||1)-1?'aria-current="step"':''}><small>${name}</small><b>${agNumber(n)}×</b></span>`).join('');
 }
 function renderArcade(board=true) {
+  if(state.ag.game==='abyss')return AbyssUI.render(board);
   const a=state.ag;if(!a.game)return;
   const info=a.info, locked=agLocked(), live=info?.phase==='play', pending=info?.phase==='done'&&!info.settled;
   if(!info||info.phase!=='done'||a.animating||a.pending?.action==='start')GameResult.hide($('ag-overlay'));
@@ -247,6 +252,7 @@ function bindArcade() {
   $('ag-amount').addEventListener('input',()=>{if(state.ag.game==='plinko')agPlinkoSummary();});
   $('ag-back').addEventListener('click',closeArcade);
   $('ag-main').addEventListener('click',()=>{
+    if(state.ag.game==='abyss')return AbyssUI.spin();
     const info=state.ag.info;if(!info)return;
     if(info.phase==='done'&&!info.settled){agOpenRequest();renderArcade(false);return;}
     if(agCatalog()&&CasinoUI.main())return;

@@ -26,6 +26,9 @@ node --check public/crash.js
 node --check server/crash/game.js
 node --check server/crash/service.js
 node --check public/arcade.js
+node --check public/abyss-rules.js
+node --check public/abyss-ui.js
+node --check server/arcade/abyss.js
 node --check public/plinko-motion.js
 node --check server/arcade/game.js
 node --check server/arcade/service.js
@@ -60,7 +63,11 @@ for (const id of Object.keys(catalog.names)) {
   const path = `public/img/game-cards/${catalog.file(id)}.webp`;
   if (!fs.statSync(path).size) throw new Error(`Empty game artwork: ${path}`);
 }
-for (const path of ['public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp', 'public/tower.css', 'public/andar.css', 'public/img/rps/rock-v2.webp', 'public/img/rps/paper-v2.webp', 'public/img/rps/scissors-v2.webp']) {
+for (const id of [...require('./public/abyss-rules').symbols.map(s=>s.id),'station']) {
+  const path = `public/img/abyss/${id}.webp`;
+  if (!fs.statSync(path).size) throw new Error(`Empty Abyss artwork: ${path}`);
+}
+for (const path of ['public/abyss.css', 'public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp', 'public/tower.css', 'public/andar.css', 'public/img/rps/rock-v2.webp', 'public/img/rps/paper-v2.webp', 'public/img/rps/scissors-v2.webp']) {
   if (!fs.statSync(path).size) throw new Error(`Empty game asset: ${path}`);
 }
 JS
