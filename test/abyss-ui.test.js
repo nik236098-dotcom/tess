@@ -32,3 +32,29 @@ test('base console groups stake, centered spin and bonus purchase; secondary but
  const h=harness(Array(15).fill(0));h.deliver();h.advance(3000);const html=h.$('ag-settings').innerHTML;
  assert.ok(html.indexOf('data-ax="stake"')<html.indexOf('data-ax="spin"'));assert.ok(html.indexOf('data-ax="spin"')<html.indexOf('data-ax="buy"'));assert.ok(html.includes('data-ax="menu"'));for(const id of ['minus','plus','turbo','sound','rules'])assert.ok(!html.includes('data-ax="'+id+'"'));assert.equal(h.$('ag-amount').value,'0.20');
 });
+
+test('bonus result separates the next multiplier from the multiplier actually applied to its payout',()=>{
+ const h=harness(Array(15).fill(0));
+ Object.assign(h.info,{phase:'play',unitBet:20,payout:120,bonus:{remaining:5,played:3,multiplier:3}});
+ Object.assign(h.info.detail,{bonusSpin:true,usedMultiplier:2,rawWin:80,win:80});
+ h.state.ag.pending=null;h.state.ag.info=h.info;h.ctx.ui.render();
+ let html=h.$('ag-stage').innerHTML;
+ assert.ok(html.includes('СЛЕДУЮЩИЙ СПИН'));assert.ok(html.includes('<strong>3×</strong>'));
+ assert.ok(html.includes('$0.40 × 2 = $0.80'));assert.ok(h.$('ag-settings').innerHTML.includes('Общий выигрыш бонуса<b>$1.20</b>'));
+ h.state.ag.cgPrevious={...h.info,bonus:{remaining:6,played:2,multiplier:2}};h.state.ag.animating=true;h.ctx.ui.render();
+ html=h.$('ag-stage').innerHTML;
+ assert.ok(html.includes('МНОЖИТЕЛЬ СПИНА'));assert.ok(html.includes('<strong>2×</strong>'));
+ assert.ok(!html.includes('$0.40 × 2 = $0.80'));
+ h.state.ag.animating=false;h.info.phase='done';h.info.bonus.remaining=0;h.ctx.ui.render();
+ html=h.$('ag-stage').innerHTML;
+ assert.ok(html.includes('БОНУС ЗАВЕРШЁН'));assert.ok(html.includes('<strong>2×</strong>'));assert.ok(!html.includes('<strong>3×</strong>'));
+});
+
+test('a capped bonus payout shows the limit instead of an incorrect uncapped equation',()=>{
+ const h=harness(Array(15).fill(0));
+ Object.assign(h.info,{unitBet:20,payout:50000,bonus:{remaining:0,played:8,multiplier:10}});
+ Object.assign(h.info.detail,{bonusSpin:true,usedMultiplier:9,rawWin:900,win:100,capped:true});
+ h.state.ag.pending=null;h.state.ag.info=h.info;h.ctx.ui.render();
+ const html=h.$('ag-stage').innerHTML;
+ assert.ok(html.includes('Достигнут максимум 2500×'));assert.ok(!html.includes('$1.00 × 9 = $1.00'));
+});

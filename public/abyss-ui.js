@@ -26,17 +26,24 @@ const AbyssUI=(()=>{
   if(!a.animating)balance=state.balance;$('ag-balance').textContent=money(balance);
   $('ag-amount').value=(bet/100).toFixed(2);$('ag-paytable').innerHTML='';$('ag-settings').innerHTML=controls();
   $('ag-main').disabled=agLocked();$('ag-rules-text').textContent='Abyss Protocol: 5 барабанов, 3 ряда, 20 постоянных линий. Выплаты слева направо за 3–5 одинаковых символов; Wild заменяет любой символ, кроме Scatter. На каждой линии оплачивается одна лучшая комбинация. Ставка за линию — 1/20 общей ставки. Три и более Scatter дают 8 бесплатных вращений. В бонусе Wild встречается чаще, множитель начинается с 1× и после каждого выигрышного вращения растёт на 1, максимум 10×. Повторные 3 Scatter добавляют 4 вращения; за один бонус не более 40. Bonus Buy стоит 100 общих ставок: три Scatter на вводном вращении открывают тот же бонус; вводное вращение не даёт денежной выплаты. Максимальная общая выплата — 2500 ставок за вращение. Турбо влияет только на анимацию. Весь раунд и выплата сохраняются сервером.';
-  GameResult.hide($('ag-overlay'));$('screen-ag').classList?.toggle?.('ax-feature-mode',info?.phase==='play'||celebrating&&info?.bonus?.played>0);
+  GameResult.hide($('ag-overlay'));$('screen-ag').classList?.toggle?.('ax-feature-mode',(a.animating?a.cgPrevious:info)?.phase==='play'||celebrating&&info?.bonus?.played>0);
   if(!board)return;
   const visual=a.animating?a.cgPrevious:info,grid=info?.detail?.grid||idle,old=visual?.detail?.grid||idle;
   const wins=new Set(!a.animating?info?.detail?.lines?.flatMap(l=>l.cells)||[]:[]),bonus=visual?.bonus;
   if(!a.animating&&info?.detail?.triggered)grid.forEach((n,i)=>{if(n===R.scatter)wins.add(i);});
+  const inBonus=visual?.phase==='play',finishedBonus=visual?.phase==='done'&&visual?.bonus?.played>0;
+  const shownMultiplier=(finishedBonus?visual.detail?.usedMultiplier:bonus?.multiplier)||1;
+  const signalLabel=inBonus?(a.animating?'МНОЖИТЕЛЬ СПИНА':'СЛЕДУЮЩИЙ СПИН'):finishedBonus?'БОНУС ЗАВЕРШЁН':'СИГНАЛ ИЗ ГЛУБИНЫ';
+  const signalText=inBonus?'Множитель растёт после выигрыша':finishedBonus?'Множитель последнего спина':'3 SCATTER открывают бонус';
+  const detail=info?.detail;
+  const note=a.animating?'':detail?.capped?'Достигнут максимум 2500×':detail?.win&&detail.bonusSpin?money(detail.rawWin/detail.usedMultiplier)+' × '+detail.usedMultiplier+' = '+money(detail.win):detail?.triggered&&detail.bonusSpin?'+'+detail.triggered+' бесплатных вращения':detail?.win?'За вращение '+money(detail.win):'Wild заменяет символы · Scatter запускает погружение';
+
   const reels=[0,1,2,3,4].map(col=>{
    const result=[grid[col],grid[col+5],grid[col+10]],fill=18+col*3;
    const strip=a.animating?[...result,...Array.from({length:fill},(_,i)=>(i*7+col+Number(info.revision))%10),old[col],old[col+5],old[col+10]]:result;
    return `<div class="ax-reel"><div class="ax-strip" data-ax-reel="${col}" data-length="${strip.length}" style="transform:translateY(${a.animating?-(strip.length-3)/strip.length*100:0}%)">${strip.map((n,i)=>symbol(n,wins.has(i*5+col))).join('')}</div></div>`;
   }).join('');
-  $('ag-stage').innerHTML=`<div class="ax-scene"><div class="ax-hero"><div class="ax-brand">ABYSS<span>PROTOCOL</span></div><div class="ax-water-light"></div></div><div class="ax-window"><div class="ax-grid" aria-label="Барабаны Abyss Protocol">${reels}</div></div><div class="ax-signal${visual?.phase==='play'?' is-active':''}"><div class="ax-sonar"><i></i></div><div><small>СИГНАЛ ИЗ ГЛУБИНЫ</small><b>${visual?.phase==='play'?'Бонус · '+(bonus?.remaining||0)+' вращений':'3 SCATTER открывают бонус'}</b><div class="ax-meter"><i style="width:${((bonus?.multiplier||1)-1)/9*100}%"></i></div></div><strong>${bonus?.multiplier||1}×</strong></div><p class="ax-scene-note">${a.animating?'':info?.detail?.capped?'Достигнут максимум 2500×':info?.detail?.triggered&&info.detail.bonusSpin?'+'+info.detail.triggered+' бесплатных вращения':info?.detail?.win?'За вращение '+money(info.detail.win):'Wild заменяет символы · Scatter запускает погружение'}</p></div>`;
+  $('ag-stage').innerHTML=`<div class="ax-scene"><div class="ax-hero"><div class="ax-brand">ABYSS<span>PROTOCOL</span></div><div class="ax-water-light"></div></div><div class="ax-window"><div class="ax-grid" aria-label="Барабаны Abyss Protocol">${reels}</div></div><div class="ax-signal${visual?.phase==='play'?' is-active':''}"><div class="ax-sonar"><i></i></div><div><small>${signalLabel}</small><b>${signalText}</b><div class="ax-meter"><i style="width:${(shownMultiplier-1)/9*100}%"></i></div></div><strong>${shownMultiplier}×</strong></div><p class="ax-scene-note">${note}</p></div>`;
   if(a.animating)paint(a.cgTime||0);
  }
  function reelTiming(){
