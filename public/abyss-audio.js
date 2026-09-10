@@ -11,9 +11,21 @@
   function tone(freq,at,duration,level=.1,bus=effects,type='sine'){
    if(!allowed())return null;const o=ctx.createOscillator(),g=ctx.createGain();o.type=type;o.frequency.setValueAtTime(freq,at);g.gain.setValueAtTime(.0001,at);g.gain.exponentialRampToValueAtTime(Math.max(.0002,level),at+.025);g.gain.exponentialRampToValueAtTime(.0001,at+duration);o.connect(g);g.connect(bus);if(bus===effects)g.connect(verb);track(o,[g]);o.start(at);o.stop(at+duration+.04);return o;
   }
-  function noise(duration,freq,level,bus=effects,repeat=false){
-   if(!allowed())return null;const b=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate),d=b.getChannelData(0);let brown=0;for(let i=0;i<d.length;i++){brown=(brown+(Math.random()*2-1)*.035)/1.02;d[i]=brown*3;}
-   const s=ctx.createBufferSource(),f=ctx.createBiquadFilter(),g=ctx.createGain();s.buffer=b;s.loop=repeat;f.type='bandpass';f.frequency.value=freq;f.Q.value=.6;g.gain.setValueAtTime(.0001,ctx.currentTime);g.gain.linearRampToValueAtTime(level,ctx.currentTime+.06);s.connect(f);f.connect(g);g.connect(bus);track(s,[f,g]);s.start();if(!repeat){g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+duration);s.stop(ctx.currentTime+duration+.05);}return s;
+  function reelMotor(){
+   if(!allowed())return null;
+   // Eight cushioned gear contacts per loop, plus a quiet low motor tone.
+   // No random/noise signal: the gaps between contacts remain silent above the motor.
+   const length=Math.round(ctx.sampleRate*.64),b=ctx.createBuffer(1,length,ctx.sampleRate),d=b.getChannelData(0);
+   for(let i=0;i<length;i++){
+    const t=i/ctx.sampleRate,local=t%.08,hit=Math.floor(t/.08);
+    const envelope=local<.028?Math.sin(Math.PI*local/.028)**2*Math.exp(-local*80):0;
+    d[i]=.035*Math.sin(2*Math.PI*100*t)+envelope*(.42*Math.sin(2*Math.PI*(240+hit%2*25)*local)+.10*Math.sin(2*Math.PI*480*local));
+   }
+   const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();
+   source.buffer=b;source.loop=true;filter.type='lowpass';filter.frequency.value=850;filter.Q.value=.5;
+   gain.gain.setValueAtTime(.0001,ctx.currentTime);gain.gain.linearRampToValueAtTime(.18,ctx.currentTime+.07);
+   source.connect(filter);filter.connect(gain);gain.connect(effects);track(source,[filter,gain]);source.start();
+   return {stop(){gain.gain.cancelScheduledValues?.(ctx.currentTime);gain.gain.setValueAtTime(gain.gain.value,ctx.currentTime);gain.gain.linearRampToValueAtTime(.0001,ctx.currentTime+.045);source.stop(ctx.currentTime+.05);}};
   }
   function chord(notes,level=.075,spacing=.08,duration=1.1){if(!allowed())return;notes.forEach((f,i)=>tone(f,ctx.currentTime+i*spacing,duration,level));}
   function ambience(){
@@ -33,11 +45,11 @@
   }
   function halt(){active=false;env.clearInterval(loop);loop=0;for(const v of [...voices])stopVoice(v);voices.clear();spinVoice=null;tension=null;if(ctx?.state==='running')ctx.suspend()?.catch(()=>{});}
   function configure(p){for(const k of ['music','effects'])if(Number.isFinite(p[k]))settings[k]=Math.max(0,Math.min(1,p[k]));if(typeof p.muted==='boolean')settings.muted=p.muted;save();if(settings.muted)halt();else unlock();}
-  function spinning(on){stopVoice(spinVoice);spinVoice=null;if(on)spinVoice=noise(1,1200,.3,effects,true);}
+  function spinning(on){stopVoice(spinVoice);spinVoice=null;if(on)spinVoice=reelMotor();}
   function anticipation(on){if(!on){stopVoice(tension);tension=null;return;}if(tension||!allowed())return;tension=tone(220,ctx.currentTime,6,.12);if(tension)tension.frequency.exponentialRampToValueAtTime(740,ctx.currentTime+5);}
   function play(kind,value=1){
    if(!allowed())return;
-   if(kind==='stop'){noise(.09,800,.28);tone(120,ctx.currentTime,.09,.07);}
+   if(kind==='stop'){tone(150,ctx.currentTime,.085,.055);tone(300,ctx.currentTime,.055,.018);}
    else if(kind==='wild')chord([220,330,660],.07,.045,.65);
    else if(kind==='scatter')chord([392,493.883,587.33].slice(0,Math.min(3,value)),.075,.075,.8);
    else if(kind==='match')chord([440,554.365,659.255],.045,.045,.45);

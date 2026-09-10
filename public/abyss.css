@@ -13,7 +13,7 @@
 .ax-brand { position:relative; z-index:1; padding-top:5px; text-align:center; font:600 clamp(23px,7vw,36px)/.94 Georgia,serif; letter-spacing:5px; color:#d6efff; text-shadow:0 2px 3px #010913,0 0 14px #07384f; }
 .ax-brand span { display:block; margin-top:6px; font-size:.57em; letter-spacing:6px; }
 .ax-water-light { position:absolute; inset:0; background:linear-gradient(110deg,transparent 35%,#49ddff18 48%,transparent 60%); animation:ax-water 8s ease-in-out infinite alternate; }
-.ax-window { flex:none; position:relative; padding:5px 0; border:0; border-radius:0; background:linear-gradient(90deg,transparent,#04132280 12%,#04132280 88%,transparent); }
+.ax-window { flex:none; position:relative; padding:5px 6px; border:1px solid #8da4d099; border-radius:16px; background:linear-gradient(135deg,#16334570,#07172755); box-shadow:inset 0 1px 0 #d0e6ff33,0 0 0 3px #385b8222,0 5px 20px #02091844; }
 .ax-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:3px; }
 .ax-reel { position:relative; aspect-ratio:1/3; min-width:0; overflow:hidden; border-radius:5px; background:#04142355; container-type:inline-size; }
 .ax-reel::after { content:''; position:absolute; inset:0; background:linear-gradient(#06142355,transparent 15%,transparent 85%,#06142355); pointer-events:none; }
@@ -104,7 +104,7 @@
 .ax-spin-win::before { content:''; position:absolute; z-index:-1; inset:-25px -40px; border-radius:50%; background:radial-gradient(ellipse,#041322d9,transparent 72%); }
 .ax-spin-win small { display:block; color:#dbfaff; font:500 12px var(--font); letter-spacing:2px; }
 .ax-spin-win b { display:block; white-space:nowrap; font:700 clamp(27px,9vw,48px) Georgia,serif; }.ax-spin-win.is-small b { font-size:25px; color:#cce9f1; }
-.ax-win-lines { position:absolute; inset:5px 0; width:100%; height:calc(100% - 10px); z-index:3; pointer-events:none; overflow:visible; }
+.ax-win-lines { position:absolute; inset:5px 6px; width:calc(100% - 12px); height:calc(100% - 10px); z-index:3; pointer-events:none; overflow:visible; }
 .ax-win-lines polyline { fill:none; stroke:#c1f4ff; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; filter:drop-shadow(0 0 4px #5bd9ff); opacity:0; animation:ax-line-show .9s var(--delay) ease both; }
 .ax-feature-toast { position:absolute; z-index:5; bottom:3px; left:50%; transform:translateX(-50%); white-space:nowrap; color:#f4e1ae; padding:7px 14px; border:1px solid #82cfe866; border-radius:18px; background:#0a253bef; font:600 13px var(--font); animation:ax-win-appear 2s ease both; }
 .ax-scene { position:relative; }
