@@ -99,7 +99,7 @@ const AbyssUI=(()=>{
   if(running&&!document.hidden&&state.ag.info?.phase==='play')timer=setTimeout(()=>{timer=0;if(state.ag.game==='abyss'&&state.connected&&!agLocked()&&!celebrating)spin();},state.ag.info?.detail?.win?1400:turbo?250:750);
  }
  function celebrate(kind){
-  celebrating=true;render(false);if(kind!=='summary'||state.ag.info.payout>0)sound.play(kind==='summary'?'summary':'win',100);
+  celebrating=true;render(false);if(kind!=='summary'||state.ag.info.payout>0)sound.play(kind==='summary'?'summary':'bigwin',state.ag.info.detail.win/state.ag.info.unitBet);
   fx.celebrate(state.ag.info,kind,()=>{celebrating=false;if(kind==='summary')sound.setMode?.(false);render(false);advanceBonus();});
  }
  function spin(){

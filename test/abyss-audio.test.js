@@ -24,3 +24,19 @@ test('even the first Scatter plays a complete bright cue, while mute suppresses 
  assert.equal(h.nodes.length-before,4);assert.ok(h.nodes.slice(before).every(n=>n.started));
  h.audio.configure({muted:true});const muted=h.nodes.length;h.audio.play('scatter',1);assert.equal(h.nodes.length,muted);
 });
+
+test('large-win fanfare has dedicated layers that grow across BIG, MEGA and EPIC',()=>{
+ const counts=[];
+ for(const ratio of [50,100,500]){const h=harness();h.audio.unlock();const before=h.nodes.length;h.audio.play('bigwin',ratio);counts.push(h.nodes.length-before);assert.ok(h.nodes.slice(before).every(n=>n.started));h.audio.stop();assert.ok(h.nodes.every(n=>n.stoppedAt===0));}
+ assert.ok(counts[0]>6);assert.ok(counts[1]>counts[0]);assert.ok(counts[2]>counts[1]);
+});
+
+test('slot voice announces the actual win tier in English and obeys effects mute and stop',()=>{
+ const h=harness(),spoken=[];let cancelled=0;
+ h.env.SpeechSynthesisUtterance=class {constructor(text){this.text=text;}};
+ h.env.speechSynthesis={getVoices:()=>[{name:'Daniel',lang:'en-GB'}],speak:u=>spoken.push(u),cancel(){cancelled++;}};
+ h.audio.unlock();for(const ratio of [50,100,500])h.audio.play('bigwin',ratio);
+ assert.deepEqual(spoken.map(u=>u.text),['Big win!','Mega win!','Epic win!']);assert.ok(spoken.every(u=>u.lang==='en-GB'&&u.volume===.65));
+ h.audio.stop();assert.equal(cancelled,3);h.audio.configure({effects:0});h.audio.play('bigwin',50);assert.equal(spoken.length,3);
+ h.audio.configure({muted:true});h.audio.play('bigwin',50);assert.equal(spoken.length,3);
+});
