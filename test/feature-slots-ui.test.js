@@ -30,7 +30,7 @@ test('the final feature shows one cumulative summary, including a zero payout',(
 });
 test('base console groups stake, centered spin and bonus purchase; secondary buttons live in the menu',()=>{
  const h=harness(Array(15).fill(0));h.deliver();h.advance(3000);const html=h.$('ag-settings').innerHTML;
- assert.ok(html.indexOf('data-ax="stake"')<html.indexOf('data-ax="spin"'));assert.ok(html.indexOf('data-ax="spin"')<html.indexOf('data-ax="buy"'));assert.ok(html.includes('data-ax="menu"'));assert.ok(html.includes('data-ax="turbo"'));for(const id of ['minus','plus','sound','rules'])assert.ok(!html.includes('data-ax="'+id+'"'));assert.equal(h.$('ag-amount').value,'0.20');
+ assert.ok(html.indexOf('data-ax="stake"')<html.indexOf('data-ax="spin"'));assert.ok(html.indexOf('data-ax="spin"')<html.indexOf('data-ax="buy"'));assert.ok(html.includes('data-ax="menu"'));assert.ok(html.includes('data-ax="turbo"'));for(const id of ['sound','rules'])assert.ok(!html.includes('data-ax="'+id+'"'));assert.equal(h.$('ag-amount').value,'0.20');
 });
 
 test('a capped bonus payout shows the limit instead of an incorrect uncapped equation',()=>{
@@ -51,3 +51,5 @@ test('a single stopped Scatter sounds once even when no bonus is triggered',()=>
 
 test('sticky Wilds stay in fixed overlays with old multipliers throughout the spin',()=>{const h=harness(Array(15).fill(8));h.state.ag.pending=null;h.state.ag.info=h.info;h.info.bonus.locked={1:3};h.info.detail.bonusSpin=true;h.ctx.ui.render();assert.ok(h.$('ag-stage').innerHTML.includes('fs-frozen'));assert.ok(h.$('ag-stage').innerHTML.includes('×3'));h.state.ag.cgPrevious={bonus:{locked:{1:2}}};h.state.ag.animating=true;h.ctx.ui.render();assert.ok(h.$('ag-stage').innerHTML.includes('×2'));assert.ok(!h.$('ag-stage').innerHTML.includes('×3'));});
  test('all five reel stops sound once, including reduced-motion completion',()=>{const h=harness(Array(15).fill(0),true);h.deliver();h.advance(0);assert.equal(h.sounds.filter(([k])=>k==='stop').length,5);});
+
+test('reference scene uses the raster atlas for all 15 live symbols',()=>{const h=harness(Array.from({length:15},(_,i)=>i%10));h.state.ag.pending=null;h.state.ag.info=h.info;h.ctx.ui.render();const html=h.$('ag-stage').innerHTML;assert.equal((html.match(/class="fs-symbol"/g)||[]).length,15);assert.ok(!html.includes('.svg'));assert.ok(html.includes('DEEP FREEZE'));assert.ok(html.includes('WILDS STAY FROZEN'));});

@@ -10,11 +10,11 @@ function verify(missing){
 }
 test('deployment validates the same artwork paths used by every catalog tile',()=>{
  for(const id of Object.keys(catalog.names))assert.ok(catalog.tile(id).includes(`src="${catalog.artwork(id)}"`));
- assert.equal(catalog.artwork('cryo'),'/img/game-cards/cryo.svg');
- assert.equal(catalog.artwork('midnight'),'/img/game-cards/midnight.svg');
+ assert.equal(catalog.artwork('cryo'),'/img/feature-slots/cryo/scene-v2.webp');
+ assert.equal(catalog.artwork('midnight'),'/img/feature-slots/midnight/scene-v2.webp');
  assert.equal(catalog.artwork('race'),'/img/game-cards/racing.webp');
  assert.doesNotThrow(()=>verify());
 });
 test('deployment still rejects missing slot cards and symbols instead of bypassing validation',()=>{
- for(const asset of ['public/img/game-cards/cryo.svg','public/img/game-cards/midnight.svg','public/img/feature-slots/cryo/8.svg','public/img/feature-slots/midnight/station.svg'])assert.throws(()=>verify(asset),/Missing asset:/);
+ for(const asset of ['public/img/feature-slots/cryo/scene-v2.webp','public/img/feature-slots/midnight/scene-v2.webp','public/img/feature-slots/cryo/symbols-v2.webp','public/img/feature-slots/midnight/symbols-v2.webp'])assert.throws(()=>verify(asset),/Missing asset:/);
 });

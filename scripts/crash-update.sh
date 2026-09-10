@@ -74,8 +74,8 @@ for (const id of [...require('./public/abyss-rules').symbols.map(s=>s.id),'stati
   if (!fs.statSync(path).size) throw new Error(`Empty Abyss artwork: ${path}`);
 }
 for (const [game, rules] of Object.entries(require('./public/feature-slots-rules'))) {
-  for (const id of [...rules.symbols.map(s=>s.id), 'station']) {
-    const path = `public/img/feature-slots/${game}/${id}.svg`;
+  for (const id of ['scene-v2', 'symbols-v2']) {
+    const path = `public/img/feature-slots/${game}/${id}.webp`;
     if (!fs.statSync(path).size) throw new Error(`Empty slot artwork: ${path}`);
   }
 }

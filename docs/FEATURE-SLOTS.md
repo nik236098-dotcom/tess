@@ -1,6 +1,6 @@
 # Midnight Express and Cryo Vault
 
-Two independent server-persisted slots, accessed from the existing arcade catalog. The original Abyss rules and audio remain unchanged. Artwork is bespoke SVG illustration inspired by the preview concepts, not a pixel-identical export of generated reference images.
+Two independent server-persisted slots, accessed from the existing arcade catalog. The original Abyss rules and audio remain unchanged. Artwork now uses raster scenes reconstructed from the approved references and matching 5×2 symbol atlases. The original title lettering is part of each scene. The live interface recreates the frost/brass frames, three vault locks, Deep Freeze plaque and purple spin controls; it is not a flattened mockup.
 
 Shared: 5 reels × 3 rows, 20 left-to-right paylines, discrete stakes starting at 20 cents, purchase for 100 stakes, 8 starting free spins. Purchased entry shows three Scatter in randomly chosen distinct columns and random rows, with no unpaid line combination. Three Scatter retrigger 3 spins, at most 32 awarded. Round payout capped at 2500 unit stakes. The integer-cent spin total is rounded down once after summing paylines. One best match per line. State persists independently per game and the existing atomic account service settles once.
 
@@ -19,3 +19,12 @@ Deploy on the existing server:
 ```sh
 cd /opt/poker/app && sudo -u poker git fetch origin codex/crash && sudo -u poker git show FETCH_HEAD:scripts/crash-update.sh | sudo bash
 ```
+
+
+## Reference artwork revision
+
+Production assets: `public/img/feature-slots/{cryo,midnight}/{scene-v2,symbols-v2}.webp`. Native generated dimensions are retained; WebP is encoding only. Each atlas contains 5 columns and 2 rows, selected using CSS background-position. Opaque navy backgrounds intentionally match reel cells; no simulated transparency/checkerboard assets are shipped.
+
+Built-in image generation was used. Scene edit specification: preserve the exact approved environment, composition, lighting, materials and title; remove every foreground reel/control/amount and reconstruct the background underneath. Midnight keeps the blue velvet train interior and brass vault; Cryo keeps the frozen laboratory, cryo tanks and circular vault. Atlas specification: reproduce ten reference-style realistic objects in equal 5×2 cells with separate Wild/Scatter art, no UI; final background is solid #07121e. Early checkerboard outputs were rejected.
+
+Both localhost and shared-file preview navigation were blocked by Cloud browser policy. This revision has code/asset verification and source image inspection, but no claim of on-device screenshot parity.
