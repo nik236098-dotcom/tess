@@ -11,7 +11,7 @@
   const date=new Date(item.createdAt);const when=Number.isNaN(date.getTime())?'':date.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   return `<div class="croco-tx"><span><b>${esc(titles[item.status]||'Операция')}</b><small>${esc([item.providerTitle,when].filter(Boolean).join(' · '))}</small></span><strong class="${paid?'is-in':out?'is-out':''}">${paid?'+':out?'−':''}${esc(money(amount||0))}</strong></div>`;
  }
- function historyHtml(items,money,limit=3){if(!Array.isArray(items)||!items.length)return '<div class="croco-empty"><svg class="icon"><use href="#i-receipt"></use></svg><b>Пока нет транзакций</b><p>Здесь появится история операций</p></div>';return items.slice(0,limit).map(item=>transaction(item,money)).join('');}
+ function historyHtml(items,money,limit=3){if(!Array.isArray(items)||!items.length)return '<div class="croco-empty"><svg class="icon"><use href="#i-receipt"></use></svg><b>Пока нет операций</b><p>Здесь появится история транзакций</p></div>';return items.slice(0,limit).map(item=>transaction(item,money)).join('');}
  const api={defaults,recent,remember,transaction,historyHtml};
  if(typeof module==='object'&&module.exports){module.exports=api;return;}
  root.CrocoLobby=api;
