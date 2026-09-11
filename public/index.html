@@ -36,7 +36,7 @@
   <script src="/classic-cards.js?v=1"></script>
   <script src="/blackjack-deal.js?v=1"></script>
   <script defer src="/game-layout.js?v=4"></script>
-  <link rel="stylesheet" href="/croco-lobby.css?v=1" />
+  <link rel="stylesheet" href="/croco-lobby.css?v=2" />
   <link rel="preload" as="image" href="/img/croco/mascot.webp" />
 </head>
 <body>
@@ -106,10 +106,10 @@
               <button id="btn-payout" class="hidden" aria-label="Вывести"></button>
             </header>
             <section class="croco-feature" aria-label="Новая игра Nvuti">
-              <img src="/img/croco/nvuti-banner.webp" width="1983" height="793" alt="" fetchpriority="high" />
+              <img src="/img/croco/nvuti-banner.webp?v=2" width="1942" height="809" alt="" fetchpriority="high" />
               <div class="croco-feature-copy"><span class="croco-new">НОВАЯ ИГРА</span><h2>NVUTI</h2><button id="hero-play" class="croco-play">Играть <svg class="icon"><use href="#i-chevron-right"></use></svg></button></div>
             </section>
-            <section class="croco-recents"><h2 id="home-games-title">С чего начнём?</h2><div id="home-games" class="croco-shortcuts"></div></section>
+            <section class="croco-popular"><div class="croco-section-head"><h2 id="home-games-title">Популярные игры</h2><button id="home-all-games" class="link-btn">Все игры <svg class="icon"><use href="#i-chevron-right"></use></svg></button></div><div id="home-games" class="croco-shortcuts"></div></section>
             <section class="croco-transactions"><div class="croco-section-head"><h2>История транзакций</h2><button id="home-history" class="link-btn" aria-label="Вся история транзакций">Все <svg class="icon"><use href="#i-chevron-right"></use></svg></button></div><div id="home-transactions" aria-live="polite"><p class="croco-history-note">Загружаем операции…</p></div></section>
           </div>
 
@@ -350,7 +350,7 @@
         <button class="nav-btn is-active" data-tab="home"><svg class="icon"><use href="#i-home"></use></svg><span>Главная</span></button>
         <button class="nav-btn" data-tab="games"><svg class="icon"><use href="#i-gamepad"></use></svg><span>Игры</span></button>
         <button class="nav-btn" data-tab="bonuses"><svg class="icon"><use href="#i-gift"></use></svg><span>Бонусы</span></button>
-        <button class="nav-btn" data-tab="information"><svg class="icon"><use href="#i-help"></use></svg><span>Информация</span></button>
+        <button class="nav-btn" data-tab="information"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg><span>Информация</span></button>
       </nav>
     </section>
 
@@ -823,7 +823,7 @@
   <script src="/hilo.js?v=4"></script>
   <script src="/client-connection.js?v=1"></script>
   <script src="/telegram-display.js?v=1"></script>
-  <script src="/croco-lobby.js?v=1"></script>
+  <script src="/croco-lobby.js?v=2"></script>
   <script src="/app.js?v=111"></script>
 </body>
 </html>

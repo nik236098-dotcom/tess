@@ -2091,10 +2091,8 @@ function stopRoomsPolling() {
 
 function renderHomeGames() {
   const names=GameCatalog.names;
-  const ids=state.user?CrocoLobby.recent(localStorage,state.user.id,names):[];
-  $('home-games-title').textContent=ids.length?'Недавно играли':'С чего начнём?';
-  const selected=ids.length?ids:CrocoLobby.defaults;
-  $('home-games').innerHTML=selected.map(id=>`<button class="croco-shortcut" data-home-game="${escapeHtml(id)}" aria-label="Открыть ${escapeHtml(names[id])}"><img src="${GameCatalog.artwork(id)}" alt="" width="160" height="160" /><span>${escapeHtml(id==='holdem'?'Poker':names[id])}</span></button>`).join('');
+  $('home-games-title').textContent='Популярные игры';
+  $('home-games').innerHTML=CrocoLobby.defaults.map(id=>`<button class="croco-shortcut" data-home-game="${escapeHtml(id)}" aria-label="Открыть ${escapeHtml(names[id])}"><span class="croco-game-art croco-game-art--${id}" aria-hidden="true"></span><span>${id==='hilo'?'HiLo':escapeHtml(names[id])}</span></button>`).join('');
 }
 
 // ——— Баланс и админ-панель ———
@@ -3916,6 +3914,7 @@ function bindUi() {
       send({ type: 'bj_action', action: button.dataset.action });
     });
   });
+  on('home-all-games', 'click', () => { haptic('light'); showTab('games'); });
   on('home-settings', 'click', () => showTab('profile'));
   on('settings-back', 'click', () => showTab('home'));
   on('info-settings', 'click', () => showTab('profile'));

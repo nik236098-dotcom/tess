@@ -1,6 +1,6 @@
 'use strict';
 (function(root){
- const defaults=['holdem','mines','crash','hilo'];
+ const defaults=['nvuti','mines','crash','hilo'];
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function recent(storage,userId,catalog){try{const value=JSON.parse(storage.getItem('croco:recent:'+userId)||'[]');return Array.isArray(value)?[...new Set(value.filter(id=>Object.hasOwn(catalog,id)))].slice(0,8):[];}catch{return [];}}
  function remember(storage,userId,id,catalog){if(!userId||!Object.hasOwn(catalog,id))return;try{storage.setItem('croco:recent:'+userId,JSON.stringify([id,...recent(storage,userId,catalog).filter(v=>v!==id)].slice(0,8)));}catch{}}
