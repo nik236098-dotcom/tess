@@ -189,3 +189,5 @@
 #screen-lobby .croco-feature-copy { justify-content:center;gap:7px;padding:5%;transform:translateY(-5%); }
 #screen-lobby .croco-new { font-size:clamp(9px,2.5vw,12px);font-weight:600;color:#c1a1eb; }
 #screen-lobby .croco-feature h2 { margin:0;font-size:clamp(32px,10.8vw,54px);line-height:1.05;font-weight:850;letter-spacing:-1px;color:#fff;text-shadow:none; }
+/* Reduce only the home top gap; keep Telegram's required safe area. */
+body[data-tab="home"] #screen-lobby.croco-lobby .lobby { padding-top:calc(var(--safe-top,0px) + 6px); }
