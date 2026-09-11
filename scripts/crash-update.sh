@@ -1,22 +1,60 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd /opt/poker/app
-pgit() { sudo -u poker git "$@"; }
+app_dir=$PWD
+pgit() { sudo -u poker git -C "$app_dir" "$@"; }
+# Use the same Node binary as poker.service, not root's optional nvm runtime.
+node() { /usr/bin/node "$@"; }
 [[ $(id -u) -eq 0 ]] || { echo 'Запустите через sudo'; exit 1; }
+for dependency in flock tar curl; do command -v "$dependency" >/dev/null; done
+[[ -x /usr/bin/node ]]
+exec 9>/run/lock/poker-update.lock
+flock -n 9 || { echo 'Другое обновление уже выполняется.' >&2; exit 1; }
 [[ -z $(pgit status --porcelain --untracked-files=no) ]] || { echo 'Есть несохранённые изменения. Обновление остановлено.'; exit 1; }
 before=$(pgit rev-parse HEAD)
 target=$(pgit rev-parse --verify FETCH_HEAD)
 pgit cat-file -e "$target:server/crash/game.js"
-systemctl stop poker
-recover() {
-  trap - ERR
-  pgit checkout --detach "$before"
-  systemctl start poker
-  echo 'Ошибка запуска. Предыдущая версия возвращена.' >&2
-  exit 1
+staging=''
+switching=0
+ready() {
+  local deadline=$((SECONDS + 45))
+  local successes=0
+  while (( SECONDS < deadline )); do
+    if systemctl is-active --quiet poker && curl --fail --silent --connect-timeout 1 --max-time 2 --output /dev/null http://127.0.0.1:3000/config; then
+      successes=$((successes + 1))
+      if (( successes >= 2 )); then return 0; fi
+    else
+      successes=0
+    fi
+    sleep 1
+  done
+  return 1
 }
-trap recover ERR
-pgit checkout --detach "$target"
+cleanup() {
+  local result=$?
+  trap - EXIT INT TERM
+  set +e
+  if (( switching )); then
+    echo 'Новая версия не подтвердила запуск. Возвращаем предыдущую…' >&2
+    systemctl stop poker
+    if pgit checkout --detach "$before" && systemctl reset-failed poker && systemctl start poker && ready; then
+      echo 'Предыдущая версия восстановлена и отвечает по HTTP.' >&2
+    else
+      echo 'Автоматическое восстановление не подтверждено. Проверьте journalctl -u poker.' >&2
+    fi
+    result=1
+  fi
+  if [[ -n "$staging" ]]; then rm -rf -- "$staging"; fi
+  exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+# Validate a snapshot of the exact target while the current service keeps serving.
+echo 'Проверяем новую версию. Сайт продолжает работать…'
+staging=$(mktemp -d /tmp/croco-update.XXXXXXXX)
+pgit archive "$target" public server | tar -x -C "$staging"
+cd "$staging"
 node --check server/index.js
 node --check public/app.js
 node --check public/croco-lobby.js
@@ -84,7 +122,20 @@ for (const path of ['public/croco-lobby.css', 'public/img/croco/mascot.webp', 'p
   if (!fs.statSync(path).size) throw new Error(`Empty game asset: ${path}`);
 }
 JS
+
+cd "$app_dir"
+# Reject concurrent edits made outside this updater during the preflight.
+[[ $(pgit rev-parse HEAD) == "$before" && -z $(pgit status --porcelain --untracked-files=no) ]] || { echo 'Рабочая копия изменилась во время проверки. Обновление остановлено.' >&2; exit 1; }
+pgit update-ref refs/croco/last-good "$before"
+echo 'Проверки пройдены. Перезапускаем сервис и ждём HTTP-ответ…'
+switching=1
+systemctl stop poker
+pgit checkout --detach "$target"
+systemctl reset-failed poker
 systemctl start poker
-systemctl is-active --quiet poker
-trap - ERR
-echo 'Готово. Полностью закройте и откройте мини-приложение.'
+if ! ready; then
+  echo 'Приложение не ответило за 45 секунд.' >&2
+  exit 1
+fi
+switching=0
+echo "Готово: ${target:0:7}. Приложение отвечает по HTTP. Полностью закройте и откройте мини-приложение."

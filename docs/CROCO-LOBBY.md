@@ -15,3 +15,7 @@ Deployment:
 ```sh
 cd /opt/poker/app && sudo -u poker git fetch origin codex/crash && sudo -u poker git show FETCH_HEAD:scripts/crash-update.sh | sudo bash
 ```
+
+The updater validates the exact fetched revision in a temporary snapshot before stopping the live service. After switching, it waits up to 45 seconds for two consecutive successful local `/config` HTTP responses with the service active. Startup failure or timeout triggers a rollback to the previous checkout and verifies its HTTP response. A restart still causes a brief interruption; this is not a zero-downtime deployment. Concurrent updater runs are locked out.
+
+Deployment lifecycle tests execute the Bash script against command doubles: preflight failure without stopping the old service, slow startup, HTTP timeout rollback, and service-start failure rollback. Asset validation is covered separately by `test/deploy-assets.test.js`.
