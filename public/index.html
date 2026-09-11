@@ -36,13 +36,13 @@
   <script src="/classic-cards.js?v=1"></script>
   <script src="/blackjack-deal.js?v=1"></script>
   <script defer src="/game-layout.js?v=4"></script>
-  <link rel="stylesheet" href="/croco-lobby.css?v=7" />
-  <link rel="preload" as="image" href="/img/croco/mascot.webp" />
+  <link rel="stylesheet" href="/croco-lobby.css?v=8" />
+  <link rel="preload" as="image" href="/img/croco/mascot-cutout.webp" />
 </head>
 <body>
   <section id="croco-loading" aria-label="Подключение Croco" aria-busy="true">
     <div class="croco-loading-suits" aria-hidden="true"><span>♠</span><span>♥</span><span>♣</span><span>♦</span></div>
-    <div class="croco-loading-center"><img src="/img/croco/mascot.webp" width="1536" height="1024" alt="" fetchpriority="high" /><h1>Croco</h1>
+    <div class="croco-loading-center"><img src="/img/croco/mascot-cutout.webp" width="1536" height="1024" alt="" fetchpriority="high" /><h1>Croco</h1>
       <div class="croco-progress" aria-hidden="true"><i></i></div><p id="croco-loading-status" role="status">Подключаемся…</p>
       <button id="croco-retry" type="button" class="hidden">Повторить подключение</button>
     </div>
@@ -110,11 +110,11 @@
               <div class="croco-feature-copy"><span class="croco-new">НОВАЯ ИГРА</span><h2>NVUTI</h2></div>
             </section>
             <section class="croco-popular"><div class="croco-section-head"><h2 id="home-games-title">Популярные игры</h2><button id="home-all-games" class="link-btn">Все игры <svg class="icon"><use href="#i-chevron-right"></use></svg></button></div><div id="home-games" class="croco-shortcuts"></div></section>
-            <section class="croco-transactions"><div class="croco-section-head"><h2>История транзакций</h2><button id="home-history" class="link-btn" aria-label="Вся история транзакций">Все <svg class="icon"><use href="#i-chevron-right"></use></svg></button></div><div id="home-transactions" aria-live="polite"><p class="croco-history-note">Загружаем операции…</p></div></section>
+            <section class="croco-live"><div class="croco-section-head"><h2><span class="croco-live-dot" aria-hidden="true"></span>Live</h2></div><div class="croco-live-head" aria-hidden="true"><span>Игрок / игра</span><span>Коэфф.</span><span>Выигрыш</span></div><div id="home-live"><p class="croco-history-note">Пока нет выигрышей</p></div></section>
           </div>
 
           <div id="tab-information" class="tab-panel hidden">
-            <div class="croco-info-brand"><img src="/img/croco/mascot.webp" width="96" height="64" alt="" /><h1>Croco</h1></div>
+            <div class="croco-info-brand"><img src="/img/croco/mascot-cutout.webp" width="96" height="64" alt="" /><h1>Croco</h1></div>
             <h2>Информация</h2><p class="hint">Правила, поддержка и информация о вашем аккаунте.</p>
             <div class="lb-list">
               <button id="info-rules" class="lb-row"><svg class="icon"><use href="#i-cards"></use></svg><span>Правила игр</span><svg class="icon"><use href="#i-chevron-right"></use></svg></button>
@@ -823,7 +823,7 @@
   <script src="/hilo.js?v=4"></script>
   <script src="/client-connection.js?v=1"></script>
   <script src="/telegram-display.js?v=1"></script>
-  <script src="/croco-lobby.js?v=5"></script>
+  <script src="/croco-lobby.js?v=8"></script>
   <script src="/app.js?v=111"></script>
 </body>
 </html>

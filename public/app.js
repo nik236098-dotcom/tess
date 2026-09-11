@@ -2045,7 +2045,7 @@ function showTab(tab) {
   state.tab = TABS.includes(tab) ? tab : 'home';
   $('bottom-nav').classList.remove('is-scroll-hidden');
   for (const id of PANELS) $(id).classList.add('hidden');
-  if (state.tab === 'home') { renderHomeGames(); if(state.connected) send({type:'history'}); }
+  if (state.tab === 'home') { renderHomeGames(); renderWins(); }
   document.body.dataset.tab = state.tab;
   fitLobby();
   for (const name of TABS) $(`tab-${name}`).classList.toggle('hidden', state.tab !== name);
@@ -2267,25 +2267,8 @@ function renderActiveGames() {
 }
 
 function renderWins() {
-  const card = $('wins-card');
-  const list = $('wins-list');
-  if (card) card.classList.toggle('hidden', !state.wins.length);
-  if (!list) return;
-  if (!state.wins.length) { list.innerHTML = ''; return; }
-
-  const icons = { holdem: 0, blackjack: 1 };
-  list.innerHTML = state.wins.slice(0, 8).map((win, index) => {
-    const blackjack = win.game === 'blackjack';
-    const icon = icons[blackjack ? 'blackjack' : 'holdem'];
-    const label = { ...Object.fromEntries(Object.entries(CasinoRules.games).map(([id,g])=>[id,g.name])), plinko:'Plinko', tower:'Tower', keno:'Keno', dragon:'Dragon & Tiger', crash: 'Crash', hilo: 'Hilo', blackjack: 'Blackjack', roulette: 'Roulette', baccarat: 'Baccarat', mines: 'Mines', nvuti: 'Nvuti', omaha: 'Omaha' }[win.game] || 'Poker';
-    return `
-    <div class="mk-win" style="--i:${index}">
-      <span class="mk-win-icon" style="background-image:url('/img/lobby/win-${icon}.png')"></span>
-      <span class="mk-win-sum">${money(win.amount)}</span>
-      <span class="mk-win-game">${label}</span>
-      <span class="mk-win-time">${win.at ? timeAgo(win.at) : escapeHtml(win.name)}</span>
-    </div>`;
-  }).join('');
+  const list=$('home-live');
+  if(list)list.innerHTML=CrocoLobby.liveHtml(state.wins,money,GameCatalog);
 }
 
 // «2 мин назад» для ленты выигрышей.
@@ -2315,7 +2298,6 @@ function renderLeaders(leaders) {
 }
 
 function renderHistory(history) {
-  $('home-transactions').innerHTML = CrocoLobby.historyHtml(history, money);
   const list = $('history-list');
   if (!history || !history.length) {
     list.innerHTML = '<p class="hint">Операций пока не было.</p>';
@@ -3920,7 +3902,6 @@ function bindUi() {
   on('info-settings', 'click', () => showTab('profile'));
   on('info-help', 'click', () => togglePanel('help-card'));
   on('info-rules', 'click', () => { showTab('games'); $('rules-card').open=true; $('rules-card').scrollIntoView({behavior:'smooth',block:'start'}); });
-  on('home-history', 'click', () => { if(togglePanel('history-card')) send({type:'history'}); });
   on('home-games', 'click', event => {
     const id=event.target.closest('[data-home-game]')?.dataset.homeGame;
     if(!id||!state.connected)return;

@@ -12,7 +12,15 @@
   return `<div class="croco-tx"><span><b>${esc(titles[item.status]||'Операция')}</b><small>${esc([item.providerTitle,when].filter(Boolean).join(' · '))}</small></span><strong class="${paid?'is-in':out?'is-out':''}">${paid?'+':out?'−':''}${esc(money(amount||0))}</strong></div>`;
  }
  function historyHtml(items,money,limit=3){if(!Array.isArray(items)||!items.length)return '<div class="croco-empty"><svg class="icon"><use href="#i-receipt"></use></svg><b>Пока нет транзакций</b><p>Здесь появится история операций</p></div>';return items.slice(0,limit).map(item=>transaction(item,money)).join('');}
- const api={defaults,recent,remember,transaction,historyHtml};
+ function liveHtml(wins,money,catalog){
+  if(!Array.isArray(wins)||!wins.length)return '<p class="croco-history-note">Пока нет выигрышей</p>';
+  return wins.slice(0,8).map(win=>{
+   const id=Object.hasOwn(catalog.names,win.game)?win.game:'holdem';
+   const mult=Number.isFinite(win.multiplier)&&win.multiplier>0?win.multiplier.toFixed(2).replace('.',',')+'×':'—';
+   return `<div class="croco-live-row"><span class="croco-live-player"><img src="${esc(catalog.artwork(id))}" width="32" height="32" alt="${esc(catalog.names[id])}" /><span><b>${esc(win.name||'Игрок')}</b><small>${esc(catalog.names[id])}</small></span></span><span class="croco-live-mult">${mult}</span><strong>${esc(money(win.payout??win.amount))}</strong></div>`;
+  }).join('');
+ }
+ const api={defaults,recent,remember,transaction,historyHtml,liveHtml};
  if(typeof module==='object'&&module.exports){module.exports=api;return;}
  root.CrocoLobby=api;
  const search=document.getElementById('games-search');

@@ -46,3 +46,10 @@ test('catalog search filters every tile, reports no matches and restores all gam
  input.value='missing';input.listeners.input();assert.equal(get('games-empty').classList.hidden,false);
  input.value='';input.listeners.input();assert.deepEqual(tiles.map(t=>t.classList.hidden),[false,false,false]);assert.equal(get('games-empty').classList.hidden,true);
 });
+test('Live shows real payout and multiplier, escapes nicknames and handles unknown ratios',()=>{
+ const catalog=require('../public/game-catalog');
+ assert.match(C.liveHtml([],money,catalog),/Пока нет выигрышей/);
+ const html=C.liveHtml([{name:'<img onerror=x>',game:'mines',amount:100,payout:250,multiplier:2.5},{name:'Poker player',game:'holdem',amount:900}],money,catalog);
+ assert.ok(!html.includes('<img onerror'));assert.match(html,/&lt;img onerror=x&gt;/);
+ assert.match(html,/2,50×/);assert.match(html,/\$2.50/);assert.match(html,/mines.webp/);assert.match(html,/—/);
+});

@@ -38,7 +38,7 @@ function createArcadeService({ accounts, noteWin, rng, isAdmin = user => account
         }
         // Notify only after the wallet and result have been saved together.
         if (before !== balance) accounts.onChange?.(account);
-        if (newlyPaid && next.payout > next.bet) noteWin({ userId: account.id, name: account.name, amount: next.payout - next.bet, game, code: 'AG' });
+        if (newlyPaid && next.payout > next.bet) noteWin({ userId: account.id, name: account.name, amount: next.payout - next.bet, payout: next.payout, bet: next.bet, game, code: 'AG' });
       }
       client.send({ type: 'ag', game, requestId: message.requestId, accepted: true, config: config(game), ...publicState(game, next), balance: account.balance });
     } catch (error) {

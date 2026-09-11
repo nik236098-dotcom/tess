@@ -14,7 +14,7 @@ function createCrashService({ accounts, clients, noteWin }) {
     if (game.phase === 'done' && !game.settled && accounts.balanceOf(id) + game.payout <= MAX_BALANCE) {
       game.settled = true;
       if (game.payout) accounts.deposit(id, game.payout);
-      if (game.payout > game.bet) noteWin({ userId:id, name:accounts.get(id).name, amount:game.payout-game.bet, game:'crash', code:'CR' });
+      if (game.payout > game.bet) noteWin({ userId:id, name:accounts.get(id).name, amount:game.payout-game.bet, payout:game.payout, bet:game.bet, game:'crash', code:'CR' });
     }
     if (revision !== game.revision || settled !== game.settled) save(id,game);
   }

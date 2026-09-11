@@ -147,7 +147,8 @@ function createApp(options = {}) {
 
   function noteWin(win) {
     if (!win || win.amount <= 0) return;
-    recentWins.unshift({ ...win, at: Date.now() });
+    const multiplier = Number.isFinite(win.bet) && win.bet > 0 && Number.isFinite(win.payout) ? win.payout / win.bet : null;
+    recentWins.unshift({ ...win, multiplier, at: Date.now() });
     recentWins.length = Math.min(recentWins.length, RECENT_WINS_LIMIT);
   }
 
@@ -844,7 +845,7 @@ function createApp(options = {}) {
       game.settled = true;
       const { payout, net } = game.results;
       if (payout > 0) accounts.deposit(client.user.id, payout);
-      if (net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: net, game: 'blackjack', code: 'BJ' });
+      if (net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: net, payout, bet: payout-net, game: 'blackjack', code: 'BJ' });
     }
     if (game.phase === 'play') game.settled = false;
     sendBlackjack(client);
@@ -872,7 +873,7 @@ function createApp(options = {}) {
     accounts.withdraw(client.user.id, total);
     const result = roulette.spin(bets);
     if (result.payout > 0) accounts.deposit(client.user.id, result.payout);
-    if (result.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: result.net, game: 'roulette', code: 'RL' });
+    if (result.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: result.net, payout: result.payout, bet: total, game: 'roulette', code: 'RL' });
     const history = [result.number, ...(rouletteHistory.get(client.user.id) || [])].slice(0, 12);
     rouletteHistory.set(client.user.id, history);
     client.send({ type: 'rl', spin: result, ...rouletteInfo(client) });
@@ -898,7 +899,7 @@ function createApp(options = {}) {
     accounts.withdraw(client.user.id, total);
     const result = baccarat.deal({ bets });
     if (result.payout > 0) accounts.deposit(client.user.id, result.payout);
-    if (result.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: result.net, game: 'baccarat', code: 'BC' });
+    if (result.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: result.net, payout: result.payout, bet: total, game: 'baccarat', code: 'BC' });
     const history = [result.winner, ...(baccaratHistory.get(client.user.id) || [])].slice(0, 12);
     baccaratHistory.set(client.user.id, history);
     client.send({ type: 'bc', round: result, ...baccaratInfo(client) });
@@ -959,7 +960,7 @@ function createApp(options = {}) {
       game.settled = true;
       if (game.payout > 0) accounts.deposit(client.user.id, game.payout);
       const net = game.payout - game.bet;
-      if (net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: net, game: 'mines', code: 'MN' });
+      if (net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: net, payout: game.payout, bet: game.bet, game: 'mines', code: 'MN' });
     }
     sendMines(client);
   }
@@ -1003,7 +1004,7 @@ function createApp(options = {}) {
       if (game.phase === 'done' && !game.settled) {
         game.settled = true;
         if (game.payout) accounts.deposit(client.user.id, game.payout);
-        if (game.payout > game.bet) noteWin({ userId: client.user.id, name: client.user.name, amount: game.payout - game.bet, game: 'hilo', code: 'HL' });
+        if (game.payout > game.bet) noteWin({ userId: client.user.id, name: client.user.name, amount: game.payout - game.bet, payout: game.payout, bet: game.bet, game: 'hilo', code: 'HL' });
       }
     } catch (error) {
       sendHilo(client);
@@ -1040,7 +1041,7 @@ function createApp(options = {}) {
     accounts.withdraw(client.user.id, bet);
     const round = nvuti.play({ bet, target, mode });
     if (round.payout > 0) accounts.deposit(client.user.id, round.payout);
-    if (round.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: round.net, game: 'nvuti', code: 'NV' });
+    if (round.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: round.net, payout: round.payout, bet, game: 'nvuti', code: 'NV' });
     const history = [{ roll: round.roll, won: round.won }, ...(nvutiHistory.get(client.user.id) || [])].slice(0, 12);
     nvutiHistory.set(client.user.id, history);
     client.send({ type: 'nv', round, ...nvutiInfo(client) });

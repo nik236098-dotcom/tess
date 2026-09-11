@@ -155,3 +155,13 @@ test('Tower Master pays a $1000 final-floor win in full to the wallet',()=>{
   assert.equal(accounts.balanceOf('master'),moneyAt(100000,TOWER.master[8]));
   assert.ok(result.payout>1000000000);
 });
+test('Live notification includes settled payout and stake, with no duplicate on reopening',()=>{
+ const accounts=new Accounts({file:null});accounts.ensure({id:'live-test',name:'Live player'});
+ const wins=[];const service=createArcadeService({accounts,noteWin:w=>wins.push(w),rng:()=>0});
+ const client={user:{id:'live-test'},send(){}};
+ service.handle(client,{type:'ag_start',game:'tower',amount:100,options:{level:'easy'},revision:0});
+ service.handle(client,{type:'ag_pick',game:'tower',index:3,revision:1});
+ service.handle(client,{type:'ag_cashout',game:'tower',revision:2});
+ assert.equal(wins.length,1);assert.equal(wins[0].bet,100);assert.equal(wins[0].payout,131);assert.equal(wins[0].name,'Live player');
+ service.handle(client,{type:'ag_open',game:'tower'});assert.equal(wins.length,1);
+});
