@@ -35,3 +35,14 @@ test('slow connection offers retry; terminal auth errors stop the animated waiti
 test('deploy checks include all new production assets',()=>{
  const script=fs.readFileSync('scripts/crash-update.sh','utf8');for(const p of ['public/croco-lobby.css','public/img/croco/mascot.webp','public/img/croco/nvuti-banner.webp']){assert.ok(script.includes(p));assert.ok(fs.statSync(p).size>0);}
 });
+
+test('catalog search filters every tile, reports no matches and restores all games when cleared',()=>{
+ const nodes=new Map();const node=()=>({value:'',textContent:'',listeners:{},hidden:false,classList:{add(){},remove(){},toggle(k,v){this[k]=v;}},addEventListener(k,f){this.listeners[k]=f;}});
+ const get=id=>{if(!nodes.has(id))nodes.set(id,node());return nodes.get(id);};
+ const tiles=['Nvuti','Keno','Cryo Vault'].map(text=>Object.assign(node(),{textContent:text}));
+ const doc={body:{dataset:{tab:'games'}},getElementById:get,querySelector:()=>null,querySelectorAll:()=>tiles};
+ vm.runInNewContext(fs.readFileSync('public/croco-lobby.js','utf8'),{document:doc,setTimeout(){},clearTimeout(){},location:{reload(){}}});
+ const input=get('games-search');input.value='  KENO ';input.listeners.input();assert.deepEqual(tiles.map(t=>t.classList.hidden),[true,false,true]);
+ input.value='missing';input.listeners.input();assert.equal(get('games-empty').classList.hidden,false);
+ input.value='';input.listeners.input();assert.deepEqual(tiles.map(t=>t.classList.hidden),[false,false,false]);assert.equal(get('games-empty').classList.hidden,true);
+});

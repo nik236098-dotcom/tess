@@ -106,3 +106,49 @@
 #screen-lobby .croco-nav,
 #screen-lobby .croco-nav .nav-btn { border-color:transparent;box-shadow:none; }
 /* Retain keyboard focus indication and the active tab's filled background. */
+
+/* Open layout: labels and utility controls sit directly on the lobby background. */
+#screen-lobby .croco-wallet,#screen-lobby .croco-settings,
+#screen-lobby .croco-new,#screen-lobby #home-transactions,
+#screen-lobby #home-history,#screen-lobby #home-all-games,
+#screen-lobby #tab-information .lb-list,#screen-lobby #tab-information .lb-row,
+#screen-lobby #tab-information .lb-row>.icon,
+#screen-lobby #tab-bonuses .card,#screen-lobby #tab-bonuses .lb-empty,
+#screen-lobby #tab-bonuses .lb-empty-art,#screen-lobby #tab-bonuses .lb-support,
+#screen-lobby #tab-bonuses .lb-support-icon,#screen-lobby #tab-bonuses .wide-link,
+#screen-lobby #tab-bonuses .wide-icon,#screen-lobby #tab-bonuses .btn,
+#screen-lobby #tab-bonuses input { background:transparent;border:0;box-shadow:none; }
+#screen-lobby .croco-new { padding:0; }
+#screen-lobby .croco-wallet { padding-left:0; }
+#screen-lobby .croco-wallet>button { display:flex;align-items:center;justify-content:center;padding:0;line-height:1; }
+#screen-lobby .croco-wallet>button .icon { display:block;flex:none;width:18px;height:18px;margin:0;transform:none;fill:none;stroke:currentColor;stroke-width:2; }
+#screen-lobby .croco-feature { cursor:pointer;-webkit-tap-highlight-color:transparent; }
+#screen-lobby .croco-feature:focus-visible { outline:2px solid #c9a5ff;outline-offset:4px; }
+#screen-lobby .croco-feature:active { filter:brightness(1.06); }
+#screen-lobby .croco-feature h2 { margin-top:15px; }
+#screen-lobby .croco-shortcut .croco-game-art { border:0;box-shadow:none;background-origin:border-box;background-clip:border-box; }
+#screen-lobby .croco-nav .nav-btn .icon,
+#screen-lobby .croco-nav .nav-btn.is-active .icon,
+#screen-lobby .croco-nav .nav-btn:active .icon { fill:none;stroke:currentColor;filter:none; }
+#screen-lobby .croco-nav .nav-btn { -webkit-tap-highlight-color:transparent; }
+#screen-lobby .croco-nav { transition:transform .2s ease,opacity .2s ease; }
+#screen-lobby .croco-nav.is-scroll-hidden { transform:translateY(110%);opacity:0;pointer-events:none; }
+#screen-lobby .croco-nav:has(:focus-visible) { transform:none;opacity:1;pointer-events:auto; }
+#screen-lobby #tab-bonuses .card,#screen-lobby #tab-bonuses .lb-empty { padding-left:0;padding-right:0; }
+#screen-lobby #tab-bonuses #promo-send { color:#be95ff; }
+#screen-lobby .croco-search,#screen-lobby #games-empty { grid-column:1/-1; }
+#screen-lobby .croco-search input { width:100%;height:42px;padding:0 14px;border:0;border-radius:12px;background:#191a34;color:#fff;font:inherit; }
+#screen-lobby #games-empty { color:#a79dc8;padding:20px 0; }
+#screen-lobby #tab-games .game-tile { background:#17172f;box-shadow:none;border:0; }
+#screen-lobby #tab-games .game-tile>img { transform:scale(1.035); }
+#screen-lobby #tab-games .game-tile:after { inset:0;background:linear-gradient(180deg,#17172f12 0%,#17172f08 45%,#17172fb8 100%); }
+#screen-lobby #tab-games .game-tile.hidden { display:none; }
+@media(prefers-reduced-motion:reduce){#screen-lobby .croco-nav{transition:none}}
+
+/* One violet artwork treatment for catalog and home, including older colored cards. */
+#screen-lobby #tab-games .game-tile { background:#6234e7; }
+#screen-lobby #tab-games .game-tile>img { mix-blend-mode:luminosity; }
+#screen-lobby #tab-games :is(#play-nvuti,#play-crash,[data-arcade="keno"],[data-arcade="plinko"])>img { mix-blend-mode:normal; }
+#screen-lobby .croco-shortcut .croco-game-art { isolation:isolate;overflow:hidden;background:#6234e7;background-image:none; }
+#screen-lobby .croco-shortcut .croco-game-art>img { display:block;width:100%;height:100%;margin:0;border:0;border-radius:0;box-shadow:none;object-fit:cover;object-position:center 35%;mix-blend-mode:luminosity; }
+#screen-lobby .croco-shortcut:is([data-home-game="nvuti"],[data-home-game="crash"]) .croco-game-art>img { mix-blend-mode:normal; }

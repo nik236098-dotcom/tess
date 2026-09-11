@@ -2043,6 +2043,7 @@ function fitLobby() {
 
 function showTab(tab) {
   state.tab = TABS.includes(tab) ? tab : 'home';
+  $('bottom-nav').classList.remove('is-scroll-hidden');
   for (const id of PANELS) $(id).classList.add('hidden');
   if (state.tab === 'home') { renderHomeGames(); if(state.connected) send({type:'history'}); }
   document.body.dataset.tab = state.tab;
@@ -2092,7 +2093,7 @@ function stopRoomsPolling() {
 function renderHomeGames() {
   const names=GameCatalog.names;
   $('home-games-title').textContent='Популярные игры';
-  $('home-games').innerHTML=CrocoLobby.defaults.map(id=>`<button class="croco-shortcut" data-home-game="${escapeHtml(id)}" aria-label="Открыть ${escapeHtml(names[id])}"><span class="croco-game-art croco-game-art--${id}" aria-hidden="true"></span><span>${id==='hilo'?'HiLo':escapeHtml(names[id])}</span></button>`).join('');
+  $('home-games').innerHTML=CrocoLobby.defaults.map(id=>`<button class="croco-shortcut" data-home-game="${escapeHtml(id)}" aria-label="Открыть ${escapeHtml(names[id])}"><span class="croco-game-art"><img src="${GameCatalog.artwork(id)}" width="160" height="160" alt="" /></span><span>${id==='hilo'?'HiLo':escapeHtml(names[id])}</span></button>`).join('');
 }
 
 // ——— Баланс и админ-панель ———
@@ -3935,6 +3936,7 @@ function bindUi() {
   },true);
   on('profile-topup', 'click', () => $('btn-topup').click());
   on('profile-payout', 'click', () => $('btn-payout').click());
+  on('hero-play', 'keydown', event => { if(event.key==='Enter'||event.key===' '){event.preventDefault();$('hero-play').click();} });
   on('hero-play', 'click', () => { haptic('light'); CrocoLobby.remember(localStorage, state.user?.id, 'nvuti', GameCatalog.names); openNvuti(); });
 
   for (const card of document.querySelectorAll('.mk-game[data-soon]')) {

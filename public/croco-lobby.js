@@ -15,6 +15,15 @@
  const api={defaults,recent,remember,transaction,historyHtml};
  if(typeof module==='object'&&module.exports){module.exports=api;return;}
  root.CrocoLobby=api;
+ const search=document.getElementById('games-search');
+ if(search)search.addEventListener('input',()=>{
+  const query=search.value.trim().toLocaleLowerCase('ru');let count=0;
+  document.querySelectorAll('#tab-games .game-tile').forEach(tile=>{const visible=tile.textContent.toLocaleLowerCase('ru').includes(query);tile.classList.toggle('hidden',!visible);if(visible)count++;});
+  document.getElementById('games-empty').classList.toggle('hidden',count>0);
+ });
+ const lobby=document.querySelector?.('.lobby'),nav=document.getElementById('bottom-nav');let lastScroll=0;
+ lobby?.addEventListener('scroll',()=>{const top=lobby.scrollTop,delta=top-lastScroll;lastScroll=top;if(document.body.dataset.tab!=='games'||top<12){nav.classList.remove('is-scroll-hidden');return;}if(Math.abs(delta)>3)nav.classList.toggle('is-scroll-hidden',delta>0);},{passive:true});
+
  const node=document.getElementById('croco-loading'),status=document.getElementById('croco-loading-status'),retry=document.getElementById('croco-retry');let dismissed=false;
  const timer=setTimeout(()=>{if(!dismissed){status.textContent='Подключение занимает больше времени. Проверьте интернет или попробуйте снова.';retry.classList.remove('hidden');}},12000);
  api.loading={dismiss(){dismissed=true;clearTimeout(timer);node.classList.add('hidden');node.setAttribute('aria-busy','false');},message(text,error=false){if(dismissed)return;status.textContent=text;if(error){clearTimeout(timer);node.classList.add('is-error');node.setAttribute('aria-busy','false');retry.classList.remove('hidden');}}};

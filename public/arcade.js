@@ -21,7 +21,7 @@ function stopArcade() {
   if(typeof FeatureSlotsUI!=='undefined')FeatureSlotsUI.stop();
   if(typeof DartsGame!=='undefined')DartsGame.stop();
   if(typeof DartsAudio!=='undefined')DartsAudio.stop();
-  const a=state.ag; a.token++; cancelAnimationFrame(a.raf); a.animating=false; a.game=null; a.info=null; a.pending=null;
+  const a=state.ag; a.token++; cancelAnimationFrame(a.raf); a.animating=false; a.kenoClearedRevision=null; a.game=null; a.info=null; a.pending=null;
   $('screen-ag').classList.add('hidden');
 }
 function openArcade(game) {
@@ -177,7 +177,7 @@ function agBoard() {
     }).join('')}</div></div>`;
     stage.querySelector('.ag-tower-scroll').scrollTop=old??10000;
   } else if(a.game==='keno') {
-    const picks=a.options.keno.picks, drawn=a.animating?[]:info?.drawn||[];
+    const picks=a.options.keno.picks, drawn=agKenoDrawn(a);
     stage.innerHTML=`<div class="ag-keno-grid">${Array.from({length:40},(_,i)=>i+1).map(n=>`<button type="button" data-ag-number="${n}" aria-pressed="${picks.includes(n)}" ${agLocked()?'disabled':''} class="ag-keno-number ${picks.includes(n)?'is-selected':''} ${drawn.includes(n)?'is-drawn':''} ${drawn.includes(n)&&info.options?.picks.includes(n)?'is-hit':''}">${n}</button>`).join('')}</div><div class="ag-drawn-balls" aria-label="Выпавшие числа">${Array.from({length:10},(_,i)=>`<span class="ag-drawn-ball ${drawn[i]&&info.hits.includes(drawn[i])?'is-hit':''}" data-ag-ball="${i}">${drawn[i]||'·'}</span>`).join('')}</div>`;
   } else {
     stage.innerHTML=`<div class="ag-duel"><div class="ag-duelist">${agDuelCard('dragon',0)}<b>Дракон</b><small>Сила и выдержка</small></div><span class="ag-versus">VS</span><div class="ag-duelist">${agDuelCard('tiger',1)}<b>Тигр</b><small>Скорость и характер</small></div></div><div class="ag-duel-result">${!a.animating&&info?.winner?(info.winner==='tie'?'Ничья':info.winner==='dragon'?'Победил Дракон':'Победил Тигр'):'Какая карта окажется старше?'}</div>`;
@@ -203,6 +203,9 @@ function agScrollTower(behavior='smooth') {
   const floor=round?.phase==='play'?round.floor:Math.max(0,(round?.steps?.length||1)-1);
   const row=stage.querySelector('.is-current')||stage.querySelector(`[data-floor="${Math.min(8,floor)}"]`);
   if(box&&row)box.scrollTo({top:Math.max(0,row.offsetTop-box.offsetTop+(row.offsetHeight||0)/2-box.clientHeight*.72),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':behavior});
+}
+function agKenoDrawn(a) {
+  return a.animating || a.pending || a.kenoClearedRevision===a.info?.revision ? [] : a.info?.drawn||[];
 }
 function agAnimateResult(info) {
   if(agCatalog())return CasinoUI.animate(info);
@@ -240,7 +243,7 @@ function agAnimateResult(info) {
       for(let i=0;i<2;i++)if(progress>(i? .52:.14))$('ag-stage').querySelector(`[data-ag-card="${i}"]`)?.classList.add('is-revealed');
     }
     if(progress<1)a.raf=requestAnimationFrame(tick);
-    else {a.animating=false;renderArcade();agResult();}
+    else {a.animating=false;if(game==='keno')a.kenoClearedRevision=info.revision;renderArcade();agResult();}
   };
   a.raf=requestAnimationFrame(tick);
 }
@@ -280,6 +283,7 @@ function bindArcade() {
     if(!option&&!clear&&!quick&&!count)return;
     if(count&&a.game==='plinko')a.options.plinko.count=Number(count.dataset.agCount);
     if(option){a.options[a.game][a.game==='plinko'?'risk':a.game==='tower'?'level':'side']=option.dataset.agOption;}
+    if((clear||quick)&&a.game==='keno')a.kenoClearedRevision=a.info?.revision;
     if(clear)a.options.keno.picks=[];
     if(quick){const pool=Array.from({length:40},(_,i)=>i+1);for(let i=0;i<5;i++){const j=i+Math.floor(Math.random()*(40-i));[pool[i],pool[j]]=[pool[j],pool[i]];}a.options.keno.picks=pool.slice(0,5);}
     renderArcade();
@@ -288,7 +292,7 @@ function bindArcade() {
     if(agLocked())return;
     const tile=event.target.closest('[data-ag-tile]'), cell=event.target.closest('[data-ag-number]');
     if(tile&&!tile.disabled)agRequest('pick',{index:Number(tile.dataset.agTile)});
-    if(cell){const picks=state.ag.options.keno.picks, n=Number(cell.dataset.agNumber), i=picks.indexOf(n);if(i>=0)picks.splice(i,1);else if(picks.length<10)picks.push(n);else{toast('Можно выбрать до 10 чисел');return;}renderArcade();}
+    if(cell){state.ag.kenoClearedRevision=state.ag.info?.revision;const picks=state.ag.options.keno.picks, n=Number(cell.dataset.agNumber), i=picks.indexOf(n);if(i>=0)picks.splice(i,1);else if(picks.length<10)picks.push(n);else{toast('Можно выбрать до 10 чисел');return;}renderArcade();}
   });
   for(const el of document.querySelectorAll('[data-ag-amount]'))el.addEventListener('click',()=>{
     if(agLocked())return;

@@ -111,3 +111,12 @@ test('Plinko MAX divides the balance across all balls and manual oversized batch
   h.maxButton.listeners.click();assert.equal(h.$('ag-amount').value,'4,00');
   h.$('ag-amount').value='5,00';h.ctx.agRequest('start');assert.equal(h.sent.length,0);
 });
+
+test('keno clears drawn and hit highlights after animation without clearing user picks or result',()=>{
+ const h=harness('keno');h.deliver(initial());h.ctx.agRequest('start');
+ const r=start('keno',initial(),100,h.state.ag.options.keno,0,()=>0);r.settled=true;h.deliver(r);h.advance(6000);
+ assert.doesNotMatch(h.$('ag-stage').innerHTML,/class="[^"]*is-drawn|class="[^"]*is-hit/);
+ assert.deepEqual(h.state.ag.options.keno.picks,[1,2,3]);assert.equal(h.state.ag.info.drawn.length,10);
+ h.ctx.renderArcade();assert.doesNotMatch(h.$('ag-stage').innerHTML,/class="[^"]*is-drawn|class="[^"]*is-hit/);
+ h.ctx.agRequest('start');assert.equal(h.sent.length,2);
+});
