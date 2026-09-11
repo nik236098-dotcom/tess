@@ -145,10 +145,10 @@
 #screen-lobby #tab-games .game-tile.hidden { display:none; }
 @media(prefers-reduced-motion:reduce){#screen-lobby .croco-nav{transition:none}}
 
-/* One violet artwork treatment for catalog and home, including older colored cards. */
+/* Shared violet backdrops are in the artwork; preserve original object colors. */
 #screen-lobby #tab-games .game-tile { background:#6234e7; }
-#screen-lobby #tab-games .game-tile>img { mix-blend-mode:luminosity; }
+#screen-lobby #tab-games .game-tile>img { mix-blend-mode:normal; }
 #screen-lobby #tab-games :is(#play-nvuti,#play-crash,[data-arcade="keno"],[data-arcade="plinko"])>img { mix-blend-mode:normal; }
 #screen-lobby .croco-shortcut .croco-game-art { isolation:isolate;overflow:hidden;background:#6234e7;background-image:none; }
-#screen-lobby .croco-shortcut .croco-game-art>img { display:block;width:100%;height:100%;margin:0;border:0;border-radius:0;box-shadow:none;object-fit:cover;object-position:center 35%;mix-blend-mode:luminosity; }
+#screen-lobby .croco-shortcut .croco-game-art>img { display:block;width:100%;height:100%;margin:0;border:0;border-radius:0;box-shadow:none;object-fit:cover;object-position:center 35%;mix-blend-mode:normal; }
 #screen-lobby .croco-shortcut:is([data-home-game="nvuti"],[data-home-game="crash"]) .croco-game-art>img { mix-blend-mode:normal; }

@@ -8,7 +8,8 @@ const button=(label,index,disabled=false,cls='')=>`<button type="button" class="
 function prepare(game){if(!isGame(game))return;if(game==='darts')DartsGame.reset();state.ag.options[game]??=structuredClone(definitions[game].defaults);state.ag.held=[];state.ag.cgTime=0;state.ag.cgPrevious=null;}
 function setup(){
  const host=$('casino-catalog');if(!host)return;
- host.innerHTML=['abyss','midnight','cryo'].map(id=>GameCatalog.tile(id)).join('')+CasinoRules.ids.map(id=>GameCatalog.tile(id)).join('');
+ const slots=['slots','abyss','cryo','midnight'];
+ host.innerHTML=[...CasinoRules.ids.filter(id=>!slots.includes(id)),...slots].map(id=>GameCatalog.tile(id)).join('');
 }
 function settings(){
  const a=state.ag,g=current(),options=a.options[a.game],disabled=agLocked()||a.info?.phase==='play',attr=disabled?'disabled':'';

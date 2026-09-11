@@ -68,9 +68,9 @@ test('game choices preserve native inputs and map numeric values to numbers',()=
   h.ctx.agRequest('start');assert.equal(h.sent.at(-1).options[key],value);
  }
 });
-test('catalog launchers contain all three feature slots and 13 distinct games without duplicates',()=>{
+test('catalog launchers contain every game once with all four slots at the bottom',()=>{
  const h=harness('diamonds'),html=h.$('casino-catalog').innerHTML;
- const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,['abyss','midnight','cryo',...ids]);assert.equal(new Set(idsInHtml).size,16);assert.ok(!html.includes('data-arcade="baccarat"'));
+ const idsInHtml=[...html.matchAll(/data-arcade="([^"]+)"/g)].map(m=>m[1]);assert.deepEqual(idsInHtml,[...ids.filter(id=>id!=='slots'),'slots','abyss','cryo','midnight']);assert.equal(new Set(idsInHtml).size,16);assert.ok(!html.includes('data-arcade="baccarat"'));
 });
 test('Chicken step and cashout controls lock duplicate requests and restore a saved round',()=>{
  const h=harness('chicken');h.deliver(game.initial());
