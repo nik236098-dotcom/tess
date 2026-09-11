@@ -1,0 +1,73 @@
+/* Croco: approved personal home and connection screen. Scoped away from games. */
+#screen-lobby.croco-lobby { background:#090d21; color:#f7f5ff; --accent:#914bfc; --accent-bright:#b788ff; --lb-text-3:#a59bcf; --lb-line:#8d65e63d; }
+#screen-lobby.croco-lobby .lobby { width:100%; max-width:520px; margin:0 auto; padding:calc(var(--safe-top,0px) + 18px) 16px calc(92px + var(--safe-bottom,0px)); gap:18px; background:radial-gradient(ellipse at 75% 0,#42207826,transparent 55%); }
+.croco-lobby .tab-panel { width:100%; }
+.croco-home { display:flex; flex-direction:column; gap:27px; }
+.croco-account { display:grid; grid-template-columns:58px minmax(0,1fr) auto 34px; gap:9px; align-items:center; }
+.croco-avatar { width:58px;height:58px;border-radius:50%;border:2px solid #a966fc;box-shadow:0 0 15px #8d4bfa24;display:grid;place-items:center;background:#32205c;color:#fff;font-size:24px;font-weight:750;overflow:hidden; }
+.croco-avatar img { width:100%;height:100%;object-fit:cover; }
+.croco-identity { min-width:0; }
+.croco-identity h1 { font:750 clamp(17px,5vw,24px)/1.2 var(--font);margin:0 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.6px; }
+.croco-identity>span { display:block;color:#a39bd6;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+/* Matches Nvuti and game-shell wallet, including color and typography. */
+.croco-wallet { height:38px;display:flex;align-items:center;gap:7px;padding:0 4px 0 9px;border-radius:12px;border:1px solid #9682ff66;background:#181a3ad9;box-shadow:inset 0 1px 0 #ffffff0f;white-space:nowrap; }
+.croco-wallet>b { color:var(--wallet-gold,#f2c96b);font:800 14px/1 var(--font);font-variant-numeric:tabular-nums; }
+.croco-wallet>button { width:29px;height:29px;flex:none;display:grid;place-items:center;border:1px solid #d8b7ff80;border-radius:9px;background:linear-gradient(#a166ff,#7029e8);color:white;box-shadow:inset 0 1px #ffffff3a; }
+.croco-wallet>button:disabled { opacity:.45; }
+.croco-wallet .icon { width:19px;height:19px; }
+.croco-settings { width:34px;height:38px;border:1px solid #9682ff50;border-radius:11px;background:#181a3a;color:#b8a6f1;display:grid;place-items:center; }
+.croco-settings .icon { width:21px;height:21px; }
+.croco-feature { position:relative;isolation:isolate;aspect-ratio:2.18;border:1px solid #a475f5a3;border-radius:17px;overflow:hidden;background:#101127;box-shadow:inset 0 1px #d7c6ff30,0 8px 25px #0002; }
+.croco-feature>img { position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;z-index:-2; }
+.croco-feature::after { content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,#090d2138,transparent 70%);pointer-events:none; }
+.croco-feature-copy { height:100%;display:flex;flex-direction:column;align-items:flex-start;padding:15px 17px; }
+.croco-new { color:#d1a8ff;font:750 9px/1.2 var(--font);border:1px solid #b06eff7a;background:#51228b66;border-radius:7px;padding:4px 8px;letter-spacing:.3px; }
+.croco-feature h2 { margin:9px 0 auto;font:850 clamp(27px,9vw,42px)/1.05 var(--font);letter-spacing:-1px;color:#faf7ff;text-shadow:0 2px 12px #b074fc88; }
+.croco-play { min-height:38px;display:flex;gap:15px;align-items:center;padding:0 20px;font:750 16px var(--font);color:white;border:1px solid #d0a5ff9c;border-radius:11px;background:linear-gradient(#a168ff,#692ae9);box-shadow:inset 0 1px #ffffff55,0 5px 15px #6e30e039; }
+.croco-play .icon { width:17px;height:17px; }
+.croco-home h2:not(.croco-feature h2) { margin:0;font:750 clamp(18px,5.4vw,24px)/1.2 var(--font);letter-spacing:-.55px; }
+.croco-shortcuts { display:flex;gap:9px;overflow-x:auto;scrollbar-width:none;padding:12px 0 2px; }
+.croco-shortcuts::-webkit-scrollbar { display:none; }
+.croco-shortcut { min-width:0;flex:0 0 calc((100% - 27px)/4);padding:0;border:0;background:none;color:#f5f1ff;text-align:center;font:650 12px/1.2 var(--font); }
+.croco-shortcut img { display:block;width:100%;aspect-ratio:1;object-fit:cover;object-position:center 43%;border:1px solid #a478dd72;border-radius:12px;margin-bottom:7px;background:#24204c; }
+.croco-shortcut span { display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.croco-shortcut:active img { filter:brightness(1.2); }
+.croco-section-head { display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px; }
+.croco-section-head .link-btn { display:flex;align-items:center;gap:2px;white-space:nowrap;color:#ab76ff;font-size:12px; }
+.croco-section-head .icon { width:15px;height:15px; }
+#home-transactions { border:1px solid #8f5fdb8a;border-radius:15px;background:linear-gradient(135deg,#24204080,#10152c);overflow:hidden; }
+.croco-empty { min-height:142px;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;gap:7px;padding:20px 12px; }
+.croco-empty>.icon { width:34px;height:34px;color:#bb8aff;filter:drop-shadow(0 0 10px #954dfa44);margin-bottom:5px; }
+.croco-empty b { font:650 14px/1.4 var(--font);color:#f3efff; }
+.croco-empty p { margin:0;color:#a297ce;font-size:12px;line-height:1.5; }
+.croco-history-note { color:#a297ce;text-align:center;padding:28px 10px;font-size:13px; }
+.croco-lobby .croco-tx { display:flex;align-items:center;gap:12px;padding:13px 14px;border-bottom:1px solid #8b6aba38; }
+.croco-tx:last-child { border-bottom:0; }
+.croco-tx>span:first-child { min-width:0;flex:1;display:flex;flex-direction:column;gap:4px; }
+.croco-tx b { color:#f1edff;font-size:13px; }
+.croco-tx small { color:#a095c4;font-size:11px;line-height:1.4; }
+.croco-tx>strong { font-size:13px;white-space:nowrap;color:#beb4d8;font-variant-numeric:tabular-nums; }
+.croco-tx>strong.is-in { color:#66e3d4; }.croco-tx>strong.is-out { color:#ee8aad; }
+#screen-lobby .croco-nav { position:fixed;bottom:0;left:0;right:0;max-width:520px;margin:auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));height:auto;min-height:72px;padding:8px 8px calc(8px + var(--safe-bottom,0px));border-top:1px solid #8462b94f;background:#101128f5;backdrop-filter:blur(18px);z-index:30; }
+.croco-nav .nav-btn { position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-width:0;border:0;background:none;padding:5px 0;color:#a59cda;font:500 10px/1.2 var(--font);border-radius:12px; }
+.croco-nav .nav-btn .icon { width:26px;height:26px;stroke-width:1.7; }
+.croco-nav .nav-btn.is-active { color:#e6d3ff;background:radial-gradient(ellipse at center,#8641d940,transparent 75%); }
+.croco-nav .nav-btn.is-active .icon { fill:#a769fb;stroke:#d3aaff;filter:drop-shadow(0 0 8px #a857ff9c); }
+.croco-nav .nav-btn::before { display:none; }
+.croco-info-brand { display:flex;align-items:center;gap:12px;margin:4px 0 24px; }.croco-info-brand img { width:72px;height:48px;mix-blend-mode:screen; }.croco-info-brand h1 { margin:0;font-size:30px; }
+.croco-lobby #lobby-status { font-size:12px;color:#ac9aca; }
+#croco-loading { position:fixed;inset:0;z-index:500;background:#090d21;overflow:auto;display:grid;place-items:center;min-height:100dvh;color:#fff; }
+#croco-loading::before { content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 43%,#8532ee47,transparent 48%),linear-gradient(145deg,transparent 15%,#44239514 30%,transparent 50%,#48258d16 80%,transparent);animation:croco-glow 4s ease-in-out infinite alternate;pointer-events:none; }
+.croco-loading-center { position:relative;width:min(88vw,400px);text-align:center;padding:35px 0; }
+.croco-loading-center>img { display:block;width:100%;height:auto;mix-blend-mode:screen; }
+.croco-loading-center h1 { font:850 clamp(52px,15vw,72px)/1 var(--font);letter-spacing:-2px;margin:0 0 44px; }
+.croco-progress { width:64%;height:7px;border:1px solid #975fe470;background:#4b2d793d;border-radius:20px;margin:0 auto;overflow:hidden; }
+.croco-progress i { display:block;width:44%;height:100%;border-radius:20px;background:linear-gradient(90deg,#8641f4,#d99aff,#9c5eff);box-shadow:0 0 12px #c890ff;animation:croco-progress 1.6s ease-in-out infinite alternate; }
+#croco-loading-status { margin:24px auto 0;font:500 15px/1.5 var(--font);max-width:300px;color:#b888ee; }
+#croco-retry { color:#efdcff;border:1px solid #a776f58a;background:#542a944f;border-radius:11px;margin:20px auto 0;padding:11px 18px;font:650 13px var(--font); }
+.croco-loading-suits { position:absolute;inset:0;overflow:hidden;pointer-events:none; }.croco-loading-suits span { position:absolute;color:#6333b6;font:normal 65px/1 Georgia,serif;opacity:.22; }.croco-loading-suits span:nth-child(1){left:8%;top:13%;transform:rotate(-12deg)}.croco-loading-suits span:nth-child(2){right:8%;top:21%;transform:rotate(12deg)}.croco-loading-suits span:nth-child(3){left:8%;bottom:15%;transform:rotate(-10deg)}.croco-loading-suits span:nth-child(4){right:9%;bottom:11%;transform:rotate(12deg)}
+#croco-loading.is-error .croco-progress { display:none; }
+@keyframes croco-progress { from { transform:translateX(-70%); } to { transform:translateX(190%); } }
+@keyframes croco-glow { from{opacity:.55}to{opacity:1} }
+@media(max-width:370px){.croco-account{grid-template-columns:42px minmax(0,1fr) auto 30px;gap:6px}.croco-avatar{width:42px;height:42px}.croco-wallet>b{font-size:12px}.croco-wallet{padding-left:7px;gap:5px}.croco-settings{width:30px}.croco-home{gap:22px}.croco-home h2:not(.croco-feature h2){font-size:18px}.croco-play{min-height:33px;padding:0 15px;font-size:14px}.croco-feature-copy{padding:11px 13px}.croco-new{font-size:8px}.croco-nav .nav-btn{font-size:9px}}
+@media(prefers-reduced-motion:reduce){#croco-loading::before,.croco-progress i{animation:none}.croco-progress i{margin:auto}}

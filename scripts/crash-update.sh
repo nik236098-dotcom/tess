@@ -19,6 +19,7 @@ trap recover ERR
 pgit checkout --detach "$target"
 node --check server/index.js
 node --check public/app.js
+node --check public/croco-lobby.js
 node --check public/amethyst.js
 node --check public/client-connection.js
 node --check public/telegram-display.js
@@ -79,7 +80,7 @@ for (const [game, rules] of Object.entries(require('./public/feature-slots-rules
     if (!fs.statSync(path).size) throw new Error(`Empty slot artwork: ${path}`);
   }
 }
-for (const path of ['public/feature-slots.css', 'public/abyss.css', 'public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp', 'public/tower.css', 'public/andar.css', 'public/img/rps/rock-v2.webp', 'public/img/rps/paper-v2.webp', 'public/img/rps/scissors-v2.webp']) {
+for (const path of ['public/croco-lobby.css', 'public/img/croco/mascot.webp', 'public/img/croco/nvuti-banner.webp', 'public/feature-slots.css', 'public/abyss.css', 'public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp', 'public/tower.css', 'public/andar.css', 'public/img/rps/rock-v2.webp', 'public/img/rps/paper-v2.webp', 'public/img/rps/scissors-v2.webp']) {
   if (!fs.statSync(path).size) throw new Error(`Empty game asset: ${path}`);
 }
 JS

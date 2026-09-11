@@ -48,7 +48,7 @@ const state = {
   hl: { open: false, info: null, amount: 100, busy: false, animating: false, token: 0 },
   nv: { open: false, info: null, amount: 100, target: 75, mode: 'under', busy: false, round: null, shownBalance: null, timer: null },
   unread: 0,
-  tab: 'home', // главная | игры | турниры | бонусы | профиль
+  tab: 'home', // главная с профилем | игры | бонусы | информация
   wins: [], // лента последних выигрышей
   topup: {
     config: {
@@ -310,7 +310,8 @@ function applyTelegramTheme() {
   if (params.hint_color) root.setProperty('--muted', params.hint_color);
   if (params.button_color) root.setProperty('--accent', params.button_color);
   try {
-    tg.setHeaderColor(params.secondary_bg_color || '#171b21');
+    tg.setHeaderColor('#090d21');
+    tg.setBackgroundColor?.('#090d21');
   } catch {
     /* старые версии клиента не поддерживают */
   }
@@ -352,7 +353,8 @@ function authenticate() {
     return;
   }
   if (!state.config.devLogin) {
-    setStatus('Откройте приложение через Telegram');
+    setStatus('Откройте Croco через Telegram');
+    CrocoLobby.loading.message('Откройте Croco через Telegram', true);
     return;
   }
   const saved = localStorage.getItem('poker:devName');
@@ -361,6 +363,7 @@ function authenticate() {
   } else {
     setStatus('Представьтесь, чтобы сесть за стол');
     $('dev-login').classList.remove('hidden');
+    CrocoLobby.loading.dismiss();
   }
 }
 
@@ -377,6 +380,7 @@ function handleMessage(message) {
   switch (message.type) {
     case 'auth_ok':
       state.connected = true;
+      CrocoLobby.loading.dismiss();
       state.user = message.user;
       if(state.bj.open)send({type:'bj_open'});
       if(state.rl.open)send({type:'rl_open'});
@@ -457,6 +461,7 @@ function handleMessage(message) {
       }
       break;
     case 'topup_paid':
+      if(state.tab==='home')send({type:'history'});
       stopTopUpPolling();
       if (state.topup.invoice && state.topup.invoice.id === message.id) {
         state.topup.invoice = { ...state.topup.invoice, status: 'paid', creditedCents: message.cents };
@@ -485,6 +490,7 @@ function handleMessage(message) {
       haptic('success');
       break;
     case 'payout_status':
+      if(state.tab==='home')send({type:'history'});
       state.payout.busy = false;
       state.payout.last = message.payout;
       renderPayout();
@@ -508,6 +514,7 @@ function handleMessage(message) {
       }
       break;
     case 'error':
+      if(!state.user)CrocoLobby.loading.message(message.message || message.error || 'Не удалось подключиться. Попробуйте снова.',true);
       state.rl.pending=false;state.bj.pending=false;state.bj.starting=false;
       if(state.rl.open)renderRoulette();
       if(state.bj.open)renderBlackjack();
@@ -560,6 +567,8 @@ function showLobby() {
   $('screen-lobby').classList.remove('hidden');
   if (tg && tg.BackButton) tg.BackButton.hide();
   startRoomsPolling();
+  renderHomeGames();
+  if(state.connected) send({type:'history'});
 }
 
 // Стол ЗАФИКСИРОВАН: один масштаб и одно положение на все состояния —
@@ -2024,7 +2033,7 @@ function renderNvuti() {
 
 // Главная и Игры — это две панели одного экрана лобби: столы и лента
 // выигрышей приходят одним и тем же сообщением, переключение ничего не грузит.
-const TABS = ['home', 'games', 'tournaments', 'bonuses', 'profile'];
+const TABS = ['home', 'games', 'bonuses', 'information', 'profile'];
 
 function fitLobby() {
   // Холст главной свёрстан на 390 css px по макету; масштабируем под ширину.
@@ -2034,11 +2043,13 @@ function fitLobby() {
 
 function showTab(tab) {
   state.tab = TABS.includes(tab) ? tab : 'home';
+  for (const id of PANELS) $(id).classList.add('hidden');
+  if (state.tab === 'home') { renderHomeGames(); if(state.connected) send({type:'history'}); }
   document.body.dataset.tab = state.tab;
   fitLobby();
   for (const name of TABS) $(`tab-${name}`).classList.toggle('hidden', state.tab !== name);
   for (const button of document.querySelectorAll('.nav-btn')) {
-    button.classList.toggle('is-active', button.dataset.tab === state.tab);
+    button.classList.toggle('is-active', button.dataset.tab === (state.tab === 'profile' ? 'home' : state.tab));
   }
   const scroller = document.querySelector('.lobby');
   if (scroller) scroller.scrollTop = 0;
@@ -2078,6 +2089,14 @@ function stopRoomsPolling() {
   roomsTimer = null;
 }
 
+function renderHomeGames() {
+  const names=GameCatalog.names;
+  const ids=state.user?CrocoLobby.recent(localStorage,state.user.id,names):[];
+  $('home-games-title').textContent=ids.length?'Недавно играли':'С чего начнём?';
+  const selected=ids.length?ids:CrocoLobby.defaults;
+  $('home-games').innerHTML=selected.map(id=>`<button class="croco-shortcut" data-home-game="${escapeHtml(id)}" aria-label="Открыть ${escapeHtml(names[id])}"><img src="${GameCatalog.artwork(id)}" alt="" width="160" height="160" /><span>${escapeHtml(id==='holdem'?'Poker':names[id])}</span></button>`).join('');
+}
+
 // ——— Баланс и админ-панель ———
 
 function renderAccount() {
@@ -2086,6 +2105,9 @@ function renderAccount() {
   $('my-id').textContent = state.user ? state.user.id : '—';
   $('profile-id').textContent = `Telegram ID: ${state.user ? state.user.id : '—'}`;
   $('profile-name').textContent = state.user ? (state.user.name || 'Игрок') : '—';
+  $('home-name').textContent = state.user?.name || 'Игрок';
+  $('home-username').textContent = state.user?.username ? '@' + state.user.username : 'Croco';
+  renderHomeGames();
   $('admin-card').classList.toggle('hidden', !state.isAdmin);
 
   renderPayoutControls();
@@ -2295,6 +2317,7 @@ function renderLeaders(leaders) {
 }
 
 function renderHistory(history) {
+  $('home-transactions').innerHTML = CrocoLobby.historyHtml(history, money);
   const list = $('history-list');
   if (!history || !history.length) {
     list.innerHTML = '<p class="hint">Операций пока не было.</p>';
@@ -2329,6 +2352,7 @@ function renderHistory(history) {
 
 function setStatus(text) {
   $('lobby-status').textContent = text;
+  CrocoLobby.loading.message(text, /Сессия заменена|перезапустите|Откройте/.test(text));
 }
 
 let toastTimer = null;
@@ -3892,19 +3916,37 @@ function bindUi() {
       send({ type: 'bj_action', action: button.dataset.action });
     });
   });
+  on('home-settings', 'click', () => showTab('profile'));
+  on('settings-back', 'click', () => showTab('home'));
+  on('info-settings', 'click', () => showTab('profile'));
+  on('info-help', 'click', () => togglePanel('help-card'));
+  on('info-rules', 'click', () => { showTab('games'); $('rules-card').open=true; $('rules-card').scrollIntoView({behavior:'smooth',block:'start'}); });
+  on('home-history', 'click', () => { if(togglePanel('history-card')) send({type:'history'}); });
+  on('home-games', 'click', event => {
+    const id=event.target.closest('[data-home-game]')?.dataset.homeGame;
+    if(!id||!state.connected)return;
+    CrocoLobby.remember(localStorage,state.user?.id,id,GameCatalog.names);
+    if(id==='holdem'||id==='omaha')openGame(id);
+    else { const target=$('play-'+id)||document.querySelector('#tab-games [data-arcade="'+id+'"]'); target?.click(); }
+  });
+  document.addEventListener('click', event => {
+    const button=event.target.closest('button');if(!button||!state.connected)return;
+    const id=button.dataset.arcade || (button.id.startsWith('play-')?button.id.slice(5):null);
+    if(id)CrocoLobby.remember(localStorage,state.user?.id,id,GameCatalog.names);
+  },true);
   on('profile-topup', 'click', () => $('btn-topup').click());
   on('profile-payout', 'click', () => $('btn-payout').click());
-  on('hero-play', 'click', () => { haptic('light'); openGame('holdem'); });
-  on('games-all', 'click', () => showTab('games'));
+  on('hero-play', 'click', () => { haptic('light'); CrocoLobby.remember(localStorage, state.user?.id, 'nvuti', GameCatalog.names); openNvuti(); });
+
   for (const card of document.querySelectorAll('.mk-game[data-soon]')) {
     card.addEventListener('click', () => toast(`${card.dataset.soon} — скоро`));
   }
-  on('wins-all', 'click', () => toast('Полная лента выигрышей — скоро'));
+
   for (const card of document.querySelectorAll('.lb-game[data-open], .mk-game[data-open]')) {
     card.addEventListener('click', () => { haptic('light'); const game=card.dataset.open;if(game==='blackjack')openBlackjack();else if(game==='roulette')openRoulette();else if(game==='baccarat')openBaccarat();else openGame(game); });
   }
-  on('tour-more', 'click', () => showTab('tournaments'));
-  on('tour-to-games', 'click', () => showTab('games'));
+
+
   on('profile-history', 'click', () => {
     if (togglePanel('history-card')) send({ type: 'history' });
   });
@@ -3919,7 +3961,7 @@ function bindUi() {
   const openHelp = () => {
     if (togglePanel('help-card')) $('help-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
-  on('help-link', 'click', openHelp);
+
   on('btn-menu', 'click', openHelp);
   on('help-support', 'click', () => openExternal(state.links.support));
   on('help-history', 'click', () => {
@@ -4204,7 +4246,7 @@ function inviteFriends() {
   const { botUsername, appShortName } = state.config;
   if (tg && botUsername && appShortName) {
     const link = `https://t.me/${botUsername}/${appShortName}`;
-    const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Заходи играть — покер и блекджек прямо в Telegram')}`;
+    const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Заходи в Croco — игры прямо в Telegram')}`;
     tg.openTelegramLink(share);
     return;
   }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
-  <title>Poker ok 👌</title>
+  <title>Croco</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1017'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='%2334d399'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -36,10 +36,19 @@
   <script src="/classic-cards.js?v=1"></script>
   <script src="/blackjack-deal.js?v=1"></script>
   <script defer src="/game-layout.js?v=4"></script>
+  <link rel="stylesheet" href="/croco-lobby.css?v=1" />
+  <link rel="preload" as="image" href="/img/croco/mascot.webp" />
 </head>
 <body>
+  <section id="croco-loading" aria-label="Подключение Croco" aria-busy="true">
+    <div class="croco-loading-suits" aria-hidden="true"><span>♠</span><span>♥</span><span>♣</span><span>♦</span></div>
+    <div class="croco-loading-center"><img src="/img/croco/mascot.webp" width="1536" height="1024" alt="" fetchpriority="high" /><h1>Croco</h1>
+      <div class="croco-progress" aria-hidden="true"><i></i></div><p id="croco-loading-status" role="status">Подключаемся…</p>
+      <button id="croco-retry" type="button" class="hidden">Повторить подключение</button>
+    </div>
+  </section>
   <!-- Один набор иконок на всё приложение: контурные, 24×24, currentColor.
-       Эмодзи остаются только там, где они часть бренда (Poker ok 👌). -->
+       Бренд приложения — Croco. -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-arrow-up-right" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></symbol>
@@ -74,7 +83,7 @@
 
   <div id="app">
     <!-- ═══ Лобби: Главная и Игры ═══ -->
-    <section id="screen-lobby" class="screen">
+    <section id="screen-lobby" class="screen croco-lobby">
 
       <div class="lobby">
         <div id="dev-login" class="card hidden">
@@ -88,71 +97,32 @@
 
         <div id="lobby-actions" class="lobby-actions hidden">
 
-          <!-- ═══ Главная ═══
-               Верстка 1:1 по макету дизайнера: холст 390×656 css px, все
-               элементы стоят по абсолютным координатам, снятым с макета
-               (масштаб макета 853/390 = 2.187). Баннеры, шапка и арты игр —
-               вырезки из макета, текст — живой. Холст масштабируется под
-               ширину экрана целиком, чтобы пропорции не плыли. ═══ -->
-          <div id="tab-home" class="tab-panel mk">
-            <div class="mk-wrap">
-              <div class="mk-canvas">
-                <div class="mk-header"></div>
-                <div id="avatar" class="mk-avatar">♠</div>
-                <i class="mk-avatar-badge"></i>
-                <span class="mk-balance-label">Баланс</span>
-                <b id="balance-value" class="mk-balance">$0.00</b>
-                <button id="btn-topup" class="mk-hit mk-plus" aria-label="Пополнить"></button>
-                <button id="btn-payout" class="mk-hit mk-vip" aria-label="Вывести"></button>
+          <div id="tab-home" class="tab-panel croco-home">
+            <header class="croco-account">
+              <div id="avatar" class="croco-avatar">C</div>
+              <div class="croco-identity"><h1 id="home-name">Игрок</h1><span id="home-username">Croco</span></div>
+              <div class="croco-wallet"><b id="balance-value">$0.00</b><button id="btn-topup" aria-label="Пополнить баланс"><svg class="icon"><use href="#i-plus"></use></svg></button></div>
+              <button id="home-settings" class="croco-settings" aria-label="Настройки профиля"><svg class="icon" viewBox="0 0 24 24"><path d="m10 3-.5 2-2 .9-1.8-.6-2 3.4 1.5 1.4v2.4l-1.5 1.4 2 3.4 1.8-.6 2 .9.5 2h4l.5-2 2-.9 1.8.6 2-3.4-1.5-1.4v-2.4l1.5-1.4-2-3.4-1.8.6-2-.9-.5-2Z"/><circle cx="12" cy="11.3" r="3"/></svg></button>
+              <button id="btn-payout" class="hidden" aria-label="Вывести"></button>
+            </header>
+            <section class="croco-feature" aria-label="Новая игра Nvuti">
+              <img src="/img/croco/nvuti-banner.webp" width="1983" height="793" alt="" fetchpriority="high" />
+              <div class="croco-feature-copy"><span class="croco-new">НОВАЯ ИГРА</span><h2>NVUTI</h2><button id="hero-play" class="croco-play">Играть <svg class="icon"><use href="#i-chevron-right"></use></svg></button></div>
+            </section>
+            <section class="croco-recents"><h2 id="home-games-title">С чего начнём?</h2><div id="home-games" class="croco-shortcuts"></div></section>
+            <section class="croco-transactions"><div class="croco-section-head"><h2>История транзакций</h2><button id="home-history" class="link-btn" aria-label="Вся история транзакций">Все <svg class="icon"><use href="#i-chevron-right"></use></svg></button></div><div id="home-transactions" aria-live="polite"><p class="croco-history-note">Загружаем операции…</p></div></section>
+          </div>
 
-                <div class="mk-hero"><button id="hero-play" class="mk-hit mk-hero-cta" aria-label="Играть сейчас"></button></div>
-
-                <h2 class="mk-h2 mk-h2-games">Игры</h2>
-                <button id="games-all" class="mk-link mk-link-games">Все игры<i class="mk-arrow"></i></button>
-                <div class="mk-games">
-                  <button class="mk-game" data-open="holdem" style="--i:0">
-                    <span class="mk-game-art" style="background-image:url('/img/game-cards/holdem.webp')"></span>
-                    <b>Poker</b>
-                    <span class="mk-game-meta"><i class="mk-person"></i><em data-online="holdem">—</em></span>
-                    <span class="mk-game-go"></span>
-                  </button>
-                  <button class="mk-game" data-open="blackjack" style="--i:1">
-                    <span class="mk-game-art" style="background-image:url('/img/game-cards/blackjack.webp')"></span>
-                    <b>Blackjack</b>
-                    <span class="mk-game-meta"><i class="mk-person"></i><em data-online="blackjack">—</em></span>
-                    <span class="mk-game-go"></span>
-                  </button>
-                  <button class="mk-game" data-open="roulette" style="--i:2">
-                    <span class="mk-game-art" style="background-image:url('/img/game-cards/roulette.webp')"></span>
-                    <b>Roulette</b>
-                    <span class="mk-game-meta"><i class="mk-person"></i><em>—</em></span>
-                    <span class="mk-game-go"></span>
-                  </button>
-                  <button class="mk-game" data-arcade="sicbo" style="--i:3">
-                    <span class="mk-game-art mk-game-art-cut" style="background-image:url('/img/game-cards/sicbo.webp')"></span>
-                    <b>Sic Bo</b>
-                    <span class="mk-game-meta"><i class="mk-person"></i><em>—</em></span>
-                    <span class="mk-game-go"></span>
-                  </button>
-                </div>
-
-                <div class="mk-tour"><button id="tour-more" class="mk-hit mk-tour-cta" aria-label="Участвовать"></button></div>
-
-                <h2 class="mk-h2 mk-h2-wins">Последние выигрыши</h2>
-                <button id="wins-all" class="mk-link mk-link-wins">Смотреть все<i class="mk-arrow"></i></button>
-                <div id="wins-list" class="mk-wins"></div>
-
-                <button id="help-link" class="mk-support">
-                  <i class="mk-support-icon"></i>
-                  <b>Нужна помощь?</b>
-                  <span>Напиши в поддержку — мы всегда на связи</span>
-                  <i class="mk-chevron"></i>
-                </button>
-              </div>
+          <div id="tab-information" class="tab-panel hidden">
+            <div class="croco-info-brand"><img src="/img/croco/mascot.webp" width="96" height="64" alt="" /><h1>Croco</h1></div>
+            <h2>Информация</h2><p class="hint">Правила, поддержка и информация о вашем аккаунте.</p>
+            <div class="lb-list">
+              <button id="info-rules" class="lb-row"><svg class="icon"><use href="#i-cards"></use></svg><span>Правила игр</span><svg class="icon"><use href="#i-chevron-right"></use></svg></button>
+              <button id="info-help" class="lb-row"><svg class="icon"><use href="#i-headset"></use></svg><span>Помощь и поддержка</span><svg class="icon"><use href="#i-chevron-right"></use></svg></button>
+              <button id="info-settings" class="lb-row"><svg class="icon"><use href="#i-user"></use></svg><span>Настройки профиля</span><svg class="icon"><use href="#i-chevron-right"></use></svg></button>
             </div>
           </div>
 
-          <!-- ═══ Игры ═══ -->
           <div id="tab-games" class="tab-panel hidden">
             <div class="lb-sh"><h2>Игры</h2></div>
 
@@ -185,16 +155,6 @@
           </div>
 
           <!-- ═══ Турниры ═══ -->
-          <div id="tab-tournaments" class="tab-panel hidden">
-            <div class="lb-sh"><h2>Турниры</h2></div>
-            <section class="lb-empty">
-              <span class="lb-empty-art" aria-hidden="true"><svg class="icon"><use href="#i-trophy"></use></svg></span>
-              <b>Турниров пока нет</b>
-              <span>Первый Weekly Cup с призовым фондом объявим здесь и в нашем чате. Пока — кэш-столы во вкладке «Игры».</span>
-              <button id="tour-to-games" class="btn btn-primary">Открыть столы</button>
-            </section>
-          </div>
-
           <!-- ═══ Бонусы ═══ -->
           <div id="tab-bonuses" class="tab-panel hidden">
             <div class="lb-sh"><h2>Бонусы</h2></div>
@@ -236,7 +196,7 @@
 
           <!-- ═══ Профиль ═══ -->
           <div id="tab-profile" class="tab-panel hidden">
-            <div class="lb-sh"><h2>Профиль</h2></div>
+            <div class="lb-sh"><h2>Настройки профиля</h2><button id="settings-back" class="link-btn">На главную</button></div>
             <div class="lb-profile">
               <div id="profile-avatar" class="lb-avatar">♠</div>
               <div class="lb-profile-body">
@@ -364,7 +324,7 @@
             <!-- Помощь -->
             <div id="help-card" class="card hidden">
               <h2>Помощь</h2>
-              <p class="hint">Texas Hold’em и Blackjack. Баланс пополняется и выводится криптой один к одному.</p>
+              <p class="hint">Croco — покер, слоты и мини-игры. Правила доступны в каждой игре.</p>
               <div class="chips-actions">
                 <button id="help-history" class="btn btn-surface">История операций</button>
                 <button id="help-rules" class="btn btn-surface">Правила игры</button>
@@ -386,14 +346,11 @@
         <div id="lobby-status" class="status">Подключаемся…</div>
       </div>
 
-      <nav id="bottom-nav" class="bottom-nav mk-nav hidden">
-        <div class="mk-nav-inner">
-          <button class="nav-btn is-active" data-tab="home" style="--i:0"><i class="mk-nav-ic" style="--ic:url('/img/lobby/nav-home.png')"></i><span>Главная</span></button>
-          <button class="nav-btn" data-tab="games" style="--i:1"><i class="mk-nav-ic" style="--ic:url('/img/lobby/nav-games.png')"></i><span>Игры</span></button>
-          <button class="nav-btn" data-tab="tournaments" style="--i:2"><i class="mk-nav-ic" style="--ic:url('/img/lobby/nav-tour.png')"></i><span>Турниры</span></button>
-          <button class="nav-btn" data-tab="bonuses" style="--i:3"><i class="mk-nav-ic" style="--ic:url('/img/lobby/nav-gift.png')"></i><span>Бонусы</span></button>
-          <button class="nav-btn" data-tab="profile" style="--i:4"><i class="mk-nav-ic" style="--ic:url('/img/lobby/nav-user.png')"></i><span>Профиль</span></button>
-        </div>
+      <nav id="bottom-nav" class="bottom-nav croco-nav hidden" aria-label="Основная навигация">
+        <button class="nav-btn is-active" data-tab="home"><svg class="icon"><use href="#i-home"></use></svg><span>Главная</span></button>
+        <button class="nav-btn" data-tab="games"><svg class="icon"><use href="#i-gamepad"></use></svg><span>Игры</span></button>
+        <button class="nav-btn" data-tab="bonuses"><svg class="icon"><use href="#i-gift"></use></svg><span>Бонусы</span></button>
+        <button class="nav-btn" data-tab="information"><svg class="icon"><use href="#i-help"></use></svg><span>Информация</span></button>
       </nav>
     </section>
 
@@ -866,6 +823,7 @@
   <script src="/hilo.js?v=4"></script>
   <script src="/client-connection.js?v=1"></script>
   <script src="/telegram-display.js?v=1"></script>
-  <script src="/app.js?v=110"></script>
+  <script src="/croco-lobby.js?v=1"></script>
+  <script src="/app.js?v=111"></script>
 </body>
 </html>

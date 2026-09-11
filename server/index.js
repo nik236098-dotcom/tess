@@ -154,8 +154,8 @@ function createApp(options = {}) {
   // ——— Постоянные столы ———
   // По одному открытому столу на игру: холдем и блекджек. Хозяин — само
   // заведение, поэтому раздачи стартуют сами, как только сели двое, а
-  // уборщик такие столы не трогает: «участник» PokerGena всегда на связи.
-  const HOUSE = { id: 'house', name: 'PokerGena', photoUrl: null };
+  // уборщик такие столы не трогает: «участник» Croco всегда на связи.
+  const HOUSE = { id: 'house', name: 'Croco', photoUrl: null };
 
   function createHouseTables() {
     const presets = [
@@ -167,7 +167,7 @@ function createApp(options = {}) {
       const room = new Room(createRoomCode(), HOUSE, preset, { bank: accounts });
       room.house = true;
       room.autoStart = true;
-      room.title = preset.game === 'blackjack' ? 'Блекджек PokerGena' : preset.game === 'omaha' ? 'Омаха PokerGena' : 'Стол PokerGena';
+      room.title = preset.game === 'blackjack' ? 'Блекджек Croco' : preset.game === 'omaha' ? 'Омаха Croco' : 'Стол Croco';
       registerRoom(room);
     }
   }
