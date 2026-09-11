@@ -93,3 +93,16 @@
 .croco-play { min-width:44%;justify-content:center; }
 .croco-shortcut:focus-visible,.croco-nav .nav-btn:focus-visible,.croco-section-head button:focus-visible { outline:2px solid #ce9fff;outline-offset:3px; }
 @media(max-width:370px){.croco-popular .croco-section-head{gap:4px}.croco-section-head .link-btn{font-size:11px;padding:0}.croco-nav .nav-btn{font-size:9px}}
+
+/* Border-free home; the featured banner retains its frame. */
+.croco-home .croco-avatar,
+.croco-home .croco-wallet,
+.croco-home .croco-wallet>button,
+.croco-home .croco-settings,
+.croco-home .croco-shortcut img,
+.croco-home .croco-shortcut .croco-game-art,
+.croco-home #home-transactions,
+.croco-home .croco-tx,
+#screen-lobby .croco-nav,
+#screen-lobby .croco-nav .nav-btn { border-color:transparent;box-shadow:none; }
+/* Retain keyboard focus indication and the active tab's filled background. */
