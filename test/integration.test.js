@@ -487,3 +487,13 @@ test('Arcade: four games route over WebSocket, persist results, reject duplicate
     assert.equal(reopened.balance,balance);assert.equal(reopened.revision,next.revision);
   }
 });
+
+test('Live persisted feed is served unchanged after page reconnect and server restart',async t=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const {RecentWins}=require('../server/recent-wins');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'live-server-'));
+ const feed=new RecentWins({file:path.join(dir,'recent-wins.json')});feed.add({name:'Live QA',game:'mines',amount:150,payout:250,bet:100});
+ const start=async()=>{const app=createApp({botToken:'',devLogin:true,accountsFile:path.join(dir,'accounts.json'),paymentsFile:null,promoFile:null});await new Promise(r=>app.listen(0,'127.0.0.1',r));return app;};
+ const read=async app=>{const client=connect(app.address().port);try{await once(client.socket,'open');client.send({type:'auth',name:'Reader',devId:'live-reader'});await client.wait(byType('auth_ok'));client.send({type:'list_rooms'});return (await client.wait(byType('rooms'))).wins;}finally{client.close();}};
+ let app;try{app=await start();assert.deepStrictEqual(await read(app),feed.entries);assert.deepStrictEqual(await read(app),feed.entries);await app.shutdown();app=await start();assert.deepStrictEqual(await read(app),feed.entries);}finally{if(app?.listening)await app.shutdown();fs.rmSync(dir,{recursive:true,force:true});}
+});

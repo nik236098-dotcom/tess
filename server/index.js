@@ -23,6 +23,7 @@ const { createPayments, PaymentError } = require('./payments');
 const { formatMoney, parseMoney } = require('./money');
 const { PromoCodes, PromoError } = require('./promo');
 const { loadEnv } = require('./env');
+const { RecentWins } = require('./recent-wins');
 
 loadEnv();
 
@@ -124,8 +125,9 @@ function createApp(options = {}) {
 
   const rooms = new Map(); // код -> Room
   const clientsByUser = new Map(); // id пользователя -> клиент
-  // Последние выигрыши для главной. Живут в памяти: это витрина, а не отчёт.
-  const recentWins = [];
+  // Persist the bounded public feed alongside account data across restarts.
+  const recentWinsFile = options.recentWinsFile !== undefined ? options.recentWinsFile : accountsFile ? path.join(path.dirname(accountsFile), 'recent-wins.json') : null;
+  const recentWins = new RecentWins({file:recentWinsFile,limit:RECENT_WINS_LIMIT});
 
   // ——— Комнаты ———
 
@@ -145,12 +147,7 @@ function createApp(options = {}) {
     room.on('win', noteWin);
   }
 
-  function noteWin(win) {
-    if (!win || win.amount <= 0) return;
-    const multiplier = Number.isFinite(win.bet) && win.bet > 0 && Number.isFinite(win.payout) ? win.payout / win.bet : null;
-    recentWins.unshift({ ...win, multiplier, at: Date.now() });
-    recentWins.length = Math.min(recentWins.length, RECENT_WINS_LIMIT);
-  }
+  function noteWin(win) { recentWins.add(win); }
 
   // ——— Постоянные столы ———
   // По одному открытому столу на игру: холдем и блекджек. Хозяин — само
@@ -452,7 +449,7 @@ function createApp(options = {}) {
         redeemPromo(client, message.code);
         break;
       case 'list_rooms':
-        client.send({ type: 'rooms', rooms: publicRooms(), wins: recentWins });
+        client.send({ type: 'rooms', rooms: publicRooms(), wins: recentWins.entries });
         break;
       case 'bj_open':
         sendBlackjack(client);

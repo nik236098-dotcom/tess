@@ -56,6 +56,7 @@ staging=$(mktemp -d /tmp/croco-update.XXXXXXXX)
 pgit archive "$target" public server | tar -x -C "$staging"
 cd "$staging"
 node --check server/index.js
+node --check server/recent-wins.js
 node --check public/app.js
 node --check public/croco-lobby.js
 node --check public/amethyst.js

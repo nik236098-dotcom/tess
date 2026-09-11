@@ -13,6 +13,7 @@
  }
  function historyHtml(items,money,limit=3){if(!Array.isArray(items)||!items.length)return '<div class="croco-empty"><svg class="icon"><use href="#i-receipt"></use></svg><b>Пока нет транзакций</b><p>Здесь появится история операций</p></div>';return items.slice(0,limit).map(item=>transaction(item,money)).join('');}
  function liveHtml(wins,money,catalog){
+  if(wins==null)return '<p class="croco-history-note">Загружаем Live…</p>';
   if(!Array.isArray(wins)||!wins.length)return '<p class="croco-history-note">Пока нет выигрышей</p>';
   return wins.slice(0,8).map(win=>{
    const id=Object.hasOwn(catalog.names,win.game)?win.game:'holdem';

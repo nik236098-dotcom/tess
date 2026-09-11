@@ -49,7 +49,7 @@ const state = {
   nv: { open: false, info: null, amount: 100, target: 75, mode: 'under', busy: false, round: null, shownBalance: null, timer: null },
   unread: 0,
   tab: 'home', // главная с профилем | игры | бонусы | информация
-  wins: [], // лента последних выигрышей
+  wins: null, // null until the server supplies the saved Live feed
   topup: {
     config: {
       enabled: false, providers: [], presets: [], presetCents: [],
