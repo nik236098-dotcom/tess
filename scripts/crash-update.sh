@@ -118,7 +118,7 @@ for (const [game, rules] of Object.entries(require('./public/feature-slots-rules
     if (!fs.statSync(path).size) throw new Error(`Empty slot artwork: ${path}`);
   }
 }
-for (const path of ['public/img/croco/glass-banner.webp', 'public/img/croco/glass-reference.webp', 'public/img/croco/popular-atlas.webp', 'public/croco-lobby.css', 'public/img/croco/mascot.webp', 'public/img/croco/nvuti-banner.webp', 'public/feature-slots.css', 'public/abyss.css', 'public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp', 'public/tower.css', 'public/andar.css', 'public/img/rps/rock-v2.webp', 'public/img/rps/paper-v2.webp', 'public/img/rps/scissors-v2.webp']) {
+for (const path of ['public/img/croco/popular-atlas.webp', 'public/croco-lobby.css', 'public/img/croco/mascot.webp', 'public/img/croco/nvuti-banner.webp', 'public/feature-slots.css', 'public/abyss.css', 'public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp', 'public/tower.css', 'public/andar.css', 'public/img/rps/rock-v2.webp', 'public/img/rps/paper-v2.webp', 'public/img/rps/scissors-v2.webp']) {
   if (!fs.statSync(path).size) throw new Error(`Empty game asset: ${path}`);
 }
 JS

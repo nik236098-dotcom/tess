@@ -12,7 +12,7 @@ test('recent games are isolated by account, validated, unique, bounded and resil
  assert.doesNotThrow(()=>C.remember({getItem(){throw Error();},setItem(){throw Error();}},'one','nvuti',names));
 });
 test('first visit shows no fabricated transactions; preview shows only the latest three real records',()=>{
- assert.match(C.historyHtml([],money),/Пока нет операций/);assert.doesNotMatch(C.historyHtml([],money),/\$/);
+ assert.match(C.historyHtml([],money),/Пока нет транзакций/);assert.doesNotMatch(C.historyHtml([],money),/\$/);
  const records=Array.from({length:5},(_,i)=>({kind:'topup',status:'paid',cents:100+i,createdAt:0}));
  const html=C.historyHtml(records,money);assert.equal((html.match(/class="croco-tx"/g)||[]).length,3);assert.match(html,/\+\$1.00/);
 });
