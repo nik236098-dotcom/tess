@@ -152,3 +152,15 @@
 #screen-lobby .croco-shortcut .croco-game-art { isolation:isolate;overflow:hidden;background:#6234e7;background-image:none; }
 #screen-lobby .croco-shortcut .croco-game-art>img { display:block;width:100%;height:100%;margin:0;border:0;border-radius:0;box-shadow:none;object-fit:cover;object-position:center 35%;mix-blend-mode:normal; }
 #screen-lobby .croco-shortcut:is([data-home-game="nvuti"],[data-home-game="crash"]) .croco-game-art>img { mix-blend-mode:normal; }
+
+/* Game-format wallet and personal greeting above the feature. */
+#screen-lobby .croco-account { grid-template-columns:auto minmax(0,1fr) auto;gap:12px; }
+#screen-lobby .croco-wallet { justify-self:end;height:38px;min-height:38px;padding:0 4px 0 11px;gap:7px;border:1px solid #9682ff66;border-radius:12px;background:#181a3ad9;box-shadow:inset 0 1px 0 #ffffff0f;box-sizing:border-box; }
+#screen-lobby .croco-wallet>span { display:inline;color:#a9a6d6;font:500 11px/1 var(--font); }
+#screen-lobby .croco-wallet>b { color:var(--wallet-gold,#f2c96b);font:800 14px/1 var(--font);font-variant-numeric:tabular-nums;text-shadow:none; }
+#screen-lobby .croco-welcome { margin:0 0 -9px;font:700 clamp(18px,5vw,24px)/1.35 var(--font);color:#f7f5ff;letter-spacing:-.4px;overflow-wrap:anywhere; }
+/* Merge the mascot backdrop with the loading surface, without a rectangular seam. */
+.croco-loading-center>img { mix-blend-mode:lighten;mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent),linear-gradient(0deg,transparent,#000 6%,#000 94%,transparent);mask-composite:intersect;-webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent),linear-gradient(0deg,transparent,#000 6%,#000 94%,transparent);-webkit-mask-composite:source-in; }
+@media(max-width:370px){#screen-lobby .croco-account{gap:8px}#screen-lobby .croco-wallet{padding-left:8px;gap:5px}#screen-lobby .croco-wallet>b{font-size:12px}}
+#screen-lobby #tab-bonuses #promo-code { border:1px solid #9682ff80;border-radius:10px;padding:10px 12px; }
+#screen-lobby #tab-bonuses #promo-code:focus { border-color:#b58aff;outline:2px solid #a270f52b;outline-offset:1px; }

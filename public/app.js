@@ -2104,8 +2104,7 @@ function renderAccount() {
   $('my-id').textContent = state.user ? state.user.id : '—';
   $('profile-id').textContent = `Telegram ID: ${state.user ? state.user.id : '—'}`;
   $('profile-name').textContent = state.user ? (state.user.name || 'Игрок') : '—';
-  $('home-name').textContent = state.user?.name || 'Игрок';
-  $('home-username').textContent = state.user?.username ? '@' + state.user.username : 'Croco';
+  $('home-welcome').textContent = `Добро Пожаловать, ${state.user?.name?.trim() || 'Игрок'}!`;
   renderHomeGames();
   $('admin-card').classList.toggle('hidden', !state.isAdmin);
 
