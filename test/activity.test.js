@@ -192,3 +192,22 @@ test('an unavailable log channel does not block other channels or discard queued
  let failures=0;h.bot.transport=async(method,body)=>{if(method==='sendMessage'&&body.chat_id==='-100bad'){failures++;throw Error('sendMessage: Bad Request: chat not found');}return transport(method,body);};
  await h.bot.drain();assert.equal(failures,1);assert.equal(h.activity.data.outbox[0].delivered,undefined);assert.equal(h.activity.data.outbox[25].delivered,true);
 });
+
+test('profile puts Play in its own first row',async()=>{
+ const h=setup();await h.bot.profile('2',h.accounts.get('2'));
+ const rows=h.calls.find(c=>c.method==='sendMessage').body.reply_markup.inline_keyboard;
+ assert.equal(rows[0].length,1);assert.equal(rows[0][0].text,'🎮 Играть');assert.ok(rows[0][0].web_app);
+ assert.equal(rows.flat().filter(b=>b.text==='🎮 Играть').length,1);
+});
+test('any private text, symbol or attachment returns to the welcome menu without duplicating the screen',async()=>{
+ const h=setup();
+ for(const body of [{text:'Привет'},{text:'?'},{text:'🐊'},{text:' '},{text:'/unknown'},{sticker:{file_id:'x'}},{photo:[{file_id:'x'}]},{voice:{file_id:'x'}}]){
+  await h.bot.handle({message:{from:{id:2,first_name:'Player'},chat:{id:2,type:'private'},...body}});
+  const reply=h.calls.at(-1).body;assert.match(reply.caption||reply.text,/Добро пожаловать в Croco/);
+  assert.equal(reply.reply_markup.inline_keyboard[0][0].text,'🎮 Играть');
+ }
+ assert.equal(h.calls.filter(c=>c.method==='sendPhoto').length,1);assert.equal(h.calls.filter(c=>c.method==='sendMessage').length,0);
+ const count=h.calls.length;
+ await h.bot.handle({message:{from:{id:2},chat:{id:-10099,type:'supergroup'},text:'?'}});assert.equal(h.calls.length,count);
+ await h.bot.handle({message:{from:{id:1},chat:{id:1,type:'private'},text:'/kassa'}});assert.match(h.calls.at(-1).body.text,/Касса/);
+});

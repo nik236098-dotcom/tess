@@ -107,7 +107,7 @@ class TelegramBot {
   }
   async profile(chat, account) {
     return this.screen(chat, `<b>👤 Профиль Croco</b>\n\n${userLine(account)}\n\nКошелёк: <b>${amount(account.balance)}</b>\nРеферальный баланс: <b>${amount(account.refBalance)}</b>`,
-      { inline_keyboard: [[this.web('↓ Пополнить', 'wallet'), this.web('↑ Вывести', 'withdraw')], [button('🤝 Рефералы', 'referrals')], [button('🎧 Поддержка', 'support'), this.web('🎮 Играть', '')]] });
+      { inline_keyboard: [[this.web('🎮 Играть', '')], [this.web('↓ Пополнить', 'wallet'), this.web('↑ Вывести', 'withdraw')], [button('🤝 Рефералы', 'referrals')], [button('🎧 Поддержка', 'support')]] });
   }
   async refReport(chat, id, page = 0) {
     const a = this.accounts.get(id); if (!a) throw new Error('Игрок не найден');
@@ -184,8 +184,8 @@ class TelegramBot {
         if (action === 'support') return await this.screen(chat.id, '🎧 Поддержка Croco\nУкажите ID профиля и номер операции при обращении.', { inline_keyboard: this.supportUrl ? [[{ text: 'Написать в поддержку', url: this.supportUrl }]] : [] });
         return await this.screen(chat.id, 'Откройте приложение кнопкой меню бота.', this.keyboard());
       }
-      if (!m?.text) return;
-      const [raw, arg, third] = m.text.trim().split(/\s+/); const command = raw.split('@')[0].toLowerCase();
+      if (!m) return;
+      const [raw, arg, third] = String(m.text || '').trim().split(/\s+/); const command = raw.split('@')[0].toLowerCase();
       if (command === '/chatid' && admin) return await this.screen(chat.id, `ID чата: <code>${chat.id}</code>`);
       if (chat.type !== 'private') return;
       const a = this.activity.register({ id, name: [from.first_name, from.last_name].filter(Boolean).join(' '), username: from.username }, command === '/start' ? arg : null);
@@ -217,6 +217,7 @@ class TelegramBot {
         this.channelRetry.delete(String(third));
         return await this.screen(chat.id, `✅ Канал ${esc(arg)} подключён: ${esc(found.title)}\nСохранённые уведомления будут отправлены сюда.`);
       }
+      if (command !== '/help') return await this.welcome(chat.id, a);
       return await this.screen(chat.id, '/profile — профиль\n/wallet — кошелёк\n/ref — рефералы\n/support — поддержка' + (admin ? '\n\nАдминистратор:\n/stats id — ставки\n/balance id — операции\n/ref id — рефералы\n/kassa — касса\n/chatid — ID чата\n/setchannel payouts|events|games -100… — каналы логов' : ''), this.keyboard());
     } catch (error) {
       if (/^(send|edit|answer|get|delete)[A-Z]|fetch failed|timeout|aborted/i.test(error.message)) throw error;
