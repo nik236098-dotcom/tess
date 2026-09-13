@@ -53,7 +53,7 @@ trap 'exit 143' TERM
 # Validate a snapshot of the exact target while the current service keeps serving.
 echo 'Проверяем новую версию. Сайт продолжает работать…'
 staging=$(mktemp -d /tmp/croco-update.XXXXXXXX)
-pgit archive "$target" public server | tar -x -C "$staging"
+pgit archive "$target" public server scripts | tar -x -C "$staging"
 cd "$staging"
 node --check server/index.js
 node --check server/recent-wins.js
