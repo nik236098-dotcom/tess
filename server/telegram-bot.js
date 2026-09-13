@@ -18,6 +18,7 @@ class TelegramBot {
   constructor({ token, accounts, payments, activity, appUrl = '', supportUrl = '', env = process.env, call = null }) {
     Object.assign(this, { token, accounts, payments, activity, appUrl, supportUrl, env });
     this.transport = call; this.running = false; this.sending = false; this.controller = null;
+    this.channelRetry = new Map();
     this.channels = { payouts: env.TELEGRAM_PAYOUTS_CHAT_ID, events: env.TELEGRAM_EVENTS_CHAT_ID, games: env.TELEGRAM_GAMES_CHAT_ID };
   }
   async call(method, body = {}) {
@@ -30,7 +31,7 @@ class TelegramBot {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
       });
       const data = await response.json();
-      if (!data.ok) { const e = new Error(`${method}: ${data.description || response.status}`); e.retryAfter = data.parameters?.retry_after; throw e; }
+      if (!data.ok) { const e = new Error(`${method}: ${data.description || response.status}`); e.retryAfter = data.parameters?.retry_after; e.telegramCode = data.error_code || response.status; throw e; }
       return data.result;
     } finally { finish(); }
   }
@@ -159,8 +160,10 @@ class TelegramBot {
           if (!channel || String(chat.id) !== String(channel)) throw new Error('Кнопка доступна только в канале выводов');
           const r = this.payments.getPayout(arg);
           if (!r) throw new Error('Заявка не найдена');
-          this.payments.reviewPayout(arg, rawPage, id);
-          await this.call('editMessageText', { chat_id: chat.id, message_id: q.message.message_id, text: this.payoutText(r), parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } });
+          if (r.status === 'review') this.payments.reviewPayout(arg, rawPage, id);
+          else if (!['done', 'failed'].includes(r.status)) throw new Error('Заявка пока не доступна для ручного подтверждения');
+          try { await this.call('editMessageText', { chat_id: chat.id, message_id: q.message.message_id, text: this.payoutText(r), parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } }); }
+          catch (error) { if (!/message is not modified/i.test(error.message)) throw error; }
           return;
         }
         if (chat.type !== 'private') return;
@@ -211,6 +214,7 @@ class TelegramBot {
         const member = await this.call('getChatMember', { chat_id: third, user_id: me.id });
         if (!['administrator', 'creator'].includes(member.status) || (found.type === 'channel' && member.can_post_messages === false)) throw new Error('Сначала добавьте бота администратором канала с правом публикации');
         this.accounts.atomic(() => { this.activity.data.channels[arg] = third; });
+        this.channelRetry.delete(String(third));
         return await this.screen(chat.id, `✅ Канал ${esc(arg)} подключён: ${esc(found.title)}\nСохранённые уведомления будут отправлены сюда.`);
       }
       return await this.screen(chat.id, '/profile — профиль\n/wallet — кошелёк\n/ref — рефералы\n/support — поддержка' + (admin ? '\n\nАдминистратор:\n/stats id — ставки\n/balance id — операции\n/ref id — рефералы\n/kassa — касса\n/chatid — ID чата\n/setchannel payouts|events|games -100… — каналы логов' : ''), this.keyboard());
@@ -222,10 +226,12 @@ class TelegramBot {
   async drain() {
     if (this.sending) return; this.sending = true;
     try {
-      for (const e of this.activity.data.outbox.filter(e => { const kind=e.kind==='payout'?'payouts':e.kind==='game'?'games':'events'; return !e.delivered && (this.activity.data.channels[kind] || this.channels[kind]); }).slice(0, 20)) {
+      let attempted = 0;
+      for (const e of this.activity.data.outbox.filter(e => { const kind=e.kind==='payout'?'payouts':e.kind==='game'?'games':'events'; return !e.delivered && (this.activity.data.channels[kind] || this.channels[kind]); })) {
         const kind = e.kind === 'payout' ? 'payouts' : e.kind === 'game' ? 'games' : 'events';
         const chat = this.activity.data.channels[kind] || this.channels[kind];
-        if (!chat) continue;
+        if (!chat || (this.channelRetry.get(String(chat)) || 0) > Date.now()) continue;
+        if (attempted++ >= 20) break;
         const r = e.payload; let text, keys;
         if (e.kind === 'payout') {
           const live = this.payments.getPayout(r.id) || r;
@@ -234,7 +240,13 @@ class TelegramBot {
         } else if (e.kind === 'game') text = `<b>🎮 ${esc(r.game)}</b>\n${userLine({ ...r, id: r.userId })}\nСтавка: ${amount(r.bet)}\nВыплата: ${amount(r.payout)}\nКоэффициент: ${r.multiplier.toFixed(2)}×\nРезультат: <b>${amount(r.net)}</b>\n${date(r.at)} UTC\n<code>${esc(r.id)}</code>`;
         else if (e.kind === 'deposit') text = `<b>↓ Пополнение · Успешно</b>\n${userLine({ ...r, id: r.userId })}\n${amount(r.creditedCents)} · ${esc(r.provider)}\n<code>${esc(r.id)}</code>`;
         else text = `<b>👤 Новый пользователь</b>\n${userLine({ ...r, id: r.userId })}`;
-        await this.say(chat, text, keys);
+        try { await this.say(chat, text, keys); }
+        catch (error) {
+          this.channelRetry.set(String(chat), Date.now() + Math.max(30000, (error.retryAfter || 0) * 1000));
+          console.error('Telegram: канал временно недоступен:', chat, error.message);
+          continue;
+        }
+        this.channelRetry.delete(String(chat));
         this.accounts.atomic(() => { e.delivered = true; });
         if (e.kind === 'payout' && ['done', 'failed'].includes(r.status)) {
           try { await this.say(r.userId, `Вывод ${amount(r.cents)}: <b>${esc(statusName(r.status))}</b>`); } catch {}
@@ -245,6 +257,14 @@ class TelegramBot {
       }
     } catch (error) { console.error('Telegram: доставка логов отложена:', error.message); }
     finally { this.sending = false; }
+  }
+  async processUpdate(update) {
+    try { await this.handle(update); }
+    catch (error) {
+      if (![400, 403].includes(error.telegramCode)) throw error;
+      console.error('Telegram: обновление отклонено:', update.update_id, error.message);
+    }
+    this.accounts.atomic(() => { this.activity.data.botOffset = update.update_id + 1; });
   }
   async start() {
     if (!this.token || this.running) return;
@@ -266,8 +286,7 @@ class TelegramBot {
             queueWait({ batch_size: updates.length });
             const finishUpdate = perf.begin('bot.handle', 1000);
             try {
-              await this.handle(update);
-              this.accounts.atomic(() => { this.activity.data.botOffset = update.update_id + 1; });
+              await this.processUpdate(update);
             } finally { finishUpdate(); }
           }
         } catch (error) {

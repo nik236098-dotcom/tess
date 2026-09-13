@@ -584,6 +584,9 @@ function showLobby() {
   state.bj.open = false;
   state.rl.open = false;
   state.bc.open = false;
+  state.bc.timers.forEach(clearTimeout); state.bc.timers = []; state.bc.dealing = false;
+  stopBjDeal();
+  if (state.rl.raf) cancelAnimationFrame(state.rl.raf);
   state.mn.open = false;
   state.nv.open = false;
   $('screen-lobby').classList.remove('hidden');
@@ -956,7 +959,7 @@ function renderBlackjack() {
     state.bj.bet = clamp(state.bj.bet, range.min, range.max);
   }
   const bet = $('bj-bet-amount');
-  bet.textContent = state.bj.typing ? (state.bj.typed ? `$${state.bj.typed}` : '$') : money(state.bj.bet);
+  bet.textContent = state.bj.typing ? (state.bj.typed || '0') : money(state.bj.bet).replace(/^\$/, '');
   if (playing && state.bj.typing) closeBjKeypad(false);
   document.querySelector('.bj-bet').classList.toggle('is-locked', playing);
   $('bj-minus').disabled = playing;
@@ -1238,7 +1241,7 @@ function renderRoulette() {
   if(!state.rl.open)return;
   const rl=state.rl,locked=rl.spinning||rl.pending||!state.connected;
   if(!locked){const {min,max}=rlRange();rl.amount=clamp(rl.amount,min,max);}
-  $('rl-amount').textContent=rl.typing?(rl.typed?`$${rl.typed}`:'$'):money(rl.amount);
+  $('rl-amount').textContent=rl.typing?(rl.typed||'0'):money(rl.amount).replace(/^\$/, '');
   for(const id of ['rl-minus','rl-plus','rl-max','rl-amount','rl-clear'])$(id).disabled=locked;
   for(const node of $('rl-cells').children){
     const bet=rl.bets.get(node.dataset.key);node.disabled=locked;
@@ -1410,8 +1413,8 @@ function bcClearTable() {
     total.classList.remove('is-on');
   }
   const result = $('bc-result');
-  result.className = 'bc-result';
-  result.innerHTML = '';
+  GameResult.hide(result);
+  result.className = 'bc-result hidden';
   $('bc-zones').classList.remove('is-locked');
   // Пока раунда нет — на столе только нарисованная колода, без подписей.
   $('bc-table').classList.add('is-idle');
@@ -1465,6 +1468,7 @@ function onBaccaratState(message) {
   state.bc.info = message;
   state.balance = message.balance;
   renderAccount();
+  if (!state.bc.open) return;
   if (message.round) {
     // Точка в дорожке появляется только после того, как карты сыграли:
     // историю с результатом придерживаем до конца раздачи.
@@ -1522,6 +1526,7 @@ function bcResultView(round) {
 
 function finishBaccaratDeal(round) {
   const bc = state.bc;
+  if (!bc.open || bc.round !== round) return;
   bc.dealing = false;
   $('bc-zones').classList.remove('is-locked');
   $('bc-canvas').classList.remove('is-dealing');
@@ -2128,14 +2133,14 @@ function renderAccount() {
   $('my-id').textContent = state.user ? state.user.id : '—';
   $('profile-id').textContent = `ID: ${state.user ? state.user.id : '—'}`;
   $('profile-name').textContent = state.user ? (state.user.name || 'Игрок') : '—';
-  $('home-welcome').textContent = `Добро Пожаловать, ${state.user?.name?.trim() || 'Игрок'}!`;
+  $('home-welcome').textContent = `Добро пожаловать, ${state.user?.name?.trim() || 'Игрок'}!`;
   renderHomeGames();
   $('admin-card').classList.toggle('hidden', !state.isAdmin);
 
   renderPayoutControls();
 
   const photo = state.user && state.user.photoUrl;
-  const initial = state.user && state.user.name ? state.user.name.trim()[0].toUpperCase() : '♠';
+  const initial = playerInitial(state.user?.name, '♠');
   for (const id of ['avatar', 'profile-avatar']) {
     const avatar = $(id);
     if (!avatar) continue;
@@ -2750,13 +2755,13 @@ function avatarNode(seat, room) {
     const img = document.createElement('img');
     img.addEventListener('error', () => {
       img.remove();
-      avatar.textContent = (seat.name || '?').trim()[0].toUpperCase();
+      avatar.textContent = playerInitial(seat.name);
     }, { once: true });
     img.src = seat.photoUrl;
     img.alt = '';
     avatar.appendChild(img);
   } else {
-    avatar.textContent = (seat.name || '?').trim()[0].toUpperCase();
+    avatar.textContent = playerInitial(seat.name);
   }
 
   // Кольцо-прогресс — после буквы: textContent затирает всех детей,
@@ -3147,7 +3152,7 @@ function renderResult(room) {
     const winner = result.winners[0];
     const combo = winner.hand ? `<div class="win-combo">${escapeHtml(winner.hand.name)}</div>` : '';
     pop.innerHTML = `
-      <div class="win-avatar">${escapeHtml((winner.name || '?').trim()[0].toUpperCase())}</div>
+      <div class="win-avatar">${escapeHtml(playerInitial(winner.name))}</div>
       <div class="win-title">Выигрывает ${escapeHtml(winner.name)}</div>
       ${combo}
       <div class="win-amount">+${money(winner.amount)}</div>
@@ -4286,6 +4291,15 @@ function invite() {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function playerInitial(name, fallback = '?') {
+  const text = String(name || '').trim();
+  if (!text) return fallback;
+  const first = typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter('ru', { granularity: 'grapheme' }).segment(text)[Symbol.iterator]().next().value.segment
+    : Array.from(text)[0];
+  return first.toLocaleUpperCase('ru');
 }
 
 function escapeHtml(text) {

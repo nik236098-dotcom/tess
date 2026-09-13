@@ -165,3 +165,30 @@ test('expired callback acknowledgement does not block an authorized payout rejec
   await h.bot.handle(callback(1));assert.equal(h.payments.getPayout(r.id).status,'failed');assert.equal(h.accounts.get('2').balance,100000);
   await h.bot.handle(callback(1));assert.equal(h.accounts.get('2').balance,100000);
 });
+
+test('permanent Telegram delivery errors cannot block following updates; network failures remain retryable', async()=>{
+ const h=setup(),transport=h.bot.transport;
+ const command=id=>({update_id:id,message:{from:{id:1},chat:{id:1,type:'private'},text:'/kassa'}});
+ h.bot.transport=async(method,body)=>{if(method==='sendMessage'){const e=Error('sendMessage: Forbidden: bot was blocked');e.telegramCode=403;throw e;}return transport(method,body);};
+ await h.bot.processUpdate(command(10));assert.equal(h.activity.data.botOffset,11);
+ h.bot.transport=async()=>{throw Error('fetch failed');};
+ await assert.rejects(h.bot.processUpdate(command(11)),/fetch failed/);assert.equal(h.activity.data.botOffset,11);
+ h.bot.transport=transport;await h.bot.processUpdate(command(11));assert.equal(h.activity.data.botOffset,12);
+});
+test('payout status is refreshed after edit failure without repeating the balance mutation',async()=>{
+ const h=setup(),transport=h.bot.transport;h.activity.data.channels.payouts='-10099';
+ const r=await h.payments.createPayout({id:'2'},'cryptobot',1000);
+ const update={callback_query:{id:'cb',from:{id:1},data:`pay:${r.id}:failed`,message:{message_id:1,chat:{id:'-10099',type:'channel'}}}};
+ let once=true;h.bot.transport=async(method,body)=>{if(method==='editMessageText'&&once){once=false;throw Error('timeout');}return transport(method,body);};
+ await assert.rejects(h.bot.handle(update),/timeout/);assert.equal(h.accounts.get('2').balance,100000);
+ await h.bot.handle(update);assert.equal(h.accounts.get('2').balance,100000);
+ assert.ok(h.calls.some(c=>c.method==='editMessageText'&&/Отказано/.test(c.body.text)));
+});
+test('an unavailable log channel does not block other channels or discard queued entries',async()=>{
+ const h=setup(),transport=h.bot.transport;h.activity.data.outbox=[];
+ h.activity.data.channels.events='-100bad';h.activity.data.channels.games='-100good';
+ for(let i=0;i<25;i++)h.activity.data.outbox.push({kind:'user',payload:{userId:'2',name:'Player'}});
+ h.activity.data.outbox.push({kind:'game',payload:{userId:'2',id:'round',game:'keno',bet:100,payout:0,multiplier:0,net:-100,at:Date.now()}});
+ let failures=0;h.bot.transport=async(method,body)=>{if(method==='sendMessage'&&body.chat_id==='-100bad'){failures++;throw Error('sendMessage: Bad Request: chat not found');}return transport(method,body);};
+ await h.bot.drain();assert.equal(failures,1);assert.equal(h.activity.data.outbox[0].delivered,undefined);assert.equal(h.activity.data.outbox[25].delivered,true);
+});

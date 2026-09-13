@@ -201,3 +201,8 @@ body[data-admin="true"] #screen-lobby [data-private-slot="true"]:not(.hidden) { 
 #screen-lobby .cp-wallet-total strong { font-size:clamp(30px,10vw,40px);line-height:1.2;margin-top:3px; }
 #screen-lobby .cp-provider-art .icon { fill:white;stroke:white;stroke-width:1.1; }
 #screen-lobby .cp-provider-art .icon circle { fill:#8140ef;stroke:none; }
+
+/* Long names and operation IDs stay within their mobile columns. */
+#screen-lobby .cp-operation small,#screen-lobby .cp-identity>b,#screen-lobby .cp-identity>span { overflow-wrap:anywhere;max-width:100%; }
+#screen-lobby .cp-identity>b,#screen-lobby .cp-identity>span { text-align:center; }
+#screen-lobby .cp-operation>strong { flex-shrink:0;white-space:nowrap; }

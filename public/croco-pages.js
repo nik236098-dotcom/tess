@@ -86,7 +86,7 @@ const CrocoPages = (() => {
     $('ref-link').textContent = data.link || 'Ссылка временно недоступна';
     $('ref-copy').disabled = !data.link; $('ref-invite').disabled = !data.link;
     $('ref-more').classList.toggle('hidden', !data.more);
-    $('ref-list').innerHTML = refData.rows.length ? refData.rows.map(row => `<button class="cp-ref-row" data-ref-id="${esc(row.id)}" aria-expanded="false"><span class="cp-ref-person"><i>${esc((row.name || 'И')[0])}</i><span><b>${esc(row.name)}</b><small>${esc(new Date(row.createdAt).toLocaleDateString('ru-RU'))}</small></span></span><span>${cash(row.deposits)}</span><span class="cp-ref-income">${row.earned ? '+' : ''}${cash(row.earned)}${icon('chevron-right')}</span></button><div class="cp-ref-detail hidden" id="ref-detail-${esc(row.id)}">${row.username ? '@' + esc(row.username) + ' · ' : ''}ID: ${esc(row.id)}<br>Пополнений: ${row.depositCount}<br>Доход проекта: ${cash(row.revenue)}<br>Учтённый минус до следующего начисления: ${cash(row.carry)}${row.lastDeposit ? '<br>Последнее пополнение: ' + when(row.lastDeposit) : ''}</div>`).join('') : '<p class="cp-muted">Здесь появятся приглашённые друзья.</p>';
+    $('ref-list').innerHTML = refData.rows.length ? refData.rows.map(row => `<button class="cp-ref-row" data-ref-id="${esc(row.id)}" aria-expanded="false"><span class="cp-ref-person"><i>${esc(playerInitial(row.name, 'И'))}</i><span><b>${esc(row.name)}</b><small>${esc(new Date(row.createdAt).toLocaleDateString('ru-RU'))}</small></span></span><span>${cash(row.deposits)}</span><span class="cp-ref-income">${row.earned ? '+' : ''}${cash(row.earned)}${icon('chevron-right')}</span></button><div class="cp-ref-detail hidden" id="ref-detail-${esc(row.id)}">${row.username ? '@' + esc(row.username) + ' · ' : ''}ID: ${esc(row.id)}<br>Пополнений: ${row.depositCount}<br>Доход проекта: ${cash(row.revenue)}<br>Учтённый минус до следующего начисления: ${cash(row.carry)}${row.lastDeposit ? '<br>Последнее пополнение: ' + when(row.lastDeposit) : ''}</div>`).join('') : '<p class="cp-muted">Здесь появятся приглашённые друзья.</p>';
   }
   function gamesHistory(reset = true) {
     if (reset) { betPage = 0; $('bet-history-list').innerHTML = '<p class="cp-muted">Загружаем ставки…</p>'; }
@@ -107,7 +107,7 @@ const CrocoPages = (() => {
     send({ type: 'history', page: 0 });
   }
   function receiveOperations(data) {
-    const names = { review: 'В обработке', pending: 'В обработке', unknown: 'В обработке', done: 'Успешно', failed: 'Отказано', paid: 'Успешно', expired: 'Истёк' };
+    const names = { review: 'В обработке', pending: 'В обработке', unknown: 'Требует проверки', done: 'Успешно', failed: 'Отказано', paid: 'Успешно', expired: 'Истёк' };
     const rows = data.rows || data.history || [];
     const html = rows.map(r => {
       const incoming = ['topup', 'referral'].includes(r.kind), done = ['paid', 'done'].includes(r.status);
