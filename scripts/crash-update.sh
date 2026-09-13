@@ -106,6 +106,7 @@ node --check server/accounts.js
 node --check server/activity.js
 node --check server/telegram-bot.js
 node --check server/payments/index.js
+node --check server/payments/poller.js
 node --check public/croco-pages.js
 node - <<'JS'
 const fs = require('node:fs');

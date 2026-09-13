@@ -30,3 +30,15 @@ test('Mines active stake and private layout survive restart; finished result is 
   a.send({type:'game_history'});const h=await a.wait(m=>m.type==='game_history');assert.equal(h.rows.length,1);assert.equal(h.rows[0].payout,0);
   a.send({type:'mn_pick',index:cell});await a.wait(m=>m.type==='error');assert.equal(s.activity.history('dev:player').total,1);
 });
+
+test('wallet restores only the signed-in players invoice and payout', async t => {
+  const s = await server(); t.after(() => s.shutdown());
+  const now = Date.now();
+  for (const userId of ['dev:player', 'dev:other']) {
+    s.payments.invoices.set(userId, { id: userId, userId, provider: 'cryptobot', status: 'pending', amount: 25, cents: 2500, currency: 'USDT', createdAt: now, expiresAt: now + 10000 });
+    s.payments.payouts.set(userId, { id: userId, userId, provider: 'cryptobot', status: 'review', cents: 1000, amount: 10, currency: 'USDT', createdAt: now });
+  }
+  const a = await client(s); t.after(() => a.ws.close());
+  const wallet = await a.wait(m => m.type === 'wallet_state');
+  assert.equal(wallet.invoice.id, 'dev:player'); assert.equal(wallet.payout.id, 'dev:player');
+});

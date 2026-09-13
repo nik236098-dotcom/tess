@@ -1,5 +1,6 @@
 'use strict';
 const perf = require('./diagnostics');
+const { createPaymentPoller } = require('./payments/poller');
 
 const http = require('http');
 const fs = require('fs');
@@ -1162,6 +1163,11 @@ function createApp(options = {}) {
       links: { community: communityUrl, support: supportUrl },
     });
 
+    const pendingInvoice = [...payments.invoices.values()].reverse().find(r => r.userId === String(user.id) && r.status === 'pending');
+    const lastPayout = [...payments.payouts.values()].reverse().find(r => r.userId === String(user.id));
+    client.send({ type: 'wallet_state', invoice: pendingInvoice ? payments.invoiceView(pendingInvoice) : null,
+      payout: lastPayout ? payments.payoutView(lastPayout) : null });
+
     // Если игрок уже сидел за столом — возвращаем его туда же.
     for (const room of rooms.values()) {
       if (!room.members.has(user.id)) continue;
@@ -1217,9 +1223,11 @@ function createApp(options = {}) {
   });
 
   server.activity = activity; server.accounts = accounts; server.payments = payments; server.bot = bot;
+  const paymentPoller = createPaymentPoller(payments);
   let stopPerf = () => {};
-  server.on('listening', () => { stopPerf = perf.watchLoop(); if ((options.botRuntime ?? (require.main === module)) && botToken && process.env.TELEGRAM_BOT_RUNTIME !== '0') bot.start(); });
+  server.on('listening', () => { stopPerf = perf.watchLoop(); paymentPoller.start(); if ((options.botRuntime ?? (require.main === module)) && botToken && process.env.TELEGRAM_BOT_RUNTIME !== '0') bot.start(); });
   server.on('close', () => {
+    paymentPoller.stop();
     stopPerf();
     bot.stop();
     crash.stop();

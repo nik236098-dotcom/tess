@@ -460,6 +460,11 @@ function handleMessage(message) {
       openPayLink(message.invoice.url || message.invoice.fallbackUrl);
       startTopUpPolling();
       break;
+    case 'wallet_state':
+      state.topup.invoice = message.invoice; state.payout.last = message.payout;
+      renderTopUpInvoice(); renderPayout();
+      if (message.invoice?.status === 'pending') startTopUpPolling();
+      break;
     case 'topup_status':
       if (state.topup.invoice && message.invoice.id === state.topup.invoice.id) {
         state.topup.invoice = message.invoice;
@@ -3503,8 +3508,10 @@ function renderTopUp() {
   const { config } = state.topup;
   $('btn-topup').disabled = false;
   if (!config.enabled) {
-    $('topup-card').classList.add('hidden');
-    $('payout-card').classList.add('hidden');
+    if (state.tab !== 'wallet') {
+      $('topup-card').classList.add('hidden');
+      $('payout-card').classList.add('hidden');
+    }
     $('btn-payout').disabled = true;
     return;
   }
@@ -3520,10 +3527,12 @@ function renderTopUp() {
   providers.classList.toggle('hidden', !config.providers.length);
   providers.innerHTML = '';
   if (config.providers.length) {
-    for (const item of config.providers) {
+    for (const item of CrocoPages.providerOptions(config.providers)) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = `game-option${item.id === state.topup.provider ? ' is-active' : ''}`;
+      button.disabled = !item.available;
+      button.setAttribute('aria-pressed', String(button.classList.contains('is-active')));
       button.innerHTML = CrocoPages.providerMarkup(item);
       button.addEventListener('click', () => {
         state.topup.provider = item.id;
@@ -3568,7 +3577,7 @@ function renderTopUpControls() {
   $('topup-chips').innerHTML = cents > 0 && provider
     ? `${amount} ${escapeHtml(provider.currency)} → <b>${money(cents)}</b>`
     : '&nbsp;';
-  $('topup-create').disabled = busy || cents <= 0;
+  $('topup-create').disabled = busy || !state.connected || !provider || cents <= 0 || amount < config.minAmount || amount > config.maxAmount;
   $('topup-create').textContent = busy ? 'Создаём счёт…' : 'Пополнить →';
 }
 
@@ -3601,7 +3610,8 @@ function createTopUp() {
   const { config } = state.topup;
   const provider = currentProvider();
   const amount = Number($('topup-amount').value);
-  if (!provider) return;
+  if (!provider || state.topup.busy) return;
+  if (!state.connected) return toast('Дождитесь подключения');
   if (!Number.isFinite(amount) || amount <= 0) {
     toast('Введите сумму');
     return;
@@ -3649,11 +3659,13 @@ function renderPayout() {
   box.classList.toggle('hidden', !payout.providers.length);
   box.innerHTML = '';
   if (payout.providers.length) {
-    for (const item of payout.providers) {
+    for (const item of CrocoPages.providerOptions(payout.providers)) {
       const button = document.createElement('button');
       button.type = 'button';
       const active = provider && item.id === provider.id;
       button.className = `game-option${active ? ' is-active' : ''}`;
+      button.disabled = !item.available;
+      button.setAttribute('aria-pressed', String(button.classList.contains('is-active')));
       button.innerHTML = CrocoPages.providerMarkup(item);
       button.addEventListener('click', () => {
         state.payout.provider = item.id;
@@ -3667,6 +3679,14 @@ function renderPayout() {
   $('payout-amount').max = String(Math.min(payout.maxCents, state.balance) / 100);
   $('payout-amount').placeholder = `от ${money(payout.minCents).slice(1)}`;
 
+  const presets = $('payout-presets'); presets.innerHTML = '';
+  for (const amount of [10, 25, 50, 100]) {
+    const button = document.createElement('button'); button.type = 'button';
+    button.className = 'chip-btn' + (Number($('payout-amount').value) === amount ? ' is-active' : '');
+    button.textContent = '$' + amount;
+    button.disabled = amount * 100 > Math.min(payout.maxCents, state.balance) || amount * 100 < payout.minCents;
+    button.addEventListener('click', () => { $('payout-amount').value = String(amount); renderPayout(); }); presets.appendChild(button);
+  }
   renderPayoutControls();
   renderPayoutState();
 }
@@ -3675,13 +3695,14 @@ function renderPayoutControls() {
   const payout = state.topup.config.payout;
   if (!payout.enabled) return;
   const cents = toCents($('payout-amount').value);
-  const enough = cents !== null && cents > 0 && cents <= state.balance && cents >= payout.minCents;
+  const enough = cents !== null && cents > 0 && cents <= state.balance && cents >= payout.minCents && cents <= payout.maxCents;
 
   $('payout-note').innerHTML = cents && cents > 0
     ? `${money(cents)} · на балансе ${money(state.balance)}`
     : `Минимум ${money(payout.minCents)} · на балансе ${money(state.balance)}`;
-  $('payout-send').disabled = state.payout.busy || !enough;
-  $('payout-send').textContent = state.payout.busy ? 'Отправляем…' : 'Вывести';
+  const pending = ['review', 'pending', 'unknown'].includes(state.payout.last?.status);
+  $('payout-send').disabled = state.payout.busy || !state.connected || pending || !enough;
+  $('payout-send').textContent = state.payout.busy ? 'Отправляем…' : pending ? 'Заявка в обработке' : 'Вывести →';
 }
 
 function renderPayoutState() {
@@ -3716,7 +3737,8 @@ function createPayout() {
   const payout = state.topup.config.payout;
   const provider = payoutProvider();
   const cents = toCents($('payout-amount').value);
-  if (!provider) return;
+  if (!provider || state.payout.busy) return;
+  if (!state.connected) return toast('Дождитесь подключения');
   if (cents === null || cents <= 0) {
     toast('Введите сумму');
     return;
@@ -3971,7 +3993,7 @@ function bindUi() {
   on('leaders-refresh', 'click', () => send({ type: 'leaders' }));
   on('history-refresh', 'click', () => send({ type: 'history' }));
 
-  on('payout-amount', 'input', renderPayoutControls);
+  on('payout-amount', 'input', renderPayout);
   on('payout-send', 'click', createPayout);
 
   on('topup-amount', 'input', renderTopUp);

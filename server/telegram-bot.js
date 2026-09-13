@@ -46,11 +46,51 @@ class TelegramBot {
     return { inline_keyboard: [[this.web('🎮 Играть', '')], [button('👤 Профиль', 'profile'), button('🤝 Рефералы', 'referrals')], [button('🎧 Поддержка', 'support')]] };
   }
   async say(chat, text, keyboard) { return this.call('sendMessage', { chat_id: chat, text, parse_mode: 'HTML', ...(keyboard ? { reply_markup: keyboard } : {}) }); }
+  rememberScreen(chat, message, photo = false) {
+    const account = this.accounts.get(String(chat));
+    if (!account || !Number.isInteger(message?.message_id)) return;
+    account.botScreen = { messageId: message.message_id, photo };
+    this.accounts.scheduleSave();
+  }
+  async screen(chat, text, keyboard = { inline_keyboard: [] }) {
+    const account = this.accounts.get(String(chat));
+    if (!account || Number(chat) <= 0) return this.say(chat, text, keyboard);
+    const rows = keyboard.inline_keyboard || [];
+    const markup = { inline_keyboard: rows.some(row => row.some(k => k.callback_data === 'home'))
+      ? rows : [...rows, [button('‹ Главное меню', 'home')]] };
+    const current = account.botScreen;
+    // Telegram captions are limited to 1024 characters. Long admin reports
+    // migrate once to a text screen; subsequent navigation edits that screen.
+    if (current && (!current.photo || text.length <= 1024)) {
+      try {
+        return await this.call(current.photo ? 'editMessageCaption' : 'editMessageText', {
+          chat_id: chat, message_id: current.messageId, parse_mode: 'HTML', reply_markup: markup,
+          ...(current.photo ? { caption: text } : { text }),
+        });
+      } catch (error) {
+        if (/message is not modified/i.test(error.message)) return;
+        // Do not duplicate messages on timeouts, rate limits or ambiguous failures.
+        if (!/message to edit not found|message can(?:not|'t) be edited|there is no text in the message to edit/i.test(error.message)) throw error;
+      }
+    }
+    const result = await this.say(chat, text, markup);
+    this.rememberScreen(chat, result);
+    if (current && result?.message_id !== current.messageId) {
+      try { await this.call('deleteMessage', { chat_id: chat, message_id: current.messageId }); }
+      catch { /* An old/deleted message must not prevent the new screen from working. */ }
+    }
+    return result;
+  }
   async welcome(chat, account) {
     const caption = `<b>Добро пожаловать в Croco, ${esc(account.name)}!</b>\n\nИгры, кошелёк и твоя реферальная программа — в одном месте.`;
     const keyboard = this.keyboard();
+    if (account.botScreen) return this.screen(chat, caption, keyboard);
     // Upload bundled artwork; Telegram sendPhoto does not accept WebP photos.
-    if (this.transport) return this.call('sendPhoto', { chat_id: chat, photo: 'bundled:croco-welcome.jpg', caption, parse_mode: 'HTML', reply_markup: keyboard });
+    if (this.transport) {
+      const result = await this.call('sendPhoto', { chat_id: chat, photo: 'bundled:croco-welcome.jpg', caption, parse_mode: 'HTML', reply_markup: keyboard });
+      this.rememberScreen(chat, result, true);
+      return result;
+    }
     const file = path.join(__dirname, '..', 'public', 'img', 'croco', 'bot-welcome.jpg');
     const form = new FormData(); form.set('chat_id', String(chat)); form.set('caption', caption); form.set('parse_mode', 'HTML'); form.set('reply_markup', JSON.stringify(keyboard));
     form.set('photo', new Blob([fs.readFileSync(file)], { type: 'image/jpeg' }), 'croco.jpg');
@@ -60,11 +100,12 @@ class TelegramBot {
       const response = await fetch(`https://api.telegram.org/bot${this.token}/sendPhoto`, { method: 'POST', body: form, signal: AbortSignal.timeout(15000) });
       data = await response.json();
     } finally { finishPhoto(); }
-    if (!data.ok) return this.say(chat, caption, keyboard);
+    if (!data.ok) return this.screen(chat, caption, keyboard);
+    this.rememberScreen(chat, data.result, true);
     return data.result;
   }
   async profile(chat, account) {
-    return this.say(chat, `<b>👤 Профиль Croco</b>\n\n${userLine(account)}\n\nКошелёк: <b>${amount(account.balance)}</b>\nРеферальный баланс: <b>${amount(account.refBalance)}</b>`,
+    return this.screen(chat, `<b>👤 Профиль Croco</b>\n\n${userLine(account)}\n\nКошелёк: <b>${amount(account.balance)}</b>\nРеферальный баланс: <b>${amount(account.refBalance)}</b>`,
       { inline_keyboard: [[this.web('↓ Пополнить', 'wallet'), this.web('↑ Вывести', 'withdraw')], [button('🤝 Рефералы', 'referrals')], [button('🎧 Поддержка', 'support'), this.web('🎮 Играть', '')]] });
   }
   async refReport(chat, id, page = 0) {
@@ -74,7 +115,7 @@ class TelegramBot {
     if (r.link) text += `\nСсылка: <code>${esc(r.link)}</code>\n`;
     for (const row of r.rows.slice(0, 10)) text += `\n${esc(row.name)} · <code>${esc(row.id)}</code>\nДепозиты ${amount(row.deposits)} · доход ${amount(row.earned)}`;
     const keys = []; if (page > 0) keys.push(button('←', `ref:${id}:${page - 1}`)); if (r.more) keys.push(button('Далее →', `ref:${id}:${page + 1}`));
-    return this.say(chat, text, { inline_keyboard: [keys, [...(String(chat) === String(id) ? [button('Забрать на баланс', 'claim')] : []), this.web('Открыть бонусы', 'bonuses')]].filter(a => a.length) });
+    return this.screen(chat, text, { inline_keyboard: [keys, [...(String(chat) === String(id) ? [button('Забрать на баланс', 'claim')] : []), this.web('Открыть бонусы', 'bonuses')]].filter(a => a.length) });
   }
   async report(chat, kind, id, page = 0) {
     const a = this.accounts.get(id); if (!a) throw new Error('Игрок не найден');
@@ -88,12 +129,12 @@ class TelegramBot {
       : `\n${r.kind === 'topup' ? '↓ Пополнение' : r.kind === 'referral' ? '🤝 Реферальный перевод' : '↑ Вывод'} · ${date(r.createdAt)}\n${amount(r.creditedCents || r.cents)} · ${esc(statusName(r.status))}\n`;
     if (!rows.length) text += '\nЗаписей пока нет.';
     const keys = []; if (page) keys.push(button('← Назад', `${kind}:${id}:${page - 1}`)); if (offset + 10 < all.length) keys.push(button('Далее →', `${kind}:${id}:${page + 1}`));
-    return this.say(chat, text, { inline_keyboard: keys.length ? [keys] : [] });
+    return this.screen(chat, text, { inline_keyboard: keys.length ? [keys] : [] });
   }
   async kassa(chat, period = 'today') {
     const r = this.activity.cash(periodStart(period));
     const label = { today: 'Сегодня', week: 'Последние 7 дней', all: 'Всё время' }[period] || 'Сегодня';
-    return this.say(chat, `<b>🏦 Касса · ${label}</b>\n<i>Границы дня — UTC</i>\n\nПополнения: <b>${amount(r.incoming)}</b>\nВыплаченные выводы: <b>${amount(r.outgoing)}</b>\nДенежный поток: <b>${amount(r.cashFlow)}</b>\nЗаявки в обработке: ${amount(r.pending)}\n\nСтавки: ${amount(r.bets)}\nИгровые выплаты: ${amount(r.wins)}\nИгровой доход проекта: ${amount(r.gameRevenue)}\nРеферальные начисления: ${amount(r.commissions)}\n<b>${r.result >= 0 ? 'Результат +' : 'Убыток '}${amount(r.result)}</b>\n<i>До расходов, бонусов, комиссий и налогов; пополнения не считаются прибылью.</i>`,
+    return this.screen(chat, `<b>🏦 Касса · ${label}</b>\n<i>Границы дня — UTC</i>\n\nПополнения: <b>${amount(r.incoming)}</b>\nВыплаченные выводы: <b>${amount(r.outgoing)}</b>\nДенежный поток: <b>${amount(r.cashFlow)}</b>\nЗаявки в обработке: ${amount(r.pending)}\n\nСтавки: ${amount(r.bets)}\nИгровые выплаты: ${amount(r.wins)}\nИгровой доход проекта: ${amount(r.gameRevenue)}\nРеферальные начисления: ${amount(r.commissions)}\n<b>${r.result >= 0 ? 'Результат +' : 'Убыток '}${amount(r.result)}</b>\n<i>До расходов, бонусов, комиссий и налогов; пополнения не считаются прибылью.</i>`,
       { inline_keyboard: [[button('Сегодня', 'kassa:today'), button('Неделя', 'kassa:week'), button('Всё время', 'kassa:all')], [button('↻ Обновить', `kassa:${period}`)]] });
   }
   payoutText(r) { return `<b>↑ Заявка на вывод · ${esc(statusName(r.status))}</b>\n\n${userLine({ ...r, id: r.userId })}\nСумма: <b>${amount(r.cents)}</b>\nСервис: ${esc(r.provider)} · ${esc(r.currency)}\nЗаявка: <code>${esc(r.id)}</code>\n${date(r.createdAt)} UTC${r.status === 'review' ? '\n\n«Выплачено» подтверждает выполненный вручную перевод.' : ''}`; }
@@ -119,34 +160,38 @@ class TelegramBot {
         }
         if (chat.type !== 'private') return;
         const a = this.activity.register({ id, name: [from.first_name, from.last_name].filter(Boolean).join(' '), username: from.username });
+        // Only private navigation callbacks can select the message to edit.
+        // Prefer the saved screen if a user taps an obsolete menu.
+        if (!a.botScreen) this.rememberScreen(chat.id, q.message, Boolean(q.message.photo?.length));
+        if (action === 'home') return await this.welcome(chat.id, a);
         if (['stats', 'balance', 'ref'].includes(action)) {
           if (!admin && arg !== id) throw new Error('Нет доступа');
           const page = Math.max(0, Math.min(100000, Number(rawPage) || 0));
-          return action === 'ref' ? this.refReport(chat.id, arg, page) : this.report(chat.id, action, arg, page);
+          return await (action === 'ref' ? this.refReport(chat.id, arg, page) : this.report(chat.id, action, arg, page));
         }
-        if (action === 'kassa') { if (!admin) throw new Error('Только для администратора'); return this.kassa(chat.id, arg); }
-        if (action === 'profile') return this.profile(chat.id, a);
-        if (action === 'referrals' || action === 'referrals_app') return this.refReport(chat.id, id);
-        if (action === 'claim') { const row = this.activity.claim(id); return this.say(chat.id, `✅ На основной баланс переведено ${amount(row.cents)}`, this.keyboard()); }
-        if (action === 'support') return this.say(chat.id, '🎧 Поддержка Croco\nУкажите ID профиля и номер операции при обращении.', { inline_keyboard: this.supportUrl ? [[{ text: 'Написать в поддержку', url: this.supportUrl }]] : [] });
-        return this.say(chat.id, 'Откройте приложение кнопкой меню бота.', this.keyboard());
+        if (action === 'kassa') { if (!admin) throw new Error('Только для администратора'); return await this.kassa(chat.id, arg); }
+        if (action === 'profile') return await this.profile(chat.id, a);
+        if (action === 'referrals' || action === 'referrals_app') return await this.refReport(chat.id, id);
+        if (action === 'claim') { const row = this.activity.claim(id); return await this.screen(chat.id, `✅ На основной баланс переведено ${amount(row.cents)}`, this.keyboard()); }
+        if (action === 'support') return await this.screen(chat.id, '🎧 Поддержка Croco\nУкажите ID профиля и номер операции при обращении.', { inline_keyboard: this.supportUrl ? [[{ text: 'Написать в поддержку', url: this.supportUrl }]] : [] });
+        return await this.screen(chat.id, 'Откройте приложение кнопкой меню бота.', this.keyboard());
       }
       if (!m?.text) return;
       const [raw, arg, third] = m.text.trim().split(/\s+/); const command = raw.split('@')[0].toLowerCase();
-      if (command === '/chatid' && admin) return this.say(chat.id, `ID чата: <code>${chat.id}</code>`);
+      if (command === '/chatid' && admin) return await this.screen(chat.id, `ID чата: <code>${chat.id}</code>`);
       if (chat.type !== 'private') return;
       const a = this.activity.register({ id, name: [from.first_name, from.last_name].filter(Boolean).join(' '), username: from.username }, command === '/start' ? arg : null);
-      if (command === '/start') return this.welcome(chat.id, a);
-      if (command === '/profile') return this.profile(chat.id, a);
-      if (command === '/wallet') return this.say(chat.id, `<b>Кошелёк: ${amount(a.balance)}</b>`, { inline_keyboard: [[this.web('Пополнить', 'wallet'), this.web('Вывести', 'withdraw')]] });
-      if (command === '/ref' && !arg) return this.refReport(chat.id, id);
-      if (command === '/support') return this.say(chat.id, '🎧 Поддержка Croco', { inline_keyboard: this.supportUrl ? [[{ text: 'Написать', url: this.supportUrl }]] : [] });
+      if (command === '/start') return await this.welcome(chat.id, a);
+      if (command === '/profile') return await this.profile(chat.id, a);
+      if (command === '/wallet') return await this.screen(chat.id, `<b>Кошелёк: ${amount(a.balance)}</b>`, { inline_keyboard: [[this.web('Пополнить', 'wallet'), this.web('Вывести', 'withdraw')]] });
+      if (command === '/ref' && !arg) return await this.refReport(chat.id, id);
+      if (command === '/support') return await this.screen(chat.id, '🎧 Поддержка Croco', { inline_keyboard: this.supportUrl ? [[{ text: 'Написать', url: this.supportUrl }]] : [] });
       if (['/stats', '/balance', '/ref'].includes(command)) {
         if (!admin) throw new Error('Команда только для администратора');
         if (!/^\d+$/.test(arg || '')) throw new Error(`Использование: ${command} Telegram_ID`);
-        return command === '/ref' ? this.refReport(chat.id, arg) : this.report(chat.id, command.slice(1), arg);
+        return await (command === '/ref' ? this.refReport(chat.id, arg) : this.report(chat.id, command.slice(1), arg));
       }
-      if (command === '/kassa') { if (!admin) throw new Error('Команда только для администратора'); return this.kassa(chat.id); }
+      if (command === '/kassa') { if (!admin) throw new Error('Команда только для администратора'); return await this.kassa(chat.id); }
       if (command === '/setchannel') {
         if (!admin) throw new Error('Команда только для администратора');
         if (!['payouts', 'events', 'games'].includes(arg) || !/^-\d+$/.test(third || '')) throw new Error('/setchannel payouts|events|games -100…');
@@ -156,10 +201,13 @@ class TelegramBot {
         const member = await this.call('getChatMember', { chat_id: third, user_id: me.id });
         if (!['administrator', 'creator'].includes(member.status) || (found.type === 'channel' && member.can_post_messages === false)) throw new Error('Сначала добавьте бота администратором канала с правом публикации');
         this.accounts.atomic(() => { this.activity.data.channels[arg] = third; });
-        return this.say(chat.id, `✅ Канал ${esc(arg)} подключён: ${esc(found.title)}\nСохранённые уведомления будут отправлены сюда.`);
+        return await this.screen(chat.id, `✅ Канал ${esc(arg)} подключён: ${esc(found.title)}\nСохранённые уведомления будут отправлены сюда.`);
       }
-      return this.say(chat.id, '/profile — профиль\n/wallet — кошелёк\n/ref — рефералы\n/support — поддержка' + (admin ? '\n\nАдминистратор:\n/stats id — ставки\n/balance id — операции\n/ref id — рефералы\n/kassa — касса\n/chatid — ID чата\n/setchannel payouts|events|games -100… — каналы логов' : ''), this.keyboard());
-    } catch (error) { return this.say(chat.id, esc(error.message)); }
+      return await this.screen(chat.id, '/profile — профиль\n/wallet — кошелёк\n/ref — рефералы\n/support — поддержка' + (admin ? '\n\nАдминистратор:\n/stats id — ставки\n/balance id — операции\n/ref id — рефералы\n/kassa — касса\n/chatid — ID чата\n/setchannel payouts|events|games -100… — каналы логов' : ''), this.keyboard());
+    } catch (error) {
+      if (/^(send|edit|answer|get|delete)[A-Z]|fetch failed|timeout|aborted/i.test(error.message)) throw error;
+      return await this.screen(chat.id, esc(error.message));
+    }
   }
   async drain() {
     if (this.sending) return; this.sending = true;

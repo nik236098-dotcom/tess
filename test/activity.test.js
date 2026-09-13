@@ -89,7 +89,7 @@ test('Telegram rejects forged admin commands and private history callbacks', asy
   const h = setup();
   for (const text of ['/stats 1', '/balance 1', '/ref 1', '/kassa']) await h.bot.handle({ message: { from: { id: 2, first_name: 'Player' }, chat: { id: 2, type: 'private' }, text } });
   await h.bot.handle({ callback_query: { id: 'cb', from: { id: 2 }, data: 'stats:1:0', message: { chat: { id: 2, type: 'private' } } } });
-  const replies = h.calls.filter(c => c.method === 'sendMessage'); assert.equal(replies.length, 5); assert.ok(replies.every(c => /администратор|Нет доступа/.test(c.body.text)));
+  const replies = h.calls.filter(c => ['sendMessage', 'editMessageText'].includes(c.method)); assert.equal(replies.length, 5); assert.ok(replies.every(c => /администратор|Нет доступа/.test(c.body.text)));
 });
 test('Telegram payout decisions require an admin in the configured channel and change player state exactly once', async () => {
   const h = setup(); h.activity.data.channels.payouts = '-10099'; const r = await h.payments.createPayout({ id: '2' }, 'cryptobot', 1000);
@@ -104,4 +104,46 @@ test('Telegram start includes bundled crocodile photo and profile, referrals, su
   const h = setup(); await h.bot.handle({ message: { from: { id: 4, first_name: 'New' }, chat: { id: 4, type: 'private' }, text: '/start ref_1' } });
   assert.equal(h.accounts.get('4').referrerId, '1'); const photo = h.calls.find(c => c.method === 'sendPhoto'); assert.ok(photo);
   assert.equal(photo.body.reply_markup.inline_keyboard.flat().length, 4);
+});
+
+test('bot edits one photo screen for commands and callbacks, including after restart', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'croco-screen-'));
+  const file = path.join(dir, 'accounts.json');
+  try {
+    const h = setup(file);
+    const command = text => ({ message: { from: { id: 2, first_name: 'Player' }, chat: { id: 2, type: 'private' }, text } });
+    await h.bot.handle(command('/start'));
+    await h.bot.handle(command('/profile'));
+    await h.bot.handle({ callback_query: { id: 'cb', from: { id: 2 }, data: 'support', message: { message_id: 1, photo: [{}], chat: { id: 2, type: 'private' } } } });
+    await h.bot.handle(command('/start'));
+    assert.equal(h.calls.filter(c => c.method === 'sendPhoto').length, 1);
+    assert.equal(h.calls.filter(c => c.method === 'sendMessage').length, 0);
+    assert.equal(h.calls.filter(c => c.method === 'editMessageCaption').length, 3);
+    h.accounts.flush();
+    const restored = setup(file); await restored.bot.handle(command('/wallet'));
+    assert.ok(restored.calls.some(c => c.method === 'editMessageCaption' && c.body.message_id === 1));
+    assert.ok(!restored.calls.some(c => c.method === 'sendMessage' || c.method === 'sendPhoto'));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('bot replaces a deleted screen but never duplicates it on timeout or unchanged content', async () => {
+  const h = setup(); h.bot.rememberScreen('2', { message_id: 10 });
+  h.bot.transport = async (method, body) => { h.calls.push({ method, body }); if (method === 'editMessageText') throw Error('Bad Request: message is not modified'); return { message_id: 11 }; };
+  await h.bot.screen('2', 'Profile'); assert.equal(h.calls.length, 1);
+  h.bot.transport = async method => { if (method === 'editMessageText') throw Error('timeout'); assert.fail('must not send on timeout'); };
+  await assert.rejects(h.bot.screen('2', 'Profile'), /timeout/);
+  h.bot.transport = async (method, body) => { h.calls.push({ method, body }); if (method === 'editMessageText') throw Error('Bad Request: message to edit not found'); return { message_id: 11 }; };
+  await h.bot.screen('2', 'Profile'); assert.equal(h.accounts.get('2').botScreen.messageId, 11);
+  assert.equal(h.calls.filter(c => c.method === 'sendMessage').length, 1);
+});
+
+test('long admin reports migrate out of photo captions once; notifications stay separate', async () => {
+  const h = setup(); h.bot.rememberScreen('1', { message_id: 7 }, true);
+  await h.bot.screen('1', 'Report '.repeat(180));
+  await h.bot.screen('1', 'Next page');
+  await h.bot.say('1', 'Payout approved');
+  assert.equal(h.calls.filter(c => c.method === 'sendMessage').length, 2);
+  assert.ok(h.calls.some(c => c.method === 'deleteMessage' && c.body.message_id === 7));
+  assert.ok(h.calls.some(c => c.method === 'editMessageText' && c.body.message_id === 1));
+  assert.equal(h.accounts.get('1').botScreen.messageId, 1);
 });

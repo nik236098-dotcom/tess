@@ -48,14 +48,29 @@ const CrocoPages = (() => {
     const deposit = walletMode === 'deposit';
     $('wallet-deposit').classList.toggle('is-active', deposit); $('wallet-withdraw').classList.toggle('is-active', !deposit);
     renderTopUp(); renderPayout();
-    $('topup-card').classList.toggle('hidden', !deposit || !state.topup.config.enabled);
-    $('payout-card').classList.toggle('hidden', deposit || !state.topup.config.payout.enabled);
+    $('topup-card').classList.toggle('hidden', !deposit);
+    $('payout-card').classList.toggle('hidden', deposit);
     $('wallet-unavailable').classList.toggle('hidden', deposit ? state.topup.config.enabled : state.topup.config.payout.enabled);
+    for (const [name, enabled] of [['topup', state.topup.config.enabled], ['payout', state.topup.config.payout.enabled]]) {
+      $(name + '-amount').disabled = !enabled;
+      if (!enabled) {
+        $(name + '-providers').classList.remove('hidden');
+        $(name + '-providers').innerHTML = providerOptions([]).map(item => `<button type="button" class="game-option" disabled>${providerMarkup(item)}</button>`).join('');
+        $(name + '-presets').innerHTML = [10,25,50,100].map(amount => `<button type="button" class="chip-btn" disabled>$${amount}</button>`).join('');
+        const action = $(name === 'topup' ? 'topup-create' : 'payout-send'); action.disabled = true; action.textContent = name === 'topup' ? 'Пополнить →' : 'Вывести →';
+      }
+    }
     if (deposit && state.topup.config.enabled) $('topup-create').textContent = state.topup.busy ? 'Создаём счёт…' : 'Пополнить →';
+  }
+  function providerOptions(enabled) {
+    return [{ id: 'xrocket', title: 'xRocket' }, { id: 'cryptobot', title: 'Crypto Bot' }].map(item => {
+      const provider = enabled.find(p => p.id === item.id);
+      return provider ? { ...provider, available: true } : { ...item, available: false };
+    });
   }
   function providerMarkup(item) {
     const blue = item.id === 'cryptobot';
-    return `<span class="cp-provider-art${blue ? ' is-blue' : ''}">${icon(blue ? 'send' : 'rocket')}</span><span class="cp-provider-text"><b>${esc(item.title)}</b><small>Оплата через Telegram</small></span>`;
+    return `<span class="cp-provider-art${blue ? ' is-blue' : ''}">${icon(blue ? 'send' : 'rocket')}</span><span class="cp-provider-text"><b>${esc(item.title)}</b><small>${item.available === false ? 'Скоро будет доступно' : walletMode === 'withdraw' ? 'На ваш аккаунт Telegram' : 'Оплата через Telegram'}</small></span>`;
   }
   function referrals(reset = true) {
     if (!state.connected) return;
@@ -149,8 +164,13 @@ const CrocoPages = (() => {
     for (const id of ['topup-card', 'payout-card']) $('wallet-content').appendChild($(id));
     const note = document.createElement('p'); note.id = 'wallet-unavailable'; note.className = 'cp-muted hidden'; note.textContent = 'Этот способ оплаты пока недоступен.'; $('wallet-content').appendChild(note);
     $('topup-card').querySelector('h2').textContent = 'Способ пополнения'; $('payout-card').querySelector('h2').textContent = 'Способ вывода';
-    for (const name of ['topup', 'payout']) { const label = document.createElement('label'); label.className = 'cp-amount-label'; label.htmlFor = name + '-amount'; label.textContent = 'Сумма, $'; $(name + '-card').appendChild(label); }
-    $('topup-amount').value = '25';
+    for (const name of ['topup', 'payout']) { const label = document.createElement('label'); label.className = 'cp-amount-label'; label.htmlFor = name + '-amount'; label.textContent = 'Сумма'; $(name + '-card').appendChild(label); }
+    for (const name of ['topup', 'payout']) {
+      const input = $(name + '-amount'), field = document.createElement('div'); field.className = 'cp-money-input';
+      input.parentNode.insertBefore(field, input); field.innerHTML = '<span aria-hidden="true">$</span>'; field.appendChild(input);
+      input.step = '0.01';
+    }
+    $('topup-amount').value = '25'; $('payout-amount').value = '25';
     $('operations-content').appendChild($('history-card')); $('history-card').querySelector('.card-head').classList.add('hidden');
     $('info-faq').innerHTML = faq.map(([q, a]) => `<details class="cp-faq"><summary>${q}</summary><p>${a}</p></details>`).join('');
     on('profile-wallet', 'click', () => wallet()); on('wallet-back', 'click', () => showTab(walletBack));
@@ -191,5 +211,5 @@ const CrocoPages = (() => {
     document.querySelectorAll('audio,video').forEach(el => { el.muted = muted; });
   }
   init();
-  return { balanceUpdate, wallet, renderWallet, updateAccount, entered, receiveRef, receiveBets, receiveOperations, referrals, operations, detail, support, providerMarkup };
+  return { balanceUpdate, wallet, renderWallet, updateAccount, entered, receiveRef, receiveBets, receiveOperations, referrals, operations, detail, support, providerMarkup, providerOptions };
 })();

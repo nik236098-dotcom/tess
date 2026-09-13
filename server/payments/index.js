@@ -23,7 +23,7 @@ const { XRocketProvider } = require('./xrocket');
 
 const CENTS_IN_DOLLAR = 100;
 const DEFAULT_USD_PER_UNIT = 1; // 1 USDT = $1
-const DEFAULT_PRESETS = [1, 5, 10, 25];
+const DEFAULT_PRESETS = [10, 25, 50, 100];
 const DEFAULT_MIN_AMOUNT = 0.1;
 const DEFAULT_MAX_AMOUNT = 1000;
 const DEFAULT_MIN_PAYOUT_CENTS = 100; // $1.00
@@ -346,7 +346,7 @@ class Payments {
   }
 
   // Запасной путь: вебхук могли не настроить или он не дошёл.
-  async refresh(recordId) {
+  async refresh(recordId, { shouldStop = () => false } = {}) {
     const record = this.get(recordId);
     if (!record) throw new PaymentError('Счёт не найден');
     if (record.status === 'paid') return this.invoiceView(record);
@@ -355,7 +355,7 @@ class Payments {
     if (!record.invoiceId) return this.invoiceView(record);
 
     const invoice = await provider.getInvoice(record.invoiceId);
-    if (!invoice) return this.invoiceView(record);
+    if (!invoice || shouldStop()) return this.invoiceView(record);
 
     if (invoice.status === 'paid') {
       this.credit(record, invoice);
@@ -563,7 +563,7 @@ const truthy = (value) => value === '1' || String(value).toLowerCase() === 'true
 // Провайдер включается сам, как только у него появился токен.
 function createPayments({ accounts, file = null, env = process.env, fetchImpl = null } = {}) {
   const providers = [];
-  const returnUrl = env.TOPUP_RETURN_URL || null;
+  const returnUrl = env.TOPUP_RETURN_URL || env.PUBLIC_APP_URL || null;
 
   const cryptoBotToken = env.CRYPTOBOT_TOKEN || env.CRYPTO_PAY_TOKEN || '';
   if (cryptoBotToken) {
