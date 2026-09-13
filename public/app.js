@@ -265,6 +265,7 @@ function toCents(input) {
 // ——— Запуск ———
 
 async function boot() {
+  if (document.readyState === "loading") await new Promise(resolve => document.addEventListener("DOMContentLoaded", resolve, { once: true }));
   if (tg) {
     tg.ready();
     TelegramDisplay.start(tg);
@@ -399,7 +400,12 @@ function handleMessage(message) {
       showTab(state.tab);
       setStatus(`Вы вошли как ${message.user.name}`);
       startRoomsPolling();
-      if (message.startParam) state.pendingRoom = normalizeCode(message.startParam);
+      if (message.startParam && !message.startParam.startsWith('ref_')) state.pendingRoom = normalizeCode(message.startParam);
+      const requestedScreen = new URLSearchParams(location.search).get('screen');
+      if (typeof CrocoPages !== 'undefined') {
+        if (requestedScreen === 'wallet' || requestedScreen === 'withdraw') CrocoPages.wallet(requestedScreen === 'withdraw' ? 'withdraw' : 'deposit');
+        else if (['profile','bonuses','information'].includes(requestedScreen)) showTab(requestedScreen);
+      }
       if (state.pendingRoom) {
         send({ type: 'join_room', code: state.pendingRoom });
         state.pendingRoom = null;
@@ -417,6 +423,7 @@ function handleMessage(message) {
       renderTable();
       break;
     case 'balance':
+      if (typeof CrocoPages !== 'undefined') CrocoPages.balanceUpdate(message);
       state.balance = message.balance;
       renderAccount();
       break;
@@ -481,8 +488,17 @@ function handleMessage(message) {
     case 'leaders':
       renderLeaders(message.leaders);
       break;
+    case 'referrals':
+      CrocoPages.receiveRef(message);
+      break;
+    case 'referral_claimed':
+      toast('На баланс переведено ' + money(message.cents));
+      break;
+    case 'game_history':
+      CrocoPages.receiveBets(message);
+      break;
     case 'history':
-      renderHistory(message.history);
+      CrocoPages.receiveOperations(message);
       break;
     case 'promo_ok':
       $('promo-code').value = '';
@@ -531,6 +547,7 @@ function handleMessage(message) {
       if (state.nv.open) renderNvuti();
       renderTopUpControls();
       renderPayoutControls();
+      if (state.tab === 'bonuses') CrocoPages.referrals();
       toast(message.message);
       haptic('error');
       break;
@@ -2033,7 +2050,7 @@ function renderNvuti() {
 
 // Главная и Игры — это две панели одного экрана лобби: столы и лента
 // выигрышей приходят одним и тем же сообщением, переключение ничего не грузит.
-const TABS = ['home', 'games', 'bonuses', 'information', 'profile'];
+const TABS = ['home', 'games', 'bonuses', 'information', 'profile', 'wallet', 'gamehistory', 'operations', 'helpdetail'];
 
 function fitLobby() {
   // Холст главной свёрстан на 390 css px по макету; масштабируем под ширину.
@@ -2054,6 +2071,7 @@ function showTab(tab) {
   }
   const scroller = document.querySelector('.lobby');
   if (scroller) scroller.scrollTop = 0;
+  if (typeof CrocoPages !== 'undefined') CrocoPages.entered(state.tab);
 }
 
 // Раскрывающиеся разделы главной: открытый ровно один.
@@ -2101,8 +2119,9 @@ function renderHomeGames() {
 function renderAccount() {
   $('balance-value').textContent = money(state.balance);
   $('profile-balance').textContent = money(state.balance);
+  if (typeof CrocoPages !== 'undefined') CrocoPages.updateAccount();
   $('my-id').textContent = state.user ? state.user.id : '—';
-  $('profile-id').textContent = `Telegram ID: ${state.user ? state.user.id : '—'}`;
+  $('profile-id').textContent = `ID: ${state.user ? state.user.id : '—'}`;
   $('profile-name').textContent = state.user ? (state.user.name || 'Игрок') : '—';
   $('home-welcome').textContent = `Добро Пожаловать, ${state.user?.name?.trim() || 'Игрок'}!`;
   renderHomeGames();
@@ -2345,6 +2364,7 @@ function toast(text) {
 }
 
 function haptic(kind) {
+  if (localStorage.getItem('croco:vibration') === 'off') return;
   if (!tg || !tg.HapticFeedback) return;
   try {
     if (kind === 'error') tg.HapticFeedback.notificationOccurred('error');
@@ -3463,7 +3483,7 @@ function applyTopUpConfig(config) {
 // кнопка в никуда хуже её отсутствия.
 function applyLinks(links) {
   state.links = { community: links.community || '', support: links.support || '' };
-  $('other-games').classList.toggle('hidden', !state.links.community);
+
   $('help-support').classList.toggle('hidden', !state.links.support);
 }
 
@@ -3481,7 +3501,7 @@ function currentProvider() {
 
 function renderTopUp() {
   const { config } = state.topup;
-  $('btn-topup').disabled = !config.enabled;
+  $('btn-topup').disabled = false;
   if (!config.enabled) {
     $('topup-card').classList.add('hidden');
     $('payout-card').classList.add('hidden');
@@ -3497,14 +3517,14 @@ function renderTopUp() {
   // Кнопки сервисов рисуем, только когда их больше одного: с единственным
   // подключённым сервисом выбирать нечего.
   const providers = $('topup-providers');
-  providers.classList.toggle('hidden', config.providers.length < 2);
+  providers.classList.toggle('hidden', !config.providers.length);
   providers.innerHTML = '';
-  if (config.providers.length > 1) {
+  if (config.providers.length) {
     for (const item of config.providers) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = `game-option${item.id === state.topup.provider ? ' is-active' : ''}`;
-      button.innerHTML = `${icon('wallet')}<b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.currency)}</span>`;
+      button.innerHTML = CrocoPages.providerMarkup(item);
       button.addEventListener('click', () => {
         state.topup.provider = item.id;
         localStorage.setItem('poker:topupProvider', item.id);
@@ -3549,7 +3569,7 @@ function renderTopUpControls() {
     ? `${amount} ${escapeHtml(provider.currency)} → <b>${money(cents)}</b>`
     : '&nbsp;';
   $('topup-create').disabled = busy || cents <= 0;
-  $('topup-create').textContent = busy ? 'Создаём счёт…' : 'Выставить счёт';
+  $('topup-create').textContent = busy ? 'Создаём счёт…' : 'Пополнить →';
 }
 
 function renderTopUpInvoice() {
@@ -3626,15 +3646,15 @@ function renderPayout() {
 
   // Кнопки сервисов показываем, только если их правда несколько.
   const box = $('payout-providers');
-  box.classList.toggle('hidden', payout.providers.length < 2);
+  box.classList.toggle('hidden', !payout.providers.length);
   box.innerHTML = '';
-  if (payout.providers.length > 1) {
+  if (payout.providers.length) {
     for (const item of payout.providers) {
       const button = document.createElement('button');
       button.type = 'button';
       const active = provider && item.id === provider.id;
       button.className = `game-option${active ? ' is-active' : ''}`;
-      button.innerHTML = `${icon('wallet')}<b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.currency)}</span>`;
+      button.innerHTML = CrocoPages.providerMarkup(item);
       button.addEventListener('click', () => {
         state.payout.provider = item.id;
         renderPayout();
@@ -3675,9 +3695,10 @@ function renderPayoutState() {
   label.classList.toggle('is-paid', last.status === 'done');
   label.classList.toggle('is-expired', last.status === 'failed' || last.status === 'unknown');
   label.textContent = {
-    done: 'Отправлено',
-    pending: 'Отправляем…',
-    failed: `Не вышло: ${last.error || 'сервис отказал'}`,
+    done: 'Успешно',
+    review: 'В обработке',
+    pending: 'В обработке',
+    failed: 'Отказано — сумма возвращена на баланс',
     unknown: 'В обработке — сервис не ответил, деньги не потеряны',
   }[last.status] || last.status;
 }
@@ -3793,18 +3814,13 @@ function bindUi() {
 
   // Кнопки денег и плитки главной
   on('btn-topup', 'click', () => {
-    if (togglePanel('topup-card')) renderTopUp();
+    CrocoPages.wallet();
   });
   on('btn-payout', 'click', () => {
-    if (togglePanel('payout-card')) renderPayout();
+    CrocoPages.wallet('withdraw');
   });
-  on('tile-friends', 'click', inviteFriends);
-  on('tile-leaders', 'click', () => {
-    if (togglePanel('leaders-card')) {
-      $('tile-leaders').classList.add('is-active');
-      send({ type: 'leaders' });
-    }
-  });
+
+
 
   // Главная и «Игры»: столы заведения всегда открыты — садимся сразу.
   const openGame = (game) => {
@@ -3899,9 +3915,9 @@ function bindUi() {
   on('home-all-games', 'click', () => { haptic('light'); showTab('games'); });
   on('home-settings', 'click', () => showTab('profile'));
   on('settings-back', 'click', () => showTab('home'));
-  on('info-settings', 'click', () => showTab('profile'));
-  on('info-help', 'click', () => togglePanel('help-card'));
-  on('info-rules', 'click', () => { showTab('games'); $('rules-card').open=true; $('rules-card').scrollIntoView({behavior:'smooth',block:'start'}); });
+
+
+  on('info-rules', 'click', () => CrocoPages.detail('rules'));
   on('home-games', 'click', event => {
     const id=event.target.closest('[data-home-game]')?.dataset.homeGame;
     if(!id||!state.connected)return;
@@ -3914,8 +3930,8 @@ function bindUi() {
     const id=button.dataset.arcade || (button.id.startsWith('play-')?button.id.slice(5):null);
     if(id)CrocoLobby.remember(localStorage,state.user?.id,id,GameCatalog.names);
   },true);
-  on('profile-topup', 'click', () => $('btn-topup').click());
-  on('profile-payout', 'click', () => $('btn-payout').click());
+
+
   on('hero-play', 'keydown', event => { if(event.key==='Enter'||event.key===' '){event.preventDefault();$('hero-play').click();} });
   on('hero-play', 'click', () => { haptic('light'); CrocoLobby.remember(localStorage, state.user?.id, 'nvuti', GameCatalog.names); openNvuti(); });
 
@@ -3929,9 +3945,9 @@ function bindUi() {
 
 
   on('profile-history', 'click', () => {
-    if (togglePanel('history-card')) send({ type: 'history' });
+    CrocoPages.operations();
   });
-  on('profile-help', 'click', () => togglePanel('help-card'));
+  on('profile-help', 'click', () => CrocoPages.support());
   on('profile-copy', 'click', () => $('btn-my-id').click());
   on('promo-send', 'click', redeemPromo);
   on('promo-code', 'keydown', (event) => {
@@ -3946,15 +3962,12 @@ function bindUi() {
   on('btn-menu', 'click', openHelp);
   on('help-support', 'click', () => openExternal(state.links.support));
   on('help-history', 'click', () => {
-    if (togglePanel('history-card')) send({ type: 'history' });
+    CrocoPages.operations();
   });
   on('help-rules', 'click', () => {
-    showTab('games');
-    const rules = $('rules-card');
-    rules.open = true;
-    rules.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    CrocoPages.detail('rules');
   });
-  on('other-games', 'click', () => openExternal(state.links.community));
+
   on('leaders-refresh', 'click', () => send({ type: 'leaders' }));
   on('history-refresh', 'click', () => send({ type: 'history' }));
 

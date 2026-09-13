@@ -1,0 +1,173 @@
+/* Approved Croco wallet, referral, profile and information compositions. */
+#screen-lobby .cp-page { --cp-muted:#aaa6d8; --cp-line:#7770b735; color:#faf9ff; font-family:Inter,Arial,sans-serif; padding-top:2px; }
+#screen-lobby .cp-page h1 { font:750 clamp(27px,8vw,34px)/1.15 Inter,Arial,sans-serif; letter-spacing:-.7px; margin:0 0 22px; }
+#screen-lobby .cp-page h2 { font:700 20px/1.25 Inter,Arial,sans-serif; letter-spacing:-.35px; margin:27px 0 12px; }
+#screen-lobby .cp-page button,#screen-lobby .cp-page input,#screen-lobby .cp-page select { font-family:inherit; }
+#screen-lobby .cp-page .icon { width:24px;height:24px;flex:none;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round; }
+#screen-lobby .cp-page button { cursor:pointer; }
+#screen-lobby .cp-page button:disabled { opacity:.45;cursor:default; }
+#screen-lobby .cp-page .cp-primary { display:flex;align-items:center;justify-content:center;gap:12px;min-height:44px;padding:10px 14px;border:1px solid #b08aff70;border-radius:10px;background:linear-gradient(155deg,#a076fa,#7648e8 60%,#6533dd);color:white;font-size:15px;font-weight:600;box-shadow:inset 0 1px #d4c0ff38; }
+#screen-lobby .cp-primary:active { filter:brightness(1.1); }
+#screen-lobby .cp-muted { color:var(--cp-muted);font-size:13px;line-height:1.5; }
+#screen-lobby .cp-menu-row { width:100%;display:flex;align-items:center;gap:18px;padding:17px 0;border:0;border-bottom:1px solid var(--cp-line);border-radius:0;background:none;color:var(--cp-muted);text-align:left; }
+#screen-lobby .cp-menu-row>.icon:first-child { width:28px;height:28px; }
+#screen-lobby .cp-menu-row>span { flex:1;min-width:0; }
+#screen-lobby .cp-menu-row b { display:block;font-size:15px;font-weight:500;color:#f8f7ff;line-height:1.35; }
+#screen-lobby .cp-menu-row small { display:block;margin-top:4px;font-size:11px;color:var(--cp-muted);line-height:1.4; }
+#screen-lobby .cp-menu-row>.icon:last-child { width:18px;height:18px; }
+#screen-lobby .cp-search { display:flex;align-items:center;gap:12px;border:1px solid #9b7cf0;border-radius:12px;padding:0 12px;min-height:47px;background:#15172c80;color:#c1b5ed; }
+#screen-lobby .cp-search input,#screen-lobby .cp-search select { width:100%;min-width:0;height:46px;border:0;background:none;box-shadow:none;color:#eeebff;padding:0;outline:0;font-size:14px; }
+#screen-lobby .cp-search input::placeholder { color:#a49acb; }
+#screen-lobby .cp-search-small { min-height:36px;border-color:#7665b54d;border-radius:7px; }
+#screen-lobby .cp-search-small input { height:36px;font-size:12px; }
+#screen-lobby .cp-search-small .icon { width:19px;height:19px; }
+#screen-lobby .cp-faq { border-bottom:1px solid var(--cp-line);padding:12px 0;background:none; }
+#screen-lobby .cp-faq summary { cursor:pointer;font-size:14px;list-style:none;display:flex;gap:12px;justify-content:space-between;align-items:center;color:#ddd8f4; }
+#screen-lobby .cp-faq summary::-webkit-details-marker { display:none; }
+#screen-lobby .cp-faq summary::after { content:'⌄';color:#bdb0e5;font-size:19px; }
+#screen-lobby .cp-faq[open] summary::after { transform:rotate(180deg); }
+#screen-lobby .cp-faq p,#screen-lobby #help-detail-content p { font-size:14px;color:var(--cp-muted);line-height:1.7; }
+#screen-lobby .cp-support { margin-top:27px; }
+#screen-lobby .cp-support>div { display:flex;align-items:center;gap:15px;margin-bottom:17px; }
+#screen-lobby .cp-support>div .icon { width:32px;height:32px;color:#c0adef; }
+#screen-lobby .cp-support b { font-size:17px; }
+#screen-lobby .cp-support .cp-primary { width:100%; }
+#screen-lobby .cp-legal { display:flex;justify-content:center;flex-wrap:wrap;gap:9px 15px;margin:27px 0 16px; }
+#screen-lobby .cp-legal button { background:none;border:0;padding:0;color:#a9a3cd;font-size:10px; }
+#screen-lobby .cp-subhead { position:relative;display:flex;align-items:center;justify-content:center;min-height:35px;margin-bottom:22px; }
+#screen-lobby .cp-subhead h1 { font-size:24px;margin:0;text-align:center; }
+#screen-lobby .cp-subhead .cp-back { position:absolute;left:0;top:50%;transform:translateY(-50%); }
+#screen-lobby .cp-subhead:has(h1:not(:only-child)) { padding-inline:65px; }
+#screen-lobby .cp-back { display:flex;align-items:center;gap:2px;padding:5px 0;background:none;border:0;color:#b6a9e9;font-size:12px; }
+#screen-lobby .cp-back .icon { width:19px;height:19px; }
+#screen-lobby .cp-identity { display:flex;flex-direction:column;align-items:center;gap:7px;padding:2px 0 21px; }
+#screen-lobby .cp-avatar { width:82px;height:82px;border:2px solid #ac81f7;border-radius:50%;padding:3px;box-shadow:inset 0 0 0 2px #090e21;display:grid;place-items:center;background:linear-gradient(135deg,#b998fa,#8859e8);overflow:hidden;font-size:40px;color:white;margin-bottom:2px; }
+#screen-lobby .cp-avatar img { width:100%;height:100%;border-radius:50%;object-fit:cover; }
+#screen-lobby .cp-identity>b { font-size:21px; }
+#screen-lobby .cp-identity>span { color:#aaa1d8;font-size:14px; }
+#screen-lobby .cp-identity>button { display:flex;align-items:center;gap:9px;border:0;background:none;color:#aaa1d8;font-size:12px;padding:0; }
+#screen-lobby .cp-identity>button .icon { width:15px;height:15px; }
+#screen-lobby .cp-profile-wallet { border:1px solid #a476f2;border-radius:12px;padding:16px 15px 13px;background:linear-gradient(135deg,#22194333,#13142633); }
+#screen-lobby .cp-wallet-label { display:flex;align-items:center;gap:15px;color:#b0a4dd;font-size:13px; }
+#screen-lobby .cp-wallet-label .icon { width:27px;height:27px; }
+#screen-lobby .cp-profile-wallet>b { display:block;margin:4px 0 13px 42px;font-size:30px;line-height:1.4;font-weight:700; }
+#screen-lobby .cp-profile-wallet>.cp-primary { width:100%;min-height:39px; }
+#screen-lobby .cp-profile h2 { margin-top:22px;font-size:19px; }
+#screen-lobby .cp-switch-row { position:relative;color:#faf8ff; }
+#screen-lobby .cp-switch-row>.icon { color:#b9a8e9; }
+#screen-lobby .cp-switch-row input { position:absolute;right:0;opacity:0;width:44px;height:28px;cursor:pointer; }
+#screen-lobby .cp-switch-row i { width:42px;height:25px;border-radius:16px;background:#2b2e50;pointer-events:none; }
+#screen-lobby .cp-switch-row i:after { content:'';display:block;width:19px;height:19px;margin:3px;border-radius:50%;background:#c4bce8;transition:transform .15s; }
+#screen-lobby .cp-switch-row input:checked+i { background:linear-gradient(135deg,#b075ff,#6c37ea); }
+#screen-lobby .cp-switch-row input:checked+i:after { transform:translateX(17px);background:#fff; }
+#screen-lobby .cp-switch-row input:focus-visible+i { outline:2px solid white;outline-offset:3px; }
+#screen-lobby .cp-footer-brand { text-align:center;font-size:12px;color:#aaa1cd; }
+#screen-lobby .cp-promo { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px; }
+#screen-lobby .cp-promo input { height:36px;min-width:0;border:1px solid #9273d9;border-radius:7px;background:#12152788;color:white;padding:0 10px;font-size:11px; }
+#screen-lobby .cp-promo .cp-primary { min-height:36px;font-size:11px;padding:8px 12px;border-radius:7px; }
+#screen-lobby #promo-note { grid-column:1/-1;margin:0; }
+#screen-lobby #promo-note:empty { display:none; }
+#screen-lobby .cp-ref-rate { font-size:12px;color:#b1a8e2;margin:-2px 0 9px; }
+#screen-lobby .cp-ref-rate strong { color:#ab6bfd;font-size:15px; }
+#screen-lobby .cp-ref-banner { position:relative;isolation:isolate;min-height:153px;border:0;border-radius:13px;background:linear-gradient(130deg,#2620468c,#11162a30); }
+#screen-lobby .cp-ref-banner>img { position:absolute;right:-4px;bottom:-5px;width:52%;height:108%;object-fit:contain;object-position:right bottom;z-index:-1;pointer-events:none; }
+#screen-lobby .cp-ref-copy { padding:17px 13px 12px;display:flex;flex-direction:column;align-items:flex-start;gap:5px; }
+#screen-lobby .cp-ref-copy>span,#screen-lobby .cp-ref-copy>small { color:#b3a8d9;font-size:12px; }
+#screen-lobby .cp-ref-copy>strong { color:#54eec7;font-size:38px;line-height:1.3;letter-spacing:-.6px; }
+#screen-lobby .cp-ref-copy>.cp-primary { margin-top:11px;width:62%;font-size:12px;min-height:37px;padding:7px; }
+#screen-lobby .cp-invite-caption { margin:-8px 0 12px; }
+#screen-lobby .cp-invite { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px; }
+#screen-lobby .cp-copy { min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #8f7abe77;border-radius:7px;background:none;color:#b3a8d9;padding:9px;font-size:10px; }
+#screen-lobby .cp-copy>span { white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+#screen-lobby .cp-copy>.icon { width:16px;height:16px; }
+#screen-lobby .cp-invite>.cp-primary { min-height:34px;font-size:11px;padding:7px 9px;border-radius:7px;gap:6px; }
+#screen-lobby .cp-invite>.cp-primary .icon { width:17px;height:17px; }
+#screen-lobby .cp-ref-summary { display:grid;grid-template-columns:.8fr 1fr 1fr;gap:10px;margin:24px 0; }
+#screen-lobby .cp-ref-summary>div { min-width:0;border-right:1px solid #7762b858; }
+#screen-lobby .cp-ref-summary>div:last-child { border:0; }
+#screen-lobby .cp-ref-summary span { display:block;font-size:10px;color:#aaa4d5;margin-bottom:6px; }
+#screen-lobby .cp-ref-summary b { font-size:clamp(16px,5.3vw,24px);letter-spacing:-.4px; }
+#screen-lobby .cp-ref-summary>div:last-child b { color:#53efc7; }
+#screen-lobby .cp-section-title { display:flex;align-items:center;justify-content:space-between;gap:8px;margin:23px 0 12px; }
+#screen-lobby .cp-section-title h2 { margin:0; }
+#screen-lobby .cp-section-title select { border:1px solid #7965b449;background:#151930;color:#b6abd8;border-radius:7px;font-size:10px;padding:7px;max-width:105px; }
+#screen-lobby .cp-ref-head,#screen-lobby .cp-ref-row { display:grid;grid-template-columns:minmax(0,1.25fr) .9fr .9fr;gap:8px;align-items:center; }
+#screen-lobby .cp-ref-head { color:#aaa1d1;font-size:10px;margin-top:16px;padding-bottom:7px;border-bottom:1px solid var(--cp-line); }
+#screen-lobby .cp-ref-row { width:100%;padding:12px 0;border:0;border-bottom:1px solid var(--cp-line);background:none;color:white;text-align:left;font-size:12px; }
+#screen-lobby .cp-ref-person { display:flex;align-items:center;gap:9px;min-width:0; }
+#screen-lobby .cp-ref-person>i { width:29px;height:29px;flex:none;border-radius:50%;background:linear-gradient(135deg,#9c6ee6,#45348f);font-style:normal;display:grid;place-items:center;font-size:15px; }
+#screen-lobby .cp-ref-person>span { min-width:0; }
+#screen-lobby .cp-ref-person b { display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:500; }
+#screen-lobby .cp-ref-person small { font-size:9px;color:#aaa1d1;display:block;margin-top:3px; }
+#screen-lobby .cp-ref-income { display:flex;align-items:center;justify-content:space-between;gap:3px;color:#53efc7;font-weight:650; }
+#screen-lobby .cp-ref-income .icon { width:13px;height:13px;color:#b6a1e1; }
+#screen-lobby .cp-ref-detail { padding:10px;background:#211d3b55;color:#b1a9d8;font-size:11px;line-height:1.7; }
+#screen-lobby .cp-terms { display:flex;align-items:center;gap:8px;background:none;border:0;color:#aaa3d4;padding:0;font-size:10px;margin-top:18px; }
+#screen-lobby .cp-terms .icon { width:17px;height:17px; }
+#screen-lobby .cp-center { justify-content:center;width:100%;font-size:13px; }
+#screen-lobby .cp-more { display:block;border:1px solid #7462ab70;border-radius:8px;background:#211a3c60;color:#c6b7ef;margin:15px auto;padding:10px 20px;font-size:13px; }
+#screen-lobby .cp-wallet-total { border:1px solid #984cfa;border-radius:13px;display:flex;align-items:center;gap:23px;padding:22px 26px;background:linear-gradient(135deg,#2916515c,#14152950); }
+#screen-lobby .cp-wallet-total>.icon { width:48px;height:48px;color:#b46fff; }
+#screen-lobby .cp-wallet-total span { color:#9899ce;font-size:14px; }
+#screen-lobby .cp-wallet-total strong { display:block;font-size:clamp(30px,10vw,43px);line-height:1.5; }
+#screen-lobby .cp-wallet-tabs { display:flex;border:1px solid #7771b87d;border-radius:12px;padding:2px;margin:15px 0 21px; }
+#screen-lobby .cp-wallet-tabs>button { display:flex;align-items:center;justify-content:center;gap:9px;width:50%;padding:12px 3px;border:1px solid transparent;border-radius:10px;background:none;color:#bcb1e9;font-weight:600;font-size:17px; }
+#screen-lobby .cp-wallet-tabs>.is-active { border-color:#b486f2;background:linear-gradient(145deg,#a345ff,#5b19ec);color:#fff; }
+#screen-lobby .cp-wallet-page .card { padding:0!important;border:0!important;box-shadow:none!important;background:none!important;margin:0; }
+#screen-lobby .cp-wallet-page .card-head h2 { margin:0 0 9px;font-size:19px; }
+#screen-lobby .cp-wallet-page .card-head>.hint,#screen-lobby #topup-chips,#screen-lobby #topup-rate,#screen-lobby #payout-rate { display:none; }
+#screen-lobby .cp-wallet-page .game-picker { display:flex;flex-direction:column;gap:9px; }
+#screen-lobby .cp-wallet-page .game-option { position:relative;display:flex;align-items:center;gap:13px;min-height:66px;padding:12px;border:1px solid #64579966;background:#12162e66;border-radius:11px;color:white;text-align:left; }
+#screen-lobby .cp-wallet-page .game-option.is-active { border-color:#aa5aff; }
+#screen-lobby .cp-wallet-page .game-option:after { content:'';width:18px;height:18px;border:2px solid #9290c7;border-radius:50%;margin-left:auto; }
+#screen-lobby .cp-wallet-page .game-option.is-active:after { border:4px solid #7831f1;background:white;box-shadow:0 0 0 1px #9f5bff; }
+#screen-lobby .cp-provider-art { display:grid;place-items:center;width:45px;height:45px;border-radius:11px;background:linear-gradient(145deg,#ad54ff,#551de1);color:white; }
+#screen-lobby .cp-provider-art.is-blue { background:linear-gradient(145deg,#54c7ff,#0787d9); }
+#screen-lobby .cp-provider-text b { display:block;font-size:18px; }
+#screen-lobby .cp-provider-text small { display:block;margin-top:4px;color:#aaa3d4;font-size:12px; }
+#screen-lobby .cp-wallet-page .chips-presets { display:flex;gap:6px;order:3; }
+#screen-lobby .cp-wallet-page .chip-btn { flex:1;border:1px solid #64579966;background:#14172c;color:#eee7fc;border-radius:8px;padding:8px 2px;font-size:13px; }
+#screen-lobby .cp-wallet-page .chip-btn.is-active { background:#512199;border-color:#a35ffc; }
+#screen-lobby .cp-wallet-page .row { display:contents; }
+#screen-lobby #topup-card,#screen-lobby #payout-card { display:flex;flex-direction:column;gap:12px; }
+#screen-lobby .cp-wallet-page input { order:2;border:1px solid #a95bfd;border-radius:10px;background:#101329;color:white;font-size:27px;height:56px;width:100%;padding:10px 17px; }
+#screen-lobby .cp-wallet-page .cp-amount-label { order:1;font-size:19px;margin-top:9px;font-weight:650; }
+#screen-lobby #topup-create,#screen-lobby #payout-send { order:4;width:100%;display:flex;align-items:center;justify-content:center;min-height:48px;border:1px solid #a567ff;background:linear-gradient(150deg,#a34aff,#5a19ed);border-radius:10px;font-size:17px;color:#fff; }
+#screen-lobby #topup-invoice,#screen-lobby #payout-state,#screen-lobby #payout-note { order:5; }
+#screen-lobby #topup-card>p:last-child { order:6;color:#a69aca;font-size:11px; }
+#screen-lobby .cp-bet-head,#screen-lobby .cp-bet-row { display:grid;grid-template-columns:minmax(105px,1.4fr) .75fr .55fr .9fr;gap:6px;align-items:center; }
+#screen-lobby .cp-bet-head { font-size:9px;color:#9e95c1;margin-top:20px;padding-bottom:9px; }
+#screen-lobby .cp-bet-row { width:100%;text-align:left;background:none;color:#eee9ff;border:0;border-bottom:1px solid var(--cp-line);padding:12px 0;font-size:11px; }
+#screen-lobby .cp-bet-person { display:flex;align-items:center;gap:7px;min-width:0; }
+#screen-lobby .cp-bet-person img { width:30px;height:30px;border-radius:7px;object-fit:cover; }
+#screen-lobby .cp-bet-person>span { min-width:0; }
+#screen-lobby .cp-bet-person b { display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+#screen-lobby .cp-bet-person small { display:block;color:#9791bc;font-size:9px;margin-top:3px; }
+#screen-lobby .cp-positive { color:#57e6c5; }
+#screen-lobby .cp-negative { color:#f292b3; }
+#screen-lobby .cp-operation { display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--cp-line);padding:15px 0; }
+#screen-lobby .cp-operation>span { flex:1;min-width:0; }
+#screen-lobby .cp-operation b { font-size:14px;display:block; }
+#screen-lobby .cp-operation small { display:block;color:#aaa1cd;font-size:10px;margin-top:4px; }
+#screen-lobby .cp-operation>strong { font-size:15px; }
+#screen-lobby .cp-home-wallet { cursor:pointer;color:#c5b8e9; }
+#screen-lobby .cp-home-wallet>.icon { width:19px;height:19px; }
+#screen-lobby .cp-home-wallet>span { font-size:10px; }
+body[data-tab="profile"] #bottom-nav,body[data-tab="wallet"] #bottom-nav,body[data-tab="gamehistory"] #bottom-nav,body[data-tab="operations"] #bottom-nav,body[data-tab="helpdetail"] #bottom-nav { display:none!important; }
+#screen-lobby .cp-rules-row { display:flex;align-items:center;gap:12px;color:#f6f0ff;background:none;border:0;border-bottom:1px solid var(--cp-line);width:100%;padding:12px 0;text-align:left; }
+#screen-lobby .cp-rules-row img { width:40px;height:40px;border-radius:8px;object-fit:cover; }
+#screen-lobby .cp-doc { font-size:14px;line-height:1.7;color:#b8add6; }
+/* Classical card artwork, with straight resting cards and no squeezed SVG faces. */
+#screen-bj .bj-card { rotate:0deg!important;translate:none!important;flex-shrink:0;aspect-ratio:169.075/244.64;background:#fff;color:#14131b;overflow:hidden; }
+#screen-bj .bj-card.red { color:#c92638; }
+#screen-bj .bj-card .pt-card-face { position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain; }
+#screen-bj .bj-card .pt-card-fallback { display:none; }
+#screen-bj .bj-card.back { background:repeating-linear-gradient(45deg,#ffffff12 0 1px,transparent 1px 5px),#352367; }
+#screen-lobby [data-private-slot="true"] { display:none!important; }
+body[data-admin="true"] #screen-lobby [data-private-slot="true"]:not(.hidden) { display:block!important; }
+@media(max-width:350px) { #screen-lobby .cp-page h2 {font-size:18px} #screen-lobby .cp-ref-copy>strong {font-size:32px} #screen-lobby .cp-menu-row {gap:12px} #screen-lobby .cp-bet-head,#screen-lobby .cp-bet-row {grid-template-columns:minmax(94px,1.2fr) .8fr .5fr .9fr;font-size:10px} }
+
+#screen-lobby #tab-bonuses #promo-send { color:#fff; }
+#screen-lobby #tab-bonuses #promo-code { border-radius:7px;padding:0 10px;height:36px; }
+#screen-lobby #tab-operations #history-card { padding:0;border:0;background:none;box-shadow:none; }
+#screen-lobby .cp-page :focus-visible { outline:2px solid #c5a3ff;outline-offset:3px; }

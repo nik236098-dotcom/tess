@@ -6,7 +6,7 @@
   const text=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function tile(id,native=false){
     const name=names[id];if(!name)return '';
-    return `<button type="button" ${native?`id="play-${id}"`:`data-arcade="${id}"`} class="game-tile" aria-label="${text(name)}"><img src="${artwork(id)}" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title${name.length>13?' is-long':''}">${text(name)}</span></button>`;
+    return `<button type="button" ${native?`id="play-${id}"`:`data-arcade="${id}"`} ${['abyss','cryo','midnight'].includes(id)?'data-private-slot="true"':''} class="game-tile" aria-label="${text(name)}"><img src="${artwork(id)}" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title${name.length>13?' is-long':''}">${text(name)}</span></button>`;
   }
   const api={names,tile,file,artwork};if(typeof module==='object'&&module.exports)module.exports=api;else root.GameCatalog=api;
 })(globalThis);

@@ -9,7 +9,7 @@ function service(balance=10000,rng=()=>0){
  const account={id:'qa',name:'QA',balance},messages=[],saved=[],wins=[];
  const accounts={get:()=>account,flush(){saved.push(structuredClone(account));}};
  const client={user:{id:'qa'},send:m=>messages.push(m)};
- const engine=createArcadeService({accounts,noteWin:w=>wins.push(w),rng});
+ const engine=createArcadeService({isAdmin:user=>accounts.isAdmin ? accounts.isAdmin(user.id) : true,accounts,noteWin:w=>wins.push(w),rng});
  return {account,accounts,messages,saved,wins,run:m=>engine.handle(client,{game:'abyss',...m})};
 }
 test('Abyss is separate from Croc Slots; discrete stakes and buy options are validated',()=>{
@@ -48,7 +48,7 @@ test('retriggering is finite even with fifteen scatters on every free spin',()=>
  assert.equal(count,40);assert.equal(r.bonus.remaining,0);assert.equal(r.payout,0);
 });
 test('Bonus Buy debits exactly 100 stakes once; insufficient balance and duplicate messages do not debit',()=>{
- const h=service(10000),buy={type:'ag_start',amount:20,options:{buyBonus:true},revision:0};h.run(buy);
+ const h=service(10000);const buy={type:'ag_start',amount:20,options:{buyBonus:true},revision:0};h.run(buy);
  assert.equal(h.account.balance,8000);assert.equal(h.saved.length,1);assert.equal(h.messages.at(-1).bonus.remaining,8);
  assert.throws(()=>h.run(buy));assert.equal(h.account.balance,8000);assert.equal(h.saved.length,1);
  const low=service(1999);assert.throws(()=>low.run(buy));assert.equal(low.account.balance,1999);assert.equal(low.saved.length,0);assert.equal(low.messages.at(-1).accepted,false);
@@ -62,11 +62,11 @@ test('save failure rolls back purchase, free-spin progression, and settlement to
 test('a purchased bonus survives account reload and its total is credited only once',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'abyss-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));const file=path.join(dir,'accounts.json');
  let accounts=new Accounts({file});accounts.ensure({id:'qa'});const before=accounts.balanceOf('qa'),messages=[];const client={user:{id:'qa'},send:m=>messages.push(m)};
- let engine=createArcadeService({accounts,noteWin(){},rng:()=>0});engine.handle(client,{type:'ag_start',game:'abyss',amount:20,options:{buyBonus:true},revision:0});
- accounts=new Accounts({file});engine=createArcadeService({accounts,noteWin(){},rng:gridRng(all(8))});engine.handle(client,{type:'ag_open',game:'abyss'});assert.equal(messages.at(-1).bonus.remaining,8);assert.equal(accounts.balanceOf('qa'),before-2000);
+ let engine=createArcadeService({isAdmin:()=>true,accounts,noteWin(){},rng:()=>0});engine.handle(client,{type:'ag_start',game:'abyss',amount:20,options:{buyBonus:true},revision:0});
+ accounts=new Accounts({file});engine=createArcadeService({isAdmin:()=>true,accounts,noteWin(){},rng:gridRng(all(8))});engine.handle(client,{type:'ag_open',game:'abyss'});assert.equal(messages.at(-1).bonus.remaining,8);assert.equal(accounts.balanceOf('qa'),before-2000);
  engine.handle(client,{type:'ag_pick',game:'abyss',index:0,revision:messages.at(-1).revision});assert.equal(accounts.balanceOf('qa'),before-2000);
  engine.handle(client,{type:'ag_pick',game:'abyss',index:0,revision:messages.at(-1).revision});assert.equal(accounts.balanceOf('qa'),before-2000+50000);
- accounts=new Accounts({file});engine=createArcadeService({accounts,noteWin(){}});for(let i=0;i<4;i++)engine.handle(client,{type:'ag_open',game:'abyss'});assert.equal(accounts.balanceOf('qa'),before-2000+50000);assert.equal(messages.at(-1).settled,true);
+ accounts=new Accounts({file});engine=createArcadeService({isAdmin:()=>true,accounts,noteWin(){}});for(let i=0;i<4;i++)engine.handle(client,{type:'ag_open',game:'abyss'});assert.equal(accounts.balanceOf('qa'),before-2000+50000);assert.equal(messages.at(-1).settled,true);
 });
 test('purchased Scatter vary across three distinct reels and all rows without unpaid line wins',()=>{
  let seed=89127;const rng=n=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed%n;};const layouts=new Set(),columns=new Set(),rows=new Set();
@@ -75,7 +75,7 @@ test('purchased Scatter vary across three distinct reels and all rows without un
 });
 
 test('boosted bonus rejects forged requests, resumes random spins and credits only the evaluated payout',()=>{
- const h=service(10000),buy={type:'ag_start',amount:20,options:{buyBonus:true,testMax:true},revision:0};
+ const h=service(10000);h.accounts.isAdmin=()=>false;const buy={type:'ag_start',amount:20,options:{buyBonus:true,testMax:true},revision:0};
  assert.throws(()=>h.run(buy),/администратору/);assert.equal(h.account.balance,10000);assert.equal(h.saved.length,0);
  h.accounts.isAdmin=id=>id==='qa';h.run(buy);
  assert.equal(h.account.balance,8000);assert.equal(h.messages.at(-1).detail.scatterCount,3);assert.equal(h.messages.at(-1).bonus.played,0);
@@ -83,7 +83,7 @@ test('boosted bonus rejects forged requests, resumes random spins and credits on
  let count=0;
  while(h.messages.at(-1).phase==='play'){
   const previous=h.messages.at(-1);
-  const engine=createArcadeService({accounts:h.accounts,noteWin:w=>h.wins.push(w),rng});
+  const engine=createArcadeService({isAdmin:()=>true,accounts:h.accounts,noteWin:w=>h.wins.push(w),rng});
   const message={type:'ag_pick',game:'abyss',index:0,revision:previous.revision};
   engine.handle({user:{id:'qa'},send:m=>h.messages.push(m)},message);
   const view=h.messages.at(-1);assert.equal(view.bonus.played,++count);assert.ok(count<=40);

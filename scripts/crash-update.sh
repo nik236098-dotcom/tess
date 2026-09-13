@@ -102,9 +102,17 @@ node --check public/classic-cards.js
 node --check public/blackjack-deal.js
 node --check public/roulette-view.js
 node --check server/accounts.js
+node --check server/activity.js
+node --check server/telegram-bot.js
+node --check server/payments/index.js
+node --check public/croco-pages.js
 node - <<'JS'
 const fs = require('node:fs');
 const catalog = require('./public/game-catalog');
+for (const suit of 'shdc') for (const rank of 'A23456789TJQK') {
+  const path = `public/img/classic/cards/${rank}${suit}.svg`;
+  if (!fs.statSync(path).size) throw new Error(`Missing classic card: ${path}`);
+}
 for (const id of Object.keys(catalog.names)) {
   const path = `public${catalog.artwork(id)}`;
   if (!fs.statSync(path).size) throw new Error(`Empty game artwork: ${path}`);
@@ -119,7 +127,7 @@ for (const [game, rules] of Object.entries(require('./public/feature-slots-rules
     if (!fs.statSync(path).size) throw new Error(`Empty slot artwork: ${path}`);
   }
 }
-for (const path of ['public/img/croco/lobby-soft-background.webp', 'public/img/croco/nvuti-soft-banner.webp', 'public/img/croco/popular-atlas.webp', 'public/croco-lobby.css', 'public/img/croco/mascot.webp', 'public/img/croco/mascot-cutout.webp', 'public/img/croco/nvuti-banner.webp', 'public/feature-slots.css', 'public/abyss.css', 'public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp', 'public/tower.css', 'public/andar.css', 'public/img/rps/rock-v2.webp', 'public/img/rps/paper-v2.webp', 'public/img/rps/scissors-v2.webp']) {
+for (const path of ['public/croco-pages.css', 'public/croco-pages.js', 'public/img/croco/referral-croc.webp', 'public/img/croco/bot-welcome.jpg', 'public/img/croco/lobby-soft-background.webp', 'public/img/croco/nvuti-soft-banner.webp', 'public/img/croco/popular-atlas.webp', 'public/croco-lobby.css', 'public/img/croco/mascot.webp', 'public/img/croco/mascot-cutout.webp', 'public/img/croco/nvuti-banner.webp', 'public/feature-slots.css', 'public/abyss.css', 'public/game-shell.css', 'public/game-catalog.css', 'public/fishing.css', 'public/duel-games.css', 'public/img/race/car-v2.webp', 'public/tower.css', 'public/andar.css', 'public/img/rps/rock-v2.webp', 'public/img/rps/paper-v2.webp', 'public/img/rps/scissors-v2.webp']) {
   if (!fs.statSync(path).size) throw new Error(`Empty game asset: ${path}`);
 }
 JS

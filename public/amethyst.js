@@ -1,7 +1,7 @@
 'use strict';
 // Native 768×1536 composition measured against the approved reference.
-let amethystEnabled = true;
-try { amethystEnabled = localStorage.getItem('poker-amethyst-v1') !== 'off'; } catch {}
+// Restore the previous design for both Hold'em and Omaha.
+let amethystEnabled = false;
 function amethystActive() { return amethystEnabled && (!state.room || ['holdem', 'omaha'].includes(state.room.game)); }
 function syncAmethyst() {
   const screen = $('screen-table'), canvas = $('table-canvas');

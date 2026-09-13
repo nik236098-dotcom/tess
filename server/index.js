@@ -24,6 +24,8 @@ const { formatMoney, parseMoney } = require('./money');
 const { PromoCodes, PromoError } = require('./promo');
 const { loadEnv } = require('./env');
 const { RecentWins } = require('./recent-wins');
+const { Activity, PRIVATE_SLOTS } = require('./activity');
+const { TelegramBot } = require('./telegram-bot');
 
 loadEnv();
 
@@ -50,6 +52,12 @@ const MIME = {
 };
 
 // Создаёт независимый экземпляр приложения: свой список комнат и подключений.
+function savedGame(game) { return JSON.parse(JSON.stringify(game, (key, value) => value instanceof Set ? { $set: [...value] } : typeof value === "function" ? undefined : value)); }
+function restoreGame(game, saved) {
+  for (const key of Object.keys(game)) if (typeof game[key] !== "function") delete game[key];
+  Object.assign(game, JSON.parse(JSON.stringify(saved), (key, value) => value?.$set ? new Set(value.$set) : value));
+}
+
 function createApp(options = {}) {
   const botToken = options.botToken ?? process.env.TELEGRAM_BOT_TOKEN ?? '';
   // Без токена бота подпись initData проверить нечем — это режим локальной отладки.
@@ -85,9 +93,13 @@ function createApp(options = {}) {
     : path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'promo.json');
   const promo = options.promo ?? new PromoCodes({ accounts, file: promoFile });
 
+  const activity = new Activity({ accounts, payments, botUsername });
+  const bot = new TelegramBot({ token: botToken, accounts, payments, activity, appUrl: process.env.PUBLIC_APP_URL || process.env.TOPUP_RETURN_URL || '', supportUrl });
+
   // Деньги дошли — говорим об этом владельцу счёта. Сам баланс прилетит
   // отдельным сообщением через accounts.onChange.
   payments.onCredit = (record) => {
+    activity.enqueue('deposit', { ...record }, 'deposit:' + record.id);
     const client = clientsByUser.get(record.userId);
     if (!client) return;
     client.send({
@@ -102,6 +114,7 @@ function createApp(options = {}) {
 
   // Вывод сменил состояние — сообщаем владельцу счёта.
   payments.onPayout = (record) => {
+    activity.enqueue('payout', { ...record }, 'payout:' + record.id + ':' + record.status);
     const client = clientsByUser.get(record.userId);
     if (!client) return;
     client.send({ type: 'payout_status', payout: payments.payoutView(record) });
@@ -118,7 +131,7 @@ function createApp(options = {}) {
   accounts.onChange = (account) => {
     const client = clientsByUser.get(account.id);
     if (!client) return;
-    client.send({ type: 'balance', balance: account.balance });
+    client.send({ type: 'balance', balance: account.balance, refBalance: account.refBalance || 0 });
     const room = client.roomCode ? rooms.get(client.roomCode) : null;
     if (room) client.send(room.stateFor(account.id));
   };
@@ -145,9 +158,15 @@ function createApp(options = {}) {
     room.on('update', () => broadcastState(room));
     room.on('chat', (message) => broadcast(room, { type: 'chat', ...message }));
     room.on('win', noteWin);
+    room.on('round', round => activity.round(round));
   }
 
-  function noteWin(win) { recentWins.add(win); }
+  function noteWin(win) { accounts.afterCommit(() => recentWins.add(win)); }
+  function noteRound(round) {
+    const saved = activity.round(round);
+    if (saved && saved.net > 0) noteWin({ ...round, amount: saved.net });
+    return saved;
+  }
 
   // ——— Постоянные столы ———
   // По одному открытому столу на игру: холдем и блекджек. Хозяин — само
@@ -235,7 +254,7 @@ function createApp(options = {}) {
     if (url.pathname === '/config') {
       res.writeHead(200, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({
-        devLogin, botUsername, appShortName, communityUrl, supportUrl, topup: payments.describe(),
+        devLogin, botUsername, appShortName, communityUrl, supportUrl, termsUrl: process.env.TERMS_URL || '', privacyUrl: process.env.PRIVACY_URL || '', topup: payments.describe(),
       }));
       return;
     }
@@ -310,7 +329,8 @@ function createApp(options = {}) {
       roomCode: null,
       startParam: null,
       send(message) {
-        socket.send(JSON.stringify(message));
+        const payload = JSON.stringify(message);
+        accounts.afterCommit(() => socket.send(payload));
       },
       fail(message) {
         this.send({ type: 'error', message });
@@ -330,9 +350,32 @@ function createApp(options = {}) {
         return;
       }
       try {
-        handleMessage(client, message);
+        const transactional = /^(bj_|rl_spin|bc_bet|mn_|hl_|nv_bet|ag_|cr_)/.test(message.type || '');
+        if (transactional) accounts.atomic(() => {
+          const id = client.user?.id;
+          const maps = [blackjackGames, minesGames, hiloGames];
+          for (const map of maps) {
+            const game = map.get(id), before = game ? savedGame(game) : null;
+            accounts.onRollback(() => { if (!before) map.delete(id); else restoreGame(game, before); });
+          }
+          handleMessage(client, message);
+          if (id && accounts.get(id)) {
+            if (blackjackGames.has(id)) accounts.get(id).blackjackRound = savedGame(blackjackGames.get(id));
+            if (minesGames.has(id)) accounts.get(id).minesRound = savedGame(minesGames.get(id));
+          }
+        });
+        else handleMessage(client, message);
       } catch (error) {
-        if (error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError || error instanceof ArcadeError || error instanceof CatalogError || error instanceof AbyssError || error instanceof CrashError || error instanceof HiloError || error instanceof MinesError || error instanceof nvuti.NvutiError) {
+        // Failed transactions discard provisional responses. Send restored state
+        // so the client releases its animation/request lock and can retry safely.
+        if (client.user) {
+          if (message?.type?.startsWith('ag_')) arcade.resync(client, message);
+          else if (message?.type?.startsWith('hl_')) sendHilo(client);
+          else if (message?.type?.startsWith('cr_')) crash.resync(client);
+          else if (message?.type?.startsWith('bj_')) sendBlackjack(client);
+          else if (message?.type?.startsWith('mn_')) sendMines(client);
+        }
+        if (error instanceof AccountError || error instanceof PaymentError || error instanceof RoomError || error instanceof SoloError || error instanceof roulette.RouletteError || error instanceof baccarat.BaccaratError || error instanceof ArcadeError || error instanceof CatalogError || error instanceof AbyssError || error instanceof CrashError || error instanceof HiloError || error instanceof MinesError || error instanceof nvuti.NvutiError) {
           client.fail(error.message);
         } else {
           console.error('Ошибка обработки сообщения:', error);
@@ -439,8 +482,20 @@ function createApp(options = {}) {
       case 'payout_create':
         createPayout(client, message.provider, message.cents);
         break;
+      case 'referrals':
+        client.send({ type: 'referrals', ...activity.referrals(client.user.id, { since: Math.max(0, Number(message.since) || 0), query: String(message.query || '').slice(0, 80), page: message.page }) });
+        break;
+      case 'referral_claim': {
+        const transfer = activity.claim(client.user.id);
+        client.send({ type: 'referral_claimed', cents: transfer.cents });
+        client.send({ type: 'referrals', ...activity.referrals(client.user.id) });
+        break;
+      }
+      case 'game_history':
+        client.send({ type: 'game_history', page: message.page || 0, ...activity.history(client.user.id, { page: message.page, game: String(message.game || '').slice(0, 32) }) });
+        break;
       case 'history':
-        client.send({ type: 'history', history: payments.historyFor(client.user.id) });
+        client.send({ type: 'history', page: message.page || 0, ...activity.transactions(client.user.id, message.page), history: activity.transactions(client.user.id, message.page).rows });
         break;
       case 'leaders':
         client.send({ type: 'leaders', leaders: accounts.list(20) });
@@ -449,7 +504,7 @@ function createApp(options = {}) {
         redeemPromo(client, message.code);
         break;
       case 'list_rooms':
-        client.send({ type: 'rooms', rooms: publicRooms(), wins: recentWins.entries });
+        client.send({ type: 'rooms', rooms: publicRooms(), wins: recentWins.entries.filter(r => isAdmin(client.user) || !PRIVATE_SLOTS.has(r.game)) });
         break;
       case 'bj_open':
         sendBlackjack(client);
@@ -793,6 +848,7 @@ function createApp(options = {}) {
     if (!game) {
       game = new SoloBlackjack({ minBet: BJ_MIN_BET, maxBet: BJ_MAX_BET });
       game.bet = 500;
+      if (accounts.get(client.user.id)?.blackjackRound) restoreGame(game, accounts.get(client.user.id).blackjackRound);
       blackjackGames.set(client.user.id, game);
     }
     return game;
@@ -842,7 +898,7 @@ function createApp(options = {}) {
       game.settled = true;
       const { payout, net } = game.results;
       if (payout > 0) accounts.deposit(client.user.id, payout);
-      if (net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: net, payout, bet: payout-net, game: 'blackjack', code: 'BJ' });
+      noteRound({ userId: client.user.id, name: client.user.name, amount: net, payout, bet: payout-net, game: 'blackjack', code: 'BJ' });
     }
     if (game.phase === 'play') game.settled = false;
     sendBlackjack(client);
@@ -870,7 +926,7 @@ function createApp(options = {}) {
     accounts.withdraw(client.user.id, total);
     const result = roulette.spin(bets);
     if (result.payout > 0) accounts.deposit(client.user.id, result.payout);
-    if (result.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: result.net, payout: result.payout, bet: total, game: 'roulette', code: 'RL' });
+    noteRound({ userId: client.user.id, name: client.user.name, amount: result.net, payout: result.payout, bet: total, game: 'roulette', code: 'RL' });
     const history = [result.number, ...(rouletteHistory.get(client.user.id) || [])].slice(0, 12);
     rouletteHistory.set(client.user.id, history);
     client.send({ type: 'rl', spin: result, ...rouletteInfo(client) });
@@ -896,7 +952,7 @@ function createApp(options = {}) {
     accounts.withdraw(client.user.id, total);
     const result = baccarat.deal({ bets });
     if (result.payout > 0) accounts.deposit(client.user.id, result.payout);
-    if (result.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: result.net, payout: result.payout, bet: total, game: 'baccarat', code: 'BC' });
+    noteRound({ userId: client.user.id, name: client.user.name, amount: result.net, payout: result.payout, bet: total, game: 'baccarat', code: 'BC' });
     const history = [result.winner, ...(baccaratHistory.get(client.user.id) || [])].slice(0, 12);
     baccaratHistory.set(client.user.id, history);
     client.send({ type: 'bc', round: result, ...baccaratInfo(client) });
@@ -913,6 +969,7 @@ function createApp(options = {}) {
     let game = minesGames.get(client.user.id);
     if (!game) {
       game = new MinesGame({ minBet: MN_MIN_BET, maxBet: MN_MAX_BET });
+      if (accounts.get(client.user.id)?.minesRound) restoreGame(game, accounts.get(client.user.id).minesRound);
       minesGames.set(client.user.id, game);
     }
     return game;
@@ -957,14 +1014,14 @@ function createApp(options = {}) {
       game.settled = true;
       if (game.payout > 0) accounts.deposit(client.user.id, game.payout);
       const net = game.payout - game.bet;
-      if (net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: net, payout: game.payout, bet: game.bet, game: 'mines', code: 'MN' });
+      noteRound({ userId: client.user.id, name: client.user.name, amount: net, payout: game.payout, bet: game.bet, game: 'mines', code: 'MN' });
     }
     sendMines(client);
   }
 
   // Hilo uses the same cent-based account ledger as Mines.
-  const arcade = createArcadeService({ accounts, noteWin, isAdmin });
-  const crash = createCrashService({ accounts, clients: clientsByUser, noteWin });
+  const arcade = createArcadeService({ accounts, noteWin, noteRound, isAdmin });
+  const crash = createCrashService({ accounts, clients: clientsByUser, noteWin, noteRound });
   const hiloGames = new Map();
   function hiloGame(client) {
     if (!hiloGames.has(client.user.id)) {
@@ -1001,7 +1058,7 @@ function createApp(options = {}) {
       if (game.phase === 'done' && !game.settled) {
         game.settled = true;
         if (game.payout) accounts.deposit(client.user.id, game.payout);
-        if (game.payout > game.bet) noteWin({ userId: client.user.id, name: client.user.name, amount: game.payout - game.bet, payout: game.payout, bet: game.bet, game: 'hilo', code: 'HL' });
+        noteRound({ userId: client.user.id, name: client.user.name, amount: game.payout - game.bet, payout: game.payout, bet: game.bet, game: 'hilo', code: 'HL' });
       }
     } catch (error) {
       sendHilo(client);
@@ -1038,7 +1095,7 @@ function createApp(options = {}) {
     accounts.withdraw(client.user.id, bet);
     const round = nvuti.play({ bet, target, mode });
     if (round.payout > 0) accounts.deposit(client.user.id, round.payout);
-    if (round.net > 0) noteWin({ userId: client.user.id, name: client.user.name, amount: round.net, payout: round.payout, bet, game: 'nvuti', code: 'NV' });
+    noteRound({ userId: client.user.id, name: client.user.name, amount: round.net, payout: round.payout, bet, game: 'nvuti', code: 'NV' });
     const history = [{ roll: round.roll, won: round.won }, ...(nvutiHistory.get(client.user.id) || [])].slice(0, 12);
     nvutiHistory.set(client.user.id, history);
     client.send({ type: 'nv', round, ...nvutiInfo(client) });
@@ -1090,12 +1147,13 @@ function createApp(options = {}) {
 
     client.user = user;
     clientsByUser.set(user.id, client);
-    const account = accounts.ensure(user);
+    const account = activity.register(user, client.startParam);
     client.send({
       type: 'auth_ok',
       user,
       balance: account.balance,
       isAdmin: isAdmin(user),
+      privateSlots: isAdmin(user),
       startingBalance: accounts.startingBalance,
       startParam: client.startParam || null,
       topup: payments.describe(),
@@ -1156,7 +1214,10 @@ function createApp(options = {}) {
     server.close(() => resolve());
   });
 
+  server.activity = activity; server.accounts = accounts; server.payments = payments; server.bot = bot;
+  server.on('listening', () => { if ((options.botRuntime ?? (require.main === module)) && botToken && process.env.TELEGRAM_BOT_RUNTIME !== '0') bot.start(); });
   server.on('close', () => {
+    bot.stop();
     crash.stop();
     clearInterval(sweeper);
     wss.stop();
@@ -1170,6 +1231,7 @@ function createApp(options = {}) {
         game.cashout(game.revision); game.settled = true;
         accounts.deposit(userId, game.payout);
         accounts.get(userId).hiloRound = game.snapshot();
+        noteRound({ userId, name: accounts.get(userId).name, game: 'hilo', bet: game.bet, payout: game.payout });
       }
     }
     accounts.flush();

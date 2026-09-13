@@ -84,6 +84,7 @@ class Room extends EventEmitter {
     this.round = null; // раздача блекджека
     this.dealerSeat = -1;
     this.handNumber = 0;
+    this.auditId = require('crypto').randomUUID();
     this.log = [];
     this.feed = []; // последние действия для плашек над столом
     this.lastResult = null;
@@ -620,6 +621,8 @@ class Room extends EventEmitter {
     for (const player of this.lastResult.players) {
       this.pushLog(`${player.name}: ${player.cards.map(prettyText).join(' ')} — ${player.total}`);
     }
+    for (const outcome of this.lastResult.outcomes) this.emit('round', { ...outcome, id: `${this.auditId}:${this.handNumber}:${outcome.userId}`, name: this.nameOf(outcome.userId), game: 'table-blackjack' });
+
     if (!winnerName) {
       this.pushLog(`Ничья: ${result.reason}`);
     } else {
@@ -753,6 +756,8 @@ class Room extends EventEmitter {
         cards: h.cards.map(cardToString),
       })),
     };
+
+    for (const outcome of this.lastResult.outcomes) this.emit('round', { ...outcome, id: `${this.auditId}:${this.handNumber}:${outcome.userId}`, name: this.nameOf(outcome.userId), game: this.settings.game });
 
     for (const winner of this.lastResult.winners) {
       const combo = winner.hand ? ` (${winner.hand.name})` : '';

@@ -27,7 +27,7 @@
  const search=document.getElementById('games-search');
  if(search)search.addEventListener('input',()=>{
   const query=search.value.trim().toLocaleLowerCase('ru');let count=0;
-  document.querySelectorAll('#tab-games .game-tile').forEach(tile=>{const visible=tile.textContent.toLocaleLowerCase('ru').includes(query);tile.classList.toggle('hidden',!visible);if(visible)count++;});
+  document.querySelectorAll('#tab-games .game-tile').forEach(tile=>{const visible=(tile.dataset?.privateSlot!=='true'||document.body.dataset.admin==='true')&&tile.textContent.toLocaleLowerCase('ru').includes(query);tile.classList.toggle('hidden',!visible);if(visible)count++;});
   document.getElementById('games-empty').classList.toggle('hidden',count>0);
  });
  const lobby=document.querySelector?.('.lobby'),nav=document.getElementById('bottom-nav');let lastScroll=0;

@@ -1,20 +1,21 @@
 'use strict';
 const { CrashGame, CrashError } = require('./game');
 const { MAX_BALANCE } = require('../accounts');
-function createCrashService({ accounts, clients, noteWin }) {
+function createCrashService({ accounts, clients, noteWin, noteRound = null }) {
   const games = new Map();
   // Restored rounds progress even if their player never reconnects.
   for (const account of accounts.accounts.values()) if (account.crashRound) {
     const game = new CrashGame(); game.restore(account.crashRound); games.set(account.id, game);
   }
   const save = (id, game) => { accounts.get(id).crashRound = game.snapshot(); accounts.flush(); };
-  function resolve(id, game, now) {
+  function resolve(id, game, now) { return accounts.atomic(() => { const before=game.snapshot(); accounts.onRollback(() => game.restore(before)); return resolveAtomic(id, game, now); }); }
+  function resolveAtomic(id, game, now) {
     const revision = game.revision; const settled = game.settled;
     game.advance(now);
     if (game.phase === 'done' && !game.settled && accounts.balanceOf(id) + game.payout <= MAX_BALANCE) {
       game.settled = true;
       if (game.payout) accounts.deposit(id, game.payout);
-      if (game.payout > game.bet) noteWin({ userId:id, name:accounts.get(id).name, amount:game.payout-game.bet, payout:game.payout, bet:game.bet, game:'crash', code:'CR' });
+      if (noteRound || game.payout > game.bet) (noteRound || noteWin)({ userId:id, name:accounts.get(id).name, amount:game.payout-game.bet, payout:game.payout, bet:game.bet, game:'crash', code:'CR' });
     }
     if (revision !== game.revision || settled !== game.settled) save(id,game);
   }
@@ -25,6 +26,7 @@ function createCrashService({ accounts, clients, noteWin }) {
     const id=client.user.id; let game=games.get(id);
     if (!game) { game=new CrashGame(); games.set(id,game); }
     client.watchingCrash=true;
+    const before=game.snapshot(); accounts.onRollback(() => game.restore(before));
     const now=Date.now(); resolve(id,game,now);
     try {
       if (message.type==='cr_start') {
@@ -54,6 +56,6 @@ function createCrashService({ accounts, clients, noteWin }) {
     clearInterval(timer);
     for(const [id,game] of games) { resolve(id,game,Date.now()); save(id,game); }
   }
-  return { handle, stop };
+  return { handle, stop, resync(client) { const game=games.get(client.user.id); if(game)send(client,game); } };
 }
 module.exports={ createCrashService };

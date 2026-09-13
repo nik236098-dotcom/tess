@@ -33,10 +33,10 @@
   <link rel="stylesheet" href="/abyss.css?v=9" />
   <link rel="stylesheet" href="/feature-slots.css?v=2" />
   <script src="/roulette-view.js?v=1"></script>
-  <script src="/classic-cards.js?v=1"></script>
+  <script src="/classic-cards.js?v=2"></script>
   <script src="/blackjack-deal.js?v=1"></script>
   <script defer src="/game-layout.js?v=4"></script>
-  <link rel="stylesheet" href="/croco-lobby.css?v=11" />
+  <link rel="stylesheet" href="/croco-lobby.css?v=12" /><link rel="stylesheet" href="/croco-pages.css?v=1" />
   <link rel="preload" as="image" href="/img/croco/mascot-cutout.webp" />
   <link rel="preload" as="image" href="/img/croco/lobby-soft-background.webp" />
 </head>
@@ -51,6 +51,9 @@
   <!-- Один набор иконок на всё приложение: контурные, 24×24, currentColor.
        Бренд приложения — Croco. -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 11v6m0-11v1"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="m3 11 18-8-7 18-3-7-8-3Zm8 3L21 3"/></symbol>
+    <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M9 15 5 19l-1-4 3-3m5 5 3-1 4 1-3 3-4-1M8 14C7 8 13 3 21 3c0 8-5 14-11 13Z"/><circle cx="16" cy="8" r="2"/><path d="m6 18-3 3"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-arrow-up-right" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></symbol>
     <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M4 9V7a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a2.5 2.5 0 0 0 0 5v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a2.5 2.5 0 0 0 0-5Z"/><path d="M13 7v10" stroke-dasharray="2 2"/></symbol>
@@ -101,7 +104,7 @@
           <div id="tab-home" class="tab-panel croco-home">
             <header class="croco-account">
               <div id="avatar" class="croco-avatar">C</div>
-              <div class="croco-wallet"><span>Баланс</span><b id="balance-value">$0.00</b><button id="btn-topup" aria-label="Пополнить баланс"><svg class="icon"><use href="#i-plus"></use></svg></button></div>
+              <button id="btn-topup" class="croco-wallet cp-home-wallet" aria-label="Открыть кошелёк"><svg class="icon" aria-hidden="true"><use href="#i-wallet"></use></svg><span>Кошелёк</span><b id="balance-value">$0.00</b></button>
               <button id="home-settings" class="croco-settings" aria-label="Открыть профиль"><svg class="icon"><use href="#i-user"></use></svg></button>
               <button id="btn-payout" class="hidden" aria-label="Вывести"></button>
             </header>
@@ -114,16 +117,7 @@
             <section class="croco-live"><div class="croco-section-head"><h2><span class="croco-live-dot" aria-hidden="true"></span>Live</h2></div><div class="croco-live-head" aria-hidden="true"><span>Игрок / игра</span><span>Коэфф.</span><span>Выигрыш</span></div><div id="home-live"><p class="croco-history-note">Загружаем Live…</p></div></section>
           </div>
 
-          <div id="tab-information" class="tab-panel hidden">
-            <div class="croco-info-brand"><img src="/img/croco/mascot-cutout.webp" width="96" height="64" alt="" /><h1>Croco</h1></div>
-            <h2>Информация</h2><p class="hint">Правила, поддержка и информация о вашем аккаунте.</p>
-            <div class="lb-list">
-              <button id="info-rules" class="lb-row"><svg class="icon"><use href="#i-cards"></use></svg><span>Правила игр</span><svg class="icon"><use href="#i-chevron-right"></use></svg></button>
-              <button id="info-help" class="lb-row"><svg class="icon"><use href="#i-headset"></use></svg><span>Помощь и поддержка</span><svg class="icon"><use href="#i-chevron-right"></use></svg></button>
-              <button id="info-settings" class="lb-row"><svg class="icon"><use href="#i-user"></use></svg><span>Настройки профиля</span><svg class="icon"><use href="#i-chevron-right"></use></svg></button>
-            </div>
-          </div>
-
+<div id="tab-information" class="tab-panel cp-page hidden"><h1>Информация</h1><label class="cp-search"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg><input id="info-search" type="search" placeholder="Что хотите узнать?" aria-label="Поиск по справке" /></label><h2>Помощь по разделам</h2><div id="info-sections"><button id="info-rules" class="cp-menu-row"><svg class="icon" aria-hidden="true"><use href="#i-cards"></use></svg><span><b>Правила игр</b><small>Как играть и что означают коэффициенты</small></span><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg></button><button id="info-payments" class="cp-menu-row"><svg class="icon" aria-hidden="true"><use href="#i-wallet"></use></svg><span><b>Пополнение и вывод</b><small>xRocket, Crypto Bot и статусы операций</small></span><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg></button><button id="info-referrals" class="cp-menu-row"><svg class="icon" aria-hidden="true"><use href="#i-users"></use></svg><span><b>Реферальная программа</b><small>Начисления, 10% и перевод на баланс</small></span><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg></button><button id="info-security" class="cp-menu-row"><svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg><span><b>Безопасность аккаунта</b><small>Защита аккаунта и связь с поддержкой</small></span><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg></button></div><h2>Частые вопросы</h2><div id="info-faq"></div><p id="info-empty" class="cp-muted hidden">Ничего не найдено. Попробуйте другой запрос.</p><div class="cp-support"><div><svg class="icon" aria-hidden="true"><use href="#i-headset"></use></svg><b>Не нашли ответ?</b></div><button class="cp-primary" data-support>Написать в поддержку <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button></div><footer class="cp-legal"><button data-help="terms">Условия использования</button><button data-help="privacy">Конфиденциальность</button><button data-help="responsible">Ответственная игра</button></footer></div>
           <div id="tab-games" class="tab-panel hidden">
             <div class="lb-sh"><h2>Игры</h2></div><label class="croco-search"><input id="games-search" type="search" placeholder="Поиск игр" autocomplete="off" aria-label="Поиск игр" /></label><p id="games-empty" class="hidden" role="status">Игры не найдены</p>
 
@@ -141,84 +135,14 @@
 <button type="button" data-arcade="keno" class="game-tile" aria-label="Keno"><img src="/img/game-cards/keno.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title">Keno</span></button>
 <button type="button" data-arcade="dragon" class="game-tile" aria-label="Dragon &amp; Tiger"><img src="/img/game-cards/dragon.webp" alt="" width="600" height="800" loading="lazy" decoding="async"><span class="game-tile-title is-long">Dragon &amp; Tiger</span></button>
 <div id="casino-catalog" class="cg-catalog" aria-label="Мини-игры"></div>
-            <details class="card rules" id="rules-card">
-              <summary>Правила и порядок комбинаций</summary>
-              <ol class="rules-list">
-                <li>Каждому — две закрытые карты, на стол выкладываются пять общих.</li>
-                <li>Торговля идёт четыре круга: до флопа, после флопа, после тёрна и после ривера.</li>
-                <li>Собираем лучшую комбинацию из пяти карт — своих и общих в любом сочетании.</li>
-              </ol>
-              <div class="combos">
-                <span>Флеш-рояль</span><span>Стрит-флеш</span><span>Каре</span><span>Фулл-хаус</span>
-                <span>Флеш</span><span>Стрит</span><span>Тройка</span><span>Две пары</span><span>Пара</span><span>Старшая карта</span>
-              </div>
-            </details>
+
           </div>
 
           <!-- ═══ Турниры ═══ -->
           <!-- ═══ Бонусы ═══ -->
-          <div id="tab-bonuses" class="tab-panel hidden">
-            <div class="lb-sh"><h2>Бонусы</h2></div>
-            <section class="lb-empty">
-              <span class="lb-empty-art" aria-hidden="true"><svg class="icon"><use href="#i-gift"></use></svg></span>
-              <b>Бонусов пока нет</b>
-              <span>Первые акции и подарки за игру появятся здесь. Промокод, если он у вас есть, можно активировать ниже.</span>
-            </section>
-            <div id="promo-card" class="card">
-              <h2>Промокод</h2>
-              <div class="row">
-                <input id="promo-code" type="text" maxlength="32" placeholder="Введите код" autocomplete="off" autocapitalize="characters" />
-                <button id="promo-send" class="btn btn-primary">Активировать</button>
-              </div>
-              <p class="hint" id="promo-note">Код можно активировать один раз.</p>
-            </div>
-
-            
-            <button id="tile-friends" class="lb-support">
-              <span class="lb-support-icon"><svg class="icon"><use href="#i-users"></use></svg></span>
-              <span class="lb-support-body">
-                <b>Позвать друзей</b>
-                <span>Поделитесь ссылкой — играйте за одним столом</span>
-              </span>
-              <svg class="icon icon-sm chevron"><use href="#i-arrow-right"></use></svg>
-            </button>
-            <!-- Другие игры -->
-            <button id="other-games" class="wide-link hidden">
-              <span class="wide-icon"><svg class="icon"><use href="#i-gamepad"></use></svg></span>
-              <span class="wide-body">
-                <b>Другие игры</b>
-                <span>Больше игр и розыгрышей в нашем чате</span>
-              </span>
-              <svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg>
-            </button>
-
-            
-          </div>
-
+<div id="tab-bonuses" class="tab-panel cp-page hidden"><h1>Бонусы</h1><div id="promo-card" class="cp-promo"><input id="promo-code" type="text" maxlength="32" placeholder="Введите промокод" autocomplete="off" autocapitalize="characters" aria-label="Промокод" /><button id="promo-send" class="cp-primary">Активировать</button><p id="promo-note" class="cp-muted" role="status"></p></div><h2>Реферальная программа</h2><p class="cp-ref-rate">Твоя ставка — <strong>10%</strong> от дохода проекта</p><section class="cp-ref-banner"><img src="/img/croco/referral-croc.webp" alt="" width="768" height="768" /><div class="cp-ref-copy"><span>Реферальный баланс</span><strong id="ref-balance">$0,00</strong><small>Доступно сразу</small><button id="ref-claim" class="cp-primary" disabled>Забрать на баланс</button></div></section><h2>Приглашай друзей</h2><p class="cp-muted cp-invite-caption">Получай часть дохода проекта</p><div class="cp-invite"><button id="ref-copy" class="cp-copy" aria-label="Скопировать реферальную ссылку"><span id="ref-link">Загружаем ссылку…</span><svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg></button><button id="ref-invite" class="cp-primary"><svg class="icon" aria-hidden="true"><use href="#i-send"></use></svg>Пригласить</button></div><div class="cp-ref-summary"><div><span>Рефералы</span><b id="ref-count">0</b></div><div><span>Депозиты</span><b id="ref-deposits">$0,00</b></div><div><span>Заработано</span><b id="ref-earned">$0,00</b></div></div><div class="cp-section-title"><h2>Мои рефералы</h2><select id="ref-period" aria-label="Период"><option value="all">Всё время</option><option value="today">Сегодня</option><option value="week">Неделя</option><option value="month">Месяц</option></select></div><label class="cp-search cp-search-small"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg><input id="ref-search" type="search" placeholder="Поиск по нику" aria-label="Поиск реферала" /></label><div class="cp-ref-head"><span>Игрок</span><span>Депозиты</span><span>Твой доход</span></div><div id="ref-list" aria-live="polite"><p class="cp-muted">Загружаем рефералов…</p></div><button id="ref-more" class="cp-more hidden">Показать ещё</button><button class="cp-terms" data-help="referrals"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg>Условия программы</button></div>
           <!-- ═══ Профиль ═══ -->
-          <div id="tab-profile" class="tab-panel hidden">
-            <div class="lb-sh"><h2>Настройки профиля</h2><button id="settings-back" class="link-btn">На главную</button></div>
-            <div class="lb-profile">
-              <div id="profile-avatar" class="lb-avatar">♠</div>
-              <div class="lb-profile-body">
-                <b id="profile-name">—</b>
-                <span id="profile-id">Telegram ID: —</span>
-              </div>
-              <button id="profile-copy" class="round-btn" aria-label="Скопировать ID"><svg class="icon icon-sm"><use href="#i-copy"></use></svg></button>
-            </div>
-            <div class="lb-profile-balance">
-              <span class="lb-caption">Баланс</span>
-              <b id="profile-balance" class="money">$0.00</b>
-              <span class="lb-profile-actions">
-                <button id="profile-topup" class="btn btn-primary"><svg class="icon icon-sm"><use href="#i-plus"></use></svg>Пополнить</button>
-                <button id="profile-payout" class="btn btn-ghost"><svg class="icon icon-sm"><use href="#i-arrow-up-right"></use></svg>Вывести</button>
-              </span>
-            </div>
-            <div class="lb-list">
-              <button id="tile-leaders" class="lb-row"><svg class="icon"><use href="#i-trophy"></use></svg><span>Лидеры</span><svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg></button>
-              <button id="profile-history" class="lb-row"><svg class="icon"><use href="#i-receipt"></use></svg><span>История операций</span><svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg></button>
-              <button id="profile-help" class="lb-row"><svg class="icon"><use href="#i-help"></use></svg><span>Помощь и правила</span><svg class="icon icon-sm chevron"><use href="#i-chevron-right"></use></svg></button>
-            </div>
+<div id="tab-profile" class="tab-panel cp-page cp-profile hidden"><header class="cp-subhead"><button id="settings-back" class="cp-back"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"></use></svg>Назад</button><h1>Профиль</h1></header><div class="cp-identity"><div id="profile-avatar" class="cp-avatar">Н</div><b id="profile-name">Игрок</b><span id="profile-tag"></span><button id="profile-copy"><span id="profile-id">ID: —</span><svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg></button></div><section class="cp-profile-wallet"><div class="cp-wallet-label"><svg class="icon" aria-hidden="true"><use href="#i-wallet"></use></svg><span>Кошелёк</span></div><b id="profile-balance">$0,00</b><button id="profile-wallet" class="cp-primary">Кошелёк <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></button></section><h2>История</h2><button id="profile-history" class="cp-menu-row"><svg class="icon" aria-hidden="true"><use href="#i-receipt"></use></svg><span><b>История операций</b><small>Пополнения, выводы и переводы</small></span><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg></button><button id="profile-gamehistory" class="cp-menu-row"><svg class="icon" aria-hidden="true"><use href="#i-cards"></use></svg><span><b>История игр</b><small>Ставки и результаты</small></span><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg></button><h2>Настройки</h2><label class="cp-menu-row cp-switch-row"><svg class="icon" aria-hidden="true"><use href="#i-sound"></use></svg><span>Звук</span><input id="profile-sound" type="checkbox" role="switch" checked /><i></i></label><label class="cp-menu-row cp-switch-row"><svg class="icon" aria-hidden="true"><use href="#i-vibrate"></use></svg><span>Вибрация</span><input id="profile-vibration" type="checkbox" role="switch" checked /><i></i></label><button id="profile-help" class="cp-menu-row"><svg class="icon" aria-hidden="true"><use href="#i-headset"></use></svg><span><b>Поддержка</b></span><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg></button><footer class="cp-legal"><button data-help="terms">Условия использования</button><button data-help="privacy">Конфиденциальность</button><button data-help="responsible">Ответственная игра</button></footer><p class="cp-footer-brand">Croco</p>
             <!-- Админ -->
             <div id="admin-card" class="card hidden">
               <div class="card-head">
@@ -246,6 +170,7 @@
           
           </div>
 
+<div id="tab-wallet" class="tab-panel cp-page cp-wallet-page hidden"><header class="cp-subhead"><button id="wallet-back" class="cp-back"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"></use></svg>Назад</button><h1>Кошелёк</h1></header><section class="cp-wallet-total"><svg class="icon" aria-hidden="true"><use href="#i-wallet"></use></svg><div><span>Баланс</span><strong id="wallet-balance">$0,00</strong></div></section><div class="cp-wallet-tabs"><button id="wallet-deposit" class="is-active"><svg class="icon" aria-hidden="true"><use href="#i-arrow-down"></use></svg>Пополнить</button><button id="wallet-withdraw"><svg class="icon" aria-hidden="true"><use href="#i-arrow-up"></use></svg>Вывести</button></div><div id="wallet-content"></div><button id="wallet-history" class="cp-terms cp-center"><svg class="icon" aria-hidden="true"><use href="#i-receipt"></use></svg>История операций</button><button class="cp-terms cp-center" data-support><svg class="icon" aria-hidden="true"><use href="#i-headset"></use></svg>Поддержка</button></div><div id="tab-gamehistory" class="tab-panel cp-page hidden"><header class="cp-subhead"><button class="cp-back" data-profile-back><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"></use></svg>Назад</button><h1>История игр</h1></header><label class="cp-search"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg><select id="history-game" aria-label="Игра"><option value="">Все игры</option></select></label><div class="cp-bet-head"><span>Игрок / игра</span><span>Ставка</span><span>Коэфф.</span><span>Результат</span></div><div id="bet-history-list"></div><button id="bets-more" class="cp-more hidden">Показать ещё</button></div><div id="tab-operations" class="tab-panel cp-page hidden"><header class="cp-subhead"><button class="cp-back" data-history-back><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"></use></svg>Назад</button><h1>История операций</h1></header><div id="operations-content"></div><button id="operations-more" class="cp-more hidden">Показать ещё</button></div><div id="tab-helpdetail" class="tab-panel cp-page hidden"><header class="cp-subhead"><button class="cp-back" data-info-back><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"></use></svg>Назад</button><h1 id="help-detail-title">Информация</h1></header><div id="help-detail-content"></div></div>
           <!-- ═══ Раскрывающиеся панели: одна открыта, показываются на любой вкладке ═══ -->
           <div id="panels" class="tab-panel">
             <!-- Пополнение -->
@@ -750,7 +675,7 @@
       <p class="cr-subtitle">Одиночная игра</p>
       <div id="cr-game" class="mn-board-card cr-game">
         <div id="cr-history" class="cr-history" aria-label="История раундов"></div>
-        <div class="cr-chart"><svg viewBox="0 0 320 240" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="cr-gradient" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#9b73ff" stop-opacity=".35"/><stop offset="1" stop-color="#9b73ff" stop-opacity="0"/></linearGradient></defs><path d="M22 25H304M22 90H304M22 155H304M22 218H304M22 25V218M92 25V218M162 25V218M232 25V218M304 25V218" fill="none" stroke="#8e77d6" stroke-opacity=".15" stroke-dasharray="3 5"/><path id="cr-fill" fill="url(#cr-gradient)"/><path id="cr-curve" class="cr-line" fill="none" stroke-width="3" stroke-linecap="round"/><circle id="cr-dot" class="cr-dot" r="5" stroke-width="2"/></svg><span id="cr-status" class="cr-status">Готов к запуску</span><b id="cr-number" class="cr-number">1.00×</b></div>
+        <div class="cr-chart"><svg viewBox="0 0 320 240" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="cr-gradient" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#9b73ff" stop-opacity=".35"/><stop offset="1" stop-color="#9b73ff" stop-opacity="0"/></linearGradient><symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7.5"/><path d="m16 16 5 5"/></symbol><symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6Z"/><path d="m8 12 3 3 5-6"/></symbol><symbol id="i-sound" viewBox="0 0 24 24"><path d="M3 9h4l5-5v16l-5-5H3Z"/><path d="M16 8a7 7 0 0 1 0 8m3-11a11 11 0 0 1 0 14"/></symbol><symbol id="i-vibrate" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M10 5h4M3 5l-1 3 2 3-2 3 1 4m18-13 1 3-2 3 2 3-1 4"/></symbol><symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 3v18m-7-7 7 7 7-7"/></symbol><symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 21V3m-7 7 7-7 7 7"/></symbol></defs><path d="M22 25H304M22 90H304M22 155H304M22 218H304M22 25V218M92 25V218M162 25V218M232 25V218M304 25V218" fill="none" stroke="#8e77d6" stroke-opacity=".15" stroke-dasharray="3 5"/><path id="cr-fill" fill="url(#cr-gradient)"/><path id="cr-curve" class="cr-line" fill="none" stroke-width="3" stroke-linecap="round"/><circle id="cr-dot" class="cr-dot" r="5" stroke-width="2"/></svg><span id="cr-status" class="cr-status">Готов к запуску</span><b id="cr-number" class="cr-number">1.00×</b></div>
         <div id="cr-overlay" class="mn-overlay cr-overlay hidden" role="status" aria-live="polite"></div>
         <p id="cr-auto-caption" class="cr-caption">Автостоп на 2.00×</p>
       </div>
@@ -810,7 +735,7 @@
 <script src="/race-scene.js?v=3"></script>
 <script src="/fishing-scene.js?v=1"></script>
 <script src="/duel-art.js?v=2"></script>
-<script src="/game-catalog.js?v=5"></script>
+<script src="/game-catalog.js?v=6"></script>
 <script src="/abyss-rules.js?v=1"></script>
 <script src="/abyss-audio.js?v=7"></script>
 <script src="/abyss-fx.js?v=2"></script>
@@ -818,13 +743,13 @@
 <script src="/feature-slots-rules.js?v=2"></script>
 <script src="/feature-slots-audio.js?v=1"></script>
 <script src="/feature-slots-ui.js?v=2"></script>
-<script src="/casino-ui.js?v=32"></script>
+<script src="/casino-ui.js?v=33"></script>
   <script src="/arcade.js?v=26"></script>
   <script src="/crash.js?v=2"></script>
   <script src="/hilo.js?v=4"></script>
   <script src="/client-connection.js?v=1"></script>
   <script src="/telegram-display.js?v=1"></script>
-  <script src="/croco-lobby.js?v=9"></script>
-  <script src="/app.js?v=111"></script>
+  <script src="/croco-lobby.js?v=10"></script>
+  <script src="/app.js?v=112"></script><script src="/croco-pages.js?v=1"></script>
 </body>
 </html>

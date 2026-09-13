@@ -82,6 +82,10 @@ async function call(method, body) {
   }
 
   const me = await call('getMe');
+  if (args.includes('--polling')) {
+    await call('deleteWebhook', { drop_pending_updates: false });
+    console.log('Бот переведён на получение команд сервером; ожидающие события сохранены.');
+  }
   console.log(`Токен рабочий. Бот: ${me.first_name} @${me.username} (id ${me.id})`);
   if (save) {
     saveToEnv('TELEGRAM_BOT_USERNAME', me.username);

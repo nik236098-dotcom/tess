@@ -2,10 +2,11 @@
 const { ArcadeError, GAMES, config, initial, start, actGame, publicState } = require('./game');
 const { MAX_BALANCE } = require('../accounts');
 
-function createArcadeService({ accounts, noteWin, rng, isAdmin = user => accounts.isAdmin?.(user.id) === true }) {
+function createArcadeService({ accounts, noteWin, noteRound = null, rng, isAdmin = user => accounts.isAdmin?.(user.id) === true }) {
   function handle(client, message) {
     const game = message.game;
     if (!GAMES.includes(game)) throw new ArcadeError('Игра не найдена');
+    if (['abyss', 'cryo', 'midnight'].includes(game) && !isAdmin(client.user)) throw new ArcadeError('Игра доступна только администратору');
     const account = accounts.get(client.user.id);
     const oldRounds = account.arcadeRounds;
     const previous = oldRounds?.[game] || initial();
@@ -38,7 +39,9 @@ function createArcadeService({ accounts, noteWin, rng, isAdmin = user => account
         }
         // Notify only after the wallet and result have been saved together.
         if (before !== balance) accounts.onChange?.(account);
-        if (newlyPaid && next.payout > next.bet) noteWin({ userId: account.id, name: account.name, amount: next.payout - next.bet, payout: next.payout, bet: next.bet, game, code: 'AG' });
+        if (newlyPaid && noteRound && game === 'plinko' && next.balls) {
+          for (const ball of next.balls) noteRound({ userId: account.id, name: account.name, payout: ball.payout, bet: next.unitBet, game, code: 'AG' });
+        } else if (newlyPaid && (noteRound || next.payout > next.bet)) (noteRound || noteWin)({ userId: account.id, name: account.name, amount: next.payout - next.bet, payout: next.payout, bet: next.bet, game, code: 'AG' });
       }
       client.send({ type: 'ag', game, requestId: message.requestId, accepted: true, config: config(game), ...publicState(game, next), balance: account.balance });
     } catch (error) {
@@ -46,6 +49,12 @@ function createArcadeService({ accounts, noteWin, rng, isAdmin = user => account
       throw error;
     }
   }
-  return { handle };
+  function resync(client, message) {
+    const game = message.game;
+    if (!GAMES.includes(game) || (['abyss','cryo','midnight'].includes(game) && !isAdmin(client.user))) return;
+    const account = accounts.get(client.user.id);
+    client.send({ type: 'ag', game, requestId: message.requestId, accepted: false, config: config(game), ...publicState(game, account.arcadeRounds?.[game] || initial()), balance: account.balance });
+  }
+  return { handle, resync };
 }
 module.exports = { createArcadeService };

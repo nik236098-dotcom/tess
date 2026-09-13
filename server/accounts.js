@@ -22,6 +22,13 @@ class Accounts {
     this.admins = new Set(admins.map((id) => String(id).trim()).filter(Boolean));
     this.accounts = new Map();
     this.saveTimer = null;
+    this.finance = { rounds: [], transfers: [], outbox: [], botOffset: 0, channels: {} };
+    this.paymentState = null;
+    this.paymentStore = null;
+    this.transactionDepth = 0;
+    this.pendingChanges = new Set();
+    this.commitCallbacks = []; this.rollbackCallbacks = [];
+    this.onCreate = null;
     this.onChange = null; // сюда сообщаем, чей баланс изменился
     if (file) this.load();
   }
@@ -36,8 +43,11 @@ class Accounts {
     try {
       const raw = fs.readFileSync(this.file, 'utf8');
       const parsed = JSON.parse(raw);
+      this.finance = { ...this.finance, ...(parsed.finance || {}) };
+      this.paymentState = parsed.payments || null;
       for (const account of parsed.accounts || []) {
         this.accounts.set(String(account.id), {
+          ...account,
           id: String(account.id),
           name: account.name || 'Игрок',
           username: account.username || null,
@@ -50,23 +60,24 @@ class Accounts {
       }
     } catch (error) {
       if (error.code !== 'ENOENT') {
-        console.error('Не удалось прочитать балансы, начинаем с чистого листа:', error.message);
+        throw new AccountError('Не удалось прочитать балансы: ' + error.message);
       }
     }
   }
 
   // Пишем через временный файл, чтобы не оставить обрезанный JSON при падении.
   flush({ strict = false } = {}) {
+    if (this.transactionDepth) return;
     if (!this.file) return;
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
-    const payload = JSON.stringify({ accounts: [...this.accounts.values()] }, null, 2);
+    const payload = JSON.stringify({ accounts: [...this.accounts.values()], finance: this.finance, payments: this.paymentStore ? { invoices: [...this.paymentStore.invoices.values()], payouts: [...this.paymentStore.payouts.values()] } : this.paymentState }, null, 2);
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
       const temporary = `${this.file}.tmp`;
-      fs.writeFileSync(temporary, payload);
+      fs.writeFileSync(temporary, payload, { mode: 0o600 });
       fs.renameSync(temporary, this.file);
     } catch (error) {
       console.error('Не удалось сохранить балансы:', error.message);
@@ -83,6 +94,47 @@ class Accounts {
     this.saveTimer.unref?.();
   }
 
+  // All wallet, referral, history and payment changes use a single atomic file.
+  // Calls are synchronous; asynchronous provider requests happen outside this unit.
+  atomic(action) {
+    if (this.transactionDepth) return action();
+    const before = structuredClone({ accounts: [...this.accounts.entries()], finance: this.finance,
+      payments: this.paymentStore ? { invoices: [...this.paymentStore.invoices.entries()], payouts: [...this.paymentStore.payouts.entries()] } : null });
+    this.commitCallbacks = []; this.rollbackCallbacks = [];
+    this.transactionDepth++;
+    try {
+      const result = action();
+      if (result && typeof result.then === 'function') throw new AccountError('Асинхронная транзакция запрещена');
+      this.transactionDepth--;
+      this.flush({ strict: true });
+      const ids = [...this.pendingChanges]; this.pendingChanges.clear();
+      const callbacks = this.commitCallbacks; this.commitCallbacks = []; this.rollbackCallbacks = [];
+      for (const id of ids) callbacks.push(() => this.onChange?.(this.get(id)));
+      for (const callback of callbacks) { try { callback(); } catch (error) { console.error("Уведомление после сохранения:", error.message); } }
+      return result;
+    } catch (error) {
+      this.transactionDepth = 0;
+      const restore = (map, entries) => {
+        for (const key of map.keys()) if (!entries.some(([id]) => id === key)) map.delete(key);
+        for (const [key, value] of entries) {
+          const current = map.get(key);
+          if (current) { for (const k of Object.keys(current)) delete current[k]; Object.assign(current, value); }
+          else map.set(key, value);
+        }
+      };
+      restore(this.accounts, before.accounts);
+      this.finance = before.finance;
+      if (before.payments) for (const kind of ['invoices', 'payouts']) restore(this.paymentStore[kind], before.payments[kind]);
+      this.pendingChanges.clear(); this.commitCallbacks = [];
+      for (const callback of this.rollbackCallbacks) callback();
+      this.rollbackCallbacks = [];
+      throw error;
+    }
+  }
+
+  afterCommit(callback) { if (this.transactionDepth) this.commitCallbacks.push(callback); else callback(); }
+  onRollback(callback) { if (this.transactionDepth) this.rollbackCallbacks.push(callback); }
+
   // ——— Счета ———
 
   ensure(user) {
@@ -98,6 +150,7 @@ class Accounts {
       };
       this.accounts.set(id, account);
       this.scheduleSave();
+      this.onCreate?.(account);
       return account;
     }
     // Имя и ник могли смениться в Telegram — подтягиваем свежие.
@@ -217,7 +270,8 @@ class Accounts {
 
   _changed(account) {
     this.scheduleSave();
-    if (this.onChange) this.onChange(account);
+    if (this.transactionDepth) this.pendingChanges.add(account.id);
+    else if (this.onChange) this.onChange(account);
   }
 }
 

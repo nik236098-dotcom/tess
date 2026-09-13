@@ -26,7 +26,7 @@ for(const id of F.ids){
  });
  test(id+': cap, persistence, no duplicate debit or settlement, rollback on storage failure',()=>{
   const account={id:1,name:'Test',balance:10000},sent=[];
-  let flushFail=false;const service=createArcadeService({accounts:{get:()=>account,flush:()=>{if(flushFail)throw Error('disk');}},noteWin(){},rng:n=>n-1});
+  let flushFail=false;const service=createArcadeService({isAdmin:()=>true,accounts:{get:()=>account,flush:()=>{if(flushFail)throw Error('disk');}},noteWin(){},rng:n=>n-1});
   const client={user:{id:1},send:x=>sent.push(x)};
   service.handle(client,{type:'ag_start',game:id,amount:20,options:{buyBonus:true},revision:0});assert.equal(account.balance,8000);
   assert.throws(()=>service.handle(client,{type:'ag_start',game:id,amount:20,options:{buyBonus:true},revision:0}));assert.equal(account.balance,8000);

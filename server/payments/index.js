@@ -48,9 +48,11 @@ class Payments {
     maxAmount = DEFAULT_MAX_AMOUNT,
     minPayoutCents = DEFAULT_MIN_PAYOUT_CENTS,
     invoiceTtlSeconds = INVOICE_TTL_SECONDS,
+    manualPayouts = false,
   } = {}) {
     if (!accounts) throw new PaymentError('Пополнению нужен доступ к счетам');
     this.accounts = accounts;
+    this.manualPayouts = manualPayouts;
     this.file = file;
     this.usdPerUnit = Number(usdPerUnit) > 0 ? Number(usdPerUnit) : DEFAULT_USD_PER_UNIT;
     this.minAmount = Math.max(0, Number(minAmount) || 0);
@@ -69,7 +71,12 @@ class Payments {
     this.saveTimer = null;
     this.onCredit = null; // сюда сообщаем, кому и сколько зачислили
     this.onPayout = null; // ...и чей вывод изменил состояние
-    if (file) this.load();
+    if (accounts.paymentState) {
+      for (const r of accounts.paymentState.invoices || []) this.invoices.set(r.id, r);
+      for (const r of accounts.paymentState.payouts || []) this.payouts.set(r.id, r);
+    } else if (file) this.load();
+    accounts.paymentStore = this;
+    if (accounts.file) accounts.flush({ strict: true });
   }
 
   get enabled() {
@@ -140,12 +147,13 @@ class Payments {
       }
     } catch (error) {
       if (error.code !== 'ENOENT') {
-        console.error('Не удалось прочитать историю платежей:', error.message);
+        throw new PaymentError('Не удалось прочитать историю платежей: ' + error.message);
       }
     }
   }
 
   flush() {
+    if (this.accounts.file) { this.accounts.flush({ strict: true }); return; }
     if (!this.file) return;
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
@@ -161,7 +169,7 @@ class Payments {
       fs.writeFileSync(temporary, payload);
       fs.renameSync(temporary, this.file);
     } catch (error) {
-      console.error('Не удалось сохранить историю платежей:', error.message);
+      throw new PaymentError('Не удалось сохранить историю платежей: ' + error.message);
     }
   }
 
@@ -249,9 +257,7 @@ class Payments {
     record.invoiceId = invoice.id;
     record.url = invoice.url;
     record.fallbackUrl = invoice.fallbackUrl || null;
-    this.invoices.set(id, record);
-    this.prune();
-    this.scheduleSave();
+    this.accounts.atomic(() => { this.invoices.set(id, record); this.prune(); this.flushNow(); });
 
     return this.invoiceView(record);
   }
@@ -292,6 +298,10 @@ class Payments {
 
   // Идемпотентно: второй вызов для того же счёта баланс не трогает.
   credit(record, invoice) {
+    return this.accounts.atomic(() => this._credit(record, invoice));
+  }
+
+  _credit(record, invoice) {
     if (record.creditedAt) return { record, credited: 0, already: true };
 
     // Сколько реально заплатили, столько и зачисляем: так корректно
@@ -312,7 +322,7 @@ class Payments {
       this.accounts.deposit(record.userId, cents);
     }
 
-    this.scheduleSave();
+    this.flushNow();
     if (this.onCredit) this.onCredit(record);
     return { record, credited: cents, already: false };
   }
@@ -408,48 +418,50 @@ class Payments {
 
     // Один вывод за раз: параллельные запросы не должны делить один баланс.
     const busy = [...this.payouts.values()].some(
-      (record) => record.userId === userId && record.status === 'pending',
+      (record) => record.userId === userId && ['pending', 'review', 'unknown'].includes(record.status),
     );
     if (busy) throw new PaymentError('Предыдущий вывод ещё выполняется, подождите');
 
-    // Списываем ДО обращения в сервис: так одну и ту же сумму нельзя вывести
-    // дважды, отправив два запроса одновременно. Если сервис откажет —
-    // вернём обратно.
-    try {
-      this.accounts.withdraw(userId, value);
-      // Баланс пишем на диск сразу, не дожидаясь отложенного сохранения:
-      // иначе падение процесса прямо здесь вернёт игроку уже списанные деньги,
-      // а запись о выплате останется — и он получит их дважды.
-      this.accounts.flush();
-    } catch (error) {
-      throw new PaymentError(error.message);
-    }
-
     const record = {
-      id: crypto.randomUUID(),
-      kind: 'payout',
-      userId,
-      userName: user.name || null,
-      provider: provider.id,
-      cents: value,
-      amount: units,
-      currency: provider.currency,
-      status: 'pending',
-      transferId: null,
-      error: null,
-      createdAt: Date.now(),
-      finishedAt: null,
+      id: crypto.randomUUID(), kind: 'payout', userId,
+      userName: user.name || null, userUsername: user.username || null,
+      provider: provider.id, cents: value, amount: units, currency: provider.currency,
+      status: this.manualPayouts ? 'review' : 'pending', manual: this.manualPayouts,
+      transferId: null, error: null, createdAt: Date.now(), finishedAt: null,
     };
-    this.payouts.set(record.id, record);
-    // Запись о списании должна пережить падение процесса прямо здесь.
-    this.flushNow();
+    this.accounts.atomic(() => {
+      this.accounts.withdraw(userId, value);
+      this.payouts.set(record.id, record);
+      this.flushNow();
+      if (this.manualPayouts) this.onPayout?.(record);
+    });
+    if (this.manualPayouts) return this.payoutView(record);
 
     return this.sendPayout(record);
+  }
+
+  reviewPayout(id, decision, adminId) {
+    if (!this.accounts.isAdmin(adminId)) throw new PaymentError('Только администратор может обработать вывод');
+    if (!['done', 'failed'].includes(decision)) throw new PaymentError('Неизвестное решение');
+    return this.accounts.atomic(() => {
+      const record = this.getPayout(id);
+      if (!record || !record.manual) throw new PaymentError('Заявка на ручной вывод не найдена');
+      if (record.status !== 'review') throw new PaymentError('Заявка уже обработана');
+      record.status = decision; record.finishedAt = Date.now(); record.reviewedBy = String(adminId);
+      if (decision === 'failed') {
+        if (this.accounts.balanceOf(record.userId) + record.cents > require('../accounts').MAX_BALANCE) throw new PaymentError('Недостаточно места на балансе для возврата');
+        record.error = 'Отклонено администратором';
+        this.accounts.deposit(record.userId, record.cents);
+      }
+      this.flushNow(); this.onPayout?.(record);
+      return this.payoutView(record);
+    });
   }
 
   // Отправляет (или повторяет) перевод. Ключ идемпотентности — id записи,
   // поэтому повтор после неясной ошибки не создаёт второй перевод.
   async sendPayout(record) {
+    if (record.manual) throw new PaymentError('Ручная заявка обрабатывается администратором');
     const provider = this.provider(record.provider);
     try {
       const transfer = await provider.payout({
@@ -511,7 +523,7 @@ class Payments {
   historyFor(userId, limit = 30) {
     const id = String(userId);
     const topUps = [...this.invoices.values()]
-      .filter((record) => record.userId === id && record.status !== 'pending')
+      .filter((record) => record.userId === id)
       .map((record) => this.invoiceView(record));
     const payouts = [...this.payouts.values()]
       .filter((record) => record.userId === id)
@@ -528,15 +540,10 @@ class Payments {
     for (const record of this.invoices.values()) {
       if (record.status === 'pending' && record.expiresAt < now) record.status = 'expired';
     }
-    if (this.invoices.size <= KEEP_RECORDS) {
-      for (const [id, record] of this.invoices) {
-        if (now - record.createdAt > KEEP_MS) this.invoices.delete(id);
-      }
-      return;
-    }
-    const sorted = [...this.invoices.values()].sort((a, b) => a.createdAt - b.createdAt);
-    for (const record of sorted.slice(0, this.invoices.size - KEEP_RECORDS)) {
-      this.invoices.delete(record.id);
+    // Settled invoices are permanent financial records. Only expired unpaid
+    // invoices may be removed, and cannot ever be credited after removal.
+    for (const [id, record] of this.invoices) {
+      if (record.status === 'expired' && now - record.createdAt > KEEP_MS) this.invoices.delete(id);
     }
   }
 }
@@ -583,6 +590,7 @@ function createPayments({ accounts, file = null, env = process.env, fetchImpl = 
 
   return new Payments({
     providers,
+    manualPayouts: env.WITHDRAW_MODE !== 'automatic',
     accounts,
     file,
     usdPerUnit: Number(env.TOPUP_USD_PER_UNIT || DEFAULT_USD_PER_UNIT),
