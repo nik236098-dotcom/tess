@@ -38,3 +38,10 @@ test('large wins never use the rejected device text-to-speech voice',()=>{
  h.audio.unlock();for(const ratio of [50,100,500])h.audio.play('bigwin',ratio);
  assert.equal(spoken,0);h.audio.stop();
 });
+
+test('profile sound preferences never start music outside a game',async()=>{
+ const h=harness();h.audio.configure({muted:false});assert.equal(h.context,undefined);assert.equal(h.intervals.size,0);
+ h.audio.unlock();assert.equal(h.intervals.size,1);h.audio.stop();
+ h.audio.configure({muted:false,music:.5});assert.equal(h.intervals.size,0);assert.equal(h.context.state,'suspended');
+ h.audio.unlock();await Promise.resolve();assert.equal(h.intervals.size,1);h.audio.stop();
+});

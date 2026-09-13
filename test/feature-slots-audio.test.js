@@ -40,3 +40,10 @@ test('large wins never use the rejected device text-to-speech voice',()=>{
 });
 
 test('switching slot themes stops the old music and resets bonus mode',async()=>{const h=harness();h.audio.unlock();h.audio.setMode(true);h.audio.spinning(true);h.audio.theme('midnight');assert.equal(h.audio.mode(),false);assert.equal(h.intervals.size,0);assert.ok(h.nodes.every(n=>n.stoppedAt===0));h.audio.unlock();await Promise.resolve();assert.equal(h.intervals.size,1);});
+
+test('profile sound preferences never start music outside a game',async()=>{
+ const h=harness();h.audio.configure({muted:false});assert.equal(h.context,undefined);assert.equal(h.intervals.size,0);
+ h.audio.unlock();assert.equal(h.intervals.size,1);h.audio.stop();
+ h.audio.configure({muted:false,music:.5});assert.equal(h.intervals.size,0);assert.equal(h.context.state,'suspended');
+ h.audio.unlock();await Promise.resolve();assert.equal(h.intervals.size,1);h.audio.stop();
+});
