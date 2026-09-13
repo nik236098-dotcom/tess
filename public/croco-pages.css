@@ -182,6 +182,8 @@ body[data-admin="true"] #screen-lobby [data-private-slot="true"]:not(.hidden) { 
 #screen-lobby .cp-money-input:focus-within { border-color:#c08aff;box-shadow:0 0 0 2px #994dff20; }
 #screen-lobby .cp-money-input>span { font-size:28px;font-weight:700; }
 #screen-lobby .cp-money-input>input { min-width:0;border:0;background:none;box-shadow:none;outline:none;padding:8px 0;font-size:28px;font-weight:700;height:50px;appearance:textfield;-moz-appearance:textfield; }
+/* The wrapper owns the focus ring, including the currency prefix. */
+#screen-lobby .cp-money-input>input:focus,#screen-lobby .cp-money-input>input:focus-visible { outline:none;outline-offset:0;border:0;box-shadow:none; }
 #screen-lobby .cp-money-input input::-webkit-inner-spin-button,#screen-lobby .cp-money-input input::-webkit-outer-spin-button { -webkit-appearance:none;margin:0; }
 #screen-lobby .cp-provider-art { flex:none;box-shadow:inset 0 1px 1px #ffffff40; }
 #screen-lobby .cp-provider-art>.icon { width:27px;height:27px;margin:0;color:white; }
