@@ -55,7 +55,7 @@ const CrocoPages = (() => {
       $(name + '-amount').disabled = !enabled;
       if (!enabled) {
         $(name + '-providers').classList.remove('hidden');
-        $(name + '-providers').innerHTML = providerOptions([]).map(item => `<button type="button" class="game-option" disabled>${providerMarkup(item)}</button>`).join('');
+        $(name + '-providers').innerHTML = providerOptions([]).map(item => `<button type="button" class="cp-provider-option" disabled>${providerMarkup(item)}</button>`).join('');
         $(name + '-presets').innerHTML = [10,25,50,100].map(amount => `<button type="button" class="chip-btn" disabled>$${amount}</button>`).join('');
         const action = $(name === 'topup' ? 'topup-create' : 'payout-send'); action.disabled = true; action.textContent = name === 'topup' ? 'Пополнить →' : 'Вывести →';
       }

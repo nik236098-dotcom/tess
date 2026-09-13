@@ -110,29 +110,30 @@
 #screen-lobby .cp-wallet-total>.icon { width:48px;height:48px;color:#b46fff; }
 #screen-lobby .cp-wallet-total span { color:#9899ce;font-size:14px; }
 #screen-lobby .cp-wallet-total strong { display:block;font-size:clamp(30px,10vw,43px);line-height:1.5; }
-#screen-lobby .cp-wallet-tabs { display:flex;border:1px solid #7771b87d;border-radius:12px;padding:2px;margin:15px 0 21px; }
-#screen-lobby .cp-wallet-tabs>button { display:flex;align-items:center;justify-content:center;gap:9px;width:50%;padding:12px 3px;border:1px solid transparent;border-radius:10px;background:none;color:#bcb1e9;font-weight:600;font-size:17px; }
+#screen-lobby .cp-wallet-tabs { display:flex;border:1px solid #7771b87d;border-radius:12px;padding:2px;margin:12px 0 18px; }
+#screen-lobby .cp-wallet-tabs>button { display:flex;align-items:center;justify-content:center;gap:8px;flex:1;min-width:0;width:50%;height:44px;min-height:44px;padding:0 3px;border:1px solid transparent;border-radius:10px;background:none;color:#bcb1e9;font-weight:600;font-size:15px; }
 #screen-lobby .cp-wallet-tabs>.is-active { border-color:#b486f2;background:linear-gradient(145deg,#a345ff,#5b19ec);color:#fff; }
 #screen-lobby .cp-wallet-page .card { padding:0!important;border:0!important;box-shadow:none!important;background:none!important;margin:0; }
-#screen-lobby .cp-wallet-page .card-head h2 { margin:0 0 9px;font-size:19px; }
+#screen-lobby .cp-wallet-page .card-head h2 { margin:0;font-size:18px;line-height:1.3; }
 #screen-lobby .cp-wallet-page .card-head>.hint,#screen-lobby #topup-chips,#screen-lobby #topup-rate,#screen-lobby #payout-rate { display:none; }
 #screen-lobby .cp-wallet-page .game-picker { display:flex;flex-direction:column;gap:9px; }
-#screen-lobby .cp-wallet-page .game-option { position:relative;display:flex;align-items:center;gap:13px;min-height:66px;padding:12px;border:1px solid #64579966;background:#12162e66;border-radius:11px;color:white;text-align:left; }
-#screen-lobby .cp-wallet-page .game-option.is-active { border-color:#aa5aff; }
-#screen-lobby .cp-wallet-page .game-option:after { content:'';width:18px;height:18px;border:2px solid #9290c7;border-radius:50%;margin-left:auto; }
-#screen-lobby .cp-wallet-page .game-option.is-active:after { border:4px solid #7831f1;background:white;box-shadow:0 0 0 1px #9f5bff; }
-#screen-lobby .cp-provider-art { display:grid;place-items:center;width:45px;height:45px;border-radius:11px;background:linear-gradient(145deg,#ad54ff,#551de1);color:white; }
+#screen-lobby .cp-wallet-page .cp-provider-option { position:relative;display:flex;flex:0 0 auto;flex-direction:row;align-items:center;gap:12px;width:100%;height:64px;min-height:64px;padding:9px 12px;box-sizing:border-box;border:1px solid #64579966;background:#12162e66;border-radius:11px;color:white;text-align:left; }
+#screen-lobby .cp-wallet-page .cp-provider-option.is-active { border-color:#aa5aff; }
+#screen-lobby .cp-wallet-page .cp-provider-option:after { content:'';width:18px;height:18px;border:2px solid #9290c7;border-radius:50%;margin-left:auto; }
+#screen-lobby .cp-wallet-page .cp-provider-option.is-active:after { border:4px solid #7831f1;background:white;box-shadow:0 0 0 1px #9f5bff; }
+#screen-lobby .cp-provider-art { display:grid;place-items:center;width:42px;height:42px;border-radius:10px;background:linear-gradient(145deg,#ad54ff,#551de1);color:white; }
 #screen-lobby .cp-provider-art.is-blue { background:linear-gradient(145deg,#54c7ff,#0787d9); }
-#screen-lobby .cp-provider-text b { display:block;font-size:18px; }
-#screen-lobby .cp-provider-text small { display:block;margin-top:4px;color:#aaa3d4;font-size:12px; }
+#screen-lobby .cp-provider-text { min-width:0;text-align:left; }
+#screen-lobby .cp-provider-text b { display:block;font-size:16px;line-height:1.2;font-weight:700;color:#fff; }
+#screen-lobby .cp-provider-text small { display:block;margin-top:4px;color:#aaa3d4;font-size:12px;line-height:1.2; }
 #screen-lobby .cp-wallet-page .chips-presets { display:flex;gap:6px;order:3; }
-#screen-lobby .cp-wallet-page .chip-btn { flex:1;border:1px solid #64579966;background:#14172c;color:#eee7fc;border-radius:8px;padding:8px 2px;font-size:13px; }
+#screen-lobby .cp-wallet-page .chip-btn { flex:1;min-width:0;height:36px;min-height:36px;line-height:1;border:1px solid #64579966;background:#14172c;color:#eee7fc;border-radius:8px;padding:8px 2px;font-size:13px; }
 #screen-lobby .cp-wallet-page .chip-btn.is-active { background:#512199;border-color:#a35ffc; }
 #screen-lobby .cp-wallet-page .row { display:contents; }
-#screen-lobby #topup-card,#screen-lobby #payout-card { display:flex;flex-direction:column;gap:12px; }
+#screen-lobby #topup-card,#screen-lobby #payout-card { display:flex;flex-direction:column;gap:10px; }
 #screen-lobby .cp-wallet-page input { order:2;border:1px solid #a95bfd;border-radius:10px;background:#101329;color:white;font-size:27px;height:56px;width:100%;padding:10px 17px; }
-#screen-lobby .cp-wallet-page .cp-amount-label { order:1;font-size:19px;margin-top:9px;font-weight:650; }
-#screen-lobby #topup-create,#screen-lobby #payout-send { order:4;width:100%;display:flex;align-items:center;justify-content:center;min-height:48px;border:1px solid #a567ff;background:linear-gradient(150deg,#a34aff,#5a19ed);border-radius:10px;font-size:17px;color:#fff; }
+#screen-lobby .cp-wallet-page .cp-amount-label { order:1;font-size:18px;line-height:1.3;margin-top:6px;font-weight:650; }
+#screen-lobby #topup-create,#screen-lobby #payout-send { order:4;width:100%;display:flex;align-items:center;justify-content:center;height:46px;min-height:46px;flex:none;padding:0 14px;line-height:1.2;border:1px solid #a567ff;background:linear-gradient(150deg,#a34aff,#5a19ed);border-radius:10px;font-size:16px;color:#fff; }
 #screen-lobby #topup-invoice,#screen-lobby #payout-state,#screen-lobby #payout-note { order:5; }
 #screen-lobby #topup-card>p:last-child { order:6;color:#a69aca;font-size:11px; }
 #screen-lobby .cp-bet-head,#screen-lobby .cp-bet-row { display:grid;grid-template-columns:minmax(105px,1.4fr) .75fr .55fr .9fr;gap:6px;align-items:center; }
@@ -161,7 +162,11 @@ body[data-tab="profile"] #bottom-nav,body[data-tab="wallet"] #bottom-nav,body[da
 #screen-bj .bj-card { rotate:0deg!important;translate:none!important;flex-shrink:0;aspect-ratio:169.075/244.64;background:#fff;color:#14131b;overflow:hidden; }
 #screen-bj .bj-card.red { color:#c92638; }
 #screen-bj .bj-card .pt-card-face { position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain; }
-#screen-bj .bj-card .pt-card-fallback { display:none; }
+#screen-bj .bj-card .pt-card-fallback { position:absolute;inset:5px;display:block;font:700 18px/1 Georgia,serif; }
+#screen-bj .pt-card-fallback>small { display:block;font-size:15px;margin-top:2px; }
+#screen-bj .pt-card-fallback>i { position:absolute;inset:0;display:grid;place-items:center;font:32px/1 Georgia,serif; }
+#screen-bj .bj-card .pt-card-face { z-index:1; }
+#screen-bj .bj-card .pt-card-face.is-missing { display:none; }
 #screen-bj .bj-card.back { background:repeating-linear-gradient(45deg,#ffffff12 0 1px,transparent 1px 5px),#352367; }
 #screen-lobby [data-private-slot="true"] { display:none!important; }
 body[data-admin="true"] #screen-lobby [data-private-slot="true"]:not(.hidden) { display:block!important; }
@@ -172,15 +177,15 @@ body[data-admin="true"] #screen-lobby [data-private-slot="true"]:not(.hidden) { 
 #screen-lobby #tab-operations #history-card { padding:0;border:0;background:none;box-shadow:none; }
 #screen-lobby .cp-page :focus-visible { outline:2px solid #c5a3ff;outline-offset:3px; }
 /* Wallet matches the approved amount field and provider rows at mobile scale. */
-#screen-lobby .cp-money-input { order:2;display:flex;align-items:center;gap:7px;min-height:56px;padding:0 15px;border:1px solid #a95bfd;border-radius:10px;background:#101329;color:#fff; }
+#screen-lobby .cp-money-input { order:2;display:flex;align-items:center;gap:7px;height:52px;min-height:52px;padding:0 15px;border:1px solid #a95bfd;border-radius:10px;background:#101329;color:#fff; }
 #screen-lobby .cp-money-input:focus-within { border-color:#c08aff;box-shadow:0 0 0 2px #994dff20; }
 #screen-lobby .cp-money-input>span { font-size:28px;font-weight:700; }
-#screen-lobby .cp-money-input>input { min-width:0;border:0;background:none;box-shadow:none;outline:none;padding:8px 0;font-size:28px;font-weight:700;height:54px;appearance:textfield;-moz-appearance:textfield; }
+#screen-lobby .cp-money-input>input { min-width:0;border:0;background:none;box-shadow:none;outline:none;padding:8px 0;font-size:28px;font-weight:700;height:50px;appearance:textfield;-moz-appearance:textfield; }
 #screen-lobby .cp-money-input input::-webkit-inner-spin-button,#screen-lobby .cp-money-input input::-webkit-outer-spin-button { -webkit-appearance:none;margin:0; }
 #screen-lobby .cp-provider-art { flex:none;box-shadow:inset 0 1px 1px #ffffff40; }
-#screen-lobby .cp-provider-art>.icon { width:30px;height:30px; }
-#screen-lobby .cp-wallet-page .game-option:after { flex:none; }
-#screen-lobby .cp-wallet-page .game-option:disabled { opacity:.55;cursor:default; }
+#screen-lobby .cp-provider-art>.icon { width:27px;height:27px;margin:0;color:white; }
+#screen-lobby .cp-wallet-page .cp-provider-option:after { flex:none; }
+#screen-lobby .cp-wallet-page .cp-provider-option:disabled { opacity:.55;cursor:default; }
 #screen-lobby .cp-wallet-page .chip-btn:disabled { opacity:.35; }
 #screen-lobby #payout-card>p:last-child { order:6;color:#a69aca;font-size:11px; }
 #screen-lobby #topup-invoice { padding:13px;border:1px solid #63518b80;border-radius:12px;background:#12152c; }

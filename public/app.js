@@ -813,9 +813,9 @@ async function onBlackjackState(message) {
   bj.revealing=animate&&sequence.steps.length>0;
   bj.dealerShown=animate?sequence.initial.dealer:message.dealer.cards.slice();
   bj.playerShown=animate?sequence.initial.hands:targetHands.map(h=>h.slice());
-  renderBlackjack();
-  await ClassicCards.load();
+  await ClassicCards.load([...message.dealer.cards, ...targetHands.flat()]);
   if(token!==bj.dealToken)return;
+  renderBlackjack();
   if(!animate){bj.revealing=false;renderBlackjack();return;}
   for(const step of sequence.steps){
     if(token!==bj.dealToken||!bj.open)return;
@@ -3530,7 +3530,7 @@ function renderTopUp() {
     for (const item of CrocoPages.providerOptions(config.providers)) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = `game-option${item.id === state.topup.provider ? ' is-active' : ''}`;
+      button.className = `cp-provider-option${item.id === state.topup.provider ? ' is-active' : ''}`;
       button.disabled = !item.available;
       button.setAttribute('aria-pressed', String(button.classList.contains('is-active')));
       button.innerHTML = CrocoPages.providerMarkup(item);
@@ -3663,7 +3663,7 @@ function renderPayout() {
       const button = document.createElement('button');
       button.type = 'button';
       const active = provider && item.id === provider.id;
-      button.className = `game-option${active ? ' is-active' : ''}`;
+      button.className = `cp-provider-option${active ? ' is-active' : ''}`;
       button.disabled = !item.available;
       button.setAttribute('aria-pressed', String(button.classList.contains('is-active')));
       button.innerHTML = CrocoPages.providerMarkup(item);

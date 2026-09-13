@@ -114,7 +114,7 @@ node - <<'JS'
 const fs = require('node:fs');
 const catalog = require('./public/game-catalog');
 for (const suit of 'shdc') for (const rank of 'A23456789TJQK') {
-  const path = `public/img/classic/cards/${rank}${suit}.svg`;
+  const path = `public/img/classic/cards/${rank}${suit}.webp`;
   if (!fs.statSync(path).size) throw new Error(`Missing classic card: ${path}`);
 }
 for (const id of Object.keys(catalog.names)) {
