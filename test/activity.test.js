@@ -147,3 +147,21 @@ test('long admin reports migrate out of photo captions once; notifications stay 
   assert.ok(h.calls.some(c => c.method === 'editMessageText' && c.body.message_id === 1));
   assert.equal(h.accounts.get('1').botScreen.messageId, 1);
 });
+
+test('missing channel is a completed command with guidance, not a polling retry', async () => {
+  const h=setup(),transport=h.bot.transport;
+  h.bot.transport=async(method,body)=>{if(method==='getChat')throw Error('getChat: Bad Request: chat not found');return transport(method,body);};
+  await h.bot.handle({message:{from:{id:1},chat:{id:1,type:'private'},text:'/setchannel payouts -100123'}});
+  assert.ok(h.calls.some(c=>/Канал не найден/.test(c.body.text||'')));
+  assert.equal(h.activity.data.channels.payouts,undefined);
+  await h.bot.handle({message:{from:{id:1},chat:{id:1,type:'private'},text:'/kassa'}});
+});
+test('expired callback acknowledgement does not block an authorized payout rejection', async () => {
+  const h=setup(),transport=h.bot.transport;h.activity.data.channels.payouts='-10099';
+  const r=await h.payments.createPayout({id:'2'},'cryptobot',1000);
+  h.bot.transport=async(method,body)=>{if(method==='answerCallbackQuery')throw Error('answerCallbackQuery: Bad Request: query is too old and response timeout expired or query ID is invalid');return transport(method,body);};
+  const callback=from=>({callback_query:{id:'old',from:{id:from},data:`pay:${r.id}:failed`,message:{message_id:1,chat:{id:'-10099',type:'channel'}}}});
+  await h.bot.handle(callback(2));assert.equal(h.payments.getPayout(r.id).status,'review');
+  await h.bot.handle(callback(1));assert.equal(h.payments.getPayout(r.id).status,'failed');assert.equal(h.accounts.get('2').balance,100000);
+  await h.bot.handle(callback(1));assert.equal(h.accounts.get('2').balance,100000);
+});

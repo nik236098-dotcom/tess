@@ -146,7 +146,12 @@ class TelegramBot {
     const admin = this.accounts.isAdmin(id);
     try {
       if (q) {
-        await this.call('answerCallbackQuery', { callback_query_id: q.id });
+        try { await this.call('answerCallbackQuery', { callback_query_id: q.id }); }
+        catch (error) {
+          // A queued click can outlive Telegram's acknowledgement window.
+          // Still validate the sender, channel and payout status below.
+          if (!/query is too old|query ID is invalid|query_id_invalid/i.test(error.message)) throw error;
+        }
         const [action, arg, rawPage] = String(q.data || '').split(':');
         if (action === 'pay') {
           if (!admin) throw new Error('Только для администратора');
@@ -195,7 +200,12 @@ class TelegramBot {
       if (command === '/setchannel') {
         if (!admin) throw new Error('Команда только для администратора');
         if (!['payouts', 'events', 'games'].includes(arg) || !/^-\d+$/.test(third || '')) throw new Error('/setchannel payouts|events|games -100…');
-        const found = await this.call('getChat', { chat_id: third });
+        let found;
+        try { found = await this.call('getChat', { chat_id: third }); }
+        catch (error) {
+          if (!/chat not found/i.test(error.message)) throw error;
+          throw new Error('Канал не найден. Проверьте ID с -100 и добавьте этого бота администратором канала, затем повторите /setchannel.');
+        }
         if (!['channel', 'supergroup', 'group'].includes(found.type)) throw new Error('Укажите канал или группу');
         const me = await this.call('getMe');
         const member = await this.call('getChatMember', { chat_id: third, user_id: me.id });
