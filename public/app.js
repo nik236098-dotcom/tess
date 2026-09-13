@@ -681,7 +681,6 @@ function fitBlackjack() {
 
 function openBlackjack() {
   state.bj.open = true;
-  ClassicCards.load();
   state.bj.playerShown=null;
   state.bj.dealerShown = null;
   state.bj.shownBalance = null;
@@ -713,7 +712,10 @@ function bjCard(code) {
     return node;
   }
   node.className='bj-card'+(['h','d'].includes(code[1])?' red':'');
-  node.innerHTML=ClassicCards.face(code);
+  const rank = code[0] === 'T' ? '10' : code[0];
+  const suit = {s:'♠',h:'♥',d:'♦',c:'♣'}[code[1]];
+  node.setAttribute('aria-label', `${rank}${suit}`);
+  node.innerHTML = `<span class="bj-rank">${rank}</span><span class="bj-suit-sm">${suit}</span><span class="bj-suit">${suit}</span>`;
   return node;
 }
 
@@ -813,8 +815,6 @@ async function onBlackjackState(message) {
   bj.revealing=animate&&sequence.steps.length>0;
   bj.dealerShown=animate?sequence.initial.dealer:message.dealer.cards.slice();
   bj.playerShown=animate?sequence.initial.hands:targetHands.map(h=>h.slice());
-  await ClassicCards.load([...message.dealer.cards, ...targetHands.flat()]);
-  if(token!==bj.dealToken)return;
   renderBlackjack();
   if(!animate){bj.revealing=false;renderBlackjack();return;}
   for(const step of sequence.steps){

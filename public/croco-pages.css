@@ -159,14 +159,15 @@ body[data-tab="profile"] #bottom-nav,body[data-tab="wallet"] #bottom-nav,body[da
 #screen-lobby .cp-rules-row img { width:40px;height:40px;border-radius:8px;object-fit:cover; }
 #screen-lobby .cp-doc { font-size:14px;line-height:1.7;color:#b8add6; }
 /* Classical card artwork, with straight resting cards and no squeezed SVG faces. */
-#screen-bj .bj-card { rotate:0deg!important;translate:none!important;flex-shrink:0;aspect-ratio:169.075/244.64;background:#fff;color:#14131b;overflow:hidden; }
-#screen-bj .bj-card.red { color:#c92638; }
-#screen-bj .bj-card .pt-card-face { position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain; }
-#screen-bj .bj-card .pt-card-fallback { position:absolute;inset:5px;display:block;font:700 18px/1 Georgia,serif; }
-#screen-bj .pt-card-fallback>small { display:block;font-size:15px;margin-top:2px; }
-#screen-bj .pt-card-fallback>i { position:absolute;inset:0;display:grid;place-items:center;font:32px/1 Georgia,serif; }
-#screen-bj .bj-card .pt-card-face { z-index:1; }
-#screen-bj .bj-card .pt-card-face.is-missing { display:none; }
+/* Same face design and proportions as Baccarat; scale the whole face with its card. */
+#screen-bj .bj-card { rotate:0deg!important;translate:none!important;flex:0 1 70px;min-width:0;width:70px;height:auto;aspect-ratio:41.4/59.7;container-type:inline-size;background:linear-gradient(160deg,#fff 0%,#f3f4f8 60%,#e3e5ec 100%);color:#101018;overflow:hidden; }
+#screen-bj .bj-card.red { color:#e0202c; }
+#screen-bj .bj-card .bj-rank { position:absolute;left:8.45%;top:4.19%;font:800 33.82cqw/1 var(--font);letter-spacing:-.03em; }
+#screen-bj .bj-card .bj-suit-sm { position:absolute;left:9.66%;top:28.48%;font-size:21.74cqw;line-height:1; }
+#screen-bj .bj-card .bj-suit { position:absolute;left:50%;top:62%;transform:translate(-50%,-50%);font-size:65.22cqw;line-height:1; }
+#screen-bj .bj-hand { flex:1;min-width:0;justify-content:center;gap:6px; }
+#screen-bj .bj-card + .bj-card,#screen-bj .is-many .bj-card + .bj-card,#screen-bj .bj-hands.is-split .is-many .bj-card + .bj-card { margin-left:0; }
+#screen-bj .bj-hands.is-split .bj-card { flex-basis:55px;width:55px;height:auto; }
 #screen-bj .bj-card.back { background:repeating-linear-gradient(45deg,#ffffff12 0 1px,transparent 1px 5px),#352367; }
 #screen-lobby [data-private-slot="true"] { display:none!important; }
 body[data-admin="true"] #screen-lobby [data-private-slot="true"]:not(.hidden) { display:block!important; }
