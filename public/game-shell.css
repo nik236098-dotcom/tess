@@ -110,7 +110,7 @@
 #screen-bc.game-surface .bc-history i.player { background:#9280e6; }
 #screen-bc.game-surface .bc-history i.banker { background:#d7809b; }
 #screen-bc.game-surface .bc-history i.tie { background:#78c6a3; }
-#screen-bc.game-surface .bc-chip-frame { border-color:#bd9aff; box-shadow:0 0 5px #bd9aff44; border-radius:50%; }
+#screen-bc.game-surface .bc-chip-frame { width:47.1px;height:47.1px;top:501.5px;margin-left:-23.55px;border-color:#bd9aff; box-shadow:0 0 5px #bd9aff44; border-radius:50%; }
 /* Keep the original Mines/Nvuti controls; reclaim empty spacing on short phones. */
 @media (min-height:560px) and (max-height:800px) {
   :is(#screen-mn,#screen-nv).game-surface .mn-page { gap:8px; }
