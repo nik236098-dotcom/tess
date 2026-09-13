@@ -1,4 +1,5 @@
 'use strict';
+const perf = require('./diagnostics');
 
 const http = require('http');
 const fs = require('fs');
@@ -349,6 +350,7 @@ function createApp(options = {}) {
         client.fail('Некорректное сообщение');
         return;
       }
+      const finishMessage = perf.begin('ws.handle', 200);
       try {
         const transactional = /^(bj_|rl_spin|bc_bet|mn_|hl_|nv_bet|ag_|cr_)/.test(message.type || '');
         if (transactional) accounts.atomic(() => {
@@ -381,7 +383,7 @@ function createApp(options = {}) {
           console.error('Ошибка обработки сообщения:', error);
           client.fail('Внутренняя ошибка сервера');
         }
-      }
+      } finally { finishMessage(); }
     });
 
     socket.on('close', () => {
@@ -1215,8 +1217,10 @@ function createApp(options = {}) {
   });
 
   server.activity = activity; server.accounts = accounts; server.payments = payments; server.bot = bot;
-  server.on('listening', () => { if ((options.botRuntime ?? (require.main === module)) && botToken && process.env.TELEGRAM_BOT_RUNTIME !== '0') bot.start(); });
+  let stopPerf = () => {};
+  server.on('listening', () => { stopPerf = perf.watchLoop(); if ((options.botRuntime ?? (require.main === module)) && botToken && process.env.TELEGRAM_BOT_RUNTIME !== '0') bot.start(); });
   server.on('close', () => {
+    stopPerf();
     bot.stop();
     crash.stop();
     clearInterval(sweeper);

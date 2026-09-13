@@ -101,6 +101,7 @@ node --check public/game-result.js
 node --check public/classic-cards.js
 node --check public/blackjack-deal.js
 node --check public/roulette-view.js
+node --check server/diagnostics.js
 node --check server/accounts.js
 node --check server/activity.js
 node --check server/telegram-bot.js

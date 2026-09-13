@@ -1,4 +1,5 @@
 'use strict';
+const perf = require('./diagnostics');
 
 const fs = require('fs');
 const path = require('path');
@@ -73,6 +74,7 @@ class Accounts {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
+    const finishSave = perf.begin('accounts.save', 100);
     const payload = JSON.stringify({ accounts: [...this.accounts.values()], finance: this.finance, payments: this.paymentStore ? { invoices: [...this.paymentStore.invoices.values()], payouts: [...this.paymentStore.payouts.values()] } : this.paymentState }, null, 2);
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
@@ -82,6 +84,8 @@ class Accounts {
     } catch (error) {
       console.error('Не удалось сохранить балансы:', error.message);
       if (strict) throw error;
+    } finally {
+      finishSave({ json_chars: payload.length, accounts: this.accounts.size, rounds: this.finance.rounds.length });
     }
   }
 
@@ -98,8 +102,11 @@ class Accounts {
   // Calls are synchronous; asynchronous provider requests happen outside this unit.
   atomic(action) {
     if (this.transactionDepth) return action();
+    const finishAtomic = perf.begin('accounts.atomic', 200);
+    const finishClone = perf.begin('accounts.snapshot', 100);
     const before = structuredClone({ accounts: [...this.accounts.entries()], finance: this.finance,
       payments: this.paymentStore ? { invoices: [...this.paymentStore.invoices.entries()], payouts: [...this.paymentStore.payouts.entries()] } : null });
+    finishClone();
     this.commitCallbacks = []; this.rollbackCallbacks = [];
     this.transactionDepth++;
     try {
@@ -129,7 +136,7 @@ class Accounts {
       for (const callback of this.rollbackCallbacks) callback();
       this.rollbackCallbacks = [];
       throw error;
-    }
+    } finally { finishAtomic(); }
   }
 
   afterCommit(callback) { if (this.transactionDepth) this.commitCallbacks.push(callback); else callback(); }

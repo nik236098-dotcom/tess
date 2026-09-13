@@ -1,4 +1,5 @@
 'use strict';
+const perf = require('./diagnostics');
 const fs = require('fs');
 const path = require('path');
 const { formatMoney } = require('./money');
@@ -20,14 +21,18 @@ class TelegramBot {
     this.channels = { payouts: env.TELEGRAM_PAYOUTS_CHAT_ID, events: env.TELEGRAM_EVENTS_CHAT_ID, games: env.TELEGRAM_GAMES_CHAT_ID };
   }
   async call(method, body = {}) {
-    if (this.transport) return this.transport(method, body);
-    const signal = AbortSignal.timeout(method === 'getUpdates' ? 35000 : 12000);
-    const response = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
-    });
-    const data = await response.json();
-    if (!data.ok) { const e = new Error(`${method}: ${data.description || response.status}`); e.retryAfter = data.parameters?.retry_after; throw e; }
-    return data.result;
+    // Successful long polling intentionally waits up to 25 seconds.
+    const finish = method === 'getUpdates' ? () => {} : perf.begin('telegram.' + method, 1000);
+    try {
+      if (this.transport) return await this.transport(method, body);
+      const signal = AbortSignal.timeout(method === 'getUpdates' ? 35000 : 12000);
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
+      });
+      const data = await response.json();
+      if (!data.ok) { const e = new Error(`${method}: ${data.description || response.status}`); e.retryAfter = data.parameters?.retry_after; throw e; }
+      return data.result;
+    } finally { finish(); }
   }
   url(page = '') {
     if (!this.appUrl) return null;
@@ -49,8 +54,12 @@ class TelegramBot {
     const file = path.join(__dirname, '..', 'public', 'img', 'croco', 'bot-welcome.jpg');
     const form = new FormData(); form.set('chat_id', String(chat)); form.set('caption', caption); form.set('parse_mode', 'HTML'); form.set('reply_markup', JSON.stringify(keyboard));
     form.set('photo', new Blob([fs.readFileSync(file)], { type: 'image/jpeg' }), 'croco.jpg');
-    const response = await fetch(`https://api.telegram.org/bot${this.token}/sendPhoto`, { method: 'POST', body: form, signal: AbortSignal.timeout(15000) });
-    const data = await response.json();
+    const finishPhoto = perf.begin('telegram.sendPhoto', 1000);
+    let data;
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/sendPhoto`, { method: 'POST', body: form, signal: AbortSignal.timeout(15000) });
+      data = await response.json();
+    } finally { finishPhoto(); }
     if (!data.ok) return this.say(chat, caption, keyboard);
     return data.result;
   }
@@ -193,10 +202,15 @@ class TelegramBot {
       while (this.running) {
         try {
           const updates = await this.call('getUpdates', { offset: this.activity.data.botOffset || 0, timeout: 25, allowed_updates: ['message', 'callback_query'] });
+          const queueWait = perf.begin('bot.batch_wait', 1000);
           for (const update of updates) {
             if (!this.running) break;
-            await this.handle(update);
-            this.accounts.atomic(() => { this.activity.data.botOffset = update.update_id + 1; });
+            queueWait({ batch_size: updates.length });
+            const finishUpdate = perf.begin('bot.handle', 1000);
+            try {
+              await this.handle(update);
+              this.accounts.atomic(() => { this.activity.data.botOffset = update.update_id + 1; });
+            } finally { finishUpdate(); }
           }
         } catch (error) {
           console.error('Telegram-бот: запрос отложен:', error.message);
