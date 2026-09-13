@@ -298,7 +298,7 @@ function createApp(options = {}) {
 
     readRequestBody(req, MAX_WEBHOOK_BYTES)
       .then((rawBody) => {
-        const result = payments.handleWebhook(providerId, rawBody, signature);
+        const result = payments.handleWebhook(providerId, rawBody, signature, req.headers);
         if (result.handled && !result.already) {
           console.log(`Пополнение через ${providerId}: +${result.credited} фишек игроку ${result.record.userId}`);
         }

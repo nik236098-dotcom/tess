@@ -105,6 +105,8 @@ node --check server/diagnostics.js
 node --check server/accounts.js
 node --check server/activity.js
 node --check server/telegram-bot.js
+node --check server/payments/xrocket.js
+node --check scripts/check-payments.js
 node --check server/payments/index.js
 node --check server/payments/poller.js
 node --check public/croco-pages.js

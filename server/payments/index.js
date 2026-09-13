@@ -329,9 +329,9 @@ class Payments {
 
   // rawBody — именно сырое тело: подпись считается по байтам, повторный
   // JSON.stringify её ломает.
-  handleWebhook(providerId, rawBody, signature) {
+  handleWebhook(providerId, rawBody, signature, headers = {}) {
     const provider = this.provider(providerId);
-    if (!provider.verifyWebhook(rawBody, signature)) {
+    if (!provider.verifyWebhook(rawBody, signature, headers)) {
       throw new PaymentError('Подпись вебхука не совпала');
     }
 
@@ -581,6 +581,8 @@ function createPayments({ accounts, file = null, env = process.env, fetchImpl = 
   if (xrocketToken) {
     providers.push(new XRocketProvider({
       token: xrocketToken,
+      apiVersion: env.XROCKET_API_VERSION || 'auto',
+      webhookToken: env.XROCKET_WEBHOOK_TOKEN || '',
       testnet: truthy(env.XROCKET_TESTNET),
       currency: env.XROCKET_CURRENCY || env.TOPUP_CURRENCY || 'USDT',
       returnUrl,
