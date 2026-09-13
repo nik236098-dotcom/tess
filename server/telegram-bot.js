@@ -82,15 +82,23 @@ class TelegramBot {
     }
     return result;
   }
-  async welcome(chat, account) {
+  async welcome(chat, account, fresh = false) {
     const caption = `<b>Добро пожаловать в Croco, ${esc(account.name)}!</b>\n\nИгры, кошелёк и твоя реферальная программа — в одном месте.`;
     const keyboard = this.keyboard();
-    if (account.botScreen) return this.screen(chat, caption, keyboard);
+    if (account.botScreen && !fresh) return this.screen(chat, caption, keyboard);
+    const previous = account.botScreen;
+    const saveWelcome = async result => {
+      this.rememberScreen(chat, result, true);
+      if (previous && Number.isInteger(result?.message_id) && previous.messageId !== result.message_id) {
+        try { await this.call('deleteMessage', { chat_id: chat, message_id: previous.messageId }); }
+        catch { /* The new menu is usable even if Telegram cannot remove the old one. */ }
+      }
+      return result;
+    };
     // Upload bundled artwork; Telegram sendPhoto does not accept WebP photos.
     if (this.transport) {
       const result = await this.call('sendPhoto', { chat_id: chat, photo: 'bundled:croco-welcome.jpg', caption, parse_mode: 'HTML', reply_markup: keyboard });
-      this.rememberScreen(chat, result, true);
-      return result;
+      return saveWelcome(result);
     }
     const file = path.join(__dirname, '..', 'public', 'img', 'croco', 'bot-welcome.jpg');
     const form = new FormData(); form.set('chat_id', String(chat)); form.set('caption', caption); form.set('parse_mode', 'HTML'); form.set('reply_markup', JSON.stringify(keyboard));
@@ -102,8 +110,7 @@ class TelegramBot {
       data = await response.json();
     } finally { finishPhoto(); }
     if (!data.ok) return this.screen(chat, caption, keyboard);
-    this.rememberScreen(chat, data.result, true);
-    return data.result;
+    return saveWelcome(data.result);
   }
   async profile(chat, account) {
     return this.screen(chat, `<b>👤 Профиль Croco</b>\n\n${userLine(account)}\n\nКошелёк: <b>${amount(account.balance)}</b>\nРеферальный баланс: <b>${amount(account.refBalance)}</b>`,
@@ -189,7 +196,7 @@ class TelegramBot {
       if (command === '/chatid' && admin) return await this.screen(chat.id, `ID чата: <code>${chat.id}</code>`);
       if (chat.type !== 'private') return;
       const a = this.activity.register({ id, name: [from.first_name, from.last_name].filter(Boolean).join(' '), username: from.username }, command === '/start' ? arg : null);
-      if (command === '/start') return await this.welcome(chat.id, a);
+      if (command === '/start') return await this.welcome(chat.id, a, true);
       if (command === '/profile') return await this.profile(chat.id, a);
       if (command === '/wallet') return await this.screen(chat.id, `<b>Кошелёк: ${amount(a.balance)}</b>`, { inline_keyboard: [[this.web('Пополнить', 'wallet'), this.web('Вывести', 'withdraw')]] });
       if (command === '/ref' && !arg) return await this.refReport(chat.id, id);
@@ -217,7 +224,7 @@ class TelegramBot {
         this.channelRetry.delete(String(third));
         return await this.screen(chat.id, `✅ Канал ${esc(arg)} подключён: ${esc(found.title)}\nСохранённые уведомления будут отправлены сюда.`);
       }
-      if (command !== '/help') return await this.welcome(chat.id, a);
+      if (command !== '/help') return await this.welcome(chat.id, a, true);
       return await this.screen(chat.id, '/profile — профиль\n/wallet — кошелёк\n/ref — рефералы\n/support — поддержка' + (admin ? '\n\nАдминистратор:\n/stats id — ставки\n/balance id — операции\n/ref id — рефералы\n/kassa — касса\n/chatid — ID чата\n/setchannel payouts|events|games -100… — каналы логов' : ''), this.keyboard());
     } catch (error) {
       if (/^(send|edit|answer|get|delete)[A-Z]|fetch failed|timeout|aborted/i.test(error.message)) throw error;

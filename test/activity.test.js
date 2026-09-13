@@ -116,9 +116,9 @@ test('bot edits one photo screen for commands and callbacks, including after res
     await h.bot.handle(command('/profile'));
     await h.bot.handle({ callback_query: { id: 'cb', from: { id: 2 }, data: 'support', message: { message_id: 1, photo: [{}], chat: { id: 2, type: 'private' } } } });
     await h.bot.handle(command('/start'));
-    assert.equal(h.calls.filter(c => c.method === 'sendPhoto').length, 1);
+    assert.equal(h.calls.filter(c => c.method === 'sendPhoto').length, 2);
     assert.equal(h.calls.filter(c => c.method === 'sendMessage').length, 0);
-    assert.equal(h.calls.filter(c => c.method === 'editMessageCaption').length, 3);
+    assert.equal(h.calls.filter(c => c.method === 'editMessageCaption').length, 2);
     h.accounts.flush();
     const restored = setup(file); await restored.bot.handle(command('/wallet'));
     assert.ok(restored.calls.some(c => c.method === 'editMessageCaption' && c.body.message_id === 1));
@@ -199,15 +199,29 @@ test('profile puts Play in its own first row',async()=>{
  assert.equal(rows[0].length,1);assert.equal(rows[0][0].text,'🎮 Играть');assert.ok(rows[0][0].web_app);
  assert.equal(rows.flat().filter(b=>b.text==='🎮 Играть').length,1);
 });
-test('any private text, symbol or attachment returns to the welcome menu without duplicating the screen',async()=>{
+test('any private text, symbol or attachment receives a fresh welcome menu',async()=>{
  const h=setup();
  for(const body of [{text:'Привет'},{text:'?'},{text:'🐊'},{text:' '},{text:'/unknown'},{sticker:{file_id:'x'}},{photo:[{file_id:'x'}]},{voice:{file_id:'x'}}]){
   await h.bot.handle({message:{from:{id:2,first_name:'Player'},chat:{id:2,type:'private'},...body}});
   const reply=h.calls.at(-1).body;assert.match(reply.caption||reply.text,/Добро пожаловать в Croco/);
   assert.equal(reply.reply_markup.inline_keyboard[0][0].text,'🎮 Играть');
  }
- assert.equal(h.calls.filter(c=>c.method==='sendPhoto').length,1);assert.equal(h.calls.filter(c=>c.method==='sendMessage').length,0);
+ assert.equal(h.calls.filter(c=>c.method==='sendPhoto').length,8);assert.equal(h.calls.filter(c=>c.method==='sendMessage').length,0);
  const count=h.calls.length;
  await h.bot.handle({message:{from:{id:2},chat:{id:-10099,type:'supergroup'},text:'?'}});assert.equal(h.calls.length,count);
  await h.bot.handle({message:{from:{id:1},chat:{id:1,type:'private'},text:'/kassa'}});assert.match(h.calls.at(-1).body.text,/Касса/);
+});
+
+test('fresh welcome moves the menu below incoming messages; callbacks keep editing it',async()=>{
+ const h=setup();let messageId=10;
+ h.bot.transport=async(method,body)=>{h.calls.push({method,body});return {message_id:++messageId};};
+ const msg=text=>({message:{from:{id:2,first_name:'Player'},chat:{id:2,type:'private'},text}});
+ await h.bot.handle(msg('/start'));const first=h.accounts.get('2').botScreen.messageId;
+ await h.bot.handle(msg('?'));const second=h.accounts.get('2').botScreen.messageId;
+ assert.notEqual(first,second);assert.ok(h.calls.some(c=>c.method==='deleteMessage'&&c.body.message_id===first));
+ await h.bot.handle({callback_query:{id:'q',from:{id:2},data:'profile',message:{message_id:second,photo:[{}],chat:{id:2,type:'private'}}}});
+ assert.equal(h.calls.at(-1).method,'editMessageCaption');assert.equal(h.calls.at(-1).body.message_id,second);
+ const previous=h.accounts.get('2').botScreen;
+ h.bot.transport=async()=>{throw Error('timeout');};
+ await assert.rejects(h.bot.handle(msg('/start')),/timeout/);assert.equal(h.accounts.get('2').botScreen,previous);
 });
