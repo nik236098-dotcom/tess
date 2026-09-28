@@ -1,0 +1,7 @@
+--- test_beeline.py
++++ test_beeline.py
+@@
+-            f"--user-data-dir={profile_i}",
++            f"--user-data-dir={profile_i}",
++            "--no-sandbox",
++            "--disable-setuid-sandbox",
