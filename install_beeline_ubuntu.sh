@@ -24,8 +24,13 @@ apt-get install -y python3 python3-venv python3-pip unzip curl xvfb ca-certifica
 
 echo "[2/8] Код 15.75..."
 mkdir -p "$APP_DIR"
+TMP_B64="$(mktemp)"
 TMP_ZIP="$(mktemp --suffix=.zip)"
-curl -fL --retry 5 --retry-delay 2 "$BUNDLE_URL" -o "$TMP_ZIP"
+curl -fL --retry 5 --retry-delay 2 "$BUNDLE_URL" -o "$TMP_B64"
+# GitHub stores this artifact as base64 text. Decode it into the real ZIP.
+tr -d '\r\n' < "$TMP_B64" | base64 -d > "$TMP_ZIP"
+rm -f "$TMP_B64"
+unzip -tq "$TMP_ZIP" >/dev/null
 unzip -oq "$TMP_ZIP" -d "$APP_DIR"
 rm -f "$TMP_ZIP"
 curl -fL --retry 5 --retry-delay 2 "$CONTROLLER_URL" -o "$APP_DIR/server_controller.py"
