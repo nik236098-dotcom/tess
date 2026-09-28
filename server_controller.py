@@ -96,6 +96,44 @@ def _save_offset(value):
     tmp.replace(OFFSET_FILE)
 
 
+def _purge_control_messages_from_ai():
+    """Remove old/pending control commands from AI storage on controller startup."""
+    try:
+        with app._ai_db_connect() as conn:
+            rows = conn.execute(
+                "SELECT update_id, body, done_at FROM inbox"
+            ).fetchall()
+            filtered = 0
+            for update_id, body, done_at in rows:
+                body = str(body or "").strip()
+                if body in CONTROL_TEXTS or body.startswith("/"):
+                    conn.execute(
+                        "DELETE FROM outbox WHERE update_id=?",
+                        (int(update_id),),
+                    )
+                    if done_at is None:
+                        conn.execute(
+                            """UPDATE inbox
+                               SET done_at=?, last_error='controller_filtered',
+                                   claimed_by=NULL, claim_until=NULL
+                               WHERE update_id=?""",
+                            (time.time(), int(update_id)),
+                        )
+                    filtered += 1
+            conn.commit()
+            if filtered:
+                print(
+                    f"[CTRL→AI] Отфильтровано старых control-команд: {filtered}.",
+                    flush=True,
+                )
+    except Exception as exc:
+        print(
+            f"[CTRL→AI] Не удалось очистить старые control-команды: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+
+
 def _validate_base(path):
     rows = load_clients(path)
     if not rows:
@@ -230,6 +268,7 @@ def main():
         raise RuntimeError(f"Telegram недоступен: {err}")
 
     app._ai_db_init()
+    _purge_control_messages_from_ai()
     CLIENTS_FILE.touch(exist_ok=True)
 
     proc = AutomationProcess()
