@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 3 лежит в `beeline_integrated_io_15_91_r3/`. В нём нет
+Готовый пакет ревизии 4 лежит в `beeline_integrated_io_15_91_r4/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -25,7 +25,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r3
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r4
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -49,7 +49,12 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 4. **Прокси вне кода (ревизия 3).** Логин и пароль прокси удалены из исходника;
    установщик требует ключ `"proxy"` в `telegram_config.json`, иначе останавливается,
    чтобы Telegram-трафик не пошёл мимо прокси. Маркер: `PROXY_FROM_CONFIG_1591R3`.
-5. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+5. **Бюджет автономных запросов (ревизия 4).** Раньше в фазе SUCCESS_ASSIST каждые
+   45 секунд ставился новый полный прогон агента и приходил одинаковый отчёт. Теперь на
+   одну неизменную страницу не более двух запросов, затем один раз в 30 минут; пока
+   предыдущий запрос по вкладке не отвечен, новый не ставится. Маркер:
+   `AUTO_ASSIST_BUDGET_1591R4`.
+6. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -71,8 +76,10 @@ PACKAGE_1591_DIR=pkg python3 -m unittest -v test_fix_package  # с пакето�
 
 ---
 
-日本語: 同僚の 15.91 パッケージに対する修正スクリプトと、修正済みパッケージ（リビジョン3）です。
+日本語: 同僚の 15.91 パッケージに対する修正スクリプトと、修正済みパッケージ（リビジョン4）です。
 SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分割配信に置き換え、Python 3.13 依存だった
 ハッシュテストを修正し、インストーラーがパッケージ内のコピーをそのまま配置するようにしました。
 プロキシのログイン情報はコードから外し、サーバーの `telegram_config.json` の `"proxy"` キーから
-読み込みます。インストーラーはこのキーが無いと停止します。
+読み込みます。インストーラーはこのキーが無いと停止します。リビジョン4では、同じページに対する
+自律的な SUCCESS/ERROR 分析要求を「2回まで、その後は30分に1回」に制限し、同一内容の報告が
+毎分届く問題を解消しています。

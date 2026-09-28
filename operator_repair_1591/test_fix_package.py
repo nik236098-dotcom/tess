@@ -16,6 +16,13 @@ import fix_package_1591 as fix
 PACKAGE = os.environ.get("PACKAGE_1591_DIR")
 
 
+def exec_functions(source, names, ns):
+    nodes = [n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name in names]
+    assert len(nodes) == len(names), (names, [n.name for n in nodes])
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), "package-source", "exec"), ns)
+    return ns
+
+
 class SignatureTests(unittest.TestCase):
     def test_signature_ignores_positions_and_empty_fields(self):
         a = ast.parse("def f(x):\n    return x\n").body[0]
@@ -52,7 +59,7 @@ class PackageTests(unittest.TestCase):
         cls.pkg = Path(cls.tmp.name) / "pkg"
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
-        if fix.MARKER not in source or fix.PROXY_MARKER not in source:
+        if fix.MARKER not in source or fix.PROXY_MARKER not in source or fix.ASSIST_MARKER not in source:
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
     @classmethod
@@ -113,7 +120,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-3", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-4", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -128,13 +135,60 @@ class PackageTests(unittest.TestCase):
             text = (self.pkg / name).read_text("utf-8")
             self.assertFalse(re.search(r"://[^/@\s'\"]+:[^/@\s'\"]+@", text), name)
         self.assertIn('TELEGRAM_DEFAULT_PROXY = ""', self.source)
+    def _assist_harness(self, source):
+        import sqlite3
+        db = sqlite3.connect(":memory:", check_same_thread=False)
+        db.execute("CREATE TABLE inbox(update_id INTEGER PRIMARY KEY, body TEXT, done_at REAL)")
+        class Conn:
+            def execute(self, *a): return db.execute(*a)
+            def close(self): pass
+        clock = [1000.0]; queued = []
+        page = types.SimpleNamespace(url="https://example.test/personal-data-form")
+        worker = {"id": 3, "page": page}
+        def enqueue(text, lane="fast", priority=100):
+            queued.append(text); db.execute("INSERT INTO inbox(body,done_at) VALUES(?,NULL)", (text,)); return -1
+        names = ["queue_success_assist"] + (["_auto_assist_pending", "_auto_assist_allowed"] if fix.ASSIST_MARKER in source else [])
+        ns = {"monotonic": lambda: clock[0], "_ai_db_connect": lambda: Conn(), "_ai_db_enqueue_internal": enqueue,
+              "print": lambda *a, **k: None, "AUTO_ASSIST_MIN_GAP_SECONDS": 45, "AUTO_ASSIST_REPORTS_PER_STATE": 2,
+              "AUTO_ASSIST_REPEAT_SECONDS": 1800}
+        exec_functions(source, names, ns)
+        answered = lambda: db.execute("UPDATE inbox SET done_at=1 WHERE done_at IS NULL")
+        return ns["queue_success_assist"], worker, queued, clock, answered, page
+
+    def test_unrepaired_build_requests_a_report_every_45_seconds(self):
+        queue, worker, queued, clock, answered, page = self._assist_harness(Path(PACKAGE, "test_beeline.py").read_text("utf-8"))
+        for t in range(0, 480, 10):
+            clock[0] = 1000.0 + t; queue(worker, "интерфейс договора требует наблюдения"); answered()
+        self.assertGreaterEqual(len(queued), 8)
+
+    def test_assist_budget_two_per_page_state_then_every_30_minutes(self):
+        queue, worker, queued, clock, answered, page = self._assist_harness(self.source)
+        for t in range(0, 480, 10):
+            clock[0] = 1000.0 + t; queue(worker, "интерфейс договора требует наблюдения"); answered()
+        self.assertEqual(len(queued), 2)
+        # The second request was queued at t=50 (first tick after the 45-second gap).
+        clock[0] = 1000.0 + 50 + 1800 - 1; queue(worker, "x"); answered(); self.assertEqual(len(queued), 2)
+        clock[0] = 1000.0 + 50 + 1800; queue(worker, "x"); answered(); self.assertEqual(len(queued), 3)
+        page.url = "https://example.test/registration/complete"
+        clock[0] += 1; queue(worker, "новая страница"); self.assertEqual(len(queued), 4)
+
+    def test_assist_not_requeued_while_previous_unanswered(self):
+        queue, worker, queued, clock, answered, page = self._assist_harness(self.source)
+        self.assertTrue(queue(worker, "a", force=True))
+        clock[0] += 100
+        self.assertFalse(queue(worker, "b", force=True), "previous request still unanswered")
+        answered()
+        self.assertTrue(queue(worker, "b", force=True))
+        answered(); clock[0] += 100
+        self.assertFalse(queue(worker, "c", force=True), "force cannot exceed the per-state budget")
+
     def test_upgrade_from_revision_2_package(self):
         with tempfile.TemporaryDirectory() as d:
             r2 = Path(d) / "r2"
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 3", run.stdout)
+            self.assertIn("Already revision 4", run.stdout)
 
 
 if __name__ == "__main__":

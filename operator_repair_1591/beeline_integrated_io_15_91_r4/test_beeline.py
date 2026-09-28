@@ -814,13 +814,65 @@ def _ai_db_enqueue_internal(body, lane="fast", priority=100):
         conn.close()
 
 
+# AUTO_ASSIST_BUDGET_1591R4
+AUTO_ASSIST_MIN_GAP_SECONDS = 45
+AUTO_ASSIST_REPORTS_PER_STATE = 2
+AUTO_ASSIST_REPEAT_SECONDS = 1800
+
+
+def _auto_assist_pending(kind, tab_id):
+    """True while an unanswered [AUTO_<kind>_ASSIST TAB n] job is still in the inbox."""
+    conn = _ai_db_connect()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM inbox WHERE done_at IS NULL AND body LIKE ? LIMIT 1",
+            (f"[AUTO_{kind}_ASSIST TAB {int(tab_id)}]%",),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def _auto_assist_allowed(worker, kind, force=False):
+    """Budget for autonomous assist requests: the page state, not the clock, decides.
+
+    Per unchanged page URL at most AUTO_ASSIST_REPORTS_PER_STATE requests (the second
+    one no sooner than AUTO_ASSIST_MIN_GAP_SECONDS after the first), then one every
+    AUTO_ASSIST_REPEAT_SECONDS. A new URL starts a new budget. A request is never
+    queued while the previous one for this tab has not been answered yet. `force`
+    only waives the minimum gap.
+    """
+    now = monotonic()
+    try:
+        url = str(worker.get("page").url or "")
+    except Exception:
+        url = ""
+    states = worker.setdefault("auto_assist_state", {})
+    state = states.get(kind)
+    if not state or state.get("url") != url:
+        state = {"url": url, "count": 0, "last": 0.0}
+        states[kind] = state
+    try:
+        if _auto_assist_pending(kind, worker.get("id") or 0):
+            return False
+    except Exception:
+        pass
+    since_last = now - float(state.get("last") or 0)
+    if state["count"] >= AUTO_ASSIST_REPORTS_PER_STATE:
+        if since_last < AUTO_ASSIST_REPEAT_SECONDS:
+            return False
+    elif state["count"] > 0 and not force and since_last < AUTO_ASSIST_MIN_GAP_SECONDS:
+        return False
+    state["count"] += 1
+    state["last"] = now
+    worker[f"{kind.lower()}_ai_last_at"] = now
+    return True
+
+
 def queue_error_assist(worker, reason, force=False):
     """Analyze /registration/error before any retry/recovery decision."""
-    now = monotonic()
-    last = float(worker.get("error_ai_last_at") or 0)
-    if not force and now - last < 45:
+    if not _auto_assist_allowed(worker, "ERROR", force):
         return False
-    worker["error_ai_last_at"] = now
 
     tab_id = int(worker.get("id") or 0)
     url = ""
@@ -863,12 +915,8 @@ def queue_success_assist(worker, reason, force=False):
 
     Rate limited so a stubborn form cannot create an AI-request storm.
     """
-    now = monotonic()
-    last = float(worker.get("success_ai_last_at") or 0)
-    if not force and now - last < 45:
+    if not _auto_assist_allowed(worker, "SUCCESS", force):
         return False
-
-    worker["success_ai_last_at"] = now
     tab_id = int(worker.get("id") or 0)
     url = ""
     try:
