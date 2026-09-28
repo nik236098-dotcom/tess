@@ -10,107 +10,126 @@ from pathlib import Path
 p=Path("/opt/beeline/test_beeline.py")
 t=p.read_text(encoding="utf-8")
 
+# 15.79 server hotfix must tolerate servers that are still on 15.75/15.76.
+# Do not require 15.77 helper names to exist.
 if "def queue_error_assist(" not in t:
-    anchor="def queue_success_assist(worker, reason, force=False):"
+    # Prefer insertion near AI DB helpers, which exist on all current server builds.
+    candidates=[
+        "def _ai_effect_key(",
+        "def _run_developer_agent(",
+        "def _agent_system_prompt(",
+    ]
+    anchor=next((a for a in candidates if a in t),None)
+    if not anchor:
+        raise SystemExit("PATCH ERROR: no stable AI anchor found")
     helper=r'''def queue_error_assist(worker, reason, force=False):
-    """Analyze /registration/error before any retry/recovery decision."""
+    """Autonomous analysis for /registration/error without destructive recovery."""
     now = monotonic()
     last = float(worker.get("error_ai_last_at") or 0)
-    if not force and now - last < 45:
+    if not force and now-last < 45:
         return False
-    worker["error_ai_last_at"] = now
-    tab_id = int(worker.get("id") or 0)
+    worker["error_ai_last_at"]=now
+    tab_id=int(worker.get("id") or 0)
     try:
-        url = worker.get("page").url
+        url=worker.get("page").url
     except Exception:
-        url = ""
-    text = (
-        f"[AUTO_ERROR_ASSIST TAB {tab_id}] "
-        "После mobile-id-auth открылась /registration/error. Это НЕ success, "
-        "но НЕ делай автоматический retry/restart/close/reload/back/navigation. "
-        "Сначала автономно проанализируй physical-вкладку: DOM, видимый текст ошибки, "
-        "DevTools console/network и последние запросы/ответы. Определи конкретную "
-        "причину и попробуй безопасно исправить её на этой же странице без потери "
-        "состояния. Если исправить невозможно, оставь страницу открытой и дай "
-        "пользователю мини-отчёт: причина, что проверил/сделал, результат и текущий URL. "
-        f"Причина вызова: {reason}. URL: {url}"
+        url=""
+    body=(
+        f"[AUTO_ERROR_ASSIST TAB {tab_id}] /registration/error is NOT success. "
+        "Do not close/restart/reload/back/navigate. First inspect DOM, visible error, "
+        "DevTools console/network and recent requests. Diagnose the concrete cause and "
+        "safely repair the current page when possible. If not possible, keep it open "
+        "and send a mini-report with cause, actions, result and final URL. "
+        f"Reason: {reason}. URL: {url}"
     )
     try:
-        _ai_db_enqueue_internal(text, lane="fast", priority=125)
-        print(f"[AI AUTO] TAB {tab_id}: ERROR_ASSIST: {reason}", flush=True)
-        return True
+        # Use durable AI inbox if this build has it.
+        fn=globals().get("_ai_db_enqueue_internal")
+        if fn:
+            fn(body,lane="fast",priority=125)
+            print(f"[AI AUTO] TAB {tab_id}: ERROR_ASSIST queued",flush=True)
+            return True
+        print(f"[AI AUTO] TAB {tab_id}: ERROR_ASSIST requested but internal queue unavailable",flush=True)
+        return False
     except Exception as exc:
-        print(f"[AI AUTO] TAB {tab_id}: ERROR_ASSIST queue failed: {exc}", flush=True)
+        print(f"[AI AUTO] TAB {tab_id}: ERROR_ASSIST queue failed: {exc}",flush=True)
         return False
 
 
 '''
-    if anchor not in t: raise SystemExit("PATCH ERROR: queue_success_assist anchor")
     t=t.replace(anchor,helper+anchor,1)
 
-t=t.replace(
-    'if low.startswith("[auto_success_assist"):\n        return True',
-    'if low.startswith("[auto_success_assist") or low.startswith("[auto_error_assist"):\n        return True',
-    1
-)
-
+# Add worker fields using a stable make_worker dictionary tail.
 if '"error_guard": False' not in t:
-    old='''        "region_fix_last_at": 0.0,
-    }'''
-    new='''        "region_fix_last_at": 0.0,
-        "error_guard": False,
-        "error_ai_last_at": 0.0,
-    }'''
-    if old not in t: raise SystemExit("PATCH ERROR: worker state")
-    t=t.replace(old,new,1)
+    marker='"stopped": False,'
+    pos=t.find(marker,t.find("def make_worker("))
+    if pos<0: raise SystemExit("PATCH ERROR: make_worker stopped field")
+    pos2=pos+len(marker)
+    t=t[:pos2]+'\n        "error_guard": False,\n        "error_ai_last_at": 0.0,'+t[pos2:]
 
-if 'worker["error_guard"] = False' not in t:
-    old='''    worker["region_fix_last_at"] = 0.0'''
-    new='''    worker["region_fix_last_at"] = 0.0
-    worker["error_guard"] = False
-    worker["error_ai_last_at"] = 0.0'''
-    pos=t.index("def reset_runtime_state")
-    head,tail=t[:pos],t[pos:]
-    if old not in tail: raise SystemExit("PATCH ERROR: reset state")
-    t=head+tail.replace(old,new,1)
-
-# Publish error guard in heartbeat wherever success_guard is published.
-t=t.replace(
-    '"success_guard": bool(worker.get("success_guard")),\n                "page_url": (',
-    '"success_guard": bool(worker.get("success_guard")),\n                "error_guard": bool(worker.get("error_guard")),\n                "page_url": ('
-)
-
+# Add guard helpers before tick_confirmation, stable across old builds.
 if "def enter_error_guard(" not in t:
-    anchor="def _post_auth_error_page("
-    helper=r'''def enter_error_guard(worker, note):
-    worker["error_guard"] = True
-    worker["success_guard"] = False
-    worker["phase"] = "ERROR_ASSIST"
-    set_tab_status(worker, "🧠", "Registration error — DeepSeek анализирует. Автоперезапуск запрещён.")
-    external_heartbeat(worker, note)
-    queue_error_assist(worker, note, force=True)
+    anchor="def tick_confirmation("
+    if anchor not in t: raise SystemExit("PATCH ERROR: tick_confirmation anchor")
+    helper=r'''def _is_registration_error_page(page):
+    try:
+        return "/registration/error" in str(page.url or "").lower()
+    except Exception:
+        return False
 
 
-def tick_error_assist(base_dir, worker):
-    page = worker["page"]
-    worker["error_guard"] = True
+def enter_error_guard(worker,note):
+    worker["error_guard"]=True
+    worker["phase"]="ERROR_ASSIST"
+    try:
+        set_tab_status(worker,"🧠","Registration error — DeepSeek анализирует. Автоперезапуск запрещён.")
+    except Exception:
+        pass
+    try:
+        external_heartbeat(worker,note)
+    except Exception:
+        pass
+    queue_error_assist(worker,note,force=True)
+
+
+def tick_error_assist(base_dir,worker):
+    page=worker["page"]
+    worker["error_guard"]=True
     if page.is_closed():
-        worker["phase"] = "MANUAL_STOP"
-        worker["stopped"] = True
-        set_tab_status(worker, "🔴", "Error-страница закрыта извне. Автоповтор запрещён.")
+        worker["phase"]="MANUAL_STOP"
+        worker["stopped"]=True
         return
-    if _post_auth_contract_page(page) and not _post_auth_error_page(page):
-        worker["error_guard"] = False
-        enter_success_guard(worker, "error-state исправлен; открыта страница договора")
-        return
-    queue_error_assist(worker, "registration/error всё ещё открыта; проверь DOM/console/network")
-    external_heartbeat(worker, "error_assist_observing")
+    queue_error_assist(worker,"registration/error всё ещё открыта; проверь DOM/console/network")
+    try:
+        external_heartbeat(worker,"error_assist_observing")
+    except Exception:
+        pass
 
 
 '''
-    if anchor not in t: raise SystemExit("PATCH ERROR: post auth helper")
     t=t.replace(anchor,helper+anchor,1)
 
+# Patch every old confirmation-success branch so registration/error cannot be success.
+needle='''    if not _is_auth_url(page.url):
+        # Пользователь успешно подтвердил'''
+if needle in t:
+    replacement='''    if not _is_auth_url(page.url):
+        if _is_registration_error_page(page):
+            try:
+                capture_blackbox(worker, "registration_error_after_auth")
+            except Exception:
+                pass
+            print(
+                f"[Вкладка {worker['id']}] /registration/error: НЕ success; "
+                "сначала автономный анализ, без restart/reload/close.",
+                flush=True,
+            )
+            enter_error_guard(worker,"после mobile-id-auth открылась /registration/error")
+            return
+        # Пользователь успешно подтвердил'''
+    t=t.replace(needle,replacement)
+
+# Newer post-auth branch variants.
 old='''        if _post_auth_error_page(page):
             capture_blackbox(worker, "registration_error_after_auth")
             print(
@@ -123,57 +142,44 @@ old='''        if _post_auth_error_page(page):
 new='''        if _post_auth_error_page(page):
             capture_blackbox(worker, "registration_error_after_auth")
             print(
-                f"[Вкладка {worker['id']}] После auth открылась /registration/error. "
-                "Это НЕ success. Сначала DeepSeek анализирует; автоматический retry запрещён.",
+                f"[Вкладка {worker['id']}] /registration/error: НЕ success; "
+                "сначала автономный анализ, без retry/restart.",
                 flush=True,
             )
-            enter_error_guard(worker, "после mobile-id-auth открылась /registration/error")
+            enter_error_guard(worker,"после mobile-id-auth открылась /registration/error")
             return'''
 t=t.replace(old,new)
 
+# Dispatch ERROR_ASSIST.
 if 'elif worker["phase"] == "ERROR_ASSIST":' not in t:
-    old='''    elif worker["phase"] == "SUCCESS_ASSIST":
-        tick_success_assist(base_dir, worker)'''
-    new='''    elif worker["phase"] == "SUCCESS_ASSIST":
-        tick_success_assist(base_dir, worker)
-    elif worker["phase"] == "ERROR_ASSIST":
-        tick_error_assist(base_dir, worker)'''
-    if old not in t: raise SystemExit("PATCH ERROR: tick dispatch")
-    t=t.replace(old,new,1)
+    # insert before final generic phase handling using SIGN_WAIT or CONFIRMING branch
+    anchors=[
+        '''    elif worker["phase"] == "SIGN_WAIT":
+        tick_sign_wait(base_dir, worker)
+''',
+        '''    elif worker["phase"] == "CONFIRMING":
+        tick_confirmation(base_dir, worker)
+''',
+    ]
+    a=next((x for x in anchors if x in t),None)
+    if not a: raise SystemExit("PATCH ERROR: tick_worker dispatch anchor")
+    t=t.replace(a,a+'''    elif worker["phase"] == "ERROR_ASSIST":
+        tick_error_assist(base_dir, worker)
+''',1)
 
-# Recovery guards.
-t=t.replace('"SUCCESS_ASSIST",\n        "DONE",','"SUCCESS_ASSIST",\n        "ERROR_ASSIST",\n        "DONE",',1)
-t=t.replace(
-    '"POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST",\n                } or bool(info.get("success_guard")):',
-    '"POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST",\n                } or bool(info.get("success_guard")) or bool(info.get("error_guard")):',
-    1
-)
-t=t.replace(
-    '"POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "SUCCESS_STOP"\n                }:',
-    '"POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "SUCCESS_STOP", "ERROR_ASSIST"\n                } or bool(info.get("error_guard")):',
-    1
-)
-t=t.replace(
-    'bool(info.get("success_guard"))\n                    or phase in {"POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "SUCCESS_STOP"}',
-    'bool(info.get("success_guard"))\n                    or bool(info.get("error_guard"))\n                    or phase in {"POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "SUCCESS_STOP", "ERROR_ASSIST"}',
-    1
-)
-
-# Version marker.
-t=t.replace(
-    'Версия 15.77 EXP-3: autonomous Success Supervisor + action reports',
-    'Версия 15.79 EXP-3: Success Supervisor + Error Supervisor + durable Telegram'
-)
-t=t.replace(
-    'Версия 15.76 EXP-3: immutable success guard + autonomous contract assistant',
-    'Версия 15.79 EXP-3: Success Supervisor + Error Supervisor + durable Telegram'
+# Version marker without depending on exact previous version.
+import re
+t=re.sub(
+    r'print\("Версия 15\.(?:7[5-9]|[89][0-9])[^"]*"\)',
+    'print("Версия 15.79 EXP-3: Error Supervisor hotfix")',
+    t,
+    count=1,
 )
 
 compile(t,str(p),"exec")
 p.write_text(t,encoding="utf-8")
-print("15.79 patch OK")
+print("15.79 hotfix OK")
 PY
-
 "$APP/venv/bin/python" -m py_compile "$APP/test_beeline.py" "$APP/server_controller.py"
 systemctl restart telegram-tunnel || true
 systemctl restart beeline
