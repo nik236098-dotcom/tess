@@ -1,0 +1,77 @@
+--- test_beeline.py
++++ test_beeline.py
+@@ -31,6 +31,7 @@
+ 
+ RUNTIME_LOG_DIR = Path(__file__).resolve().parent / "runtime_logs"
+ RUNTIME_CONSOLE_FILE = RUNTIME_LOG_DIR / "console.log"
++RUNTIME_SESSION_MARKER_1585 = f"=== CURRENT SERVICE SESSION START {time.time():.3f} ==="
+ 
+ 
+ class _RuntimeConsoleTee:
+@@ -106,6 +107,14 @@
+         lines = RUNTIME_CONSOLE_FILE.read_text(
+             encoding="utf-8", errors="replace"
+         ).splitlines()
++        marker = "=== CURRENT SERVICE SESSION START "
++        last_marker = -1
++        for idx in range(len(lines) - 1, -1, -1):
++            if marker in lines[idx]:
++                last_marker = idx
++                break
++        if last_marker >= 0:
++            lines = lines[last_marker:]
+         text = "\n".join(lines[-max(1, int(max_lines)):])
+         if len(text) > max_chars:
+             text = text[-max_chars:]
+@@ -1667,6 +1676,8 @@
+             )
+     return "\n".join(statuses), "\n".join(page_lines)
+ 
++
++OPERATOR_MISSION_1585 = """ТВОЯ ПОСТОЯННАЯ ГЛАВНАЯ ЗАДАЧА — автономно сопровождать SUCCESS/ERROR-вкладки и контролировать корректное завершение процесса. После выхода из mobile-id-auth на post-auth страницу сначала наблюдай живую physical-вкладку: DOM, validation, состояние элементов, console/network. Если процесс остановился, самостоятельно установи фактическую причину по странице; недостающим или невалидным может быть любое поле. Уже корректные значения не меняй. SUCCESS_GUARD и ERROR_GUARD запрещают destructive close/restart/reload/back/navigation. После автономного вмешательства отправляй краткий фактический отчёт: блокер, проверки, изменения/значения, состояние действия, результат и текущий URL. Мониторинг воркеров, Telegram, прокси и кода — второстепенная задача. Если спрашивают о твоей задаче, первым делом называй эту постоянную миссию. Для состояния «сейчас» используй текущий heartbeat, текущие вкладки и только текущую service/runtime session; старые proxy/Telegram ошибки не выдавай за текущие без свежего подтверждения."""
+ 
+ def _agent_system_prompt(status_map, pages, user_text):
+     try:
+@@ -2578,6 +2589,17 @@
+         round_no += 1
+         _ai_health_touch(ai_health, "busy_deepseek", f"round={round_no}")
+ 
++        # 15.85: force permanent mission at actual DeepSeek API boundary.
++        import hashlib as _h1585
++        _mh1585 = _h1585.sha256(OPERATOR_MISSION_1585.encode("utf-8")).hexdigest()[:16]
++        if messages and isinstance(messages[0], dict) and messages[0].get("role") == "system":
++            _old1585 = str(messages[0].get("content") or "")
++            if not _old1585.startswith(OPERATOR_MISSION_1585):
++                messages[0]["content"] = OPERATOR_MISSION_1585 + "\n\n" + _old1585
++        else:
++            messages.insert(0, {"role": "system", "content": OPERATOR_MISSION_1585})
++        print(f"[AI] SYSTEM_PROMPT_HASH_1585={_mh1585} round={round_no}", flush=True)
++
+         payload = {
+             "model": str(cfg.get("model") or "deepseek-flash"),
+             "messages": messages,
+@@ -7168,8 +7190,14 @@
+ 
+ 
+ def main():
+-    print("Версия 15.83 EXP-3: strict success validation + universal profile capture")
++    print("Версия 15.85 EXP-3: consolidated server fixes")
+     base_dir = Path(__file__).resolve().parent
++    try:
++        RUNTIME_LOG_DIR.mkdir(parents=True, exist_ok=True)
++        with RUNTIME_CONSOLE_FILE.open("a", encoding="utf-8") as _f1585:
++            _f1585.write("\n" + RUNTIME_SESSION_MARKER_1585 + "\n")
++    except Exception:
++        pass
+     external_tg_controller = (
+         str(os.environ.get("TG_EXTERNAL_CONTROLLER", "")).strip() == "1"
+     )
+@@ -7222,6 +7250,8 @@
+             chromium_exe,
+             f"--remote-debugging-port={port_i}",
+             f"--user-data-dir={profile_i}",
++            "--no-sandbox",
++            "--disable-setuid-sandbox",
+             "--no-first-run",
+             "--no-default-browser-check",
+             "--disable-popup-blocking",
