@@ -52,7 +52,7 @@ class PackageTests(unittest.TestCase):
         cls.pkg = Path(cls.tmp.name) / "pkg"
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
-        if fix.MARKER not in source:
+        if fix.MARKER not in source or fix.PROXY_MARKER not in source:
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
     @classmethod
@@ -102,19 +102,39 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         sums = subprocess.run(["sha256sum", "-c", "SHA256SUMS.txt"], cwd=self.pkg, capture_output=True, text=True)
         self.assertEqual(sums.returncode, 0, sums.stdout)
+    def _check(self, src, proxy):
+        with tempfile.TemporaryDirectory() as d:
+            app = Path(d)
+            for name in ("test_beeline.py", "server_controller.py"):
+                shutil.copy2(src / name, app / name)
+            if proxy:
+                (app / "telegram_config.json").write_text(json.dumps({"proxy": "socks5h://u:p@h:1"}))
+            return subprocess.run([sys.executable, str(self.pkg / "install.py"), "--app", str(app)],
+                                  capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant in ("first-build", "revision-2"):
-            with tempfile.TemporaryDirectory() as d:
-                app = Path(d)
-                src = Path(PACKAGE) if variant == "first-build" else self.pkg
-                for name in ("test_beeline.py", "server_controller.py"):
-                    shutil.copy2(src / name, app / name)
-                run = subprocess.run([sys.executable, str(self.pkg / "install.py"), "--app", str(app)],
-                                     capture_output=True, text=True, timeout=300)
-                self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
-                self.assertIn("CHECK OK", run.stdout, variant)
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-3", self.pkg)):
+            run = self._check(src, proxy=True)
+            self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
+            self.assertIn("CHECK OK", run.stdout, variant)
         self.assertIn(fix.EXPECTED_INPUT_OUTPUT_SHA, manifest["files"]["test_beeline.py"]["previous_output_sha256"])
+    def test_installer_refuses_without_configured_proxy(self):
+        run = self._check(Path(PACKAGE), proxy=False)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn('telegram_config.json has no "proxy"', run.stdout + run.stderr)
+    def test_package_source_has_no_embedded_login(self):
+        import re
+        for name in ("test_beeline.py", "server_controller.py", "operator_runtime_io.py"):
+            text = (self.pkg / name).read_text("utf-8")
+            self.assertFalse(re.search(r"://[^/@\s'\"]+:[^/@\s'\"]+@", text), name)
+        self.assertIn('TELEGRAM_DEFAULT_PROXY = ""', self.source)
+    def test_upgrade_from_revision_2_package(self):
+        with tempfile.TemporaryDirectory() as d:
+            r2 = Path(d) / "r2"
+            shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
+            run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            self.assertIn("Already revision 3", run.stdout)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,419 @@
+{
+  "test_beeline.py": [
+    {
+      "start": 28,
+      "end": 28,
+      "replacement": [
+        "import operator_runtime_io as _io1591\n",
+        "\n",
+        "IO_BUILD_VERSION = \"15.91-io\"\n"
+      ]
+    },
+    {
+      "start": 116,
+      "end": 118,
+      "replacement": [
+        "        if _last1585 < 0:\n",
+        "            return \"(граница текущей сессии отсутствует; исторический лог не подставлен)\"\n",
+        "        lines = lines[_last1585:]\n"
+      ]
+    },
+    {
+      "start": 448,
+      "end": 449,
+      "replacement": [
+        "TELEGRAM_DEFAULT_PROXY = \"\"  # PROXY_FROM_CONFIG_1591R3: set \"proxy\" in telegram_config.json (or TELEGRAM_PROXY)\n"
+      ]
+    },
+    {
+      "start": 496,
+      "end": 497,
+      "replacement": [
+        "        return None, _io1591.TelegramFailure(\n",
+        "            f\"Telegram API: {obj.get('error_code', r.status_code)} {obj.get('description', '')}\",\n",
+        "            code=obj.get(\"error_code\", r.status_code),\n",
+        "            retry_after=(obj.get(\"parameters\") or {}).get(\"retry_after\"),\n",
+        "        )\n"
+      ]
+    },
+    {
+      "start": 498,
+      "end": 499,
+      "replacement": [
+        "        return None, _io1591.TelegramFailure(f\"{type(exc).__name__}: {exc}\")\n"
+      ]
+    },
+    {
+      "start": 546,
+      "end": 557,
+      "replacement": [
+        "            # SUCCESS_PUSH_DURABLE_1591R2: the whole text is queued and delivered in\n",
+        "            # confirmed parts by the durable sender; it is never cut to 4000 characters.\n",
+        "            success_text = str(success_text)\n",
+        "            if not success_text.strip():\n",
+        "                continue\n",
+        "            try:\n",
+        "                _io1591.enqueue_notice(globals(), chat, success_text)\n",
+        "                continue\n",
+        "            except Exception as exc:\n",
+        "                print(\n",
+        "                    \"[Telegram] SUCCESS push не поставлен в очередь, отправляю напрямую: \"\n",
+        "                    f\"{_io1591.redact(exc)}\",\n",
+        "                    flush=True,\n",
+        "                )\n",
+        "            for piece in _io1591.split_text(success_text):\n",
+        "                r, err = telegram_api(\n",
+        "                    cfg,\n",
+        "                    \"sendMessage\",\n",
+        "                    {\n",
+        "                        \"chat_id\": chat,\n",
+        "                        \"text\": piece,\n",
+        "                        \"disable_web_page_preview\": \"true\",\n",
+        "                    },\n",
+        "                )\n",
+        "                if not r:\n",
+        "                    print(f\"[Telegram] ОШИБКА отдельного SUCCESS push: {err}\", flush=True)\n"
+      ]
+    },
+    {
+      "start": 606,
+      "end": 607,
+      "replacement": [
+        "    if any(x in low for x in code_triggers):\n",
+        "        return \"dev\"\n",
+        "    if str(os.environ.get(\"TG_EXTERNAL_CONTROLLER\", \"\")).strip() == \"1\" and not _operator_needs_tools(body):\n",
+        "        return \"chat\"\n",
+        "    return \"fast\"\n"
+      ]
+    },
+    {
+      "start": 686,
+      "end": 687,
+      "replacement": [
+        "            \"SELECT update_id, body FROM inbox WHERE done_at IS NULL AND update_id > 0 \"\n",
+        "            \"AND (claimed_by IS NULL OR claim_until < ?)\",\n",
+        "            (time.time(),),\n"
+      ]
+    },
+    {
+      "start": 694,
+      "end": 699,
+      "replacement": [
+        "        # Never clear leases belonging to a still-running AI consumer.\n"
+      ]
+    },
+    {
+      "start": 1031,
+      "end": 1039,
+      "replacement": [
+        "               ON CONFLICT(update_id) DO NOTHING\"\"\",\n"
+      ]
+    },
+    {
+      "start": 1075,
+      "end": 1083,
+      "replacement": [
+        "                       ON CONFLICT(update_id) DO NOTHING\"\"\",\n"
+      ]
+    },
+    {
+      "start": 1112,
+      "end": 1113,
+      "replacement": [
+        "               ORDER BY created_at ASC, update_id ASC\n"
+      ]
+    },
+    {
+      "start": 1180,
+      "end": 1180,
+      "replacement": [
+        "    _io1591.start_sender(globals(), tg_cfg, stop_event=stop_event)\n"
+      ]
+    },
+    {
+      "start": 1244,
+      "end": 1271,
+      "replacement": [
+        "            # Responses are sent by the independent durable sender thread.\n"
+      ]
+    },
+    {
+      "start": 2445,
+      "end": 2446,
+      "replacement": [
+        "    system_prompt = _io1591.build_system(globals(), status_map, pages, user_text)\n"
+      ]
+    },
+    {
+      "start": 2597,
+      "end": 2624,
+      "replacement": [
+        "        # Always rebuild from current instructions, never from checkpoint system text.\n",
+        "        messages = _io1591.canonical_messages(messages, system_prompt, user_text)\n"
+      ]
+    },
+    {
+      "start": 2633,
+      "end": 2633,
+      "replacement": [
+        "\n",
+        "        _io1591.request_audit(payload, \"tools\")\n"
+      ]
+    },
+    {
+      "start": 3076,
+      "end": 3077,
+      "replacement": [
+        "def deepseek_vision_request(prompt, images=None, timeout=90, *, system_prompt=None):\n"
+      ]
+    },
+    {
+      "start": 3098,
+      "end": 3098,
+      "replacement": [
+        "    current_system = system_prompt or _io1591.build_system(globals(), {}, [], str(prompt))\n"
+      ]
+    },
+    {
+      "start": 3100,
+      "end": 3101,
+      "replacement": [
+        "        \"messages\": _io1591.canonical_messages([{ \"role\": \"user\", \"content\": content}], current_system),\n"
+      ]
+    },
+    {
+      "start": 3104,
+      "end": 3104,
+      "replacement": [
+        "    _io1591.request_audit(payload, \"chat\")\n"
+      ]
+    },
+    {
+      "start": 3117,
+      "end": 3118,
+      "replacement": [
+        "        choice = obj[\"choices\"][0]\n",
+        "        text = choice[\"message\"].get(\"content\")\n",
+        "        if not isinstance(text, str) or not text.strip():\n",
+        "            return None, \"DeepSeek вернул пустой ответ; выполнение не подтверждено.\"\n",
+        "        if choice.get(\"finish_reason\") == \"length\":\n",
+        "            text += \"\\n\\n[API ограничил длину ответа. Это не подтверждение завершения задачи.]\"\n",
+        "        return text, None\n"
+      ]
+    },
+    {
+      "start": 3690,
+      "end": 3735,
+      "replacement": [
+        "    return _io1591.chat_context(globals(), status_map, pages, user_text)\n"
+      ]
+    },
+    {
+      "start": 3821,
+      "end": 3822,
+      "replacement": [
+        "                    if cdp_urls:\n",
+        "                        _observer_collect_pages(cdp_urls, with_screenshots=False)\n"
+      ]
+    },
+    {
+      "start": 3839,
+      "end": 3840,
+      "replacement": [
+        "            pages = _observer_collect_pages(cdp_urls, with_screenshots=False) if cdp_urls else []\n"
+      ]
+    },
+    {
+      "start": 3865,
+      "end": 3866,
+      "replacement": [
+        "                if lane in {\"fast\", \"chat\"} and not _operator_needs_tools(latest):\n"
+      ]
+    },
+    {
+      "start": 3873,
+      "end": 3873,
+      "replacement": [
+        "                        system_prompt=_io1591.build_system(globals(), status_map, pages, latest),\n"
+      ]
+    },
+    {
+      "start": 3928,
+      "end": 3929,
+      "replacement": [
+        "                (response_text or \"🤖 DeepSeek Operator\\n\\nПустой результат; выполнение не подтверждено.\"),\n"
+      ]
+    },
+    {
+      "start": 4480,
+      "end": 4481,
+      "replacement": [
+        "    return worker.get(\"success_profile\") or result\n"
+      ]
+    },
+    {
+      "start": 6070,
+      "end": 6071,
+      "replacement": [
+        "    profile = _io1591.merge_capture(worker.get(\"success_profile\"), worker.get(\"profile\"))\n"
+      ]
+    },
+    {
+      "start": 6078,
+      "end": 6079,
+      "replacement": [
+        "        \"passport_issued_by\": (\"кем выдан\", \"issuer\", \"issued by\"),\n"
+      ]
+    },
+    {
+      "start": 6082,
+      "end": 6083,
+      "replacement": [
+        "        \"locality\": (\"населённый пункт\", \"город\", \"city\", \"locality\"),\n"
+      ]
+    },
+    {
+      "start": 6100,
+      "end": 6101,
+      "replacement": [
+        "    worker[\"success_profile\"] = profile\n",
+        "    worker[\"profile\"] = dict(profile)\n"
+      ]
+    },
+    {
+      "start": 6681,
+      "end": 6681,
+      "replacement": [
+        "    if _io1591.guarded(worker or {}):\n",
+        "        return False\n"
+      ]
+    },
+    {
+      "start": 6692,
+      "end": 6692,
+      "replacement": [
+        "    if _io1591.guarded(worker or {}):\n",
+        "        return False\n"
+      ]
+    },
+    {
+      "start": 6737,
+      "end": 6737,
+      "replacement": [
+        "    if _io1591.guarded(worker or {}):\n",
+        "        return False\n"
+      ]
+    },
+    {
+      "start": 6814,
+      "end": 6814,
+      "replacement": [
+        "                \"success_guard\": bool(worker.get(\"success_guard\")),\n",
+        "                \"error_guard\": bool(worker.get(\"error_guard\")),\n",
+        "                \"matcher_time\": (hb.get(str(worker[\"id\"])) or {}).get(\"matcher_time\"),\n",
+        "                \"matcher_stage\": worker.get(\"matcher_stage\"),\n"
+      ]
+    },
+    {
+      "start": 6913,
+      "end": 6913,
+      "replacement": [
+        "    if _io1591.guarded(info or {}):\n",
+        "        return False\n"
+      ]
+    },
+    {
+      "start": 7021,
+      "end": 7021,
+      "replacement": [
+        "            \"SUCCESS_ASSIST\",\n",
+        "            \"ERROR_ASSIST\",\n"
+      ]
+    },
+    {
+      "start": 7127,
+      "end": 7128,
+      "replacement": [
+        "        if _io1591.guarded(info) or phase in skip_phases:\n"
+      ]
+    }
+  ],
+  "server_controller.py": [
+    {
+      "start": 13,
+      "end": 13,
+      "replacement": [
+        "\n",
+        "IO_BUILD_VERSION = \"15.91-io\"\n"
+      ]
+    },
+    {
+      "start": 61,
+      "end": 72,
+      "replacement": [
+        "    return app._io1591.enqueue_notice(\n",
+        "        vars(app), _chat_id(), str(text), MENU_MARKUP if menu else None\n",
+        "    )\n"
+      ]
+    },
+    {
+      "start": 261,
+      "end": 261,
+      "replacement": [
+        "    os.environ[\"TG_EXTERNAL_CONTROLLER\"] = \"1\"\n"
+      ]
+    },
+    {
+      "start": 266,
+      "end": 266,
+      "replacement": [
+        "    app._ai_db_init()\n",
+        "    app._io1591.init_delivery(vars(app))\n",
+        "    app._io1591.start_chat(vars(app))\n",
+        "    app._io1591.start_sender(vars(app), cfg, MENU_MARKUP)\n"
+      ]
+    },
+    {
+      "start": 268,
+      "end": 271,
+      "replacement": [
+        "        print(f\"[CTRL TG] Telegram временно недоступен; ответы остаются в очереди: {app._io1591.redact(err)}\", flush=True)\n"
+      ]
+    },
+    {
+      "start": 310,
+      "end": 311,
+      "replacement": [
+        "                update_failed = False\n"
+      ]
+    },
+    {
+      "start": 440,
+      "end": 440,
+      "replacement": [
+        "                except Exception as exc:\n",
+        "                    update_failed = True\n",
+        "                    print(f\"[CTRL RX] update={update_id} не сохранён/не обработан: {app._io1591.redact(exc)}\", flush=True)\n",
+        "                    time.sleep(2)\n",
+        "                    break\n"
+      ]
+    },
+    {
+      "start": 441,
+      "end": 442,
+      "replacement": [
+        "                    if not update_failed:\n",
+        "                        next_offset = max(offset, update_id + 1)\n",
+        "                        _save_offset(next_offset)\n",
+        "                        offset = next_offset\n"
+      ]
+    },
+    {
+      "start": 443,
+      "end": 467,
+      "replacement": [
+        "        # Sender runs independently: slow getUpdates no longer blocks replies.\n"
+      ]
+    }
+  ]
+}

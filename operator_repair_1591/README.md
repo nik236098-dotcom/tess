@@ -1,8 +1,37 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Пакет `beeline_integrated_io_15_91.zip` (test_beeline.py / server_controller.py /
-operator_runtime_io.py + install.py) в репозиторий не выкладывается: он содержит
-боевые настройки. Здесь лежит только скрипт, который правит распакованный пакет.
+Готовый пакет ревизии 3 лежит в `beeline_integrated_io_15_91_r3/`. В нём нет
+логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
+`telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
+`fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
+
+## Установка с сервера (Ubuntu)
+
+Один раз перед первой установкой добавьте прокси в конфиг (значение — то, что
+стояло в `TELEGRAM_DEFAULT_PROXY` старого кода):
+
+```
+grep -o 'socks5h://[^"]*' /opt/beeline/test_beeline.py      # показать старое значение
+sudo python3 - <<'PY'
+import json, pathlib
+p = pathlib.Path('/opt/beeline/telegram_config.json')
+cfg = json.loads(p.read_text('utf-8'))
+cfg['proxy'] = 'socks5h://ЛОГИН:ПАРОЛЬ@ХОСТ:ПОРТ'
+p.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), 'utf-8')
+PY
+```
+
+Затем:
+
+```
+cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r3
+python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
+sudo python3 install.py --app /opt/beeline --apply --restart
+```
+
+Следующие обновления: `cd /root/tess && git pull`, снова `install.py --app /opt/beeline`,
+затем `--apply --restart`. `install.py` отказывается работать, пока в конфиге нет `"proxy"`.
 
 ## Что делает `fix_package_1591.py`
 
@@ -17,7 +46,10 @@ operator_runtime_io.py + install.py) в репозиторий не выклад
 3. **Установка проверенных копий.** `install.py` после совпадения входного хэша
    ставит копии из пакета вместо повторного применения `edits.json`; сервер с уже
    установленной первой сборкой 15.91-io тоже принимается.
-4. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+4. **Прокси вне кода (ревизия 3).** Логин и пароль прокси удалены из исходника;
+   установщик требует ключ `"proxy"` в `telegram_config.json`, иначе останавливается,
+   чтобы Telegram-трафик не пошёл мимо прокси. Маркер: `PROXY_FROM_CONFIG_1591R3`.
+5. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -39,7 +71,8 @@ PACKAGE_1591_DIR=pkg python3 -m unittest -v test_fix_package  # с пакето�
 
 ---
 
-日本語: 同僚の 15.91 パッケージに対する修正スクリプトです。SUCCESS プッシュの 4000 文字切り詰めを
-durable キュー経由の分割配信に置き換え、Python 3.13 依存だったハッシュテストを修正し、
-インストーラーがパッケージ内のコピーをそのまま配置するようにします。zip 自体は認証情報を含むため
-リポジトリには置きません。
+日本語: 同僚の 15.91 パッケージに対する修正スクリプトと、修正済みパッケージ（リビジョン3）です。
+SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分割配信に置き換え、Python 3.13 依存だった
+ハッシュテストを修正し、インストーラーがパッケージ内のコピーをそのまま配置するようにしました。
+プロキシのログイン情報はコードから外し、サーバーの `telegram_config.json` の `"proxy"` キーから
+読み込みます。インストーラーはこのキーが無いと停止します。

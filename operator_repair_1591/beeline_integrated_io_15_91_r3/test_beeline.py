@@ -26,11 +26,15 @@ from console_wait import console_input
 from local_matcher import try_local_captcha, configure_matcher_runtime
 from time import monotonic
 from pathlib import Path
+import operator_runtime_io as _io1591
+
+IO_BUILD_VERSION = "15.91-io"
 from batch_support import load_clients, wait_confirmation, save_result
 
 
 RUNTIME_LOG_DIR = Path(__file__).resolve().parent / "runtime_logs"
 RUNTIME_CONSOLE_FILE = RUNTIME_LOG_DIR / "console.log"
+RUNTIME_SESSION_MARKER_V1584 = f"=== CURRENT SERVICE SESSION START {time.time():.3f} ==="
 
 
 class _RuntimeConsoleTee:
@@ -106,6 +110,16 @@ def _runtime_console_tail(max_lines=180, max_chars=32000):
         lines = RUNTIME_CONSOLE_FILE.read_text(
             encoding="utf-8", errors="replace"
         ).splitlines()
+        # SESSION_FILTER_1585
+        _marker1585 = "=== CURRENT SERVICE SESSION START "
+        _last1585 = -1
+        for _i1585 in range(len(lines) - 1, -1, -1):
+            if _marker1585 in lines[_i1585]:
+                _last1585 = _i1585
+                break
+        if _last1585 < 0:
+            return "(граница текущей сессии отсутствует; исторический лог не подставлен)"
+        lines = lines[_last1585:]
         text = "\n".join(lines[-max(1, int(max_lines)):])
         if len(text) > max_chars:
             text = text[-max_chars:]
@@ -484,9 +498,13 @@ def telegram_api(cfg, method, payload):
             return None, f"HTTP {r.status_code}: {r.text[:300]}"
         if r.ok and obj.get("ok"):
             return obj, None
-        return None, f"Telegram API: {obj.get('error_code', r.status_code)} {obj.get('description', r.text[:200])}"
+        return None, _io1591.TelegramFailure(
+            f"Telegram API: {obj.get('error_code', r.status_code)} {obj.get('description', '')}",
+            code=obj.get("error_code", r.status_code),
+            retry_after=(obj.get("parameters") or {}).get("retry_after"),
+        )
     except Exception as exc:
-        return None, f"{type(exc).__name__}: {exc}"
+        return None, _io1591.TelegramFailure(f"{type(exc).__name__}: {exc}")
 
 def telegram_logger_process(status_map, success_queue, stop_event):
     cfg = load_telegram_config()
@@ -534,17 +552,32 @@ def telegram_logger_process(status_map, success_queue, stop_event):
                 success_text = success_queue.get_nowait()
             except Exception:
                 break
-            r, err = telegram_api(
-                cfg,
-                "sendMessage",
-                {
-                    "chat_id": chat,
-                    "text": str(success_text)[:4000],
-                    "disable_web_page_preview": "true",
-                },
-            )
-            if not r:
-                print(f"[Telegram] ОШИБКА отдельного SUCCESS push: {err}", flush=True)
+            # SUCCESS_PUSH_DURABLE_1591R2: the whole text is queued and delivered in
+            # confirmed parts by the durable sender; it is never cut to 4000 characters.
+            success_text = str(success_text)
+            if not success_text.strip():
+                continue
+            try:
+                _io1591.enqueue_notice(globals(), chat, success_text)
+                continue
+            except Exception as exc:
+                print(
+                    "[Telegram] SUCCESS push не поставлен в очередь, отправляю напрямую: "
+                    f"{_io1591.redact(exc)}",
+                    flush=True,
+                )
+            for piece in _io1591.split_text(success_text):
+                r, err = telegram_api(
+                    cfg,
+                    "sendMessage",
+                    {
+                        "chat_id": chat,
+                        "text": piece,
+                        "disable_web_page_preview": "true",
+                    },
+                )
+                if not r:
+                    print(f"[Telegram] ОШИБКА отдельного SUCCESS push: {err}", flush=True)
 
         for i, mid in list(mids.items()):
             info = status_map.get(str(i))
@@ -594,7 +627,11 @@ def _ai_message_lane(body):
         "обнови код", "измени код", "добавь", "доработ", "передел",
         "рефактор", "убери из кода", "замени в коде", "патч",
     )
-    return "dev" if any(x in low for x in code_triggers) else "fast"
+    if any(x in low for x in code_triggers):
+        return "dev"
+    if str(os.environ.get("TG_EXTERNAL_CONTROLLER", "")).strip() == "1" and not _operator_needs_tools(body):
+        return "chat"
+    return "fast"
 
 
 def _ai_message_priority(body):
@@ -674,7 +711,9 @@ def _ai_db_init():
             conn.execute("ALTER TABLE inbox ADD COLUMN claim_until REAL")
 
         rows = conn.execute(
-            "SELECT update_id, body FROM inbox WHERE done_at IS NULL"
+            "SELECT update_id, body FROM inbox WHERE done_at IS NULL AND update_id > 0 "
+            "AND (claimed_by IS NULL OR claim_until < ?)",
+            (time.time(),),
         ).fetchall()
         for update_id, body in rows:
             conn.execute(
@@ -682,11 +721,7 @@ def _ai_db_init():
                 (_ai_message_lane(body), _ai_message_priority(body), int(update_id)),
             )
 
-        conn.execute(
-            """UPDATE inbox
-               SET claimed_by=NULL, claim_until=NULL
-               WHERE done_at IS NULL"""
-        )
+        # Never clear leases belonging to a still-running AI consumer.
         conn.commit()
     finally:
         conn.close()
@@ -741,6 +776,144 @@ def _ai_db_store_telegram_update(update, allowed_chat):
     finally:
         conn.close()
 
+
+
+
+def _ai_db_enqueue_internal(body, lane="fast", priority=100):
+    """Queue an autonomous Operator task without pretending it came from Telegram."""
+    cfg = load_telegram_config()
+    chat_id = str(cfg.get("chat_id", "")).strip()
+    if not chat_id:
+        return None
+
+    # Negative IDs cannot collide with normal positive Telegram update_ids.
+    update_id = -int(time.time_ns())
+    conn = _ai_db_connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            """INSERT INTO inbox
+               (update_id, chat_id, body, received_at, next_attempt_at,
+                lane, priority)
+               VALUES (?, ?, ?, ?, 0, ?, ?)""",
+            (
+                update_id,
+                chat_id,
+                str(body),
+                time.time(),
+                str(lane),
+                int(priority),
+            ),
+        )
+        conn.commit()
+        return update_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def queue_error_assist(worker, reason, force=False):
+    """Analyze /registration/error before any retry/recovery decision."""
+    now = monotonic()
+    last = float(worker.get("error_ai_last_at") or 0)
+    if not force and now - last < 45:
+        return False
+    worker["error_ai_last_at"] = now
+
+    tab_id = int(worker.get("id") or 0)
+    url = ""
+    try:
+        url = worker.get("page").url
+    except Exception:
+        pass
+
+    text = (
+        f"[AUTO_ERROR_ASSIST TAB {tab_id}] "
+        "После mobile-id-auth открылась /registration/error. Это НЕ success, "
+        "но также НЕ делай автоматический retry/restart/close/reload/back/navigation. "
+        "Сначала автономно проанализируй текущую physical-вкладку: DOM, видимый текст "
+        "ошибки, DevTools console и network, последние запросы/ответы и состояние формы. "
+        "Определи конкретную причину ошибки и попробуй безопасно исправить её НА ЭТОЙ "
+        "странице, если это возможно без потери состояния. Если исправление невозможно, "
+        "оставь страницу открытой и дай пользователю мини-отчёт: что произошло, какая "
+        "причина установлена, что ты попробовал, что получилось и на каком URL осталась "
+        "вкладка. Никакого destructive recovery без отдельного решения после анализа. "
+        f"Причина вызова: {reason}. URL: {url}"
+    )
+    try:
+        _ai_db_enqueue_internal(text, lane="fast", priority=125)
+        print(
+            f"[AI AUTO] TAB {tab_id}: ERROR_ASSIST поставлен в очередь: {reason}",
+            flush=True,
+        )
+        return True
+    except Exception as exc:
+        print(
+            f"[AI AUTO] TAB {tab_id}: ERROR_ASSIST queue failed: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return False
+
+
+def queue_success_assist(worker, reason, force=False):
+    """Ask DeepSeek to inspect/help a confirmed post-auth page.
+
+    Rate limited so a stubborn form cannot create an AI-request storm.
+    """
+    now = monotonic()
+    last = float(worker.get("success_ai_last_at") or 0)
+    if not force and now - last < 45:
+        return False
+
+    worker["success_ai_last_at"] = now
+    tab_id = int(worker.get("id") or 0)
+    url = ""
+    try:
+        url = worker.get("page").url
+    except Exception:
+        pass
+
+    text = (
+        f"[AUTO_SUCCESS_ASSIST TAB {tab_id}] "
+        "Это твоя главная автономная обязанность после успешного mobile-id подтверждения. "
+        "Работай БЕЗ участия пользователя. СНАЧАЛА наблюдай текущую physical-вкладку: "
+        "прочитай DOM/видимые ошибки/состояние кнопок и DevTools console/network. "
+        "Не вмешивайся, пока сайт сам нормально продвигается. "
+        "Если прогресс остановился или форма невалидна — сам найди причину и исправь её: "
+        "заполни все реально отсутствующие обязательные поля, выбери корректные autocomplete "
+        "подсказки, проверь город/область/адрес и остальные поля. Уже корректно заполненные "
+        "значения не перезаписывай. Для текущего сценария город при отсутствии — Саратов, "
+        "область при отсутствии — Саратовская область. "
+        "Затем правильно заполни поле подписи, дождись активной кнопки и нажми "
+        "«Подписать договор». После клика снова наблюдай DOM/console/network и убедись, "
+        "что подписание действительно завершилось либо точно определи оставшуюся ошибку. "
+        "ЖЁСТКО ЗАПРЕЩЕНО на SUCCESS GUARD: close, restart worker, reload, navigate, "
+        "back/forward и любое действие, способное потерять успешную страницу. "
+        "В конце ОБЯЗАТЕЛЬНО отправь пользователю короткий мини-отчёт: что было не так; "
+        "что ты изменил; какие значения поставил; стала ли кнопка активна; нажал ли её; "
+        "чем закончилось подписание; на каком URL/экране осталась вкладка. "
+        "Пример формата: «Не был указан город, поэтому подтверждение договора не проходило. "
+        "Поставил город — Саратов. Кнопка стала активна, нажал “Подписать договор”. "
+        "Подписание прошло успешно. Вкладка осталась на …». "
+        f"Причина вызова: {reason}. Текущий URL: {url}"
+    )
+    try:
+        _ai_db_enqueue_internal(text, lane="fast", priority=120)
+        print(
+            f"[AI AUTO] TAB {tab_id}: SUCCESS_ASSIST поставлен в очередь: {reason}",
+            flush=True,
+        )
+        return True
+    except Exception as exc:
+        print(
+            f"[AI AUTO] TAB {tab_id}: не удалось поставить задачу: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return False
 
 
 def _ai_effect_key(update_id, tool_name, args):
@@ -881,14 +1054,7 @@ def _ai_db_complete(update_id, chat_id, response_text):
             """INSERT INTO outbox
                (update_id, chat_id, body, created_at, next_attempt_at)
                VALUES (?, ?, ?, ?, 0)
-               ON CONFLICT(update_id) DO UPDATE SET
-                   body=excluded.body,
-                   chat_id=excluded.chat_id,
-                   created_at=excluded.created_at,
-                   attempts=0,
-                   next_attempt_at=0,
-                   last_error=NULL,
-                   sent_at=NULL""",
+               ON CONFLICT(update_id) DO NOTHING""",
             (int(update_id), str(chat_id), str(response_text), time.time()),
         )
         conn.commit()
@@ -925,14 +1091,7 @@ def _ai_db_fail(update_id, error, attempts):
                     """INSERT INTO outbox
                        (update_id, chat_id, body, created_at, next_attempt_at)
                        VALUES (?, ?, ?, ?, 0)
-                       ON CONFLICT(update_id) DO UPDATE SET
-                           body=excluded.body,
-                           chat_id=excluded.chat_id,
-                           created_at=excluded.created_at,
-                           attempts=0,
-                           next_attempt_at=0,
-                           last_error=NULL,
-                           sent_at=NULL""",
+                       ON CONFLICT(update_id) DO NOTHING""",
                     (int(update_id), chat_id, body, time.time()),
                 )
             conn.commit()
@@ -962,7 +1121,7 @@ def _ai_db_next_outbox():
             """SELECT update_id, chat_id, body, attempts
                FROM outbox
                WHERE sent_at IS NULL AND next_attempt_at <= ?
-               ORDER BY update_id ASC
+               ORDER BY created_at ASC, update_id ASC
                LIMIT 1""",
             (now,),
         ).fetchone()
@@ -1030,6 +1189,7 @@ def ai_telegram_receiver_process(stop_event, receiver_health):
         print("[AI RX] Нет Telegram chat_id; receiver отключён.", flush=True)
         return
 
+    _io1591.start_sender(globals(), tg_cfg, stop_event=stop_event)
     try:
         _, webhook_err = telegram_api(
             tg_cfg, "deleteWebhook", {"drop_pending_updates": "false"}
@@ -1094,33 +1254,7 @@ def ai_telegram_receiver_process(stop_event, receiver_health):
                         offset = _ai_db_offset()
                         break
 
-            # Send completed AI responses independently from AI processing.
-            out = _ai_db_next_outbox()
-            if out:
-                _, send_err = telegram_api(
-                    tg_cfg,
-                    "sendMessage",
-                    {
-                        "chat_id": out["chat_id"],
-                        "text": out["body"][:4000],
-                        "disable_web_page_preview": "true",
-                    },
-                )
-                if send_err:
-                    _ai_db_outbox_fail(
-                        out["update_id"], send_err, out.get("attempts", 0)
-                    )
-                    print(
-                        f"[AI TX] sendMessage error: {send_err}",
-                        flush=True,
-                    )
-                else:
-                    _ai_db_outbox_sent(out["update_id"])
-                    print(
-                        f"[AI TX] Ответ на update {out['update_id']} доставлен.",
-                        flush=True,
-                    )
-
+            # Responses are sent by the independent durable sender thread.
             _ai_health_touch(receiver_health, "polling")
     finally:
         pass
@@ -1530,6 +1664,12 @@ def _agent_runtime_status(status_map, pages):
     return "\n".join(statuses), "\n".join(page_lines)
 
 
+OPERATOR_API_MISSION_V1584 = """ТВОЯ ПОСТОЯННАЯ ГЛАВНАЯ ЗАДАЧА — автономно сопровождать SUCCESS/ERROR-вкладки и контролировать корректность завершения процесса. После выхода из mobile-id-auth на post-auth страницу сначала наблюдай живую physical-вкладку: DOM, validation, состояние элементов, console/network. Если процесс остановился, самостоятельно установи фактическую причину по странице; недостающим или невалидным может быть любое поле. Уже корректные значения не меняй. SUCCESS_GUARD и ERROR_GUARD запрещают destructive close/restart/reload/back/navigation. После автономного вмешательства отправляй краткий фактический отчёт: блокер, проверки, изменения/значения, состояние действия, результат и текущий URL. Мониторинг воркеров, Telegram, прокси и кода — второстепенная задача. Если спрашивают о твоей задаче, первым делом называй эту постоянную миссию. Для состояния «сейчас» используй текущий heartbeat, текущие вкладки и только текущую service/runtime session; старые proxy/Telegram ошибки не выдавай за текущие без свежего подтверждения."""
+
+OPERATOR_MISSION_1586 = """У ТЕБЯ ЕСТЬ ПОСТОЯННОЕ АКТИВНОЕ ПОРУЧЕНИЕ, ОНО НЕ ЗАВИСИТ ОТ НОВЫХ СООБЩЕНИЙ ПОЛЬЗОВАТЕЛЯ. Твоя главная задача — автономный SUCCESS/ERROR SUPERVISOR процесса регистрации eSIM. Ты обязан самостоятельно сопровождать каждую вкладку после mobile-id-auth, распознавать SUCCESS/ERROR/post-auth состояния, анализировать живую physical-вкладку, DOM, validation, console/network и доводить безопасно исправимый post-auth процесс до корректного завершения без ожидания отдельного поручения пользователя. Если не заполнено или невалидно любое обязательное поле — сам определи именно это поле по текущей странице; не ограничивайся заранее известным списком. Уже корректные значения не меняй. На SUCCESS_GUARD и ERROR_GUARD запрещены destructive close/restart/reload/back/forward/navigation. /registration/error НИКОГДА не является успехом. Настоящий SUCCESS фиксируется только после подтверждённого финального post-sign состояния. После вмешательства отправляй фактический мини-отчёт: блокер, что проверил, что именно изменил и на какие значения, состояние кнопки подписания, действие/результат и финальный URL. Мониторинг кода, воркеров, Telegram и прокси — вторичная техническая функция.
+
+КРИТИЧЕСКОЕ ПРАВИЛО РОЛИ: никогда не говори «у меня нет задачи», «конкретного поручения нет», «я в режиме ожидания», «я просто наблюдатель» или эквивалент. Постоянная задача уже назначена выше. Если пользователь спрашивает «какая у тебя задача?», первым делом ответь, что твоя постоянная главная задача — автономный SUCCESS/ERROR Supervisor, а затем кратко опиши текущий живой статус. Для утверждений о состоянии «сейчас» используй только текущую service/runtime session и текущие вкладки; исторические ошибки не выдавай за текущие без свежего подтверждения."""
+
 def _agent_system_prompt(status_map, pages, user_text):
     try:
         rules = PROJECT_RULES_FILE.read_text(encoding="utf-8")
@@ -1552,6 +1692,39 @@ def _agent_system_prompt(status_map, pages, user_text):
 Ты не управляешь жизненным циклом worker напрямую.
 Контроллер проверяет точную physical generation/window.name непосредственно перед действием.
 Устаревшее действие получает STALE_GENERATION и ничего не меняет.
+
+ГЛАВНАЯ АВТОНОМНАЯ ЦЕЛЬ — SUCCESS SUPERVISOR:
+- Если TAB вышел с mobile-id-auth на personal-data-form/страницу договора, mobile-id
+  подтверждение уже успешно. С этого момента самостоятельно сопровождай physical-вкладку
+  до завершения договора, не ожидая сообщений пользователя.
+- Сначала НАБЛЮДАЙ: DOM, видимые validation errors, enabled/disabled кнопок,
+  DevTools console и network. Пока сайт сам корректно продвигается — не вмешивайся.
+- Если прогресс остановился, сам установи конкретную причину и вмешайся минимально:
+  заполни недостающие обязательные поля, выбери autocomplete, исправь невалидное поле.
+  Не меняй поля, которые сайт уже корректно заполнил.
+- Для этого сценария: если отсутствует город — поставь «Саратов» и выбери подсказку;
+  если отсутствует область — «Саратовская область» и выбери подсказку.
+- Проверь остальные обязательные поля по DOM/validation; не ограничивайся заранее
+  известным списком города/области.
+- Правильно заполни поле подписи так, чтобы форма приняла её во всех требуемых областях.
+  Дождись, когда «Подписать договор» станет активной, и нажми её.
+- После нажатия снова наблюдай страницу/console/network и проверь фактический результат.
+- При любой проблеме после успешного auth сам анализируй и помогай, без участия пользователя.
+- На SUCCESS GUARD АБСОЛЮТНО ЗАПРЕЩЕНЫ: close, restart, reload, navigate, back,
+  forward и любые действия, способные потерять эту успешную physical-вкладку.
+- После каждого автономного вмешательства ОБЯЗАТЕЛЬНО дай пользователю мини-отчёт:
+  (1) что мешало; (2) что изменил; (3) конкретные поставленные значения;
+  (4) состояние кнопки; (5) нажал ли «Подписать договор»; (6) результат;
+  (7) текущий URL/экран. Не пиши абстрактно «исправил» — перечисляй фактические действия.
+
+ERROR SUPERVISOR:
+- /registration/error НИКОГДА не является success.
+- Но появление /registration/error после auth также НЕ является разрешением немедленно
+  закрыть/перезапустить/reload/back/navigate вкладку.
+- Сначала самостоятельно изучи DOM, видимый текст, console/network и последние ответы API.
+  Определи конкретную причину и попробуй безопасное исправление на текущей странице.
+- Если безопасно исправить нельзя, оставь страницу открытой и отправь мини-отчёт пользователю.
+  Destructive recovery без анализа запрещён.
 
 Правила действий:
 1. Сначала read-only диагностика, если задача не является прямой командой пользователя.
@@ -2048,6 +2221,7 @@ def _agent_execute_tool(session_id, state, name, args, cdp_urls, action_queue=No
         if name == "read_runtime_console":
             return {
                 "ok": True,
+                "scope": "current_service_session_only",
                 "console": _runtime_console_tail(
                     max_lines=args.get("max_lines", 200),
                     max_chars=50000,
@@ -2255,7 +2429,7 @@ def _run_developer_agent(status_map, pages, user_text, images, cdp_urls, ai_heal
         "observations": [],
     }
 
-    system_prompt = _agent_system_prompt(status_map, pages, user_text)
+    system_prompt = _io1591.build_system(globals(), status_map, pages, user_text)
     user_content = [{"type": "text", "text": "Выполни задачу пользователя. Используй инструменты проекта."}]
     for raw in images or []:
         try:
@@ -2407,6 +2581,9 @@ def _run_developer_agent(status_map, pages, user_text, images, cdp_urls, ai_heal
         round_no += 1
         _ai_health_touch(ai_health, "busy_deepseek", f"round={round_no}")
 
+        # Always rebuild from current instructions, never from checkpoint system text.
+        messages = _io1591.canonical_messages(messages, system_prompt, user_text)
+
         payload = {
             "model": str(cfg.get("model") or "deepseek-flash"),
             "messages": messages,
@@ -2415,6 +2592,8 @@ def _run_developer_agent(status_map, pages, user_text, images, cdp_urls, ai_heal
             "temperature": 0.1,
             "max_tokens": token_budget,
         }
+
+        _io1591.request_audit(payload, "tools")
 
         # Retry transient API/network failures without killing the whole task.
         retry_no = 0
@@ -2790,6 +2969,8 @@ def _explicit_live_action_request(text):
     low = str(text or "").lower().strip()
     if not low:
         return False
+    if low.startswith("[auto_success_assist") or low.startswith("[auto_error_assist"):
+        return True
     triggers = (
         "нажми", "кликни", "введи", "заполни", "напечатай",
         "перезагрузи", "reload", "обнови вкладку",
@@ -2856,7 +3037,7 @@ def _ai_memory_append(role, text_value):
         pass
 
 
-def deepseek_vision_request(prompt, images=None, timeout=90):
+def deepseek_vision_request(prompt, images=None, timeout=90, *, system_prompt=None):
     """DeepSeek Flash request. Images are passed from memory, never via disk."""
     cfg = load_deepseek_config()
     key = str(cfg.get("api_key", "")).strip()
@@ -2878,12 +3059,14 @@ def deepseek_vision_request(prompt, images=None, timeout=90):
             },
         })
 
+    current_system = system_prompt or _io1591.build_system(globals(), {}, [], str(prompt))
     payload = {
         "model": str(cfg.get("model") or "deepseek-flash"),
-        "messages": [{"role": "user", "content": content}],
+        "messages": _io1591.canonical_messages([{ "role": "user", "content": content}], current_system),
         "temperature": 0.2,
         "max_tokens": 1800,
     }
+    _io1591.request_audit(payload, "chat")
     try:
         r = requests.post(
             "https://api.deepseek.com/chat/completions",
@@ -2897,7 +3080,13 @@ def deepseek_vision_request(prompt, images=None, timeout=90):
         obj = r.json()
         if not r.ok:
             return None, f"DeepSeek HTTP {r.status_code}: {obj}"
-        return obj["choices"][0]["message"]["content"], None
+        choice = obj["choices"][0]
+        text = choice["message"].get("content")
+        if not isinstance(text, str) or not text.strip():
+            return None, "DeepSeek вернул пустой ответ; выполнение не подтверждено."
+        if choice.get("finish_reason") == "length":
+            text += "\n\n[API ограничил длину ответа. Это не подтверждение завершения задачи.]"
+        return text, None
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
 
@@ -3470,51 +3659,7 @@ def _observer_collect_pages(cdp_urls, with_screenshots=True):
 
 
 def _chat_prompt(status_map, pages, user_text):
-    try:
-        rules = PROJECT_RULES_FILE.read_text(encoding="utf-8")
-    except Exception:
-        rules = ""
-
-    compact_status = []
-    for i in range(1, TAB_COUNT + 1):
-        info = status_map.get(str(i)) or {}
-        txt = str(info.get("text", "")).strip()
-        if txt:
-            compact_status.append(f"TAB {i}: {txt}")
-
-    page_lines = [
-        f"TAB {x.get('tab_id')} browser={x.get('browser')} url={x.get('url','')} title={x.get('title','')}"
-        for x in pages if x.get("tab_id")
-    ]
-
-    return f"""Ты DeepSeek, технический помощник пользователя по его проекту.
-Это ОБЫЧНЫЙ ДИАЛОГ, а не автоматический аудит. Отвечай естественно и прямо на сообщение пользователя.
-Не начинай формальный отчёт по всем вкладкам, если пользователь сам его не попросил.
-Если вопрос касается конкретной вкладки/ошибки, используй доступное runtime-состояние этой вкладки.
-Если пользователь просто разговаривает, не перечисляй состояния программы без необходимости.
-
-ПРАВИЛА ПРОЕКТА:
-{rules}
-
-ТЕКУЩЕЕ СОСТОЯНИЕ (используй только если относится к вопросу):
-{chr(10).join(compact_status)}
-
-ОТКРЫТЫЕ WORKER-СТРАНИЦЫ:
-{chr(10).join(page_lines)}
-
-РЕАЛЬНЫЙ ВЫВОД КОНСОЛИ ПРОГРАММЫ (последние строки):
-{_runtime_console_tail()}
-
-ИСТОРИЯ ОБЫЧНОГО ДИАЛОГА:
-{_chat_memory_tail()}
-
-СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:
-{user_text}
-
-У тебя ЕСТЬ доступ к приведённому выше выводу консоли.
-Если пользователь просит посмотреть консоль, ошибки запуска, traceback или последние события,
-анализируй именно этот блок и не отвечай, что консоль тебе недоступна.
-Ответь по-русски обычным разговорным сообщением."""
+    return _io1591.chat_context(globals(), status_map, pages, user_text)
 
 def _observer_prompt(status_map, pages, user_text=None):
     try:
@@ -3601,7 +3746,8 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             try:
                 if monotonic() - last_observe >= 5:
                     _ai_health_touch(ai_health, "busy_browser", "telemetry_bootstrap")
-                    _observer_collect_pages(cdp_urls, with_screenshots=False)
+                    if cdp_urls:
+                        _observer_collect_pages(cdp_urls, with_screenshots=False)
                     last_observe = monotonic()
             except Exception:
                 pass
@@ -3619,7 +3765,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
 
         try:
             _ai_health_touch(ai_health, "busy_browser", f"update={update_id}")
-            pages = _observer_collect_pages(cdp_urls, with_screenshots=False)
+            pages = _observer_collect_pages(cdp_urls, with_screenshots=False) if cdp_urls else []
             images = []
 
             response_text = None
@@ -3645,7 +3791,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
                 response_text = "↩️ " + msg
 
             else:
-                if lane == "fast" and not _operator_needs_tools(latest):
+                if lane in {"fast", "chat"} and not _operator_needs_tools(latest):
                     # One API call, no project/browser audit for casual conversation.
                     _ai_health_touch(ai_health, "busy_deepseek", f"fast_chat update={update_id}")
                     fast_prompt = _chat_prompt(status_map, pages, latest)
@@ -3653,6 +3799,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
                         fast_prompt,
                         images=[],
                         timeout=300,
+                        system_prompt=_io1591.build_system(globals(), status_map, pages, latest),
                     )
                     if fast_err:
                         response_text = "⚠️ DeepSeek: " + fast_err
@@ -3708,7 +3855,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             _ai_db_complete(
                 update_id,
                 job["chat_id"],
-                (response_text or "🤖 DeepSeek Operator\n\nГотово.")[:4000],
+                (response_text or "🤖 DeepSeek Operator\n\nПустой результат; выполнение не подтверждено."),
             )
             _ai_health_touch(ai_health, "idle")
             print(f"[AI {lane.upper()}] update {update_id} завершён.", flush=True)
@@ -4251,6 +4398,17 @@ def capture_contract_details(page, worker):
         elif "квартир" in hay: put("apartment",v)
     worker["success_profile"]=profile
     return profile
+
+
+_capture_contract_details_before_v1583 = capture_contract_details
+def capture_contract_details(page, worker):
+    result = _capture_contract_details_before_v1583(page, worker)
+    try:
+        final_profile_capture_v1583(page, worker)
+    except Exception:
+        pass
+    return worker.get("success_profile") or result
+
 
 def _success_profile_lines(profile):
     profile=profile or {}
@@ -5291,6 +5449,11 @@ def make_worker(tab_id, page, heartbeat=None, status_map=None):
         "reserved_sim_number": None,
         "reserved_sim_url": None,
         "completed_confirm_cycle": False,
+        "success_guard": False,
+        "success_ai_last_at": 0.0,
+        "region_fix_last_at": 0.0,
+        "error_guard": False,
+        "error_ai_last_at": 0.0,
     }
 
     def remember_auth(frame):
@@ -5333,6 +5496,11 @@ def reset_runtime_state(worker):
     worker["confirm_deadline"] = None
     worker["resend_deadline"] = None
     worker["completed_confirm_cycle"] = False
+    worker["success_guard"] = False
+    worker["success_ai_last_at"] = 0.0
+    worker["region_fix_last_at"] = 0.0
+    worker["error_guard"] = False
+    worker["error_ai_last_at"] = 0.0
 
 
 def finish_worker_row(base_dir, worker, status):
@@ -5777,7 +5945,111 @@ def _signature_page_hint(page):
     return False
 
 
+def capture_all_form_fields_v1583(page):
+    """Read-only snapshot of all form controls and their label metadata."""
+    try:
+        return page.evaluate("""() => {
+          const out = [];
+          for (const el of document.querySelectorAll('input,select,textarea')) {
+            let label = '';
+            try {
+              if (el.id) {
+                const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+                if (l) label = (l.innerText || l.textContent || '').trim();
+              }
+              if (!label) {
+                const l = el.closest('label');
+                if (l) label = (l.innerText || l.textContent || '').trim();
+              }
+            } catch (_) {}
+            let value = '';
+            try {
+              value = (el.type === 'checkbox' || el.type === 'radio')
+                ? (el.checked ? 'true' : 'false')
+                : String(el.value == null ? '' : el.value);
+            } catch (_) {}
+            out.push({
+              tag: (el.tagName || '').toLowerCase(),
+              type: el.type || '',
+              name: el.name || '',
+              id: el.id || '',
+              value,
+              label,
+              placeholder: el.placeholder || '',
+              ariaLabel: el.getAttribute('aria-label') || '',
+              disabled: !!el.disabled,
+              readOnly: !!el.readOnly
+            });
+          }
+          return out;
+        }""")
+    except Exception:
+        return []
+
+
+def final_profile_capture_v1583(page, worker):
+    fields = capture_all_form_fields_v1583(page)
+    worker["final_form_fields"] = fields
+    try:
+        d = worker.get("diagnostic")
+        if d:
+            d.write("final_form_capture_v1583", fields=fields, url=page.url)
+    except Exception:
+        pass
+
+    profile = _io1591.merge_capture(worker.get("success_profile"), worker.get("profile"))
+    aliases = {
+        "full_name": ("фио", "фамилия имя отчество", "fullname", "full_name"),
+        "gender": ("пол", "gender"),
+        "birth_date": ("дата рождения", "birth", "birthday"),
+        "passport_series": ("серия паспорта", "passport series", "series"),
+        "passport_number": ("номер паспорта", "passport number", "passportnumber"),
+        "passport_issue_date": ("дата выдачи", "issue date", "issuedate"),
+        "passport_issued_by": ("кем выдан", "issuer", "issued by"),
+        "country": ("страна", "country"),
+        "region": ("область", "регион", "region"),
+        "district": ("район", "district"),
+        "locality": ("населённый пункт", "город", "city", "locality"),
+        "street": ("улица", "street"),
+        "house": ("дом", "house"),
+        "building": ("корпус", "building"),
+        "apartment": ("квартира", "apartment", "flat"),
+    }
+    for f in fields:
+        value = str(f.get("value") or "").strip()
+        if not value:
+            continue
+        hay = " ".join(str(f.get(k) or "") for k in
+                       ("label", "name", "id", "placeholder", "ariaLabel")).lower()
+        for key, words in aliases.items():
+            if profile.get(key):
+                continue
+            if any(word in hay for word in words):
+                profile[key] = value
+                break
+    worker["success_profile"] = profile
+    worker["profile"] = dict(profile)
+    return profile, fields
+
+
 def finalize_success(base_dir, worker):
+
+    # FINAL_SUCCESS_GUARD_V1583
+    page = worker.get("page")
+    if page is not None and _post_auth_error_page(page):
+        print(
+            f"[Вкладка {worker.get('id')}] FALSE SUCCESS BLOCKED: /registration/error",
+            flush=True,
+        )
+        try:
+            capture_blackbox(worker, "blocked_false_success_registration_error")
+        except Exception:
+            pass
+        enter_error_guard(worker, "finalize_success blocked on registration/error")
+        return False
+
+    if page is not None:
+        final_profile_capture_v1583(page, worker)
     page = worker["page"]
     row_no, _, _ = row_parts(worker.get("row"))
 
@@ -5832,11 +6104,209 @@ def finalize_success(base_dir, worker):
     worker["stopped"] = True
 
 
+
+def enter_error_guard(worker, note):
+    worker["error_guard"] = True
+    worker["success_guard"] = False
+    worker["phase"] = "ERROR_ASSIST"
+    set_tab_status(
+        worker, "🧠",
+        "Registration error — DeepSeek сначала анализирует. Автоперезапуск запрещён."
+    )
+    external_heartbeat(worker, note)
+    queue_error_assist(worker, note, force=True)
+
+
+def tick_error_assist(base_dir, worker):
+    page = worker["page"]
+    worker["error_guard"] = True
+
+    if page.is_closed():
+        worker["phase"] = "MANUAL_STOP"
+        worker["stopped"] = True
+        set_tab_status(
+            worker, "🔴",
+            "Error-страница закрыта извне. Автоматически строку не повторяю."
+        )
+        return
+
+    # If Operator safely repaired the page and it becomes a real contract page,
+    # promote it into the immutable SUCCESS GUARD.
+    if _post_auth_contract_page(page) and not _post_auth_error_page(page):
+        worker["error_guard"] = False
+        enter_success_guard(
+            worker,
+            "DeepSeek/сайт вывел error-state на страницу договора",
+        )
+        return
+
+    # Do not retry merely because time passed. Re-inspect periodically.
+    queue_error_assist(
+        worker,
+        "registration/error всё ещё открыта; повторно проверь DOM/console/network",
+    )
+    external_heartbeat(worker, "error_assist_observing")
+
+
+def _post_auth_error_page(page):
+    try:
+        low = str(page.url or "").lower()
+        if "/registration/error" in low:
+            return True
+    except Exception:
+        pass
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "").lower()
+        needles = (
+            "что-то пошло не так",
+            "произошла ошибка",
+            "не удалось продолжить",
+        )
+        return any(x in body for x in needles)
+    except Exception:
+        return False
+
+
+def _post_auth_contract_page(page):
+    try:
+        low = str(page.url or "").lower()
+        if "personal-data-form" in low:
+            return True
+    except Exception:
+        pass
+    try:
+        return bool(_signature_page_hint(page) or _signature_button_locator(page))
+    except Exception:
+        return False
+
+
+def _region_input_candidates(page):
+    # Prefer semantic attributes and only then nearby label text.
+    rx = re.compile(r"(область|регион|region)", re.I)
+    return [
+        page.locator(
+            'input[name*="region" i], input[id*="region" i], '
+            'input[name*="area" i], input[id*="area" i], '
+            'input[placeholder*="область" i], input[aria-label*="область" i], '
+            'input[placeholder*="регион" i], input[aria-label*="регион" i]'
+        ),
+        page.get_by_label(rx),
+    ]
+
+
+def ensure_region_if_missing(page, diagnostic=None):
+    """Fill Saratov region only when the region field is actually empty/invalid."""
+    needs_region = False
+    try:
+        err = page.get_by_text(re.compile(r"^\s*укажите\s+область\s*$", re.I))
+        needs_region = bool(err.count() and err.first.is_visible())
+    except Exception:
+        pass
+
+    target = None
+    for group in _region_input_candidates(page):
+        try:
+            for i in range(group.count()):
+                loc = group.nth(i)
+                if not loc.is_visible():
+                    continue
+                value = (loc.input_value(timeout=1200) or "").strip()
+                if value:
+                    # Normally the site fills it itself. Never overwrite a value.
+                    return True
+                target = loc
+                needs_region = True
+                break
+        except Exception:
+            continue
+        if target is not None:
+            break
+
+    if not needs_region or target is None:
+        return not needs_region
+
+    try:
+        target.fill("Саратовская область", timeout=4000)
+        page.wait_for_timeout(450)
+
+        # Autocomplete variants. Select only Saratov region.
+        options = [
+            page.get_by_role(
+                "option",
+                name=re.compile(r"Саратовск(ая|ой)\s+област", re.I),
+            ),
+            page.locator('[role="listbox"] *').filter(
+                has_text=re.compile(r"Саратовск(ая|ой)\s+област", re.I)
+            ),
+            page.get_by_text(
+                re.compile(r"^\s*Саратовская\s+область\s*$", re.I),
+                exact=True,
+            ),
+        ]
+        for group in options:
+            try:
+                if group.count() and group.first.is_visible():
+                    group.first.click(timeout=3000, no_wait_after=True)
+                    page.wait_for_timeout(350)
+                    break
+            except Exception:
+                continue
+
+        value = (target.input_value(timeout=1500) or "").strip()
+        ok = bool(value)
+        if diagnostic is not None:
+            try:
+                diagnostic.write(
+                    "region_autofill_if_missing",
+                    value=value,
+                    ok=ok,
+                )
+            except Exception:
+                pass
+        print(
+            f"[Договор] Область была пустой — "
+            f"{'заполнена: '+value if ok else 'попытка заполнения выполнена'}",
+            flush=True,
+        )
+        return ok
+    except Exception as exc:
+        if diagnostic is not None:
+            try:
+                diagnostic.write(
+                    "region_autofill_failed",
+                    error_type=type(exc).__name__,
+                    message=str(exc)[:500],
+                )
+            except Exception:
+                pass
+        return False
+
+
+def enter_success_guard(worker, note):
+    if not worker.get("success_guard"):
+        worker["success_guard"] = True
+        print(
+            f"[Вкладка {worker['id']}] 🔒 SUCCESS GUARD: {note}. "
+            "Close/reload/restart/back/navigation запрещены.",
+            flush=True,
+        )
+    publish_worker_phase(worker, "POST_AUTH_REVIEW", note)
+    queue_success_assist(worker, note, force=True)
+
+
 def tick_post_auth_review(base_dir, worker):
     page = worker["page"]
-    now = monotonic()
+
+    # Once mobile-id succeeded, this physical page is sacred. Never recover it.
+    worker["success_guard"] = True
+
     if page.is_closed():
-        restart_same_row_in_new_page(worker)
+        worker["phase"] = "SUCCESS_STOP"
+        worker["stopped"] = True
+        set_tab_status(
+            worker, "🔴",
+            "Успешная post-auth вкладка была закрыта извне. Автоповтор ЗАПРЕЩЁН."
+        )
         return
 
     try:
@@ -5844,55 +6314,123 @@ def tick_post_auth_review(base_dir, worker):
     except Exception:
         pass
 
+    # A real site error is not success, but even here we do NOT destroy/reload
+    # the already-confirmed page. DeepSeek gets the page and decides how to help.
+    if _post_auth_error_page(page):
+        worker["phase"] = "SUCCESS_ASSIST"
+        set_tab_status(
+            worker, "🧠",
+            "Подтверждение уже прошло. На post-auth странице ошибка — DeepSeek помогает."
+        )
+        external_heartbeat(worker, "success_post_auth_error")
+        queue_success_assist(worker, "post-auth error page")
+        return
+
+    # Site normally fills region itself. Touch it only when it is genuinely empty.
+    now = monotonic()
+    if now - float(worker.get("region_fix_last_at") or 0) >= 4:
+        worker["region_fix_last_at"] = now
+        region_ok = ensure_region_if_missing(page, worker.get("diagnostic"))
+        if not region_ok:
+            queue_success_assist(worker, "область отсутствует или не принялась")
+
     button = _signature_button_locator(page)
     if button is not None:
         try:
-            set_tab_status(worker, "✍️", "Заполняю поле подписи и нажимаю «Подписать договор»")
+            enabled = button.is_enabled()
+        except Exception:
+            enabled = False
+
+        if not enabled:
+            worker["phase"] = "SUCCESS_ASSIST"
+            set_tab_status(
+                worker, "🧠",
+                "Подтверждение успешно. Кнопка договора пока неактивна — DeepSeek наблюдает/исправляет."
+            )
+            external_heartbeat(worker, "signature_button_disabled")
+            queue_success_assist(worker, "кнопка «Подписать договор» неактивна")
+            return
+
+        try:
+            set_tab_status(
+                worker, "✍️",
+                "Подтверждение успешно. Заполняю подпись и подписываю договор."
+            )
             capture_contract_details(page, worker)
             fill_signature_and_submit(page, worker.get("diagnostic"))
             worker["phase"] = "SIGN_WAIT"
             worker["sign_submit_url"] = page.url
-            worker["sign_submit_deadline"] = monotonic() + 25
             worker["sign_button_gone_since"] = None
-            external_heartbeat(worker, "signature_submitted")
+            external_heartbeat(worker, "signature_submitted_success_guard")
+            queue_success_assist(worker, "подпись отправлена; наблюдай результат")
             return
         except Exception as exc:
             capture_blackbox(worker, "signature_submit_failed", exc)
+            worker["phase"] = "SUCCESS_ASSIST"
+            set_tab_status(
+                worker, "🧠",
+                "Подтверждение успешно. Ошибка при подписи — DeepSeek помогает, страницу не трогаю."
+            )
             print(
-                f"[Вкладка {worker['id']}] Подпись/кнопка не сработала: "
-                f"{type(exc).__name__}: {exc}. Повторяю ту же строку.",
+                f"[Вкладка {worker['id']}] Ошибка подписи: "
+                f"{type(exc).__name__}: {exc}. SUCCESS GUARD — без restart/reload.",
                 flush=True,
             )
-            restart_same_row_in_new_page(worker)
+            queue_success_assist(
+                worker,
+                f"ошибка подписи {type(exc).__name__}: {str(exc)[:300]}",
+                force=True,
+            )
             return
 
-    # If the contract UI is still rendering, give it time.
-    if _signature_page_hint(page):
-        if now < worker.get("post_auth_review_deadline", now):
-            external_heartbeat(worker, "waiting_signature_ui")
-            return
-        capture_blackbox(worker, "signature_ui_timeout")
-        restart_same_row_in_new_page(worker)
+    # Contract UI may render indefinitely; there is deliberately NO destructive timeout.
+    if _signature_page_hint(page) or _post_auth_contract_page(page):
+        worker["phase"] = "SUCCESS_ASSIST"
+        set_tab_status(
+            worker, "🧠",
+            "Подтверждение успешно. Жду/проверяю интерфейс договора; DeepSeek наблюдает."
+        )
+        external_heartbeat(worker, "success_waiting_contract_ui")
+        queue_success_assist(worker, "интерфейс договора требует наблюдения")
         return
 
-    # A plain post-confirmation page with no contract UI is treated as success
-    # only after a short settle period, avoiding the previous instant false success.
-    if now - worker.get("post_auth_review_started", now) < 5:
-        return
+    # If we are post-auth and no contract controls remain, settle as success.
     finalize_success(base_dir, worker)
+
+
+def tick_success_assist(base_dir, worker):
+    # Same guarded logic, but never adds a destructive timeout.
+    tick_post_auth_review(base_dir, worker)
 
 
 def tick_sign_wait(base_dir, worker):
     page = worker["page"]
     now = monotonic()
+    worker["success_guard"] = True
+
     if page.is_closed():
-        restart_same_row_in_new_page(worker)
+        worker["phase"] = "SUCCESS_STOP"
+        worker["stopped"] = True
+        set_tab_status(
+            worker, "🔴",
+            "Успешная вкладка закрыта извне после подписи. Автоповтор запрещён."
+        )
         return
 
     try:
         capture_contract_details(page, worker)
     except Exception:
         pass
+
+    if _post_auth_error_page(page):
+        worker["phase"] = "SUCCESS_ASSIST"
+        set_tab_status(
+            worker, "🧠",
+            "После подписи сайт показал ошибку — DeepSeek анализирует. Страницу не трогаю."
+        )
+        external_heartbeat(worker, "success_sign_error")
+        queue_success_assist(worker, "ошибка после попытки подписи")
+        return
 
     button = _signature_button_locator(page)
     current_url = ""
@@ -5913,14 +6451,17 @@ def tick_sign_wait(base_dir, worker):
         return
 
     worker["sign_button_gone_since"] = None
-    if now >= worker.get("sign_submit_deadline", now + 1):
-        capture_blackbox(worker, "signature_submit_timeout")
-        print(
-            f"[Вкладка {worker['id']}] После «Подписать договор» страница "
-            "не перешла дальше. Повторяю ту же строку.",
-            flush=True,
-        )
-        restart_same_row_in_new_page(worker)
+
+    # NO sign_submit_deadline. A successful post-auth page is never timed out,
+    # restarted, reloaded or closed. Ask DeepSeek to inspect if it stays here.
+    worker["phase"] = "SUCCESS_ASSIST"
+    set_tab_status(
+        worker, "🧠",
+        "Подтверждение успешно. Подпись ещё не завершилась — DeepSeek наблюдает и помогает."
+    )
+    external_heartbeat(worker, "success_signature_still_pending")
+    queue_success_assist(worker, "подпись остаётся на странице; проверь ошибки/обязательные поля")
+
 
 
 def tick_confirmation(base_dir, worker):
@@ -5937,11 +6478,35 @@ def tick_confirmation(base_dir, worker):
         return
 
     if not _is_auth_url(page.url):
+        if _post_auth_error_page(page):
+            capture_blackbox(worker, "registration_error_after_auth")
+            print(
+                f"[Вкладка {worker['id']}] После auth открылась /registration/error. "
+                "Это НЕ success. Сначала DeepSeek анализирует страницу; "
+                "никакого автоматического retry/restart.",
+                flush=True,
+            )
+            enter_error_guard(
+                worker,
+                "после mobile-id-auth открылась /registration/error",
+            )
+            return
+
+        # personal-data-form / contract page means the user confirmation itself
+        # succeeded. From this exact point destructive recovery is forbidden.
+        if _post_auth_contract_page(page):
+            worker["post_auth_review_started"] = now
+            enter_success_guard(
+                worker,
+                "mobile-id подтверждение прошло; открыта страница персональных данных/договора",
+            )
+            return
+
+        # Unknown non-auth transition: inspect without declaring success.
         worker["phase"] = "POST_AUTH_REVIEW"
         worker["post_auth_review_started"] = now
-        worker["post_auth_review_deadline"] = now + 15
-        set_tab_status(worker, "🔎", "Подтверждение прошло — проверяю страницу договора/успеха")
-        external_heartbeat(worker, "post_auth_review")
+        set_tab_status(worker, "🔎", "Вышли из auth — проверяю новую страницу")
+        external_heartbeat(worker, "post_auth_review_unknown")
         return
 
     if now < worker["confirm_deadline"]:
@@ -5978,11 +6543,35 @@ def tick_resend(base_dir, worker):
         return
 
     if not _is_auth_url(page.url):
+        if _post_auth_error_page(page):
+            capture_blackbox(worker, "registration_error_after_auth")
+            print(
+                f"[Вкладка {worker['id']}] После auth открылась /registration/error. "
+                "Это НЕ success. Сначала DeepSeek анализирует страницу; "
+                "никакого автоматического retry/restart.",
+                flush=True,
+            )
+            enter_error_guard(
+                worker,
+                "после mobile-id-auth открылась /registration/error",
+            )
+            return
+
+        # personal-data-form / contract page means the user confirmation itself
+        # succeeded. From this exact point destructive recovery is forbidden.
+        if _post_auth_contract_page(page):
+            worker["post_auth_review_started"] = now
+            enter_success_guard(
+                worker,
+                "mobile-id подтверждение прошло; открыта страница персональных данных/договора",
+            )
+            return
+
+        # Unknown non-auth transition: inspect without declaring success.
         worker["phase"] = "POST_AUTH_REVIEW"
         worker["post_auth_review_started"] = now
-        worker["post_auth_review_deadline"] = now + 15
-        set_tab_status(worker, "🔎", "Подтверждение прошло — проверяю страницу договора/успеха")
-        external_heartbeat(worker, "post_auth_review")
+        set_tab_status(worker, "🔎", "Вышли из auth — проверяю новую страницу")
+        external_heartbeat(worker, "post_auth_review_unknown")
         return
 
     clicked = try_click_resend_once(page, worker["id"])
@@ -6020,6 +6609,8 @@ def worker_generation_alive(worker, generation=None):
 
 def begin_worker_cancel(worker, reason):
     """Invalidate all delayed work from the old page before closing it."""
+    if _io1591.guarded(worker or {}):
+        return False
     if worker.get("cancelling"):
         return False
     worker["cancelling"]=True
@@ -6031,6 +6622,8 @@ def begin_worker_cancel(worker, reason):
 
 def restart_same_row_in_new_page(worker):
     """Close old working page completely before creating generation+1 page."""
+    if _io1591.guarded(worker or {}):
+        return False
     old_page=worker.get("page")
     row=worker.get("row")
     begin_worker_cancel(worker,"same-row recovery")
@@ -6076,6 +6669,8 @@ def restart_same_row_in_new_page(worker):
 
 def tick_restart_close_retry(worker):
     """Повторно закрывает старую зависшую вкладку; не плодит новые."""
+    if _io1591.guarded(worker or {}):
+        return False
     page = worker["page"]
     if page.is_closed():
         restart_same_row_in_new_page(worker)
@@ -6117,6 +6712,8 @@ def publish_worker_phase(worker, phase, note="", matcher_stage=None):
                 "row": list(worker.get("row")) if isinstance(worker.get("row"), (tuple, list)) else worker.get("row"),
                 "confirm_attempt": worker.get("confirm_attempt", 0),
                 "completed_confirm_cycle": worker.get("completed_confirm_cycle", False),
+                "success_guard": bool(worker.get("success_guard")),
+                "error_guard": bool(worker.get("error_guard")),
                 "page_url": (
                     worker.get("page").url
                     if worker.get("page") and not worker.get("page").is_closed()
@@ -6151,6 +6748,10 @@ def external_heartbeat(worker, label):
                 "time": monotonic(),
                 "label": label,
                 "phase": worker.get("phase"),
+                "success_guard": bool(worker.get("success_guard")),
+                "error_guard": bool(worker.get("error_guard")),
+                "matcher_time": (hb.get(str(worker["id"])) or {}).get("matcher_time"),
+                "matcher_stage": worker.get("matcher_stage"),
                 "activity_time": worker.get("last_page_activity_at"),
                 "activity_kind": worker.get("last_page_activity_kind"),
                 "row": list(worker.get("row")) if isinstance(worker.get("row"), (tuple, list)) else worker.get("row"),
@@ -6216,6 +6817,10 @@ def tick_worker(base_dir, worker):
         tick_post_auth_review(base_dir, worker)
     elif worker["phase"] == "SIGN_WAIT":
         tick_sign_wait(base_dir, worker)
+    elif worker["phase"] == "SUCCESS_ASSIST":
+        tick_success_assist(base_dir, worker)
+    elif worker["phase"] == "ERROR_ASSIST":
+        tick_error_assist(base_dir, worker)
     elif worker["phase"] == "RESTART_ROW":
         if not worker.get("restart_in_progress"):
             worker["restart_in_progress"] = True
@@ -6246,6 +6851,8 @@ def _wait_cdp(port, timeout=25):
 
 def _close_cdp_page_for_worker(cdp_url, info, timeout=8):
     """Close only the exact physical worker page from heartbeat identity."""
+    if _io1591.guarded(info or {}):
+        return False
     expected_name = str((info or {}).get("window_name") or "").strip()
     if not expected_name:
         print(
@@ -6354,6 +6961,8 @@ def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heart
             "RESEND",
             "POST_AUTH_REVIEW",
             "SIGN_WAIT",
+            "SUCCESS_ASSIST",
+            "ERROR_ASSIST",
             "RESTART_ROW",
             "RESTART_CLOSE_RETRY",
         }
@@ -6440,6 +7049,10 @@ def parent_watchdog(processes, heartbeat):
         "CONFIRM",
         "RESEND",
         "SUCCESS_STOP",
+        "POST_AUTH_REVIEW",
+        "SIGN_WAIT",
+        "SUCCESS_ASSIST",
+        "ERROR_ASSIST",
         "DONE",
         "CANCELLING",
         "RESTART_ROW",
@@ -6456,7 +7069,7 @@ def parent_watchdog(processes, heartbeat):
             continue
 
         phase = str(info.get("phase") or "")
-        if phase in skip_phases:
+        if _io1591.guarded(info) or phase in skip_phases:
             continue
 
         logical_age = now - float(info.get("time") or now)
@@ -6544,8 +7157,22 @@ def remember_processed_number(base_dir, row):
 
 
 def main():
-    print("Версия 15.75 EXP-3: Telegram control menu + isolated AI routing")
+    print("Версия 15.86 EXP-3: authoritative Operator mission")
     base_dir = Path(__file__).resolve().parent
+    try:
+        RUNTIME_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        if RUNTIME_CONSOLE_FILE.exists() and RUNTIME_CONSOLE_FILE.stat().st_size:
+            _history1584 = RUNTIME_LOG_DIR / "console.previous.log"
+            try:
+                shutil.copy2(RUNTIME_CONSOLE_FILE, _history1584)
+            except Exception:
+                pass
+        RUNTIME_CONSOLE_FILE.write_text(
+            RUNTIME_SESSION_MARKER_V1584 + "\n",
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
     external_tg_controller = (
         str(os.environ.get("TG_EXTERNAL_CONTROLLER", "")).strip() == "1"
     )
@@ -6598,6 +7225,8 @@ def main():
             chromium_exe,
             f"--remote-debugging-port={port_i}",
             f"--user-data-dir={profile_i}",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-popup-blocking",
@@ -6833,7 +7462,15 @@ def main():
 
                 info = heartbeat.get(str(tab_id)) or {}
                 phase = str(info.get("phase") or "")
-                if phase in {"DONE", "SUCCESS_STOP", "MANUAL_STOP"}:
+                if phase in {
+                    "DONE", "SUCCESS_STOP", "MANUAL_STOP",
+                    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST",
+                } or bool(info.get("success_guard")) or bool(info.get("error_guard")):
+                    print(
+                        f"[DEAD RECOVERY] TAB {tab_id}: success_guard активен — "
+                        "страницу не закрываю и worker автоматически не заменяю.",
+                        flush=True,
+                    )
                     continue
 
                 saved_row = info.get("row")
@@ -6878,6 +7515,15 @@ def main():
             """
             recovered = False
             for tab_id, proc, info, age in parent_watchdog(processes, heartbeat):
+                if bool(info.get("success_guard")) or str(info.get("phase") or "") in {
+                    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST",
+                    "SUCCESS_STOP", "ERROR_ASSIST"
+                } or bool(info.get("error_guard")):
+                    print(
+                        f"[WATCHDOG] TAB {tab_id}: SUCCESS GUARD — recovery запрещён.",
+                        flush=True,
+                    )
+                    continue
                 saved_row = info.get("row")
                 completed = bool(info.get("completed_confirm_cycle"))
                 phase = str(info.get("phase") or "")
@@ -7026,6 +7672,31 @@ def main():
 
                 phase, logical_age, matcher_age, proc_alive = _host_worker_health(info, proc)
                 user_directed = bool(action.get("user_directed"))
+
+                lifecycle = kind in {
+                    "RESTART_TAB", "CLOSE_TAB", "RELOAD", "NAVIGATE", "BACK", "FORWARD"
+                }
+
+                if lifecycle and (
+                    bool(info.get("success_guard"))
+                    or bool(info.get("error_guard"))
+                    or phase in {
+                        "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST",
+                        "SUCCESS_STOP", "ERROR_ASSIST"
+                    }
+                ):
+                    result = {
+                        "ok": False,
+                        "error": "SUCCESS_GUARD_LIFECYCLE_FORBIDDEN",
+                        "phase": phase,
+                        "note": (
+                            "Эта physical-вкладка находится под SUCCESS/ERROR GUARD. "
+                            "Нельзя закрывать, перезапускать, reload/navigate/back/forward "
+                            "до завершения автономного анализа."
+                        ),
+                    }
+                    _finish_ai_action(action_id, result)
+                    return False
 
                 lifecycle = kind in {
                     "RESTART_TAB", "CLOSE_TAB", "RELOAD", "NAVIGATE", "BACK", "FORWARD"

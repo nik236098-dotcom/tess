@@ -11,7 +11,10 @@ Changes made in place (idempotent, refuses any other package):
    text changed in Python 3.13; the installer's preflight failed on Python <= 3.12.
 3. install.py: the reviewed package copies are installed after the input checksum
    matches, instead of re-applying edits.json line ranges.
-4. manifest.json, edits.json, SHA256SUMS.txt, verification.json, test_results.txt are
+4. test_beeline.py: the proxy login is removed from the code (TELEGRAM_DEFAULT_PROXY = "");
+   the runtime already reads telegram_config.json "proxy" first. install.py refuses to
+   run until that key exists, so Telegram traffic never silently loses the proxy.
+5. manifest.json, edits.json, SHA256SUMS.txt, verification.json, test_results.txt are
    regenerated so every checksum the installer verifies is consistent again.
 """
 from __future__ import annotations
@@ -22,8 +25,36 @@ from pathlib import Path
 import subprocess
 import sys
 
+import re
+
 MARKER = "SUCCESS_PUSH_DURABLE_1591R2"
+PROXY_MARKER = "PROXY_FROM_CONFIG_1591R3"
 EXPECTED_INPUT_OUTPUT_SHA = "9e216a70bb1e931c2e9568687c26564a0132bccd6b748dd42fef4eff9335fa50"
+# test_beeline.py of the first build and of revision 2 are both accepted as input.
+ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
+                         "8f5fc960fc6cc44faebc19eae0709057f3c8c627d623d9219a0c85cff81d3012"}
+
+# Revision 3: the proxy login is not embedded in the code any more. The runtime already
+# prefers telegram_config.json "proxy" and the TELEGRAM_PROXY variable over this constant.
+PROXY_LINE_RE = re.compile(r'^TELEGRAM_DEFAULT_PROXY = "(?:socks5h?|https?)://[^"\n]*"[ \t]*$', re.M)
+NEW_PROXY_LINE = ('TELEGRAM_DEFAULT_PROXY = ""  # ' + PROXY_MARKER
+                  + ': set "proxy" in telegram_config.json (or TELEGRAM_PROXY)')
+OLD_MAIN_RECONSTRUCT = "    original, output = reconstruct(app, package)\n"
+NEW_MAIN_RECONSTRUCT = ("    original, output = reconstruct(app, package)\n"
+                        "    ensure_proxy_configured(app)\n")
+PROXY_GUARD_SOURCE = '''
+
+def ensure_proxy_configured(app):
+    """r3: the code no longer embeds the Telegram proxy; it must be in telegram_config.json."""
+    try:
+        cfg = json.loads((app/'telegram_config.json').read_text('utf-8'))
+    except (OSError, ValueError):
+        cfg = {}
+    if not str((cfg or {}).get('proxy') or '').strip():
+        raise RuntimeError('telegram_config.json has no "proxy". Add "proxy": "socks5h://user:password@host:port" '
+                           '(the value that was TELEGRAM_DEFAULT_PROXY in the old code) before installing; '
+                           'this build does not embed it and would otherwise reach Telegram without the proxy.')
+'''
 
 OLD_PUSH = '''            r, err = telegram_api(
                 cfg,
@@ -113,6 +144,17 @@ NEW_RECONSTRUCT = '''        # r2: the reviewed package copy is installed once t
         result[name] = updated
 '''
 
+README_NOTE_R3 = '''
+
+РЕВИЗИЯ 3 (fix_package_1591.py)
+Логин и пароль прокси убраны из кода: TELEGRAM_DEFAULT_PROXY = "". Код и раньше
+брал прокси сначала из telegram_config.json ("proxy"), затем из переменной
+TELEGRAM_PROXY и только потом из константы. Перед установкой добавьте в
+/opt/beeline/telegram_config.json ключ "proxy" со старым значением константы;
+install.py отказывается продолжать, пока ключа нет. Маркер: PROXY_FROM_CONFIG_1591R3.
+Значение из старого кода на сервере:  grep -o 'socks5h://[^"]*' /opt/beeline/test_beeline.py
+'''
+
 README_NOTE = '''
 
 РЕВИЗИЯ 2 (fix_package_1591.py)
@@ -174,31 +216,44 @@ def main(argv: list[str]) -> int:
         if not (package / name).is_file():
             raise SystemExit(f"{package / name}: missing; this is not the extracted 15.91 package")
     source = app.read_text("utf-8")
-    if MARKER in source:
-        print("Already revision 2; nothing changed.")
+    if MARKER in source and PROXY_MARKER in source:
+        print("Already revision 3; nothing changed.")
         return 0
-    if sha(app) != EXPECTED_INPUT_OUTPUT_SHA:
-        raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not the reviewed 15.91-io output; nothing changed")
+    if sha(app) not in ACCEPTED_PACKAGE_SHAS:
+        raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
     manifest = json.loads((package / "manifest.json").read_text("utf-8"))
     edits = json.loads((package / "edits.json").read_text("utf-8"))
-
-    # 1. SUCCESS push
-    new_source = replace_once(source, OLD_PUSH, NEW_PUSH, "test_beeline.py SUCCESS push")
-    compile(new_source, "test_beeline.py", "exec")
-    add_edit(edits["test_beeline.py"], source, OLD_PUSH, NEW_PUSH)
-
-    # 2. Version-independent handler hashes
+    new_source = source
     test_src = (package / "test_update.py").read_text("utf-8")
-    test_src = replace_once(test_src, OLD_TEST_HASH, NEW_TEST_HASH, "test_update.py hash line")
-    test_src = replace_once(test_src, "\nclass SourceIntegrityTests(unittest.TestCase):\n",
-                            "\n" + SIGNATURE_SOURCE + "\n\nclass SourceIntegrityTests(unittest.TestCase):\n",
-                            "test_update.py SourceIntegrityTests")
-    compile(test_src, "test_update.py", "exec")
-
-    # 3. Installer uses the package copies
     install_src = (package / "install.py").read_text("utf-8")
-    install_src = replace_once(install_src, OLD_INPUT_CHECK, NEW_INPUT_CHECK, "install.py input check")
-    install_src = replace_once(install_src, OLD_RECONSTRUCT, NEW_RECONSTRUCT, "install.py reconstruct")
+
+    if MARKER not in source:
+        # 1. SUCCESS push
+        new_source = replace_once(new_source, OLD_PUSH, NEW_PUSH, "test_beeline.py SUCCESS push")
+        add_edit(edits["test_beeline.py"], source, OLD_PUSH, NEW_PUSH)
+
+        # 2. Version-independent handler hashes
+        test_src = replace_once(test_src, OLD_TEST_HASH, NEW_TEST_HASH, "test_update.py hash line")
+        test_src = replace_once(test_src, "\nclass SourceIntegrityTests(unittest.TestCase):\n",
+                                "\n" + SIGNATURE_SOURCE + "\n\nclass SourceIntegrityTests(unittest.TestCase):\n",
+                                "test_update.py SourceIntegrityTests")
+
+        # 3. Installer uses the package copies
+        install_src = replace_once(install_src, OLD_INPUT_CHECK, NEW_INPUT_CHECK, "install.py input check")
+        install_src = replace_once(install_src, OLD_RECONSTRUCT, NEW_RECONSTRUCT, "install.py reconstruct")
+
+    # 4 (r3). Proxy login out of the code; installer insists on telegram_config.json "proxy".
+    matches = PROXY_LINE_RE.findall(new_source)
+    if len(matches) != 1:
+        raise SystemExit(f"TELEGRAM_DEFAULT_PROXY literal: expected one line, found {len(matches)}; nothing changed")
+    old_proxy_line = PROXY_LINE_RE.search(new_source).group(0)
+    new_source = new_source.replace(old_proxy_line, NEW_PROXY_LINE, 1)
+    add_edit(edits["test_beeline.py"], source, old_proxy_line + "\n", NEW_PROXY_LINE + "\n")
+    install_src = replace_once(install_src, OLD_MAIN_RECONSTRUCT, NEW_MAIN_RECONSTRUCT, "install.py main")
+    install_src = replace_once(install_src, "\n\ndef main():\n", PROXY_GUARD_SOURCE + "\n\ndef main():\n",
+                               "install.py proxy guard")
+    compile(new_source, "test_beeline.py", "exec")
+    compile(test_src, "test_update.py", "exec")
     compile(install_src, "install.py", "exec")
 
     # 4. Manifest and checksums
@@ -214,9 +269,9 @@ def main(argv: list[str]) -> int:
     if old_hashes != manifest["preserved_ast_sha256"]:
         raise SystemExit("A preserved handler changed; refusing to re-sign it")
     # A server that already runs the first 15.91 build is upgraded in place as well.
-    manifest["files"]["test_beeline.py"]["previous_output_sha256"] = [EXPECTED_INPUT_OUTPUT_SHA]
+    manifest["files"]["test_beeline.py"]["previous_output_sha256"] = sorted(ACCEPTED_PACKAGE_SHAS)
     manifest["files"]["test_beeline.py"]["output_sha256"] = hashlib.sha256(new_source.encode("utf-8")).hexdigest()
-    manifest["revision"] = 2
+    manifest["revision"] = 3
 
     app.write_text(new_source, "utf-8")
     (package / "test_update.py").write_text(test_src, "utf-8")
@@ -224,8 +279,9 @@ def main(argv: list[str]) -> int:
     (package / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), "utf-8")
     (package / "edits.json").write_text(json.dumps(edits, ensure_ascii=False, indent=2), "utf-8")
     readme = package / "README.txt"
-    if "РЕВИЗИЯ 2" not in readme.read_text("utf-8"):
-        readme.write_text(readme.read_text("utf-8").rstrip("\n") + README_NOTE, "utf-8")
+    for heading, note in (("РЕВИЗИЯ 2", README_NOTE), ("РЕВИЗИЯ 3", README_NOTE_R3)):
+        if heading not in readme.read_text("utf-8"):
+            readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
     # Prove the package's own suite passes here, then record it.
     run = subprocess.run([sys.executable, "-m", "unittest", "-v", "test_update"], cwd=package,
@@ -236,7 +292,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 2, "result": "OK",
+    verification.update({"python": sys.version, "revision": 3, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -252,7 +308,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 2 applied to", package)
+    print("Revision 3 applied to", package)
     return 0
 
 
