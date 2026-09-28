@@ -51,12 +51,146 @@ def replace_once(text, old, new):
     return text.replace(old, new, 1)
 
 
+GUARD_PHASES = ("ERROR_ASSIST", "SUCCESS_ASSIST")
+LEGACY_PROFILE_KEYS = (
+    ('worker["profile"]', 'worker["success_profile"]'),
+    ("worker['profile']", "worker['success_profile']"),
+    ('worker.get("profile")', 'worker.get("success_profile")'),
+    ("worker.get('profile')", "worker.get('success_profile')"),
+    ('worker.setdefault("profile"', 'worker.setdefault("success_profile"'),
+)
+PROFILE_FIELD_ALIASES = (('"passport_issuer":', '"passport_issued_by":'), ('"city":', '"locality":'))
+
+
+def node_byte_span(source, node):
+    """ast offsets are UTF-8 byte offsets; the sources contain Cyrillic text."""
+    data = source.encode("utf-8")
+    starts = [0]
+    for line in data.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    return starts[node.lineno - 1] + node.col_offset, starts[node.end_lineno - 1] + node.end_col_offset
+
+
+def extend_phase_set(source, scope_name, var_name, extra):
+    """Add phases to the single set literal assigned to var_name; refuse anything ambiguous."""
+    scope = only_function(source, scope_name) if scope_name else ast.parse(source)
+    sets = [n for n in ast.walk(scope) if isinstance(n, ast.Assign) and isinstance(n.value, ast.Set)
+            and any(isinstance(x, ast.Name) and x.id == var_name for x in n.targets)]
+    if len(sets) != 1:
+        raise ValueError(f"{var_name} not unambiguous in {scope_name or 'module'}; source unchanged")
+    n = sets[0]
+    if not all(isinstance(x, ast.Constant) and isinstance(x.value, str) for x in n.value.elts):
+        raise ValueError(f"{var_name} has non-literal members; source unchanged")
+    a, b = node_range(source, n)
+    states = {x.value for x in n.value.elts}
+    states.update(extra)
+    return (source[:a] + " " * n.col_offset + f"{var_name} = {{"
+            + ", ".join(repr(x) for x in sorted(states)) + "}\n" + source[b:])
+
+
+def inject_after_payload(source, fn_name, lines):
+    """Insert lines right after the single `payload = {..., "messages": ...}` assignment."""
+    fn = only_function(source, fn_name)
+    payloads = [n for n in ast.walk(fn) if isinstance(n, ast.Assign)
+                and isinstance(n.value, ast.Dict)
+                and any(isinstance(k, ast.Constant) and k.value == "messages" for k in n.value.keys)
+                and any(isinstance(x, ast.Name) and x.id == "payload" for x in n.targets)]
+    if len(payloads) != 1:
+        raise ValueError(f"Ambiguous API payload in {fn_name}")
+    n = payloads[0]
+    _, pos = node_range(source, n)
+    indent = " " * n.col_offset
+    return source[:pos] + "".join(indent + line + "\n" for line in lines) + source[pos:]
+
+
+def drop_legacy_prompt_injections(body):
+    """Remove the 15.85/15.86 blocks: each round they nested the previous system text again."""
+    while True:
+        starts = [i for i in (body.find("# 15.85:"), body.find("# 15.86:")) if i >= 0]
+        if not starts:
+            return body
+        a = body.rfind("\n", 0, min(starts)) + 1
+        b = body.find("payload = {", a)
+        if b < 0:
+            raise ValueError("legacy prompt injection without a payload; source unchanged")
+        body = body[:a] + body[body.rfind("\n", 0, b) + 1:]
+
+
+def strip_slices_in_calls(source, fn_name, callee):
+    """Remove `[:N]` from arguments passed to callee(...) inside fn_name."""
+    while True:
+        fn = only_function(source, fn_name)
+        targets = [arg for n in ast.walk(fn) if isinstance(n, ast.Call)
+                   and ast.unparse(n.func).endswith(callee)
+                   for arg in n.args
+                   if isinstance(arg, ast.Subscript) and isinstance(arg.slice, ast.Slice)
+                   and arg.slice.lower is None and arg.slice.step is None
+                   and isinstance(arg.slice.upper, ast.Constant)]
+        if not targets:
+            return source
+        arg = targets[0]
+        _, value_end = node_byte_span(source, arg.value)
+        _, end = node_byte_span(source, arg)
+        data = source.encode("utf-8")
+        bracket = data.find(b"[", value_end, end)
+        if bracket < 0:
+            raise ValueError("slice bracket not found; source unchanged")
+        source = (data[:bracket] + data[end:]).decode("utf-8")
+
+
+def route_outbox_through_deliver(source, build_call):
+    """Replace the single `if out:` send block after `out = ..._ai_db_next_outbox()`."""
+    found = []
+    for parent in ast.walk(ast.parse(source)):
+        for field in ("body", "orelse", "finalbody"):
+            stmts = getattr(parent, field, None)
+            if not isinstance(stmts, list):
+                continue
+            for prev, node in zip(stmts, stmts[1:]):
+                if (isinstance(prev, ast.Assign) and isinstance(prev.value, ast.Call)
+                        and ast.unparse(prev.value.func).endswith("_ai_db_next_outbox")
+                        and any(isinstance(t, ast.Name) and t.id == "out" for t in prev.targets)
+                        and isinstance(node, ast.If) and isinstance(node.test, ast.Name)
+                        and node.test.id == "out"):
+                    found.append(node)
+    if len(found) != 1:
+        raise ValueError(f"outbox send block not unambiguous: {len(found)}")
+    node = found[0]
+    cfgs = {ast.unparse(c.args[0]) for c in ast.walk(node) if isinstance(c, ast.Call)
+            and ast.unparse(c.func).endswith("telegram_api") and c.args}
+    if len(cfgs) != 1:
+        raise ValueError("outbox send block has no single Telegram config variable")
+    a, b = node_range(source, node)
+    indent = " " * node.col_offset
+    return source[:a] + indent + "if out:\n" + indent + "    " + build_call(cfgs.pop()) + "\n" + source[b:]
+
+
+def rename_profile_key(source):
+    """Collector and result writer share one key; collectors' legacy field names are aliased."""
+    for old, new in LEGACY_PROFILE_KEYS:
+        source = source.replace(old, new)
+    collectors = []
+    for fn in ast.parse(source).body:
+        if isinstance(fn, ast.FunctionDef) and fn.name not in ("write_success_record", "_success_message"):
+            a, b = node_range(source, fn)
+            if 'worker["success_profile"]' in source[a:b] or "worker['success_profile']" in source[a:b]:
+                collectors.append(fn.name)
+    for name in collectors:
+        def alias(body):
+            for old, new in PROFILE_FIELD_ALIASES:
+                body = body.replace(old, new)
+            return body
+        source = edit_function(source, name, alias)
+    return source
+
+
 def transform_app(source):
     if "# OPERATOR_REPAIR_1587_INSTALLED" in source:
         compile(source, "test_beeline.py", "exec")
         return source
     for name in ("_run_developer_agent", "_chat_prompt", "deepseek_vision_request", "ai_observer_process",
-                 "finalize_success", "_tab_process", "_ai_db_init", "external_heartbeat",
+                 "finalize_success", "_tab_process", "_ai_db_init", "external_heartbeat", "tick_worker",
+                 "parent_watchdog", "write_success_record",
                  "create_diagnostic_session", "begin_worker_cancel", "restart_same_row_in_new_page"):
         only_function(source, name)
     original_flags = ('"--no-sandbox"' in source, '"--disable-setuid-sandbox"' in source)
@@ -67,22 +201,21 @@ def transform_app(source):
     if original_browser_args is None:
         raise ValueError("Known browser args_i not found; no patch applied")
 
-    # Apply at the actual payload, *after* all old checkpoint/prompt rewrites.
-    fn = only_function(source, "_run_developer_agent")
-    payloads = [n for n in ast.walk(fn) if isinstance(n, ast.Assign)
-                and isinstance(n.value, ast.Dict)
-                and any(isinstance(k, ast.Constant) and k.value == 'messages' for k in n.value.keys)
-                and any(isinstance(x, ast.Name) and x.id == 'payload' for x in n.targets)]
-    if len(payloads) != 1:
-        raise ValueError("Ambiguous developer API payload")
-    n = payloads[0]
-    _, pos = node_range(source, n)
-    indent = ' ' * n.col_offset
-    injection = (indent + '# Authoritative request; no old system history or recursive prompt growth.\n'
-                 + indent + 'payload["messages"] = _r87_messages(messages, request=user_text)\n'
-                 + indent + 'messages = payload["messages"]\n'
-                 + indent + '_r87_payload_log(payload, "developer")\n')
-    source = source[:pos] + injection + source[pos:]
+    # One authoritative system message at BOTH real API boundaries. The 15.85/15.86
+    # blocks re-nested the previous system text every round (2.8k -> 28k chars in ten
+    # rounds); they are removed rather than overridden.
+    source = edit_function(source, "_run_developer_agent", drop_legacy_prompt_injections)
+    source = inject_after_payload(source, "_run_developer_agent", [
+        "# Authoritative request; no old system history or recursive prompt growth.",
+        'payload["messages"] = _r87_messages(messages, request=user_text)',
+        'messages = payload["messages"]',
+        '_r87_payload_log(payload, "developer")'])
+    # Ordinary chat (_chat_prompt -> deepseek_vision_request) and any other caller of the
+    # text/vision request get the same system message even if they bound the original function.
+    source = inject_after_payload(source, "deepseek_vision_request", [
+        "# Same single authoritative system message as the developer boundary.",
+        'payload["messages"] = _r87_messages(payload["messages"])',
+        '_r87_payload_log(payload, "vision")'])
 
     # Ordinary chat has a separate consumer owned by the controller, not Chromium.
     source = edit_function(source, "_ai_message_lane", lambda b: replace_once(
@@ -91,9 +224,12 @@ def transform_app(source):
     source = edit_function(source, "ai_observer_process", lambda b: replace_once(
         b, 'if lane == "fast" and not _operator_needs_tools(latest):',
         'if lane in {"fast", "chat"} and not _operator_needs_tools(latest):'))
-    source = edit_function(source, "ai_observer_process", lambda b: replace_once(
-        b, '(response_text or "🤖 DeepSeek Operator\\n\\nГотово.")[:4000]',
-        '(response_text or "🤖 DeepSeek Operator\\n\\nПустой результат; завершение не подтверждено.")'))
+    # The full answer is persisted; splitting happens only at delivery, part by part.
+    source = edit_function(source, "ai_observer_process", lambda b: b.replace(
+        '"🤖 DeepSeek Operator\\n\\nГотово."',
+        '"🤖 DeepSeek Operator\\n\\nПустой результат; завершение не подтверждено."'))
+    source = strip_slices_in_calls(source, "ai_observer_process", "_ai_db_complete")
+    source = route_outbox_through_deliver(source, lambda cfg: f"_r87_deliver(out, {cfg})")
 
     # Re-running schema init must not steal an active consumer's job.
     fn = only_function(source, '_ai_db_init')
@@ -133,23 +269,26 @@ def transform_app(source):
                    sent_at=NULL''',
         'ON CONFLICT(update_id) DO NOTHING'))
 
-    # Diagnostic assistance is a real tickable state, not "unknown -> restart".
-    fn = only_function(source, '_tab_process')
-    sets = [n for n in ast.walk(fn) if isinstance(n, ast.Assign) and isinstance(n.value, ast.Set)
-            and any(isinstance(x, ast.Name) and x.id == 'tickable_phases' for x in n.targets)]
-    if len(sets) != 1:
-        raise ValueError('tickable_phases not unambiguous')
-    n=sets[0]; a,b=node_range(source,n)
-    states={x.value for x in n.value.elts if isinstance(x, ast.Constant)}
-    states.update({'SUCCESS_ASSIST','ERROR_ASSIST'})
-    source=source[:a]+' '*n.col_offset+'tickable_phases = {'+', '.join(repr(x) for x in sorted(states))+'}\n'+source[b:]
+    # Diagnostic assistance is a real tickable state, not "unknown -> restart", and the
+    # parent watchdog never treats a protected page as a stall.
+    source = extend_phase_set(source, "_tab_process", "tickable_phases", GUARD_PHASES)
+    source = extend_phase_set(source, "parent_watchdog", "skip_phases", GUARD_PHASES)
+    # A guarded worker that still reaches the unexpected-phase branch is held, never
+    # restarted, and never allowed to consume the next shared-queue row.
+    fn = only_function(source, "_tab_process")
+    calls = [n for n in ast.walk(fn) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
+             and isinstance(n.value.func, ast.Name) and n.value.func.id == "restart_same_row_in_new_page"]
+    if len(calls) != 1:
+        raise ValueError("unexpected-phase recovery call not unambiguous; source unchanged")
+    a, _ = node_range(source, calls[0])
+    indent = " " * calls[0].col_offset
+    source = (source[:a] + indent + "if _r87_guarded(worker):\n"
+              + indent + "    # Protected observation page: hold it; never restart it or take another row.\n"
+              + indent + "    _r87_hold_guarded(base_dir, worker)\n"
+              + indent + "    break\n" + source[a:])
 
-    # Fix the schema mismatch only; no new scraping or personal-data fabrication.
-    if functions(source, 'final_profile_capture_v1583'):
-        source=edit_function(source, 'final_profile_capture_v1583', lambda b: b.replace(
-            'worker.get("profile")','worker.get("success_profile")').replace(
-            'worker["profile"]','worker["success_profile"]').replace(
-            '"passport_issuer":','"passport_issued_by":').replace('"city":','"locality":'))
+    # Collector and result writer must read the same key, whatever the collector is called.
+    source = rename_profile_key(source)
 
     # Install adapters on module import, before __main__; also works under spawn.
     main_ifs=[n for n in ast.parse(source).body if isinstance(n,ast.If)
@@ -176,23 +315,7 @@ def transform_controller(source):
     if '# OPERATOR_CONTROLLER_REPAIR_1587' in source:
         return source
     only_function(source,'main'); only_function(source,'_send')
-    fn=only_function(source,'main')
-    tree=ast.parse(source)
-    assignments=[n for n in ast.walk(fn) if isinstance(n,ast.Assign)
-                 and isinstance(n.value,ast.Call) and ast.unparse(n.value.func)=='app._ai_db_next_outbox']
-    if len(assignments)!=1:
-        raise ValueError('Ambiguous controller outbox')
-    assign=assignments[0]
-    parents={id(child):parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
-    # Work with the same AST instance for parent relationships.
-    fn=only_function(source,'main')
-    ai=[n for n in ast.walk(fn) if isinstance(n,ast.If) and ast.unparse(n.test)=='out'
-        and n.lineno>assign.lineno and n.lineno<assign.lineno+3]
-    if len(ai)!=1:
-        raise ValueError('outbox conditional not found')
-    n=ai[0]; a,b=node_range(source,n)
-    indent=' '*n.col_offset
-    source=source[:a]+indent+'if out:\n'+indent+'    app._r87_deliver(out, cfg, MENU_MARKUP)\n'+source[b:]
+    source=route_outbox_through_deliver(source, lambda cfg: f"app._r87_deliver(out, {cfg}, MENU_MARKUP)")
     source=replace_once(source,'    app._ai_db_init()\n',
                         '    app._ai_db_init()\n    app._r87_start_reporter()\n')
     source=edit_function(source,'_send',lambda _: '''def _send(text, *, menu=True):

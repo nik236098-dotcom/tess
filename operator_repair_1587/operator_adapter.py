@@ -15,6 +15,9 @@ from operator_reliability import (MISSION, POLICY_VERSION, Store, authoritative_
 _APP = None
 _REPORTER_STARTED = False
 _GUARD_PHASES = {"POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST", "SUCCESS_STOP"}
+_ASSIST_PHASES = {"SUCCESS_ASSIST", "ERROR_ASSIST"}
+# Legacy collectors (15.83 capture) used their own field names; the record uses these.
+PROFILE_ALIASES = {"passport_issuer": "passport_issued_by", "city": "locality"}
 
 
 def _base():
@@ -178,6 +181,49 @@ def passive_tick(base_dir, worker):
     _APP["set_tab_status"](worker, "🔎", "Задание наблюдения активно. Автоподпись отключена; результат не объявляется по смене URL.")
 
 
+def hold_guarded(base_dir, worker):
+    """Keep a protected page under passive observation until the worker is stopped."""
+    while not worker.get("stopped"):
+        passive_tick(base_dir, worker)
+        if worker.get("stopped"):
+            break
+        page = worker.get("page")
+        try:
+            if page is not None and not page.is_closed():
+                page.wait_for_timeout(250)
+                continue
+        except Exception:
+            pass
+        time.sleep(0.25)
+
+
+def merge_success_profile(worker):
+    """Bring a legacy collector's worker["profile"] into the key the result record reads."""
+    merged = {}
+    for key in ("profile", "success_profile"):
+        data = worker.get(key)
+        if not isinstance(data, dict):
+            continue
+        for field, value in data.items():
+            value = str(value or "").strip()
+            if value:
+                merged[PROFILE_ALIASES.get(str(field), str(field))] = value
+    worker["success_profile"] = merged
+    return merged
+
+
+def guarded_watchdog_entries(stalled):
+    """A protected page is never a stall, whatever its phase label says."""
+    kept = []
+    for entry in stalled:
+        info = entry[2] if isinstance(entry, (tuple, list)) and len(entry) > 2 else None
+        if isinstance(info, dict) and (info.get("success_guard") or info.get("error_guard")
+                                       or str(info.get("phase") or "") in _GUARD_PHASES):
+            continue
+        kept.append(entry)
+    return kept
+
+
 def report_loop():
     """One observation-only analyser; no browser control tools are available here."""
     import fcntl
@@ -255,6 +301,8 @@ def install(ns):
     ns["_r87_start_reporter"] = start_reporter
     ns["_r87_deliver"] = deliver
     ns["_r87_job_status"] = lambda: _store().jobs((_session() or {}).get("id", "no-session"))
+    ns["_r87_guarded"] = _guarded
+    ns["_r87_hold_guarded"] = hold_guarded
     original_api = ns["telegram_api"]
     def telegram_api(*args, **kwargs):
         obj, err = original_api(*args, **kwargs)
@@ -297,6 +345,28 @@ def install(ns):
             return False
         return original_final(base_dir, worker)
     ns["finalize_success"] = guarded_final
+    if "tick_worker" in ns:
+        # The dispatcher of the installed build has no branch for the assist phases:
+        # without this the loop spins silently, the heartbeat goes stale and the parent
+        # watchdog "recovers" the protected page.
+        original_tick = ns["tick_worker"]
+        def tick_worker(base_dir, worker):
+            if str(worker.get("phase") or "") in _ASSIST_PHASES:
+                passive_tick(base_dir, worker)
+                return None
+            return original_tick(base_dir, worker)
+        ns["tick_worker"] = tick_worker
+    if "parent_watchdog" in ns:
+        original_watchdog = ns["parent_watchdog"]
+        def parent_watchdog(processes, heartbeat):
+            return guarded_watchdog_entries(original_watchdog(processes, heartbeat))
+        ns["parent_watchdog"] = parent_watchdog
+    if "write_success_record" in ns:
+        original_record = ns["write_success_record"]
+        def write_success_record(base_dir, worker):
+            merge_success_profile(worker)
+            return original_record(base_dir, worker)
+        ns["write_success_record"] = write_success_record
     original_heartbeat = ns["external_heartbeat"]
     def heartbeat(worker, label):
         original_heartbeat(worker, label)

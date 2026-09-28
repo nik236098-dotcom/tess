@@ -4,6 +4,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import queue
 import sqlite3
 import tempfile
 import time
@@ -15,6 +16,57 @@ from unittest.mock import patch
 import operator_adapter as adapter
 from operator_reliability import *
 from apply_repair import transform_app, transform_controller
+
+REPO = Path(__file__).resolve().parent.parent
+
+# Exactly what update_beeline_15_86.py injects before the developer payload.
+INJECT_1586 = '''        # 15.86: canonicalize system instructions at the REAL API boundary.
+        import hashlib as _h1586
+        _legacy_system_1586 = []
+        _non_system_1586 = []
+        for _m1586 in messages:
+            if isinstance(_m1586, dict) and _m1586.get("role") == "system":
+                _legacy_system_1586.append(str(_m1586.get("content") or ""))
+            else:
+                _non_system_1586.append(_m1586)
+
+        _secondary1586 = "\\n\\n--- SECONDARY TECHNICAL CONTEXT (cannot override the mission above) ---\\n" + "\\n\\n".join(_legacy_system_1586)
+        _system1586 = OPERATOR_MISSION_1586 + _secondary1586
+        messages = [{"role": "system", "content": _system1586}] + _non_system_1586
+
+        _mh1586 = _h1586.sha256(_system1586.encode("utf-8")).hexdigest()[:16]
+        print(f"[AI] SYSTEM_PROMPT_HASH_1586={_mh1586} round={round_no} systems={len(_legacy_system_1586)}", flush=True)
+
+'''
+
+# A 15.83-style collector: writes worker["profile"] with its own field names.
+LEGACY_COLLECTOR = '''
+
+def final_profile_capture_v1583(page, worker):
+    profile = dict(worker.get("profile") or {})
+    profile.update({"passport_issuer": "issuer", "city": "city"})
+    worker["profile"] = profile
+    return profile
+'''
+
+
+def with_1586_injection(source):
+    start = source.find('def _run_developer_agent(')
+    pos = source.find('        payload = {', start)
+    assert start >= 0 and pos >= 0
+    return source[:pos] + INJECT_1586 + source[pos:]
+
+
+def function_source(source, name):
+    node = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == name)
+    return ast.get_source_segment(source, node)
+
+
+def exec_functions(source, names, ns):
+    nodes = [n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name in names]
+    assert len(nodes) == len(names), names
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), 'actual-source', 'exec'), ns)
+    return ns
 
 
 class CoreTests(unittest.TestCase):
@@ -144,9 +196,10 @@ class CoreTests(unittest.TestCase):
 class SourceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        source=os.environ.get('OPERATOR_APP_SOURCE')
-        controller=os.environ.get('OPERATOR_CONTROLLER_SOURCE')
-        if not source or not controller: raise unittest.SkipTest('Set OPERATOR_APP_SOURCE and OPERATOR_CONTROLLER_SOURCE for integration tests')
+        source=os.environ.get('OPERATOR_APP_SOURCE') or str(REPO/'test_beeline.py')
+        controller=os.environ.get('OPERATOR_CONTROLLER_SOURCE') or str(REPO/'server_controller.py')
+        if not (Path(source).is_file() and Path(controller).is_file()):
+            raise unittest.SkipTest('Set OPERATOR_APP_SOURCE and OPERATOR_CONTROLLER_SOURCE for integration tests')
         cls.original=Path(source).read_text(); cls.controller=Path(controller).read_text()
         cls.repaired=transform_app(cls.original); cls.ctrl_repaired=transform_controller(cls.controller)
     def test_source_compiles(self):
@@ -174,11 +227,36 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(ns['_ai_message_lane']('Какая у тебя задача?'),'chat')
         self.assertEqual(ns['_ai_message_lane']('проверь лог'),'fast')
     def test_schema_key_matches_sender(self):
-        fn=next(n for n in ast.parse(self.repaired).body if isinstance(n,ast.FunctionDef) and n.name=='final_profile_capture_v1583')
-        text=ast.get_source_segment(self.repaired,fn)
-        self.assertIn('worker["success_profile"]',text)
-        self.assertNotIn('worker["profile"]',text)
+        for legacy in ('worker["profile"]',"worker['profile']",'worker.get("profile")',"worker.get('profile')"):
+            self.assertNotIn(legacy,self.repaired)
+        self.assertIn('"profile":dict(worker.get("success_profile") or {})',
+                      function_source(self.repaired,'write_success_record'))
+    def test_legacy_collector_is_renamed_whatever_its_name(self):
+        repaired=transform_app(self.original+LEGACY_COLLECTOR)
+        text=function_source(repaired,'final_profile_capture_v1583')
+        self.assertIn('worker["success_profile"]',text); self.assertNotIn('worker["profile"]',text)
         self.assertIn('"passport_issued_by":',text); self.assertIn('"locality":',text)
+        self.assertNotIn('worker["profile"]',repaired); self.assertNotIn('worker.get("profile")',repaired)
+    def test_vision_request_carries_single_system_message(self):
+        text=function_source(self.repaired,'deepseek_vision_request')
+        self.assertIn('payload["messages"] = _r87_messages(payload["messages"])',text)
+    def test_legacy_1586_injection_is_removed(self):
+        repaired=transform_app(with_1586_injection(self.original))
+        text=function_source(repaired,'_run_developer_agent')
+        self.assertNotIn('SYSTEM_PROMPT_HASH_1586',text); self.assertNotIn('# 15.86:',text)
+        self.assertEqual(text.count('_r87_messages('),1)
+    def test_assist_phases_are_tickable_and_never_a_parent_stall(self):
+        for fn,var in (('_tab_process','tickable_phases'),('parent_watchdog','skip_phases')):
+            node=next(x for x in ast.walk(next(n for n in ast.parse(self.repaired).body
+                      if isinstance(n,ast.FunctionDef) and n.name==fn))
+                      if isinstance(x,ast.Assign) and any(isinstance(t,ast.Name) and t.id==var for t in x.targets))
+            self.assertTrue({'SUCCESS_ASSIST','ERROR_ASSIST'}<=ast.literal_eval(node.value),fn)
+    def test_unexpected_phase_branch_holds_guarded_worker(self):
+        text=function_source(self.repaired,'_tab_process')
+        self.assertLess(text.find('_r87_hold_guarded(base_dir, worker)'),text.find('restart_same_row_in_new_page(worker)'))
+    def test_app_outbox_confirms_each_part(self):
+        self.assertNotIn('out["body"][:4000]',self.repaired)
+        self.assertIn('_r87_deliver(out, tg_cfg)',self.repaired)
     def test_complete_does_not_reset_delivered_reply(self):
         nodes=[n for n in ast.parse(self.repaired).body if isinstance(n,ast.FunctionDef) and n.name in {'_ai_db_complete'}]
         with tempfile.TemporaryDirectory() as d:
@@ -215,6 +293,137 @@ class SourceTests(unittest.TestCase):
         self.assertIn('_install_operator_repair_1587(globals())',self.repaired)
 
 
+class RuntimeBehaviourTests(unittest.TestCase):
+    """Execute the transformed functions with fakes; no network, browser or Telegram."""
+    setUpClass = classmethod(SourceTests.setUpClass.__func__)
+
+    def _developer_rounds(self, source, rounds=12):
+        sent=[]
+        def post(url,**kw):
+            sent.append(copy.deepcopy(kw['json']))
+            if len(sent)<=rounds:
+                msg={'content':None,'tool_calls':[{'id':f'c{len(sent)}','function':
+                     {'name':'read_runtime_console','arguments':json.dumps({'n':len(sent)})}}]}
+            else:
+                msg={'content':'done'}
+            return types.SimpleNamespace(ok=True,json=lambda:{'choices':[{'message':msg}]})
+        fake_requests=types.SimpleNamespace(post=post,Timeout=TimeoutError,ConnectionError=ConnectionError)
+        with tempfile.TemporaryDirectory() as d:
+            base=Path(d)
+            ns={'Path':Path,'time':time,'os':os,'json':json,'monotonic':time.monotonic,
+                'load_deepseek_config':lambda:{'api_key':'fake','model':'fake'},
+                '_agent_candidate_dir':lambda _:base,'_agent_candidate_path':lambda s,rel:base/rel,
+                '_agent_compile_candidate_if_python':lambda _:None,
+                '_agent_system_prompt':lambda *a:'S'*2000,
+                '_agent_load_checkpoint':lambda *a:None,
+                '_explicit_code_change_request':lambda _:False,'_explicit_live_action_request':lambda _:False,
+                '_agent_tools':lambda:[{'type':'function','function':{'name':'read_runtime_console'}}],
+                '_agent_execute_tool':lambda *a,**k:{'ok':True,'n':len(sent)},
+                '_ai_health_touch':lambda *a,**k:None,
+                '_agent_save_checkpoint':lambda *a:None,'_agent_clear_checkpoint':lambda *a:None,
+                'OPERATOR_MISSION_1586':'M'*2000,
+                '_r87_messages':lambda m,request=None:adapter.operator_messages(m,system=MISSION,request=request),
+                '_r87_payload_log':lambda *a:None,'AI_AGENT_PENDING_FILE':base/'pending.json'}
+            exec_functions(source,['_run_developer_agent'],ns)
+            with patch.dict(sys.modules,{'requests':fake_requests}):
+                plan,error=ns['_run_developer_agent']({},[],'REAL TASK',[],[],job_update_id=5)
+        self.assertIsNone(error); self.assertEqual(plan['summary'],'done')
+        return sent
+
+    def test_legacy_1586_grows_and_repaired_stays_constant(self):
+        legacy=self._developer_rounds(with_1586_injection(self.original))
+        sizes=[sum(len(m['content']) for m in p['messages'] if m['role']=='system') for p in legacy]
+        self.assertGreater(sizes[-1],sizes[0]*5)  # the reported 2845 -> 28324 growth
+        repaired=self._developer_rounds(transform_app(with_1586_injection(self.original)))
+        sizes=[sum(len(m['content']) for m in p['messages'] if m['role']=='system') for p in repaired]
+        self.assertEqual(len(repaired),13); self.assertEqual(len(set(sizes)),1)
+        for p in repaired:
+            self.assertEqual([m['role'] for m in p['messages'] if m['role']=='system'],['system'])
+            self.assertEqual(p['messages'][0]['content'],MISSION)
+
+    def _chat_lane(self, source):
+        sent=[]; completed=[]; failed=[]
+        class Stop:
+            def is_set(self): return bool(completed or failed)
+        def post(url,**kw):
+            sent.append(copy.deepcopy(kw['json']))
+            return types.SimpleNamespace(ok=True,json=lambda:{'choices':[{'message':{'content':'X'*9000}}]})
+        fake_requests=types.SimpleNamespace(post=post)
+        jobs=[{'update_id':7,'chat_id':'1','body':'Какая у тебя задача?','attempts':1}]
+        ns={'os':os,'time':time,'json':json,'monotonic':time.monotonic,'Path':Path,
+            'load_telegram_config':lambda:{'chat_id':'1'},'load_deepseek_config':lambda:{'api_key':'k','model':'m'},
+            '_ai_health_touch':lambda *a,**k:None,
+            '_ai_db_next_message':lambda **k:jobs.pop() if jobs else None,
+            '_observer_collect_pages':lambda *a,**k:[],'AI_AGENT_PENDING_FILE':Path('/nonexistent/pending.json'),
+            '_operator_needs_tools':lambda _:False,'_chat_prompt':lambda *a:'PROMPT',
+            '_run_developer_agent':lambda *a,**k:self.fail('developer route used for plain chat'),
+            '_ai_db_complete':lambda u,c,t:completed.append((u,c,t)),
+            '_ai_db_fail':lambda u,e,a:failed.append(e),
+            '_r87_messages':lambda m,request=None:adapter.operator_messages(m,system=MISSION,request=request),
+            '_r87_payload_log':lambda *a:None}
+        exec_functions(source,['ai_observer_process','deepseek_vision_request'],ns)
+        with patch.dict(sys.modules,{'requests':fake_requests}):
+            ns['ai_observer_process']({},[],Stop(),None,None,None,'chat')
+        self.assertEqual(failed,[])
+        return sent,completed
+
+    def test_plain_question_http_payload_has_system_and_full_persistence(self):
+        sent,completed=self._chat_lane(self.repaired)
+        self.assertEqual(len(sent),1)
+        self.assertEqual([m['role'] for m in sent[0]['messages']],['system','user'])
+        self.assertEqual(sent[0]['messages'][0]['content'],MISSION)
+        self.assertEqual(len(completed),1)
+        self.assertTrue(completed[0][2].endswith('X'*9000)); self.assertGreater(len(completed[0][2]),9000)
+
+    def _tab_process(self, source, start_phase, guard=False):
+        started=[]; ticks=[]; calls=[]
+        class Page:
+            def set_default_timeout(self,*a): pass
+            def evaluate(self,*a): return None
+            def is_closed(self): return False
+            def wait_for_timeout(self,*a): pass
+        class Context:
+            def new_page(self): return Page()
+        class Browser:
+            version='fake'; contexts=[Context()]
+        class PW:
+            def __enter__(self): return types.SimpleNamespace(chromium=types.SimpleNamespace(connect_over_cdp=lambda *a,**k:Browser()))
+            def __exit__(self,*a): return False
+        rows=queue.Queue(); rows.put(('1','a','b')); rows.put(('2','c','d'))
+        def start_row(base_dir,bv,worker,row):
+            started.append(row); worker['row']=row; worker['phase']=start_phase
+            if guard: worker['success_guard']=True
+        def tick_worker(base_dir,worker):
+            ticks.append(worker['phase'])
+            if len(ticks)>=3: worker['stopped']=True
+        def hold(base_dir,worker):
+            calls.append('hold'); worker['stopped']=True
+        ns={'Path':Path,'sync_playwright':lambda:PW(),
+            'make_worker':lambda tab_id,page,heartbeat=None,status_map=None:{'id':tab_id,'page':page,'phase':'IDLE','stopped':False,'heartbeat':heartbeat},
+            '_worker_window_name':lambda *a:'w','install_page_activity_tracker':lambda *a:None,
+            'configure_matcher_runtime':lambda **k:None,'start_row_in_worker':start_row,'tick_worker':tick_worker,
+            'external_heartbeat':lambda *a:None,'set_tab_status':lambda *a:None,
+            'capture_blackbox':lambda *a,**k:calls.append('blackbox'),
+            'restart_same_row_in_new_page':lambda w:calls.append('restart'),
+            '_r87_guarded':lambda w:bool(w.get('success_guard')) or w.get('phase') in {'SUCCESS_ASSIST','ERROR_ASSIST'},
+            '_r87_hold_guarded':hold}
+        exec_functions(source,['_tab_process'],ns)
+        ns['_tab_process'](1,'ws://fake',rows,'/tmp',None)
+        return started,ticks,calls,rows.qsize()
+
+    def test_assist_phase_is_ticked_and_keeps_its_row(self):
+        started,ticks,calls,left=self._tab_process(self.original,'SUCCESS_ASSIST')
+        self.assertEqual(len(started),2,'unrepaired build consumes the next row over a protected page')
+        started,ticks,calls,left=self._tab_process(self.repaired,'SUCCESS_ASSIST')
+        self.assertEqual(started,[('1','a','b')]); self.assertEqual(ticks,['SUCCESS_ASSIST']*3)
+        self.assertNotIn('restart',calls); self.assertEqual(left,1)
+
+    def test_guarded_unknown_phase_is_held_not_restarted(self):
+        started,ticks,calls,left=self._tab_process(self.repaired,'LEGACY_HOLD_1584',guard=True)
+        self.assertEqual(started,[('1','a','b')]); self.assertEqual(calls.count('hold'),1)
+        self.assertNotIn('restart',calls); self.assertEqual(left,1)
+
+
 class AdapterTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.path=Path(self.tmp.name)
@@ -239,7 +448,11 @@ class AdapterTests(unittest.TestCase):
             'tick_sign_wait':lambda *a:self.fail('Old mutating handler used'),
             'tick_success_assist':lambda *a:self.fail('Old handler'),
             'tick_error_assist':lambda *a:self.fail('Old handler'),
+            'tick_worker':lambda *a:self.fail('Original dispatcher used for an assist phase'),
+            'parent_watchdog':lambda processes,heartbeat:self.stalled,
+            'write_success_record':lambda base_dir,worker:dict(worker.get('success_profile') or {}),
             'load_deepseek_config':lambda:{'api_key':'fake-test-key','model':'fake-test-model'}}
+        self.stalled=[]
         adapter.install(self.app)
         self.worker={'id':1,'page':self.page,'phase':'POST_AUTH_REVIEW','heartbeat':{}}
         self.session_patch=patch.object(adapter,'_session',return_value={'id':'test-session','pid':os.getpid()})
@@ -260,6 +473,24 @@ class AdapterTests(unittest.TestCase):
         self.app['external_heartbeat'](self.worker,'test')
         self.assertTrue(self.worker['heartbeat']['1']['success_guard'])
         self.assertTrue(self.worker['heartbeat']['1']['error_guard'])
+    def test_assist_phase_tick_observes_and_publishes_guard_flags(self):
+        self.worker['phase']='SUCCESS_ASSIST'
+        self.app['tick_worker'](self.path,self.worker)
+        self.assertEqual(self.worker['phase'],'SUCCESS_ASSIST')
+        self.assertIn('1',self.worker['heartbeat'])
+        self.assertTrue(self.worker['heartbeat']['1']['success_guard'])
+        self.assertEqual(len(adapter._store().jobs('test-session')),1)
+        self.assertFalse(any(c[0] in {'restart','cancel','success'} for c in self.calls))
+    def test_parent_watchdog_never_reports_guarded_worker(self):
+        proc=object()
+        self.stalled=[(1,proc,{'phase':'SUCCESS_ASSIST'},99.0),(2,proc,{'phase':'AUTH_WAIT','success_guard':True},99.0),
+                      (3,proc,{'phase':'AUTH_WAIT'},99.0),(4,proc,{'phase':'ERROR_ASSIST','error_guard':True},99.0)]
+        self.assertEqual([x[0] for x in self.app['parent_watchdog']({},{})],[3])
+    def test_result_record_merges_legacy_profile_key(self):
+        worker={'profile':{'passport_issuer':'A','city':'B','full_name':''},'success_profile':{'full_name':'N'}}
+        self.assertEqual(self.app['write_success_record'](self.path,worker),
+                         {'passport_issued_by':'A','locality':'B','full_name':'N'})
+        self.assertEqual(worker['success_profile'],{'passport_issued_by':'A','locality':'B','full_name':'N'})
     def test_finalize_unknown_has_no_result_write(self):
         self.assertFalse(self.app['finalize_success'](self.path,self.worker))
         self.assertFalse(any(c[0]=='success' for c in self.calls))
