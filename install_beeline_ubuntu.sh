@@ -24,13 +24,20 @@ apt-get install -y python3 python3-venv python3-pip unzip curl xvfb ca-certifica
 
 echo "[2/8] Код 15.75..."
 mkdir -p "$APP_DIR"
-TMP_B64="$(mktemp)"
 TMP_ZIP="$(mktemp --suffix=.zip)"
-curl -fL --retry 5 --retry-delay 2 "$BUNDLE_URL" -o "$TMP_B64"
-# GitHub stores this artifact as base64 text. Decode it into the real ZIP.
-tr -d '\r\n' < "$TMP_B64" | base64 -d > "$TMP_ZIP"
-rm -f "$TMP_B64"
-unzip -tq "$TMP_ZIP" >/dev/null
+curl -fL --retry 5 --retry-delay 2 "$BUNDLE_URL" -o "$TMP_ZIP"
+# Fail with a clear message before extraction if GitHub did not return a ZIP.
+python3 - "$TMP_ZIP" <<'PY'
+import sys, zipfile
+p=sys.argv[1]
+if not zipfile.is_zipfile(p):
+    raise SystemExit("ERROR: downloaded release bundle is not a valid ZIP")
+with zipfile.ZipFile(p) as z:
+    bad=z.testzip()
+    if bad:
+        raise SystemExit(f"ERROR: damaged ZIP member: {bad}")
+print("ZIP OK")
+PY
 unzip -oq "$TMP_ZIP" -d "$APP_DIR"
 rm -f "$TMP_ZIP"
 curl -fL --retry 5 --retry-delay 2 "$CONTROLLER_URL" -o "$APP_DIR/server_controller.py"
