@@ -263,7 +263,7 @@ class PackageTests(unittest.TestCase):
     def test_error_rule_is_in_every_prompt_layer(self):
         self.assertIn("ERROR_RECOVERY_1591R5", self.source.split("OPERATOR_MISSION_1586 = ", 1)[1].split('"""')[1])
         agent = self.source.split("def _agent_system_prompt(", 1)[1].split("\ndef ", 1)[0]
-        self.assertIn("РАЗРЕШЕНО без разрешения пользователя закрыть", agent)
+        self.assertIn("АВТОМАТИЧЕСКИ, без отдельного подтверждения", agent)
         self.assertNotIn("Destructive recovery без анализа запрещён", agent)
         queue = self.source.split("def queue_error_assist(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("повторит строку один раз", queue)
