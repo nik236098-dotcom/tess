@@ -64,7 +64,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "e0f5748ea3f7c19e6409a1e4f63fc9e00c322f8c38365134af0f13bf4bd8e14f",
                          "04e07acd1a019a943c72237a6c6c61b34134f7b753ce3f3b484c832ce742ae9d",
                          "21772a39422eeae8224f580beecad29171105885101b76f100190f6d64fd3e7c",
-                         "1cc1769f3ec9bd04b325be73fed182a4a05f082339820682601c3bd4be7483f6"}
+                         "1cc1769f3ec9bd04b325be73fed182a4a05f082339820682601c3bd4be7483f6",
+                         "3bee3697775d818df6c1fe82c3096574f00a1c289aaf26c7a7e96d2f614b7597"}
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -1072,6 +1073,26 @@ README_NOTE_R16 = '''
 страницы не нужно. Причина на странице (r15) по-прежнему записывается в третью колонку.
 Маркер: ERROR_SKIP_ALWAYS_1591R16.
 '''
+# Revision 17: "#успешно" on top of the SUCCESS push (searchable among the DeepSeek reports)
+# and four worker tabs per Chromium instead of three.
+SUCCESSTAG_MARKER = "SUCCESS_TAG_1591R17"
+OLD_SUCCESS_HEAD = '''    return "\\n".join([
+        f"✅ УСПЕХ — Вкладка {worker['id']}",
+'''
+NEW_SUCCESS_HEAD = '''    return "\\n".join([
+        "#успешно",  # SUCCESS_TAG_1591R17: searchable among the DeepSeek reports
+        f"✅ УСПЕХ — Вкладка {worker['id']}",
+'''
+OLD_TABS_LINE = "TABS_PER_BROWSER = 3\n"
+NEW_TABS_LINE = "TABS_PER_BROWSER = 4  # SUCCESS_TAG_1591R17: four worker tabs\n"
+README_NOTE_R17 = '''
+
+РЕВИЗИЯ 17 (fix_package_1591.py)
+Тег #успешно первой строкой SUCCESS-сообщения в Telegram, чтобы успехи искались среди
+отчётов DeepSeek поиском по чату. Число рабочих вкладок на Chromium увеличено с 3 до 4
+(TABS_PER_BROWSER = 4): каскад, статусы, watchdog и промпты DeepSeek берут число из
+константы, поэтому больше ничего не менялось. Маркер: SUCCESS_TAG_1591R17.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -1899,8 +1920,8 @@ def main(argv: list[str]) -> int:
     if speed_done and all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER,
                                                 TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER,
                                                 PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER, PERSDATA_MARKER,
-                                                ERRORSKIP_MARKER)):
-        print("Already revision 16; nothing changed.")
+                                                ERRORSKIP_MARKER, SUCCESSTAG_MARKER)):
+        print("Already revision 17; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -2153,6 +2174,13 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 18 (r17). #успешно on the SUCCESS push; four tabs per Chromium.
+    if SUCCESSTAG_MARKER not in source:
+        for old, new, what in ((OLD_SUCCESS_HEAD, NEW_SUCCESS_HEAD, "success message tag"),
+                               (OLD_TABS_LINE, NEW_TABS_LINE, "four tabs")):
+            new_source = replace_once(new_source, old, new, what)
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -2178,7 +2206,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | {CONTROLLER_OUTPUT_SHA_R12}
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 16
+    manifest["revision"] = 17
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -2193,7 +2221,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 9", README_NOTE_R9), ("РЕВИЗИЯ 10", README_NOTE_R10),
                           ("РЕВИЗИЯ 11", README_NOTE_R11), ("РЕВИЗИЯ 12", README_NOTE_R12),
                           ("РЕВИЗИЯ 13", README_NOTE_R13), ("РЕВИЗИЯ 14", README_NOTE_R14),
-                          ("РЕВИЗИЯ 15", README_NOTE_R15), ("РЕВИЗИЯ 16", README_NOTE_R16)):
+                          ("РЕВИЗИЯ 15", README_NOTE_R15), ("РЕВИЗИЯ 16", README_NOTE_R16),
+                          ("РЕВИЗИЯ 17", README_NOTE_R17)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -2206,7 +2235,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 16, "result": "OK",
+    verification.update({"python": sys.version, "revision": 17, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -2222,7 +2251,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 16 applied to", package)
+    print("Revision 17 applied to", package)
     return 0
 
 

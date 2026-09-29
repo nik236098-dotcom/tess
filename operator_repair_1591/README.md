@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 16 лежит в `beeline_integrated_io_15_91_r16/`. В нём нет
+Готовый пакет ревизии 17 лежит в `beeline_integrated_io_15_91_r17/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -52,7 +52,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r16
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r17
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -172,7 +172,11 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    `error_skipped_rows.txt` и уведомлением, следующая строка. Повтор «один раз» из ревизии 5 убран.
    Если новую вкладку создать не удалось, worker повторяет пропуск через 15 секунд, тоже без
    запроса к DeepSeek. Правило в инструкциях DeepSeek обновлено. Маркер: `ERROR_SKIP_ALWAYS_1591R16`.
-18. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+18. **Тег #успешно и четыре вкладки (ревизия 17).** SUCCESS-сообщение в Telegram начинается со
+   строки `#успешно`, чтобы успехи находились поиском среди отчётов DeepSeek. Рабочих вкладок на
+   Chromium стало 4 вместо 3 (`TABS_PER_BROWSER = 4`); остальной код берёт число из константы.
+   Маркер: `SUCCESS_TAG_1591R17`.
+19. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -211,3 +215,4 @@ SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分
 リビジョン14では、post-auth 画面での registration/error をリビジョン5のエラー方針で処理します。
 リビジョン15では、事業者側のデータ不一致（PERSDATA_NOT_MATCH）の行を再試行せずにスキップします。
 リビジョン16では、registration/error を DeepSeek なしで処理し、タブを再作成して行をスキップします。
+リビジョン17では、SUCCESS 通知の先頭に #успешно タグを付け、ワーカータブを 4 つにしました。

@@ -620,6 +620,15 @@
       ]
     },
     {
+      "start": 4490,
+      "end": 4492,
+      "replacement": [
+        "    return \"\\n\".join([\n",
+        "        \"#успешно\",  # SUCCESS_TAG_1591R17: searchable among the DeepSeek reports\n",
+        "        f\"✅ УСПЕХ — Вкладка {worker['id']}\",\n"
+      ]
+    },
+    {
       "start": 4519,
       "end": 4520,
       "replacement": [
@@ -861,6 +870,13 @@
         "        _row_progress(page, \"выбор eSIM\")  # ROW_START_ACTIVITY_1591R8\n",
         "        select_esim(page)\n",
         "        field = page.get_by_placeholder(\"+7 999 999 99\")\n"
+      ]
+    },
+    {
+      "start": 5414,
+      "end": 5415,
+      "replacement": [
+        "TABS_PER_BROWSER = 4  # SUCCESS_TAG_1591R17: four worker tabs\n"
       ]
     },
     {

@@ -4695,6 +4695,7 @@ def _success_message(worker, rec):
     row_no, active_value, second_value = row_parts(worker.get("row"))
     profile = rec.get("profile") or {}
     return "\n".join([
+        "#успешно",  # SUCCESS_TAG_1591R17: searchable among the DeepSeek reports
         f"✅ УСПЕХ — Вкладка {worker['id']}",
         f"Строка: {row_no}/{worker.get('total_rows') or '?'}",
         f"Исходные данные: {active_value} | {second_value}",
@@ -5775,7 +5776,7 @@ def return_to_clean_registration_form(page, diagnostic, timeout=20):
 
 
 BROWSER_COUNT = 1
-TABS_PER_BROWSER = 3
+TABS_PER_BROWSER = 4  # SUCCESS_TAG_1591R17: four worker tabs
 TAB_COUNT = BROWSER_COUNT * TABS_PER_BROWSER
 
 
