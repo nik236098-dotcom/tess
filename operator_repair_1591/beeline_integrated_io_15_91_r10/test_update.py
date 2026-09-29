@@ -84,7 +84,7 @@ class SourceIntegrityTests(unittest.TestCase):
         for name,meta in MANIFEST['files'].items():
             self.assertEqual(hashlib.sha256((BASE/name).read_bytes()).hexdigest(),meta['output_sha256'])
     def test_python310_syntax_and_compile(self):
-        for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py'):
+        for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py','symbol_matching.py'):
             text=(BASE/name).read_text();ast.parse(text,feature_version=(3,10));compile(text,name,'exec')
     def test_browser_contract_captcha_handlers_unchanged(self):
         for name,expected in MANIFEST['preserved_ast_sha256'].items():
@@ -467,8 +467,8 @@ class InstallerTests(unittest.TestCase):
         self.capture_out=redirect_stdout(stdio.StringIO());self.capture_out.__enter__()
         self.capture_err=redirect_stderr(stdio.StringIO());self.capture_err.__enter__()
         self.tmp=tempfile.TemporaryDirectory();self.app=Path(self.tmp.name)
-        self.old={'test_beeline.py':b'old app','server_controller.py':b'old controller'}
-        self.new=dict(self.old,**{'test_beeline.py':b'new app','server_controller.py':b'new controller','operator_runtime_io.py':b'helper'})
+        self.old={'test_beeline.py':b'old app','server_controller.py':b'old controller','symbol_matching.py':b'old matcher'}
+        self.new=dict(self.old,**{'test_beeline.py':b'new app','server_controller.py':b'new controller','operator_runtime_io.py':b'helper','symbol_matching.py':b'new matcher'})
         for name,raw in self.old.items():(self.app/name).write_bytes(raw)
         (self.app/'clients.txt').write_bytes(b'PRIVATE DATA')
         (self.app/'progress.sqlite3').write_bytes(b'UNCHANGED')

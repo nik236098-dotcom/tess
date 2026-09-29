@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 9 лежит в `beeline_integrated_io_15_91_r9/`. В нём нет
+Готовый пакет ревизии 10 лежит в `beeline_integrated_io_15_91_r10/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -25,7 +25,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r9
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r10
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -88,7 +88,19 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    расходует и ловится прежним правилом. Замер идёт в родительском процессе, GIL worker'а ему
    не мешает; то же правило применено к проверке «unhealthy» для действий DeepSeek.
    `local_matcher.py` не трогается. Маркер: `MATCHER_HEARTBEAT_1591R9`.
-11. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+11. **Скорость матчера (ревизия 10).** Одна капча занимала около 4 минут: четыре прохода
+   `shape_costs` по ~50 секунд на 688 кандидатах. В пакет добавлен `symbol_matching.py`
+   версии 14.1 (`matcher_r10/symbol_matching.py`): тот же алгоритм 14.0 — пороги, дескрипторы,
+   36 поворотов, выбор пар не менялись, — но `shape_costs` сравнивает повёрнутого кандидата со
+   всеми образцами матричным произведением, `thin()` берёт решение Чжана-Суэня из таблицы 256
+   окрестностей в рамке маски, каждая маска утончается один раз, проходы NATIVE и CLEAN делят
+   один обход поворотов, одинаковые маски порогов не пересчитывают `regions()`. Скелеты,
+   области и дескрипторы совпадают побитно, стоимости — с точностью float32 (~1e-6), выбранные
+   пары те же; на синтетических капчах `match_symbols` быстрее в 4 раза. `install.py` ставит
+   файл только поверх серверного 14.0 (sha256 `915368d6…`, копия в
+   `matcher_r10/symbol_matching_14_0_reference.py`) или уже установленного 14.1, иначе
+   останавливается. `local_matcher.py` не трогается. Маркер: `MATCHER_SPEED_1591R10`.
+12. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -106,14 +118,16 @@ python3 pkg/install.py --app /opt/beeline   # только проверка
 ```
 python3 -m unittest -v test_fix_package                       # без пакета: хэш и разметка edits
 PACKAGE_1591_DIR=pkg python3 -m unittest -v test_fix_package  # с пакетом: реальный logger, установщик, чексуммы
+# тесты эквивалентности матчера 14.0/14.1 требуют numpy и opencv-python-headless
 ```
 
 ---
 
-日本語: 同僚の 15.91 パッケージに対する修正スクリプトと、修正済みパッケージ（リビジョン9）です。
+日本語: 同僚の 15.91 パッケージに対する修正スクリプトと、修正済みパッケージ（リビジョン10）です。
 SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分割配信に置き換え、Python 3.13 依存だった
 ハッシュテストを修正し、インストーラーがパッケージ内のコピーをそのまま配置するようにしました。
 プロキシのログイン情報はコードから外し、サーバーの `telegram_config.json` の `"proxy"` キーから
 読み込みます。インストーラーはこのキーが無いと停止します。リビジョン4では、同じページに対する
 自律的な SUCCESS/ERROR 分析要求を「2回まで、その後は30分に1回」に制限し、同一内容の報告が
 毎分届く問題を解消しています。
+リビジョン10では、CAPTCHA マッチャー `symbol_matching.py` を同じ結果のまま約4倍高速化しました（14.0 → 14.1）。

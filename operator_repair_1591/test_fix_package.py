@@ -59,7 +59,9 @@ class PackageTests(unittest.TestCase):
         cls.pkg = Path(cls.tmp.name) / "pkg"
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
-        if any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER)):
+        speed = cls.pkg / "symbol_matching.py"
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER))
+                or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
     @classmethod
@@ -109,18 +111,21 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         sums = subprocess.run(["sha256sum", "-c", "SHA256SUMS.txt"], cwd=self.pkg, capture_output=True, text=True)
         self.assertEqual(sums.returncode, 0, sums.stdout)
-    def _check(self, src, proxy):
+    def _check(self, src, proxy, matcher=None):
         with tempfile.TemporaryDirectory() as d:
             app = Path(d)
             for name in ("test_beeline.py", "server_controller.py"):
                 shutil.copy2(src / name, app / name)
+            # The server runs symbol_matching.py 14.0 (the reference copy) unless a test says otherwise.
+            (app / "symbol_matching.py").write_bytes(matcher if matcher is not None
+                                                     else fix.SYMBOL_MATCHING_REFERENCE.read_bytes())
             if proxy:
                 (app / "telegram_config.json").write_text(json.dumps({"proxy": "socks5h://u:p@h:1"}))
             return subprocess.run([sys.executable, str(self.pkg / "install.py"), "--app", str(app)],
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-9", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-10", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -275,7 +280,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 9", run.stdout)
+            self.assertIn("Already revision 10", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -296,6 +301,155 @@ class PackageTests(unittest.TestCase):
             child.terminate(); child.wait()
         self.assertIn("if matcher_age >= PROTECTED_MATCHER_STALL_SECONDS:", self.source, "the 75 s rule stays")
         self.assertIn("matcher_age = min(matcher_age, _matcher_cpu_age(proc, now))", self.source)
+
+    def test_installer_refuses_an_unknown_symbol_matching(self):
+        run = self._check(Path(PACKAGE), proxy=True, matcher=b"MATCHER_VERSION = '13.0'\n")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("symbol_matching.py: installed source is different", run.stdout + run.stderr)
+
+    def test_package_carries_the_fast_matcher_with_checksums(self):
+        import hashlib
+        manifest = json.loads((self.pkg / "manifest.json").read_text())
+        meta = manifest["files"]["symbol_matching.py"]
+        self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
+        self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
+        self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
+        self.assertEqual(manifest["revision"], 10)
+        install = (self.pkg / "install.py").read_text("utf-8")
+        self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
+        self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
+        self.assertIn("symbol_matching.py", (self.pkg / "SHA256SUMS.txt").read_text("utf-8"))
+        self.assertEqual(fix.MATCHER_SPEED_MARKER in (self.pkg / "symbol_matching.py").read_text("utf-8"), True)
+
+
+def _load_module(name, path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _synthetic_captcha(seed, letters="AKMSTZ", size=(210, 360), distractors=6):
+    """Captcha-like picture: saturated, shaded, anti-aliased strokes on a tinted background."""
+    import cv2
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    h, w = size
+    yy, xx = np.mgrid[0:h, 0:w]
+    hsv = np.zeros((h, w, 3), np.uint8)
+    hsv[..., 0] = (20 + 40 * xx / w).astype(np.uint8)
+    hsv[..., 1] = (60 + 70 * rng.random((h, w))).astype(np.uint8)
+    hsv[..., 2] = (170 + 70 * rng.random((h, w))).astype(np.uint8)
+    picture = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+    hues = [0, 60, 120]
+
+    def paint(alpha, hue, k):
+        shade = (140 + 110 * (0.5 + 0.5 * np.sin(xx / 17.0 + k) * np.cos(yy / 13.0))).astype(np.uint8)
+        sat = (150 + 100 * (0.5 + 0.5 * np.cos(yy / 11.0 + k))).astype(np.uint8)
+        layer = np.zeros((h, w, 3), np.uint8)
+        layer[..., 0], layer[..., 1], layer[..., 2] = hue, sat, shade
+        layer = cv2.cvtColor(layer, cv2.COLOR_HSV2BGR)
+        a = (alpha.astype(np.float32) / 255)[..., None]
+        return (picture * (1 - a) + layer * a).astype(np.uint8)
+
+    refs = []
+    for k, ch in enumerate(letters):
+        x, y = 22 + (k % 3) * 112 + int(rng.integers(0, 14)), 70 + (k // 3) * 95 + int(rng.integers(0, 12))
+        canvas = np.zeros((h, w), np.uint8)
+        cv2.putText(canvas, ch, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1.35 + 0.35 * rng.random(), 255,
+                    int(rng.integers(2, 5)), cv2.LINE_AA)
+        matrix = cv2.getRotationMatrix2D((x + 15, y - 15), float(rng.uniform(-45, 45)), 1)
+        picture = paint(cv2.warpAffine(canvas, matrix, (w, h), flags=cv2.INTER_LINEAR), hues[k % 3], k)
+        ref = np.zeros((48, 48), np.uint8)
+        cv2.putText(ref, ch, (6, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.3, 255, 2)
+        refs.append(ref)
+    for d in range(distractors):
+        alpha = np.zeros((h, w), np.uint8)
+        cv2.ellipse(alpha, (int(rng.integers(10, w - 10)), int(rng.integers(10, h - 10))),
+                    (int(rng.integers(6, 18)), int(rng.integers(4, 12))), float(rng.uniform(0, 180)), 0,
+                    int(rng.integers(90, 300)), 255, int(rng.integers(1, 4)), cv2.LINE_AA)
+        picture = paint(alpha, hues[d % 3], d + 10)
+    return cv2.GaussianBlur(picture, (3, 3), 0), refs
+
+
+def _cv2_available():
+    try:
+        import cv2, numpy  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+@unittest.skipUnless(_cv2_available(), "cv2/numpy not installed")
+class MatcherEquivalenceTests(unittest.TestCase):
+    """symbol_matching.py 14.1 (matcher_r10) must reproduce the 14.0 reference results."""
+    @classmethod
+    def setUpClass(cls):
+        cls.old = _load_module("symbol_matching_14_0", fix.SYMBOL_MATCHING_REFERENCE)
+        cls.new = _load_module("symbol_matching_14_1", fix.SYMBOL_MATCHING_SOURCE)
+
+    def test_versions_and_marker(self):
+        self.assertEqual(self.old.MATCHER_VERSION, "14.0")
+        self.assertEqual(self.new.MATCHER_VERSION, "14.1")
+        self.assertIn(fix.MATCHER_SPEED_MARKER, fix.SYMBOL_MATCHING_SOURCE.read_text("utf-8"))
+        for name in ("MAX_SHAPE_COST", "MIN_MATCH_MARGIN"):
+            self.assertEqual(getattr(self.old, name), getattr(self.new, name), name)
+
+    def test_thin_and_compact_are_bit_identical(self):
+        import cv2
+        import numpy as np
+        rng = np.random.default_rng(7)
+        masks = []
+        for _ in range(80):
+            h, w = int(rng.integers(5, 70)), int(rng.integers(5, 70))
+            m = np.zeros((h, w), np.uint8)
+            for _ in range(int(rng.integers(1, 5))):
+                cv2.line(m, tuple(int(v) for v in rng.integers(0, (w, h))),
+                         tuple(int(v) for v in rng.integers(0, (w, h))), 255, int(rng.integers(1, 6)))
+            if rng.random() < .3:
+                cv2.circle(m, (w // 2, h // 2), min(h, w) // 3, 255, int(rng.integers(1, 5)))
+            masks.append(m)
+        masks += [np.zeros((10, 10), np.uint8), np.full((12, 9), 255, np.uint8),
+                  (rng.random((40, 40)) > .5).astype(np.uint8) * 255]
+        masks += [self.old.compact(m) for m in masks[:30]]
+        for m in masks:
+            self.assertTrue(np.array_equal(self.old.thin(m), self.new.thin(m)))
+            self.assertTrue(np.array_equal(self.old.compact(m), self.new.compact(m)))
+            self.assertTrue(np.array_equal(self.old.descriptor(m), self.new.descriptor(m)))
+            self.assertTrue(np.array_equal(self.old.scaled_descriptor(m), self.new.scaled_descriptor(m)))
+            self.assertTrue(np.array_equal(self.old.affine_descriptor(m), self.new.affine_descriptor(m)))
+            self.assertTrue(np.array_equal(self.old.affine_descriptor(m),
+                                           self.new.affine_descriptor(m, skeleton=self.new.thin(m))))
+
+    def test_shape_costs_and_matches_agree_and_are_faster(self):
+        import time
+        import numpy as np
+        totals = {"old": 0.0, "new": 0.0}
+        for seed in (1, 2):
+            picture, refs = _synthetic_captcha(seed)
+            old_groups, new_groups = list(self.old.families(picture)), list(self.new.families(picture))
+            self.assertEqual([c for c, _ in old_groups], [c for c, _ in new_groups])
+            for (_, a), (_, b) in zip(old_groups, new_groups):
+                self.assertEqual([(x.bounds, x.mask.tobytes()) for x in a], [(x.bounds, x.mask.tobytes()) for x in b])
+            pool = [c for _, cs in old_groups for c in cs][:120]
+            self.assertGreater(len(pool), 60, "the synthetic picture must yield a real candidate pool")
+            native = [self.old.descriptor(c.mask) for c in pool]
+            ref_desc = [self.old.descriptor(r) for r in refs]
+            t = time.perf_counter(); c_old = self.old.shape_costs(ref_desc, native); totals["old"] += time.perf_counter() - t
+            t = time.perf_counter(); c_new = self.new.shape_costs(ref_desc, native); totals["new"] += time.perf_counter() - t
+            finite = np.isfinite(c_old)
+            self.assertTrue(np.array_equal(finite, np.isfinite(c_new)))
+            self.assertLess(float(np.abs(c_old[finite] - c_new[finite]).max()), 1e-4)
+            m_old, m_new = self.old.match_symbols(picture, refs), self.new.match_symbols(picture, refs)
+            self.assertEqual(len(m_old), len(refs))
+            for a, b in zip(m_old, m_new):
+                self.assertEqual(a.reason, b.reason)
+                self.assertEqual(a.candidate.bounds if a.candidate else None, b.candidate.bounds if b.candidate else None)
+                self.assertAlmostEqual(a.distance, b.distance, places=4)
+                if np.isfinite(a.margin) or np.isfinite(b.margin):
+                    self.assertAlmostEqual(a.margin, b.margin, places=4)
+        self.assertLess(totals["new"], totals["old"], "the 14.1 shape_costs must not be slower than 14.0")
 
 
 if __name__ == "__main__":

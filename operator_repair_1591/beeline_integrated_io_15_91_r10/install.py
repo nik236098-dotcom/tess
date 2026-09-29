@@ -14,7 +14,7 @@ import tempfile
 import time
 import uuid
 
-FILES = ('operator_runtime_io.py', 'test_beeline.py', 'server_controller.py')
+FILES = ('operator_runtime_io.py', 'test_beeline.py', 'server_controller.py', 'symbol_matching.py')
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
@@ -25,7 +25,7 @@ def reconstruct(app, package):
     edits = json.loads((package/'edits.json').read_text('utf-8'))
     result = {}
     originals = {}
-    for name in ('test_beeline.py', 'server_controller.py'):
+    for name in ('test_beeline.py', 'server_controller.py', 'symbol_matching.py'):
         path = app/name
         if path.is_symlink() or not path.is_file():
             raise RuntimeError(f'{path}: expected a regular file, not a link')
@@ -91,9 +91,9 @@ def check_imports(app):
     if not python.is_file():
         raise RuntimeError('venv/bin/python is missing')
     subprocess.run([str(python), '-B', '-c',
-        'import test_beeline as a; import server_controller as c; '
+        'import test_beeline as a; import server_controller as c; import symbol_matching as s; '
         'assert a.IO_BUILD_VERSION == c.IO_BUILD_VERSION == "15.91-io"; '
-        'assert a._io1591.VERSION == "15.91-io"; print("IMPORT OK")'],
+        'assert a._io1591.VERSION == "15.91-io"; assert s.MATCHER_VERSION == "14.1"; print("IMPORT OK")'],
         cwd=app, check=True, timeout=45)
 
 

@@ -58,7 +58,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "31cbd8b287f7c1deea89a669fabdcd14fab0bfee631b7ce87c5531493a05265a",
                          "14ada30d264a994bdb675655b495c662217298a6b0327e6ea98dce99e4675433",
                          "ec65b2fa802131dbd7f2e679f422c40ddae10cc842bff784869925e14b16c105",
-                         "6023e5266b8317cd0051fbec7988d0f65e30c10f26fc95309d960ebf995997c9"}
+                         "6023e5266b8317cd0051fbec7988d0f65e30c10f26fc95309d960ebf995997c9",
+                         "6852517bf0eadb15f70359ac93b9c49632926cb3aef9f817c712ea099330248b"}
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -253,6 +254,51 @@ MATCH, SUBMIT, SHAPE_NATIVE…), поэтому этап дольше 75 сек�
 ему не мешает. То же правило применено к проверке «unhealthy» для действий DeepSeek.
 Маркер: MATCHER_HEARTBEAT_1591R9. Изменены parent_watchdog и _host_worker_health (в main);
 local_matcher.py не трогается.
+'''
+
+# Revision 10: the matcher computes the same scores faster. symbol_matching.py 14.0 from the
+# server is replaced by 14.1 (matcher_r10/symbol_matching.py): identical thresholds, descriptors,
+# rotation steps and assignment logic; shape_costs compares one rotated candidate with all
+# references through matrix products, thin() looks the Zhang-Suen decision up in a table over
+# the mask's bounding box, each mask is thinned once, the NATIVE and CLEAN passes share one
+# rotation sweep, identical threshold masks reuse regions(). local_matcher.py is untouched.
+MATCHER_SPEED_MARKER = "MATCHER_SPEED_1591R10"
+SYMBOL_MATCHING_SOURCE = Path(__file__).resolve().parent / "matcher_r10" / "symbol_matching.py"
+SYMBOL_MATCHING_REFERENCE = Path(__file__).resolve().parent / "matcher_r10" / "symbol_matching_14_0_reference.py"
+# sha256 of the server's symbol_matching.py (MATCHER_VERSION 14.0), the only accepted input.
+SYMBOL_MATCHING_INPUT_SHA = "915368d66804f64d4d7d7de42d2e474f1ea29ffe5b14c352b67d054ee40c8c35"
+OLD_INSTALL_FILES = "FILES = ('operator_runtime_io.py', 'test_beeline.py', 'server_controller.py')\n"
+NEW_INSTALL_FILES = "FILES = ('operator_runtime_io.py', 'test_beeline.py', 'server_controller.py', 'symbol_matching.py')\n"
+OLD_INSTALL_LOOP = "    for name in ('test_beeline.py', 'server_controller.py'):\n        path = app/name\n"
+NEW_INSTALL_LOOP = "    for name in ('test_beeline.py', 'server_controller.py', 'symbol_matching.py'):\n        path = app/name\n"
+OLD_INSTALL_IMPORT = "'import test_beeline as a; import server_controller as c; '\n"
+NEW_INSTALL_IMPORT = "'import test_beeline as a; import server_controller as c; import symbol_matching as s; '\n"
+OLD_INSTALL_ASSERT = "'assert a._io1591.VERSION == \"15.91-io\"; print(\"IMPORT OK\")'"
+NEW_INSTALL_ASSERT = "'assert a._io1591.VERSION == \"15.91-io\"; assert s.MATCHER_VERSION == \"14.1\"; print(\"IMPORT OK\")'"
+OLD_TEST_FIXTURE = ("        self.old={'test_beeline.py':b'old app','server_controller.py':b'old controller'}\n"
+                    "        self.new=dict(self.old,**{'test_beeline.py':b'new app','server_controller.py':b'new controller',"
+                    "'operator_runtime_io.py':b'helper'})\n")
+NEW_TEST_FIXTURE = ("        self.old={'test_beeline.py':b'old app','server_controller.py':b'old controller',"
+                    "'symbol_matching.py':b'old matcher'}\n"
+                    "        self.new=dict(self.old,**{'test_beeline.py':b'new app','server_controller.py':b'new controller',"
+                    "'operator_runtime_io.py':b'helper','symbol_matching.py':b'new matcher'})\n")
+OLD_TEST_COMPILE_LIST = "for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py'):"
+NEW_TEST_COMPILE_LIST = "for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py','symbol_matching.py'):"
+README_NOTE_R10 = '''
+
+РЕВИЗИЯ 10 (fix_package_1591.py)
+Скорость матчера. На сервере с ослабленным CPU одна капча занимала около 4 минут: четыре
+прохода shape_costs по ~50 секунд. В пакет добавлен symbol_matching.py версии 14.1 —
+тот же алгоритм 14.0 (пороги, дескрипторы, 36 поворотов, выбор пар не менялись), но:
+shape_costs сравнивает повёрнутого кандидата со всеми образцами матричным произведением,
+а не циклом по образцам и пикселям; thin() берёт решение Чжана-Суэня из таблицы 256
+окрестностей и работает в рамке маски; каждая маска утончается один раз (native и affine
+дескрипторы делят скелет); проходы NATIVE и CLEAN сравнивают одних и тех же кандидатов,
+поэтому делят один обход поворотов; одинаковые маски порогов не пересчитывают regions().
+Скелеты и области совпадают побитно, стоимости — с точностью float32 (~1e-6), выбранные
+пары те же. install.py принимает только серверный symbol_matching.py 14.0 (sha256
+915368d6…) или уже установленный 14.1; иначе останавливается, ничего не меняя.
+Маркер: MATCHER_SPEED_1591R10. local_matcher.py не трогается.
 '''
 OVERLAY_HELPER_R7 = r'''# OVERLAY_DISMISS_1591R6 / TARIFF_BY_NAME_1591R7
 _MODAL_DIALOG_SELECTOR = '[role="dialog"][aria-modal="true"]'
@@ -1059,9 +1105,11 @@ def main(argv: list[str]) -> int:
         if not (package / name).is_file():
             raise SystemExit(f"{package / name}: missing; this is not the extracted 15.91 package")
     source = app.read_text("utf-8")
-    if all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER, TARIFF_MARKER, ROWSTART_MARKER,
-                                 MATCHER_MARKER)):
-        print("Already revision 9; nothing changed.")
+    speed_file = package / "symbol_matching.py"
+    speed_done = speed_file.is_file() and MATCHER_SPEED_MARKER in speed_file.read_text("utf-8")
+    if speed_done and all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER,
+                                                TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER)):
+        print("Already revision 10; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -1223,6 +1271,29 @@ def main(argv: list[str]) -> int:
             new_source = replace_once(new_source, old, new, what)
             add_edit(edits["test_beeline.py"], source, old, new, reflected)
 
+    # 11 (r10). Faster matcher: symbol_matching.py 14.1 joins the package; the installer
+    # replaces the server's 14.0 copy (checksum-verified) and imports the new module.
+    if not speed_done:
+        if not SYMBOL_MATCHING_SOURCE.is_file():
+            raise SystemExit(f"{SYMBOL_MATCHING_SOURCE}: missing; nothing changed")
+        speed_source = SYMBOL_MATCHING_SOURCE.read_text("utf-8")
+        if MATCHER_SPEED_MARKER not in speed_source or "MATCHER_VERSION = '14.1'" not in speed_source:
+            raise SystemExit("matcher_r10/symbol_matching.py is not the revision 10 matcher; nothing changed")
+        compile(speed_source, "symbol_matching.py", "exec")
+        speed_file.write_text(speed_source, "utf-8")
+        manifest["files"]["symbol_matching.py"] = {
+            "input_sha256": SYMBOL_MATCHING_INPUT_SHA,
+            "output_sha256": hashlib.sha256(speed_source.encode("utf-8")).hexdigest(),
+            "previous_output_sha256": [],
+        }
+        for old, new, what in ((OLD_INSTALL_FILES, NEW_INSTALL_FILES, "install.py FILES"),
+                               (OLD_INSTALL_LOOP, NEW_INSTALL_LOOP, "install.py reconstruct loop"),
+                               (OLD_INSTALL_IMPORT, NEW_INSTALL_IMPORT, "install.py import check"),
+                               (OLD_INSTALL_ASSERT, NEW_INSTALL_ASSERT, "install.py version assert")):
+            install_src = replace_once(install_src, old, new, what)
+        test_src = replace_once(test_src, OLD_TEST_COMPILE_LIST, NEW_TEST_COMPILE_LIST, "test_update.py compile list")
+        test_src = replace_once(test_src, OLD_TEST_FIXTURE, NEW_TEST_FIXTURE, "test_update.py installer fixture")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(test_src, "test_update.py", "exec")
     compile(install_src, "install.py", "exec")
@@ -1243,7 +1314,7 @@ def main(argv: list[str]) -> int:
     # A server that already runs the first 15.91 build is upgraded in place as well.
     manifest["files"]["test_beeline.py"]["previous_output_sha256"] = sorted(ACCEPTED_PACKAGE_SHAS)
     manifest["files"]["test_beeline.py"]["output_sha256"] = hashlib.sha256(new_source.encode("utf-8")).hexdigest()
-    manifest["revision"] = 9
+    manifest["revision"] = 10
 
     app.write_text(new_source, "utf-8")
     (package / "test_update.py").write_text(test_src, "utf-8")
@@ -1254,7 +1325,7 @@ def main(argv: list[str]) -> int:
     for heading, note in (("РЕВИЗИЯ 2", README_NOTE), ("РЕВИЗИЯ 3", README_NOTE_R3), ("РЕВИЗИЯ 4", README_NOTE_R4),
                           ("РЕВИЗИЯ 5", README_NOTE_R5), ("РЕВИЗИЯ 6", README_NOTE_R6),
                           ("РЕВИЗИЯ 7", README_NOTE_R7), ("РЕВИЗИЯ 8", README_NOTE_R8),
-                          ("РЕВИЗИЯ 9", README_NOTE_R9)):
+                          ("РЕВИЗИЯ 9", README_NOTE_R9), ("РЕВИЗИЯ 10", README_NOTE_R10)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -1267,14 +1338,14 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 9, "result": "OK",
+    verification.update({"python": sys.version, "revision": 10, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
 
     sums = [f"{sha(package / name)}  {name}" for name in
-            ("test_beeline.py", "server_controller.py", "operator_runtime_io.py", "install.py", "test_update.py",
-             "manifest.json", "edits.json", "README.txt", "verification.json", "test_results.txt",
+            ("test_beeline.py", "server_controller.py", "operator_runtime_io.py", "symbol_matching.py", "install.py",
+             "test_update.py", "manifest.json", "edits.json", "README.txt", "verification.json", "test_results.txt",
              "install_preflight_results.txt") if (package / name).is_file()]
     (package / "SHA256SUMS.txt").write_text("\n".join(sums) + "\n", "utf-8")
     for line in ("__pycache__",):
@@ -1283,7 +1354,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 9 applied to", package)
+    print("Revision 10 applied to", package)
     return 0
 
 
