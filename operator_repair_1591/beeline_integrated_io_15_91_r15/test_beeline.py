@@ -6542,7 +6542,81 @@ def finalize_success(base_dir, worker):
 
 
 
+# PERSDATA_SKIP_1591R15
+ERROR_FINAL_NEEDLES_1591R15 = (
+    ("данные не прошли проверку", "данные не прошли проверку у оператора"),
+    ("укажите другой свой номер", "оператор просит указать другой номер"),
+    ("persdata_not_match", "PERSDATA_NOT_MATCH"),
+    ("не совпадают с данными", "данные не совпадают с базой оператора"),
+)
+
+
+def _error_page_final_reason(page):
+    """Reason text when the error page is a deterministic operator refusal, else None."""
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "").lower()
+    except Exception:
+        return None
+    for needle, reason in ERROR_FINAL_NEEDLES_1591R15:
+        if needle in body:
+            return reason
+    return None
+
+
+def _error_skip_final(worker, reason):
+    """Skip the row at once: a retry cannot change the operator's answer.
+
+    Same steps as the second-error skip of ERROR_RECOVERY_1591R5, minus the analysis
+    and the retry: fresh page, record in error_skipped_rows.txt, Telegram notice, IDLE.
+    """
+    key = _error_row_key(worker)
+    base_dir = worker.get("base_dir") or Path(__file__).resolve().parent
+    try:
+        capture_blackbox(worker, "error_final_skip")
+    except Exception:
+        pass
+    print(
+        f"[Вкладка {worker['id']}] registration/error: {reason}. Повтор бессмыслен — "
+        f"строка {key} пропускается без анализа.",
+        flush=True,
+    )
+    worker["error_guard"] = False
+    worker["success_guard"] = False
+    worker["error_assist_entered_at"] = None
+    worker["auto_assist_state"] = {}
+    worker["phase"] = "ERROR_RECOVERY"
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        print(f"[Вкладка {worker['id']}] Новая вкладка не создана; строка {key} будет повторена.", flush=True)
+        return False
+    try:
+        with (Path(base_dir) / "error_skipped_rows.txt").open("a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{key}\t{reason}\n")
+    except Exception:
+        pass
+    try:
+        chat = str(load_telegram_config().get("chat_id") or "")
+        if chat:
+            _io1591.enqueue_notice(
+                globals(), chat,
+                f"⏭ Вкладка {worker['id']}: строка {key} пропущена без повтора: {reason}. "
+                "Worker продолжает со следующей строкой.",
+            )
+    except Exception:
+        pass
+    worker["row"] = None
+    worker["phase"] = "IDLE"
+    set_tab_status(worker, "⏭", f"Строка {key} пропущена: {reason}. Беру следующую.")
+    external_heartbeat(worker, "error_row_skipped_final")
+    return True
+
+
 def enter_error_guard(worker, note):
+    # PERSDATA_SKIP_1591R15: a deterministic refusal is skipped at once, without the paid
+    # analysis and without a retry that would only repeat the same answer.
+    final = _error_page_final_reason(worker.get("page"))
+    if final and _error_skip_final(worker, final):
+        return
     worker["error_guard"] = True
     worker["success_guard"] = False
     worker["phase"] = "ERROR_ASSIST"

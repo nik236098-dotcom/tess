@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 14 лежит в `beeline_integrated_io_15_91_r14/`. В нём нет
+Готовый пакет ревизии 15 лежит в `beeline_integrated_io_15_91_r15/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -52,7 +52,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r14
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r15
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -160,7 +160,14 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    правилу ревизии 5, как в `tick_confirmation`/`tick_resend`: анализ, закрытие вкладки, новая
    вкладка, один повтор строки, при повторе пропуск. `tick_post_auth_review` переподписан в
    manifest. Маркер: `POST_AUTH_ERROR_ROUTE_1591R14`.
-16. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+16. **Отказ оператора без повтора (ревизия 15).** Если на `/registration/error` сайт пишет
+   «данные не прошли проверку» / «укажите другой свой номер» (`PERSDATA_NOT_MATCH`: паспортные
+   данные строки не совпали с базой оператора), повтор даёт тот же ответ, но стоит новой капчи,
+   нового подтверждения у клиента и платного анализа. Теперь такая страница распознаётся в
+   `enter_error_guard` до постановки анализа: новая вкладка, запись в `error_skipped_rows.txt` с
+   причиной, уведомление «пропущена без повтора», следующая строка. Остальные ошибки идут по
+   правилу ревизии 5. Маркер: `PERSDATA_SKIP_1591R15`.
+17. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -197,3 +204,4 @@ SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分
 リビジョン12では、契約画面のテキストから氏名・性別・生年月日を読み取り、SUCCESS レポートを補完します。
 リビジョン13では、Telegram の `/restart 20m` で計画的な再起動を設定できます（各ワーカーが現在の行を完了してから再起動）。
 リビジョン14では、post-auth 画面での registration/error をリビジョン5のエラー方針で処理します。
+リビジョン15では、事業者側のデータ不一致（PERSDATA_NOT_MATCH）の行を再試行せずにスキップします。

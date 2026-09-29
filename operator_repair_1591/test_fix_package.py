@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-14", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-15", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -280,7 +280,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 14", run.stdout)
+            self.assertIn("Already revision 15", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -314,7 +314,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 14)
+        self.assertEqual(manifest["revision"], 15)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -523,6 +523,49 @@ class PackageTests(unittest.TestCase):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
         self.assertEqual(manifest["preserved_ast_sha256"]["tick_post_auth_review"], fix.handler_hash(
             next(n for n in ast.parse(self.source).body if isinstance(n, ast.FunctionDef) and n.name == "tick_post_auth_review")))
+
+
+    def _error_guard_run(self, page_text, base):
+        tree = ast.parse(self.source)
+        nodes = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in (
+            "enter_error_guard", "_error_page_final_reason", "_error_skip_final", "_error_row_key")) or (
+            isinstance(n, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "ERROR_FINAL_NEEDLES_1591R15" for x in n.targets))]
+        calls, notices = [], []
+        class Body:
+            def inner_text(self, timeout=None): return page_text
+        class Page:
+            url = "https://saratov.beeline.ru/registration/error"
+            def locator(self, sel): return Body()
+        def new_page(worker):
+            worker["page"] = Page(); worker["phase"] = "RESTART_ROW_READY"; calls.append("new_page")
+        ns = {"Path": Path, "time": __import__("time"), "print": lambda *a, **k: None,
+              "_row_number_value": lambda row: row[0], "capture_blackbox": lambda w, r, exc=None: calls.append(("blackbox", r)),
+              "restart_same_row_in_new_page": new_page, "set_tab_status": lambda *a: None,
+              "external_heartbeat": lambda w, label: calls.append(("hb", label)),
+              "queue_error_assist": lambda w, note, force=False: calls.append(("error_assist", note)),
+              "load_telegram_config": lambda: {"chat_id": "42"},
+              "_io1591": types.SimpleNamespace(enqueue_notice=lambda ns_, chat, text, markup=None: notices.append(text))}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), "pkg", "exec"), ns)
+        worker = {"id": 3, "page": Page(), "row": (11, "79059522766", "5015441725"), "base_dir": base, "success_guard": True}
+        ns["enter_error_guard"](worker, "после mobile-id-auth открылась /registration/error")
+        return worker, calls, notices
+
+    def test_operator_refusal_is_skipped_without_analysis_or_retry(self):
+        with tempfile.TemporaryDirectory() as d:
+            worker, calls, notices = self._error_guard_run(
+                "Данные не прошли проверку. Укажите другой свой номер или выберите способ регистрации", d)
+            self.assertEqual(worker["phase"], "IDLE"); self.assertIsNone(worker["row"])
+            self.assertFalse(worker["error_guard"]); self.assertFalse(worker["success_guard"])
+            self.assertNotIn(("error_assist", "после mobile-id-auth открылась /registration/error"), calls, "no paid analysis")
+            self.assertIn("new_page", calls); self.assertIn(("hb", "error_row_skipped_final"), calls)
+            line = (Path(d) / "error_skipped_rows.txt").read_text("utf-8").strip()
+            self.assertIn("\t11\t", line); self.assertIn("данные не прошли проверку у оператора", line)
+            self.assertEqual(len(notices), 1); self.assertIn("строка 11 пропущена без повтора", notices[0])
+            # any other error page still enters ERROR_ASSIST under the revision 5 policy
+            worker, calls, notices = self._error_guard_run("Что-то пошло не так. Попробовать ещё раз", d)
+            self.assertEqual(worker["phase"], "ERROR_ASSIST"); self.assertTrue(worker["error_guard"])
+            self.assertIn(("error_assist", "после mobile-id-auth открылась /registration/error"), calls)
+            self.assertEqual(notices, []); self.assertEqual((Path(d) / "error_skipped_rows.txt").read_text("utf-8").count("\n"), 1)
 
 
 def _load_module(name, path):

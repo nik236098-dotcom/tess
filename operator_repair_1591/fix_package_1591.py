@@ -62,7 +62,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "6852517bf0eadb15f70359ac93b9c49632926cb3aef9f817c712ea099330248b",
                          "747c7f08c994baa104d82ebb5d3302215bc4f1147e238b66629bd5037710c47d",
                          "e0f5748ea3f7c19e6409a1e4f63fc9e00c322f8c38365134af0f13bf4bd8e14f",
-                         "04e07acd1a019a943c72237a6c6c61b34134f7b753ce3f3b484c832ce742ae9d"}
+                         "04e07acd1a019a943c72237a6c6c61b34134f7b753ce3f3b484c832ce742ae9d",
+                         "21772a39422eeae8224f580beecad29171105885101b76f100190f6d64fd3e7c"}
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -878,6 +879,106 @@ SUCCESS_ASSIST с пометкой «post-auth error page»: SUCCESS-guard, во
 обрабатывается по правилу ревизии 5, как и в tick_confirmation/tick_resend: анализ DeepSeek,
 затем закрытие вкладки, новая вкладка, один повтор строки, при повторе пропуск.
 Маркер: POST_AUTH_ERROR_ROUTE_1591R14. Изменён tick_post_auth_review (переподписан в manifest).
+'''
+# Revision 15: a deterministic operator refusal on /registration/error (PERSDATA_NOT_MATCH:
+# "данные не прошли проверку", "укажите другой свой номер") is skipped at once, without the
+# paid DeepSeek analysis and without the retry that could only repeat the same refusal.
+PERSDATA_MARKER = "PERSDATA_SKIP_1591R15"
+OLD_ENTER_ERROR_GUARD = '''def enter_error_guard(worker, note):
+    worker["error_guard"] = True
+    worker["success_guard"] = False
+    worker["phase"] = "ERROR_ASSIST"
+'''
+NEW_ENTER_ERROR_GUARD = r'''# PERSDATA_SKIP_1591R15
+ERROR_FINAL_NEEDLES_1591R15 = (
+    ("данные не прошли проверку", "данные не прошли проверку у оператора"),
+    ("укажите другой свой номер", "оператор просит указать другой номер"),
+    ("persdata_not_match", "PERSDATA_NOT_MATCH"),
+    ("не совпадают с данными", "данные не совпадают с базой оператора"),
+)
+
+
+def _error_page_final_reason(page):
+    """Reason text when the error page is a deterministic operator refusal, else None."""
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "").lower()
+    except Exception:
+        return None
+    for needle, reason in ERROR_FINAL_NEEDLES_1591R15:
+        if needle in body:
+            return reason
+    return None
+
+
+def _error_skip_final(worker, reason):
+    """Skip the row at once: a retry cannot change the operator's answer.
+
+    Same steps as the second-error skip of ERROR_RECOVERY_1591R5, minus the analysis
+    and the retry: fresh page, record in error_skipped_rows.txt, Telegram notice, IDLE.
+    """
+    key = _error_row_key(worker)
+    base_dir = worker.get("base_dir") or Path(__file__).resolve().parent
+    try:
+        capture_blackbox(worker, "error_final_skip")
+    except Exception:
+        pass
+    print(
+        f"[Вкладка {worker['id']}] registration/error: {reason}. Повтор бессмыслен — "
+        f"строка {key} пропускается без анализа.",
+        flush=True,
+    )
+    worker["error_guard"] = False
+    worker["success_guard"] = False
+    worker["error_assist_entered_at"] = None
+    worker["auto_assist_state"] = {}
+    worker["phase"] = "ERROR_RECOVERY"
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        print(f"[Вкладка {worker['id']}] Новая вкладка не создана; строка {key} будет повторена.", flush=True)
+        return False
+    try:
+        with (Path(base_dir) / "error_skipped_rows.txt").open("a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{key}\t{reason}\n")
+    except Exception:
+        pass
+    try:
+        chat = str(load_telegram_config().get("chat_id") or "")
+        if chat:
+            _io1591.enqueue_notice(
+                globals(), chat,
+                f"⏭ Вкладка {worker['id']}: строка {key} пропущена без повтора: {reason}. "
+                "Worker продолжает со следующей строкой.",
+            )
+    except Exception:
+        pass
+    worker["row"] = None
+    worker["phase"] = "IDLE"
+    set_tab_status(worker, "⏭", f"Строка {key} пропущена: {reason}. Беру следующую.")
+    external_heartbeat(worker, "error_row_skipped_final")
+    return True
+
+
+def enter_error_guard(worker, note):
+    # PERSDATA_SKIP_1591R15: a deterministic refusal is skipped at once, without the paid
+    # analysis and without a retry that would only repeat the same answer.
+    final = _error_page_final_reason(worker.get("page"))
+    if final and _error_skip_final(worker, final):
+        return
+    worker["error_guard"] = True
+    worker["success_guard"] = False
+    worker["phase"] = "ERROR_ASSIST"
+'''
+README_NOTE_R15 = '''
+
+РЕВИЗИЯ 15 (fix_package_1591.py)
+Отказ оператора без повтора. Если на /registration/error сайт пишет «данные не прошли
+проверку» / «укажите другой свой номер» (в network это PERSDATA_NOT_MATCH: паспортные данные
+строки не совпали с базой оператора), повтор строки даёт тот же ответ, но стоит новой капчи,
+нового подтверждения у клиента и платного анализа DeepSeek. Теперь такая страница
+распознаётся в enter_error_guard до постановки анализа в очередь: вкладка закрывается,
+открывается новая, строка записывается в error_skipped_rows.txt с причиной, в Telegram уходит
+уведомление «пропущена без повтора», worker берёт следующую строку. Все остальные ошибки
+регистрации идут по правилу ревизии 5 без изменений. Маркер: PERSDATA_SKIP_1591R15.
 '''
 README_NOTE_R10 = '''
 
@@ -1705,8 +1806,8 @@ def main(argv: list[str]) -> int:
     speed_done = speed_file.is_file() and MATCHER_SPEED_MARKER in speed_file.read_text("utf-8")
     if speed_done and all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER,
                                                 TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER,
-                                                PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER)):
-        print("Already revision 14; nothing changed.")
+                                                PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER, PERSDATA_MARKER)):
+        print("Already revision 15; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -1935,6 +2036,11 @@ def main(argv: list[str]) -> int:
         new_source = replace_once(new_source, OLD_POST_AUTH_ERROR, NEW_POST_AUTH_ERROR, "post-auth error route")
         add_edit(edits["test_beeline.py"], source, OLD_POST_AUTH_ERROR, NEW_POST_AUTH_ERROR, reflected)
 
+    # 16 (r15). Deterministic operator refusal: skip the row without analysis or retry.
+    if PERSDATA_MARKER not in source:
+        new_source = replace_once(new_source, OLD_ENTER_ERROR_GUARD, NEW_ENTER_ERROR_GUARD, "enter_error_guard")
+        add_edit(edits["test_beeline.py"], source, OLD_ENTER_ERROR_GUARD, NEW_ENTER_ERROR_GUARD, reflected)
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -1960,7 +2066,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | {CONTROLLER_OUTPUT_SHA_R12}
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 14
+    manifest["revision"] = 15
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -1974,7 +2080,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 7", README_NOTE_R7), ("РЕВИЗИЯ 8", README_NOTE_R8),
                           ("РЕВИЗИЯ 9", README_NOTE_R9), ("РЕВИЗИЯ 10", README_NOTE_R10),
                           ("РЕВИЗИЯ 11", README_NOTE_R11), ("РЕВИЗИЯ 12", README_NOTE_R12),
-                          ("РЕВИЗИЯ 13", README_NOTE_R13), ("РЕВИЗИЯ 14", README_NOTE_R14)):
+                          ("РЕВИЗИЯ 13", README_NOTE_R13), ("РЕВИЗИЯ 14", README_NOTE_R14),
+                          ("РЕВИЗИЯ 15", README_NOTE_R15)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -1987,7 +2094,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 14, "result": "OK",
+    verification.update({"python": sys.version, "revision": 15, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -2003,7 +2110,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 14 applied to", package)
+    print("Revision 15 applied to", package)
     return 0
 
 
