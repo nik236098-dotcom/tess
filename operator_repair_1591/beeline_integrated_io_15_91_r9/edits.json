@@ -888,10 +888,83 @@
       ]
     },
     {
+      "start": 7096,
+      "end": 7097,
+      "replacement": [
+        "# MATCHER_HEARTBEAT_1591R9\n",
+        "MATCHER_CPU_MIN_RATIO = 0.05  # share of one CPU below which the matcher is not computing\n",
+        "_MATCHER_CPU_STATE = {}\n",
+        "\n",
+        "\n",
+        "def _process_tree_cpu_seconds(pid):\n",
+        "    \"\"\"CPU time of a process plus its live children (a native solver may be a child).\"\"\"\n",
+        "    try:\n",
+        "        ticks = os.sysconf(\"SC_CLK_TCK\")\n",
+        "    except (AttributeError, ValueError, OSError):\n",
+        "        ticks = 100\n",
+        "    total = 0.0\n",
+        "    try:\n",
+        "        entries = os.listdir(\"/proc\")\n",
+        "    except OSError:\n",
+        "        return None\n",
+        "    for entry in entries:\n",
+        "        if not entry.isdigit():\n",
+        "            continue\n",
+        "        try:\n",
+        "            with open(f\"/proc/{entry}/stat\", \"r\") as f:\n",
+        "                fields = f.read().rsplit(\")\", 1)[1].split()\n",
+        "            if int(entry) == int(pid) or int(fields[1]) == int(pid):\n",
+        "                total += (int(fields[11]) + int(fields[12])) / ticks\n",
+        "        except (OSError, IndexError, ValueError):\n",
+        "            continue\n",
+        "    return total\n",
+        "\n",
+        "\n",
+        "def _matcher_cpu_age(proc, now):\n",
+        "    \"\"\"Seconds since the worker process (or its child solver) was last seen computing.\n",
+        "\n",
+        "    Sampled by the parent between watchdog runs. A matcher busy with SHAPE/MATCH work\n",
+        "    keeps this near zero without any stage report; a matcher blocked on the page, a lock\n",
+        "    or the network burns no CPU, so this grows and the 75-second rule applies as before.\n",
+        "    \"\"\"\n",
+        "    pid = getattr(proc, \"pid\", None)\n",
+        "    if not pid:\n",
+        "        return float(\"inf\")\n",
+        "    cpu = _process_tree_cpu_seconds(pid)\n",
+        "    if cpu is None:\n",
+        "        return float(\"inf\")\n",
+        "    state = _MATCHER_CPU_STATE.get(pid)\n",
+        "    if state is None:\n",
+        "        _MATCHER_CPU_STATE[pid] = {\"cpu\": cpu, \"time\": now, \"progress_at\": now}\n",
+        "        return 0.0\n",
+        "    wall = now - state[\"time\"]\n",
+        "    if wall > 0 and (cpu - state[\"cpu\"]) / wall >= MATCHER_CPU_MIN_RATIO:\n",
+        "        state[\"progress_at\"] = now\n",
+        "    state[\"cpu\"], state[\"time\"] = cpu, now\n",
+        "    return now - state[\"progress_at\"]\n",
+        "\n",
+        "\n",
+        "def parent_watchdog(processes, heartbeat):\n"
+      ]
+    },
+    {
       "start": 7127,
       "end": 7128,
       "replacement": [
         "        if _io1591.guarded(info) or phase in skip_phases:\n"
+      ]
+    },
+    {
+      "start": 7139,
+      "end": 7142,
+      "replacement": [
+        "            # MATCHER_HEARTBEAT_1591R9: a matcher still computing (the worker process or\n",
+        "            # its child solver keeps consuming CPU) is alive between stage reports; a\n",
+        "            # blocked or hung matcher burns no CPU and is caught by the same 75 s rule.\n",
+        "            matcher_age = min(matcher_age, _matcher_cpu_age(proc, now))\n",
+        "            if matcher_age >= PROTECTED_MATCHER_STALL_SECONDS:\n",
+        "                stalled.append((tab_id, proc, info, matcher_age))\n",
+        "            continue\n"
       ]
     },
     {
@@ -905,6 +978,20 @@
         "            if min(logical_age, activity_age) >= ROW_START_STALL_SECONDS:\n",
         "                stalled.append((tab_id, proc, info, min(logical_age, activity_age)))\n",
         "            continue\n"
+      ]
+    },
+    {
+      "start": 7664,
+      "end": 7670,
+      "replacement": [
+        "            matcher_age = now - float(\n",
+        "                (info or {}).get(\"matcher_time\")\n",
+        "                or (info or {}).get(\"time\")\n",
+        "                or now\n",
+        "            )\n",
+        "            if phase == \"PROTECTED_CHECK\" and proc is not None:\n",
+        "                matcher_age = min(matcher_age, _matcher_cpu_age(proc, now))  # MATCHER_HEARTBEAT_1591R9\n",
+        "            return phase, logical_age, matcher_age, bool(proc and proc.is_alive())\n"
       ]
     }
   ],

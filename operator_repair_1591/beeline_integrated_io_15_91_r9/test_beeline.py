@@ -7354,6 +7354,59 @@ def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heart
 
 
 
+# MATCHER_HEARTBEAT_1591R9
+MATCHER_CPU_MIN_RATIO = 0.05  # share of one CPU below which the matcher is not computing
+_MATCHER_CPU_STATE = {}
+
+
+def _process_tree_cpu_seconds(pid):
+    """CPU time of a process plus its live children (a native solver may be a child)."""
+    try:
+        ticks = os.sysconf("SC_CLK_TCK")
+    except (AttributeError, ValueError, OSError):
+        ticks = 100
+    total = 0.0
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return None
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/stat", "r") as f:
+                fields = f.read().rsplit(")", 1)[1].split()
+            if int(entry) == int(pid) or int(fields[1]) == int(pid):
+                total += (int(fields[11]) + int(fields[12])) / ticks
+        except (OSError, IndexError, ValueError):
+            continue
+    return total
+
+
+def _matcher_cpu_age(proc, now):
+    """Seconds since the worker process (or its child solver) was last seen computing.
+
+    Sampled by the parent between watchdog runs. A matcher busy with SHAPE/MATCH work
+    keeps this near zero without any stage report; a matcher blocked on the page, a lock
+    or the network burns no CPU, so this grows and the 75-second rule applies as before.
+    """
+    pid = getattr(proc, "pid", None)
+    if not pid:
+        return float("inf")
+    cpu = _process_tree_cpu_seconds(pid)
+    if cpu is None:
+        return float("inf")
+    state = _MATCHER_CPU_STATE.get(pid)
+    if state is None:
+        _MATCHER_CPU_STATE[pid] = {"cpu": cpu, "time": now, "progress_at": now}
+        return 0.0
+    wall = now - state["time"]
+    if wall > 0 and (cpu - state["cpu"]) / wall >= MATCHER_CPU_MIN_RATIO:
+        state["progress_at"] = now
+    state["cpu"], state["time"] = cpu, now
+    return now - state["progress_at"]
+
+
 def parent_watchdog(processes, heartbeat):
     """Parent recovery is phase-aware and must never kill normal ROW_START work."""
     now = monotonic()
@@ -7397,6 +7450,10 @@ def parent_watchdog(processes, heartbeat):
                 or info.get("time")
                 or now
             )
+            # MATCHER_HEARTBEAT_1591R9: a matcher still computing (the worker process or
+            # its child solver keeps consuming CPU) is alive between stage reports; a
+            # blocked or hung matcher burns no CPU and is caught by the same 75 s rule.
+            matcher_age = min(matcher_age, _matcher_cpu_age(proc, now))
             if matcher_age >= PROTECTED_MATCHER_STALL_SECONDS:
                 stalled.append((tab_id, proc, info, matcher_age))
             continue
@@ -7930,6 +7987,8 @@ def main():
                 or (info or {}).get("time")
                 or now
             )
+            if phase == "PROTECTED_CHECK" and proc is not None:
+                matcher_age = min(matcher_age, _matcher_cpu_age(proc, now))  # MATCHER_HEARTBEAT_1591R9
             return phase, logical_age, matcher_age, bool(proc and proc.is_alive())
 
         def execute_ai_runtime_actions():

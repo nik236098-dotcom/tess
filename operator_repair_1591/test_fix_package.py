@@ -59,7 +59,7 @@ class PackageTests(unittest.TestCase):
         cls.pkg = Path(cls.tmp.name) / "pkg"
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
-        if any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER)):
+        if any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER)):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
     @classmethod
@@ -120,7 +120,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-8", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-9", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -275,7 +275,27 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 8", run.stdout)
+            self.assertIn("Already revision 9", run.stdout)
+
+    def test_matcher_cpu_age_tracks_a_computing_child_process(self):
+        import time as _t
+        ns = {"os": os, "MATCHER_CPU_MIN_RATIO": 0.05, "_MATCHER_CPU_STATE": {}}
+        exec_functions(self.source, ["_process_tree_cpu_seconds", "_matcher_cpu_age"], ns)
+        child = subprocess.Popen([sys.executable, "-c",
+            "import time\nt=time.monotonic()\nwhile time.monotonic()<t+1.5: sum(i*i for i in range(20000))\ntime.sleep(3)"])
+        try:
+            proc = types.SimpleNamespace(pid=child.pid)
+            ns["_matcher_cpu_age"](proc, _t.monotonic()); _t.sleep(0.5)
+            busy_age = ns["_matcher_cpu_age"](proc, _t.monotonic())
+            self.assertLess(busy_age, 0.2, "a computing matcher must look alive")
+            _t.sleep(1.6)
+            ns["_matcher_cpu_age"](proc, _t.monotonic()); _t.sleep(1.0)
+            idle_age = ns["_matcher_cpu_age"](proc, _t.monotonic())
+            self.assertGreater(idle_age, 0.8, "a blocked matcher must go silent so the 75 s rule applies")
+        finally:
+            child.terminate(); child.wait()
+        self.assertIn("if matcher_age >= PROTECTED_MATCHER_STALL_SECONDS:", self.source, "the 75 s rule stays")
+        self.assertIn("matcher_age = min(matcher_age, _matcher_cpu_age(proc, now))", self.source)
 
 
 if __name__ == "__main__":

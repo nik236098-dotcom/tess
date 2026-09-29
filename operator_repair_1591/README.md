@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 8 лежит в `beeline_integrated_io_15_91_r8/`. В нём нет
+Готовый пакет ревизии 9 лежит в `beeline_integrated_io_15_91_r9/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -25,7 +25,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r8
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r9
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -80,7 +80,15 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    страницы. Теперь учитывается активность страницы, длинные шаги сами обновляют heartbeat,
    а повтор клика по «изменить» выполняется на месте, reload корзины остаётся крайним
    средством. Маркер: `ROW_START_ACTIVITY_1591R8`.
-10. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+10. **Heartbeat матчера (ревизия 9).** Матчер капчи сообщает о прогрессе только на границах
+   этапов, поэтому этап SHAPE_NATIVE/MATCH дольше 75 секунд выглядел зависанием, и защищённая
+   вкладка закрывалась посреди проверки. Лимит 75 секунд не менялся: родительский watchdog
+   читает из `/proc` процессорное время процесса worker (и его дочернего решателя); пока оно
+   растёт, матчер считает и признаётся живым, а заблокированный или зависший матчер CPU не
+   расходует и ловится прежним правилом. Замер идёт в родительском процессе, GIL worker'а ему
+   не мешает; то же правило применено к проверке «unhealthy» для действий DeepSeek.
+   `local_matcher.py` не трогается. Маркер: `MATCHER_HEARTBEAT_1591R9`.
+11. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -102,7 +110,7 @@ PACKAGE_1591_DIR=pkg python3 -m unittest -v test_fix_package  # с пакето�
 
 ---
 
-日本語: 同僚の 15.91 パッケージに対する修正スクリプトと、修正済みパッケージ（リビジョン8）です。
+日本語: 同僚の 15.91 パッケージに対する修正スクリプトと、修正済みパッケージ（リビジョン9）です。
 SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分割配信に置き換え、Python 3.13 依存だった
 ハッシュテストを修正し、インストーラーがパッケージ内のコピーをそのまま配置するようにしました。
 プロキシのログイン情報はコードから外し、サーバーの `telegram_config.json` の `"proxy"` キーから
