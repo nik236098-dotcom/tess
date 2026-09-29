@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-18", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-19", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -283,7 +283,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 18", run.stdout)
+            self.assertIn("Already revision 19", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -317,7 +317,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 18)
+        self.assertEqual(manifest["revision"], 19)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -652,6 +652,102 @@ class PackageTests(unittest.TestCase):
         inst = {"id": 1, "port": 52495, "profile": "", "proc": None, "cdp_url": url}
         self.assertFalse(ns["_relaunch_chromium"](inst, "/bin/chromium", popen=popen, wait_cdp=lambda p: False, free_port=lambda: 45999))
         _sh.rmtree(inst["profile"], ignore_errors=True)
+
+    def _form_ns(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("rt_1591", self.pkg / "operator_runtime_io.py")
+        rt = importlib.util.module_from_spec(spec); spec.loader.exec_module(rt)
+        names = ["capture_all_form_fields_v1583", "capture_form_fields_1591r19", "_alias_hit_1591r19",
+                 "_profile_fallback_1591r19", "final_profile_capture_v1583"]
+        tree = ast.parse(self.source)
+        nodes = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in names) or (
+            isinstance(n, ast.Assign) and any(isinstance(x, ast.Name) and (x.id.endswith("_1591R12") or x.id.endswith("_1591R19"))
+                                              for x in n.targets))]
+        ns = {"re": __import__("re"), "_io1591": rt}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), "pkg", "exec"), ns)
+        return ns
+
+    def test_profile_aliases_are_whole_words_and_fallbacks_fill_unlabeled_fields(self):
+        ns = self._form_ns()
+        hit = ns["_alias_hit_1591r19"]
+        self.assertTrue(hit("пол", "пол")); self.assertFalse(hit("обязательное поле", "пол"))
+        self.assertFalse(hit("домашний телефон", "дом")); self.assertTrue(hit("дом 12", "дом"))
+        self.assertTrue(hit("населенный пункт", "населённый пункт"), "ё-insensitive")
+        # The exact shape of the server dump: six inputs without label/name/id/placeholder caption.
+        fields = [{"tag": "input", "type": "text", "value": "Иванов Иван Иванович"},
+                  {"tag": "input", "type": "text", "placeholder": "18.09.2001", "value": "01.02.1990"},
+                  {"tag": "input", "type": "text", "label": "серия", "id": "passportSeries", "value": "1234"},
+                  {"tag": "input", "type": "text", "label": "дата выдачи", "id": "docIssueDate", "value": "10.10.2010"},
+                  {"tag": "input", "type": "text", "label": "страна", "id": "country", "value": "Россия"},
+                  {"tag": "input", "type": "text", "value": "Саратовская область"},
+                  {"tag": "input", "type": "text", "value": ""},
+                  {"tag": "input", "type": "text", "value": "Саратов"},
+                  {"tag": "input", "type": "text", "value": "Московская"},
+                  {"tag": "input", "type": "text", "label": "дом", "id": "house", "value": "12"},
+                  {"tag": "input", "type": "checkbox", "near": "Согласен на обработку данных региона", "value": "true"}]
+        worker = {"success_profile": {}}
+        ns["capture_all_form_fields_v1583"] = lambda page: []
+        ns["capture_form_fields_1591r19"] = lambda page: fields
+        profile, _ = ns["final_profile_capture_v1583"](types.SimpleNamespace(url="x"), worker)
+        self.assertEqual(profile["full_name"], "Иванов Иван Иванович"); self.assertEqual(profile["birth_date"], "01.02.1990")
+        self.assertEqual(profile["passport_issue_date"], "10.10.2010"); self.assertEqual(profile["passport_series"], "1234")
+        self.assertEqual(profile["region"], "Саратовская область"); self.assertNotIn("district", profile)
+        self.assertEqual(profile["locality"], "Саратов"); self.assertEqual(profile["street"], "Московская")
+        self.assertEqual(profile["house"], "12"); self.assertNotIn("true", profile.values())
+
+    def test_profile_capture_reads_captions_next_to_the_inputs_in_a_browser(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("playwright not installed")
+        ns = self._form_ns()
+        html = """<form>
+<div class="section"><h3>Персональные данные</h3></div>
+<div class="field"><div class="caption">ФИО</div><div class="ctrl"><input type="text" value="Петров Пётр Петрович"></div></div>
+<div class="field"><div class="ctrl"><input type="text" placeholder="18.09.2001" value="03.04.1985"></div><div class="caption">Дата рождения</div></div>
+<div class="row"><div class="field"><label for="passportSeries">серия</label><input id="passportSeries" value="1234"></div>
+<div class="field"><label for="passportNumber">номер</label><input id="passportNumber" value="567890"></div></div>
+<div class="field"><label for="docIssueDate">дата выдачи</label><input id="docIssueDate" value="10.10.2010"></div>
+<div class="field"><label for="docIssuer">кем выдан</label><input id="docIssuer" value="ОУФМС России по Саратовской области"></div>
+<div class="field"><label for="country">страна</label><input id="country" value="Россия"></div>
+<div class="field"><span class="caption">Регион</span><div class="ctrl"><input type="text" value="Саратовская область"></div><small>Обязательное поле</small></div>
+<div class="field"><div class="ctrl"><input type="text" value=""></div></div>
+<div class="field"><div class="ctrl"><input type="text" value="Саратов"></div></div>
+<div class="field"><div class="ctrl"><input type="text" value="Московская"></div></div>
+<div class="field"><label for="house">дом</label><input id="house" value="12"></div>
+<div class="field"><label for="building">корпус</label><input id="building" value=""></div>
+<div class="field"><label for="flat">квартира</label><input id="flat" value="34"></div>
+<label><input type="checkbox" checked> Согласен на обработку данных региона и города проживания</label>
+<div class="field"><label for="contactNumber">номер телефона</label><input id="contactNumber" name="contactNumber" placeholder="+7 960 000 00 00" value=""></div>
+</form>"""
+        class Diag:
+            def __init__(self): self.events = []
+            def write(self, event, **data): self.events.append((event, data))
+        worker = {"success_profile": {"gender": "мужской"}, "diagnostic": Diag()}
+        try:
+            with sync_playwright() as p:
+                try:
+                    browser = p.chromium.launch(headless=True)
+                except Exception:
+                    browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+                page = browser.new_page(); page.set_content(html)
+                extended = ns["capture_form_fields_1591r19"](page)
+                profile, raw = ns["final_profile_capture_v1583"](page, worker)
+                browser.close()
+        except Exception as exc:
+            self.skipTest(f"chromium not available: {type(exc).__name__}")
+        by_value = {f["value"]: f for f in extended if f.get("value")}
+        self.assertEqual(by_value["Петров Пётр Петрович"]["near"], "ФИО")
+        self.assertEqual(by_value["03.04.1985"]["near"], "Дата рождения")
+        self.assertIn("Регион", by_value["Саратовская область"]["near"])
+        self.assertEqual(by_value["1234"]["label"], "серия")
+        self.assertEqual(profile["full_name"], "Петров Пётр Петрович"); self.assertEqual(profile["birth_date"], "03.04.1985")
+        self.assertEqual(profile["passport_issue_date"], "10.10.2010"); self.assertEqual(profile["passport_number"], "567890")
+        self.assertEqual(profile["region"], "Саратовская область"); self.assertEqual(profile["locality"], "Саратов")
+        self.assertEqual(profile["street"], "Московская"); self.assertNotIn("district", profile)
+        self.assertEqual(profile["house"], "12"); self.assertEqual(profile["apartment"], "34")
+        self.assertEqual(profile["gender"], "мужской"); self.assertNotIn("true", profile.values())
+        self.assertEqual(len(raw), len(extended)); self.assertIn("form_fields_1591r19", [e for e, _ in worker["diagnostic"].events])
 
 
 def _load_module(name, path):

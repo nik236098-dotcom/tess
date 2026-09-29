@@ -66,7 +66,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "21772a39422eeae8224f580beecad29171105885101b76f100190f6d64fd3e7c",
                          "1cc1769f3ec9bd04b325be73fed182a4a05f082339820682601c3bd4be7483f6",
                          "3bee3697775d818df6c1fe82c3096574f00a1c289aaf26c7a7e96d2f614b7597",
-                         "1ba0e4f3af9dcc2fa8d78e5eee0033ec48489c402f4c49be9d4e799eb1a786ec"}  # r17 output
+                         "1ba0e4f3af9dcc2fa8d78e5eee0033ec48489c402f4c49be9d4e799eb1a786ec",  # r17 output
+                         "e8f5e036c2f33ab9d8f27a98deceb25356511cd253fc871f929c16d619f45d75"}  # r18 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -1324,6 +1325,220 @@ README_NOTE_R18 = '''
 Chromium повторены в _chromium_launch_args. В watchdog-статусе Telegram литеральный «\\n»
 заменён настоящим переводом строки. Маркер: BROWSER_HANG_1591R18.
 '''
+# Revision 19: on the personal-data form the full name, the birth date and the four address
+# inputs between «страна» and «дом» carry no label[for], name, id or descriptive placeholder;
+# their captions sit in neighbouring elements. final_profile_capture_v1583 matched labels
+# only, so those six fields stayed empty in the SUCCESS push. A companion capture records the
+# nearest label-like text and the data-/aria-/autocomplete attributes of every control, and
+# still-unlabeled fields fall back to value shape (name, birth date) and to position (the
+# four address inputs). capture_all_form_fields_v1583 is a preserved handler and is untouched.
+PROFILE_LABELS_MARKER = "PROFILE_LABELS_1591R19"
+OLD_FINAL_CAPTURE_DEF = '''def final_profile_capture_v1583(page, worker):
+    fields = capture_all_form_fields_v1583(page)
+'''
+PROFILE_LABEL_HELPERS_R19 = r'''# PROFILE_LABELS_1591R19
+_FORM_FIELDS_JS_1591R19 = r"""() => {
+  const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+  const hasControl = el => !!(el && el.querySelector && el.querySelector('input,select,textarea'));
+  const shortText = el => { const t = clean(el && (el.innerText || el.textContent)); return t && t.length <= 80 ? t : ''; };
+  const out = [];
+  for (const el of document.querySelectorAll('input,select,textarea')) {
+    let near = '';
+    try {
+      // 1. the wrapper of exactly this control that carries a short caption (floating labels)
+      let node = el.parentElement;
+      for (let depth = 0; depth < 5 && !near && node; depth++) {
+        if (node.querySelectorAll('input,select,textarea').length !== 1) break;
+        near = shortText(node);
+        node = node.parentElement;
+      }
+      // 2. the caption rendered just before the control or its wrapper; another control
+      //    in between means the caption belongs to that other field
+      node = el;
+      for (let depth = 0; depth < 3 && !near && node; depth++) {
+        let sib = node.previousElementSibling;
+        while (sib && !near) {
+          if (sib.matches('input,select,textarea') || hasControl(sib)) break;
+          near = shortText(sib);
+          sib = sib.previousElementSibling;
+        }
+        node = node.parentElement;
+      }
+    } catch (_) {}
+    const attrs = [];
+    try {
+      for (const a of el.attributes) {
+        if (/^(data-|aria-|autocomplete$|title$|role$)/.test(a.name) && a.value) attrs.push(a.name + '=' + a.value);
+      }
+      const by = el.getAttribute('aria-labelledby');
+      if (by) for (const id of by.split(/\s+/)) { const l = document.getElementById(id); if (l) attrs.push('labelledby=' + clean(l.textContent)); }
+    } catch (_) {}
+    let value = '';
+    try {
+      value = (el.type === 'checkbox' || el.type === 'radio') ? (el.checked ? 'true' : 'false')
+                                                              : String(el.value == null ? '' : el.value);
+    } catch (_) {}
+    let label = '';
+    try {
+      if (el.id) { const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) label = clean(l.textContent); }
+      if (!label) { const l = el.closest('label'); if (l) label = clean(l.textContent); }
+    } catch (_) {}
+    out.push({tag: (el.tagName || '').toLowerCase(), type: el.type || '', name: el.name || '', id: el.id || '',
+              value, label, placeholder: el.placeholder || '', ariaLabel: el.getAttribute('aria-label') || '',
+              near, attrs: attrs.join(' ')});
+  }
+  return out;
+}"""
+
+
+def capture_form_fields_1591r19(page):
+    """capture_all_form_fields_v1583 plus `near` (the closest label-like text around the
+    control) and `attrs` (data-/aria-/autocomplete attributes). Read-only."""
+    try:
+        data = page.evaluate(_FORM_FIELDS_JS_1591R19)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _alias_hit_1591r19(hay, word):
+    """Short aliases («пол», «дом», «край», «ул.») must be whole words: «поле», «домашний»
+    and «крайний» in a hint next to the field are not labels."""
+    word = word.replace("ё", "е")
+    if len(word) <= 4:
+        return re.search(r"(?<![а-яa-z0-9])" + re.escape(word) + r"(?![а-яa-z0-9])", hay) is not None
+    return word in hay
+
+
+_DATE_FIELD_RE_1591R19 = re.compile(r"^\d{2}[.\-/]\d{2}[.\-/]\d{4}$")
+_SKIP_FIELD_TYPES_1591R19 = {"checkbox", "radio", "hidden", "submit", "button", "password", "file"}
+
+
+def _profile_fallback_1591r19(profile, fields, consumed):
+    """Fields with no caption anywhere: the full name and the birth date by value shape, the
+    four address inputs between «страна» and «дом» by their position on the form."""
+    text_inputs = [(i, f) for i, f in enumerate(fields)
+                   if str(f.get("tag") or "input").lower() == "input"
+                   and str(f.get("type") or "text").lower() not in _SKIP_FIELD_TYPES_1591R19]
+    issue_date = str(profile.get("passport_issue_date") or "").strip()
+    for i, f in text_inputs:
+        value = str(f.get("value") or "").strip()
+        if i in consumed or not value:
+            continue
+        if not profile.get("full_name") and " " in value and _FIO_RE_1591R12.match(value):
+            profile["full_name"] = value
+            consumed.add(i)
+            continue
+        if (not profile.get("birth_date") and _DATE_FIELD_RE_1591R19.match(value) and value != issue_date
+                and (_DATE_FIELD_RE_1591R19.match(str(f.get("placeholder") or "").strip())
+                     or "рожд" in str(f.get("near") or "").lower())):
+            profile["birth_date"] = value
+            consumed.add(i)
+    ids = [str(f.get("id") or "").lower() for f in fields]
+    if "country" in ids and "house" in ids and ids.index("country") < ids.index("house"):
+        a, b = ids.index("country"), ids.index("house")
+        between = [(i, f) for i, f in text_inputs if a < i < b]
+        if len(between) == 4:
+            for (i, f), key in zip(between, ("region", "district", "locality", "street")):
+                value = str(f.get("value") or "").strip()
+                if i not in consumed and len(value) >= 2 and not profile.get(key):
+                    profile[key] = value
+                    consumed.add(i)
+    return profile
+
+
+'''
+NEW_FINAL_CAPTURE_DEF = PROFILE_LABEL_HELPERS_R19 + OLD_FINAL_CAPTURE_DEF
+OLD_ALIASES_HEAD = '''        "full_name": ("фио", "фамилия имя отчество", "fullname", "full_name"),
+        "gender": ("пол", "gender"),
+        "birth_date": ("дата рождения", "birth", "birthday"),
+'''
+NEW_ALIASES_HEAD = '''        "full_name": ("фио", "фамилия имя отчество", "фамилия", "ф.и.о", "ф. и. о", "fullname", "full_name",
+                      "autocomplete=name"),  # PROFILE_LABELS_1591R19
+        "gender": ("пол", "gender"),
+        "birth_date": ("дата рождения", "дата рожд", "рождения", "birth", "birthday", "bday"),
+'''
+OLD_ALIASES_ADDRESS = '''        "region": ("область", "регион", "region"),
+        "district": ("район", "district"),
+        "locality": ("населённый пункт", "город", "city", "locality"),
+        "street": ("улица", "street"),
+'''
+NEW_ALIASES_ADDRESS = '''        "region": ("область", "регион", "край", "республика", "region", "address-level1"),
+        "district": ("район", "р-н", "district"),
+        "locality": ("населённый пункт", "населенный пункт", "населённый", "населенный", "город", "city",
+                     "locality", "address-level2"),
+        "street": ("улица", "ул.", "street", "address-line1"),
+'''
+OLD_MATCH_LOOP = '''    for f in fields:
+        value = str(f.get("value") or "").strip()
+        if not value:
+            continue
+        hay = " ".join(str(f.get(k) or "") for k in
+                       ("label", "name", "id", "placeholder", "ariaLabel")).lower()
+        for key, words in aliases.items():
+            if profile.get(key):
+                continue
+            if any(word in hay for word in words):
+                profile[key] = value
+                break
+    worker["success_profile"] = profile
+    worker["profile"] = dict(profile)
+    return profile, fields
+'''
+NEW_MATCH_LOOP = '''    extended = capture_form_fields_1591r19(page)  # PROFILE_LABELS_1591R19
+    if extended:
+        try:
+            d = worker.get("diagnostic")
+            if d:
+                d.write("form_fields_1591r19", fields=extended, url=page.url)
+        except Exception:
+            pass
+    matched = extended or fields
+    consumed = set()
+    for index, f in enumerate(matched):
+        value = str(f.get("value") or "").strip()
+        if not value or str(f.get("type") or "").lower() in _SKIP_FIELD_TYPES_1591R19:
+            continue
+        hay = " ".join(str(f.get(k) or "") for k in
+                       ("label", "name", "id", "placeholder", "ariaLabel", "near", "attrs")).lower().replace("ё", "е")
+        for key, words in aliases.items():
+            if profile.get(key):
+                continue
+            if any(_alias_hit_1591r19(hay, word) for word in words):
+                profile[key] = value
+                consumed.add(index)
+                break
+    _profile_fallback_1591r19(profile, matched, consumed)
+    worker["success_profile"] = profile
+    worker["profile"] = dict(profile)
+    return profile, fields
+'''
+OLD_TEST_PROFILE_NS = """        ns={'_io1591':rt,'capture_all_form_fields_v1583':lambda p:fields}
+        extract({'final_profile_capture_v1583'},ns)
+"""
+NEW_TEST_PROFILE_NS = """        ns={'_io1591':rt,'capture_all_form_fields_v1583':lambda p:fields,
+            'capture_form_fields_1591r19':lambda p:[],'re':__import__('re'),  # PROFILE_LABELS_1591R19
+            '_SKIP_FIELD_TYPES_1591R19':{'checkbox','radio','hidden'},
+            '_DATE_FIELD_RE_1591R19':__import__('re').compile(r'^\\d{2}[.\\-/]\\d{2}[.\\-/]\\d{4}$'),
+            '_FIO_RE_1591R12':__import__('re').compile(r'^[А-ЯЁA-Z][А-Яа-яЁёA-Za-z.\\-]{0,30}(\\s+[А-ЯЁA-Z][А-Яа-яЁёA-Za-z.\\-]{0,30}){1,3}$')}
+        extract({'final_profile_capture_v1583','_alias_hit_1591r19','_profile_fallback_1591r19'},ns)
+"""
+README_NOTE_R19 = '''
+
+РЕВИЗИЯ 19 (fix_package_1591.py)
+Данные профиля в SUCCESS-сообщении. Диагностика показала: на форме personal-data-form поля
+ФИО, даты рождения и четыре адресных поля между «страна» и «дом» не имеют ни label[for], ни
+name, ни id, ни осмысленного placeholder — подпись лежит в соседнем элементе. Захват
+final_profile_capture_v1583 узнавал поля только по этим признакам, поэтому паспорт, страна,
+дом и квартира попадали в отчёт, а ФИО, дата рождения, область, район, город и улица — нет.
+Добавлен capture_form_fields_1591r19: к каждому полю записываются ближайший текст-подпись
+(соседние элементы и родители) и data-/aria-/autocomplete-атрибуты; короткие алиасы («пол»,
+«дом», «край») сравниваются как целые слова. Поля без подписи распознаются по форме значения
+(ФИО, дата рождения с placeholder-датой) и по положению (четыре адресных поля между «страна»
+и «дом»). Чекбоксы/radio/hidden в сопоставление не входят. Список полей с подписями пишется в
+диагностику событием form_fields_1591r19. Сохранённый handler capture_all_form_fields_v1583
+не менялся. Маркер: PROFILE_LABELS_1591R19.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -2151,8 +2366,9 @@ def main(argv: list[str]) -> int:
     if speed_done and all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER,
                                                 TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER,
                                                 PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER, PERSDATA_MARKER,
-                                                ERRORSKIP_MARKER, SUCCESSTAG_MARKER, BROWSER_MARKER)):
-        print("Already revision 18; nothing changed.")
+                                                ERRORSKIP_MARKER, SUCCESSTAG_MARKER, BROWSER_MARKER,
+                                                PROFILE_LABELS_MARKER)):
+        print("Already revision 19; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -2433,6 +2649,16 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 20 (r19). Profile fields on the personal-data form that carry no label of their own.
+    if PROFILE_LABELS_MARKER not in source:
+        for old, new, what in ((OLD_FINAL_CAPTURE_DEF, NEW_FINAL_CAPTURE_DEF, "profile label helpers"),
+                               (OLD_ALIASES_HEAD, NEW_ALIASES_HEAD, "profile aliases head"),
+                               (OLD_ALIASES_ADDRESS, NEW_ALIASES_ADDRESS, "profile aliases address"),
+                               (OLD_MATCH_LOOP, NEW_MATCH_LOOP, "profile match loop")):
+            new_source = replace_once(new_source, old, new, what)
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        test_src = replace_once(test_src, OLD_TEST_PROFILE_NS, NEW_TEST_PROFILE_NS, "test_update.py profile fixture")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -2458,7 +2684,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | {CONTROLLER_OUTPUT_SHA_R12}
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 18
+    manifest["revision"] = 19
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -2474,7 +2700,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 11", README_NOTE_R11), ("РЕВИЗИЯ 12", README_NOTE_R12),
                           ("РЕВИЗИЯ 13", README_NOTE_R13), ("РЕВИЗИЯ 14", README_NOTE_R14),
                           ("РЕВИЗИЯ 15", README_NOTE_R15), ("РЕВИЗИЯ 16", README_NOTE_R16),
-                          ("РЕВИЗИЯ 17", README_NOTE_R17), ("РЕВИЗИЯ 18", README_NOTE_R18)):
+                          ("РЕВИЗИЯ 17", README_NOTE_R17), ("РЕВИЗИЯ 18", README_NOTE_R18),
+                          ("РЕВИЗИЯ 19", README_NOTE_R19)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -2487,7 +2714,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 18, "result": "OK",
+    verification.update({"python": sys.version, "revision": 19, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -2503,7 +2730,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 18 applied to", package)
+    print("Revision 19 applied to", package)
     return 0
 
 

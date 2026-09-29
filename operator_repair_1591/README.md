@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 18 лежит в `beeline_integrated_io_15_91_r18/`. В нём нет
+Готовый пакет ревизии 19 лежит в `beeline_integrated_io_15_91_r19/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -52,7 +52,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r18
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r19
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -185,7 +185,15 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    следующую строку. Если Chromium не поднялся — выход с кодом планового перезапуска, контроллер
    перезапускает процесс. Заодно литеральный `\n` в watchdog-статусе Telegram стал настоящим
    переводом строки. Маркер `BROWSER_HANG_1591R18`.
-20. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+20. **Данные профиля в SUCCESS-сообщении (ревизия 19).** На форме personal-data-form поля ФИО,
+   даты рождения и четыре адресных поля между «страна» и «дом» не имеют ни `label[for]`, ни `name`,
+   ни `id`, ни осмысленного `placeholder`: подпись лежит в соседнем элементе, и захват их не узнавал.
+   Добавлен `capture_form_fields_1591r19`: для каждого поля записывается ближайший текст-подпись
+   и data-/aria-/autocomplete-атрибуты; короткие алиасы сравниваются как целые слова; поля без
+   подписи распознаются по форме значения (ФИО, дата рождения) и по положению (четыре адресных
+   поля). Список полей пишется в диагностику событием `form_fields_1591r19`. Маркер
+   `PROFILE_LABELS_1591R19`.
+21. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

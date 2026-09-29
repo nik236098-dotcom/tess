@@ -302,8 +302,12 @@ class StateTests(unittest.TestCase):
                          {'locality':'A','house':'7','passport_issued_by':'Issuer'})
     def test_actual_capture_writes_sender_field(self):
         fields=[{'label':'Город','value':'Fixture city'}, {'label':'Кем выдан','value':'Fixture issuer'}]
-        ns={'_io1591':rt,'capture_all_form_fields_v1583':lambda p:fields}
-        extract({'final_profile_capture_v1583'},ns)
+        ns={'_io1591':rt,'capture_all_form_fields_v1583':lambda p:fields,
+            'capture_form_fields_1591r19':lambda p:[],'re':__import__('re'),  # PROFILE_LABELS_1591R19
+            '_SKIP_FIELD_TYPES_1591R19':{'checkbox','radio','hidden'},
+            '_DATE_FIELD_RE_1591R19':__import__('re').compile(r'^\d{2}[.\-/]\d{2}[.\-/]\d{4}$'),
+            '_FIO_RE_1591R12':__import__('re').compile(r'^[А-ЯЁA-Z][А-Яа-яЁёA-Za-z.\-]{0,30}(\s+[А-ЯЁA-Z][А-Яа-яЁёA-Za-z.\-]{0,30}){1,3}$')}
+        extract({'final_profile_capture_v1583','_alias_hit_1591r19','_profile_fallback_1591r19'},ns)
         worker={'success_profile':{'house':'7'}}
         profile,raw=ns['final_profile_capture_v1583'](FakePage(),worker)
         self.assertEqual(worker['success_profile']['locality'],'Fixture city')

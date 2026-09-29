@@ -6422,6 +6422,117 @@ def capture_all_form_fields_v1583(page):
         return []
 
 
+# PROFILE_LABELS_1591R19
+_FORM_FIELDS_JS_1591R19 = r"""() => {
+  const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+  const hasControl = el => !!(el && el.querySelector && el.querySelector('input,select,textarea'));
+  const shortText = el => { const t = clean(el && (el.innerText || el.textContent)); return t && t.length <= 80 ? t : ''; };
+  const out = [];
+  for (const el of document.querySelectorAll('input,select,textarea')) {
+    let near = '';
+    try {
+      // 1. the wrapper of exactly this control that carries a short caption (floating labels)
+      let node = el.parentElement;
+      for (let depth = 0; depth < 5 && !near && node; depth++) {
+        if (node.querySelectorAll('input,select,textarea').length !== 1) break;
+        near = shortText(node);
+        node = node.parentElement;
+      }
+      // 2. the caption rendered just before the control or its wrapper; another control
+      //    in between means the caption belongs to that other field
+      node = el;
+      for (let depth = 0; depth < 3 && !near && node; depth++) {
+        let sib = node.previousElementSibling;
+        while (sib && !near) {
+          if (sib.matches('input,select,textarea') || hasControl(sib)) break;
+          near = shortText(sib);
+          sib = sib.previousElementSibling;
+        }
+        node = node.parentElement;
+      }
+    } catch (_) {}
+    const attrs = [];
+    try {
+      for (const a of el.attributes) {
+        if (/^(data-|aria-|autocomplete$|title$|role$)/.test(a.name) && a.value) attrs.push(a.name + '=' + a.value);
+      }
+      const by = el.getAttribute('aria-labelledby');
+      if (by) for (const id of by.split(/\s+/)) { const l = document.getElementById(id); if (l) attrs.push('labelledby=' + clean(l.textContent)); }
+    } catch (_) {}
+    let value = '';
+    try {
+      value = (el.type === 'checkbox' || el.type === 'radio') ? (el.checked ? 'true' : 'false')
+                                                              : String(el.value == null ? '' : el.value);
+    } catch (_) {}
+    let label = '';
+    try {
+      if (el.id) { const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) label = clean(l.textContent); }
+      if (!label) { const l = el.closest('label'); if (l) label = clean(l.textContent); }
+    } catch (_) {}
+    out.push({tag: (el.tagName || '').toLowerCase(), type: el.type || '', name: el.name || '', id: el.id || '',
+              value, label, placeholder: el.placeholder || '', ariaLabel: el.getAttribute('aria-label') || '',
+              near, attrs: attrs.join(' ')});
+  }
+  return out;
+}"""
+
+
+def capture_form_fields_1591r19(page):
+    """capture_all_form_fields_v1583 plus `near` (the closest label-like text around the
+    control) and `attrs` (data-/aria-/autocomplete attributes). Read-only."""
+    try:
+        data = page.evaluate(_FORM_FIELDS_JS_1591R19)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _alias_hit_1591r19(hay, word):
+    """Short aliases («пол», «дом», «край», «ул.») must be whole words: «поле», «домашний»
+    and «крайний» in a hint next to the field are not labels."""
+    word = word.replace("ё", "е")
+    if len(word) <= 4:
+        return re.search(r"(?<![а-яa-z0-9])" + re.escape(word) + r"(?![а-яa-z0-9])", hay) is not None
+    return word in hay
+
+
+_DATE_FIELD_RE_1591R19 = re.compile(r"^\d{2}[.\-/]\d{2}[.\-/]\d{4}$")
+_SKIP_FIELD_TYPES_1591R19 = {"checkbox", "radio", "hidden", "submit", "button", "password", "file"}
+
+
+def _profile_fallback_1591r19(profile, fields, consumed):
+    """Fields with no caption anywhere: the full name and the birth date by value shape, the
+    four address inputs between «страна» and «дом» by their position on the form."""
+    text_inputs = [(i, f) for i, f in enumerate(fields)
+                   if str(f.get("tag") or "input").lower() == "input"
+                   and str(f.get("type") or "text").lower() not in _SKIP_FIELD_TYPES_1591R19]
+    issue_date = str(profile.get("passport_issue_date") or "").strip()
+    for i, f in text_inputs:
+        value = str(f.get("value") or "").strip()
+        if i in consumed or not value:
+            continue
+        if not profile.get("full_name") and " " in value and _FIO_RE_1591R12.match(value):
+            profile["full_name"] = value
+            consumed.add(i)
+            continue
+        if (not profile.get("birth_date") and _DATE_FIELD_RE_1591R19.match(value) and value != issue_date
+                and (_DATE_FIELD_RE_1591R19.match(str(f.get("placeholder") or "").strip())
+                     or "рожд" in str(f.get("near") or "").lower())):
+            profile["birth_date"] = value
+            consumed.add(i)
+    ids = [str(f.get("id") or "").lower() for f in fields]
+    if "country" in ids and "house" in ids and ids.index("country") < ids.index("house"):
+        a, b = ids.index("country"), ids.index("house")
+        between = [(i, f) for i, f in text_inputs if a < i < b]
+        if len(between) == 4:
+            for (i, f), key in zip(between, ("region", "district", "locality", "street")):
+                value = str(f.get("value") or "").strip()
+                if i not in consumed and len(value) >= 2 and not profile.get(key):
+                    profile[key] = value
+                    consumed.add(i)
+    return profile
+
+
 def final_profile_capture_v1583(page, worker):
     fields = capture_all_form_fields_v1583(page)
     worker["final_form_fields"] = fields
@@ -6434,34 +6545,48 @@ def final_profile_capture_v1583(page, worker):
 
     profile = _io1591.merge_capture(worker.get("success_profile"), worker.get("profile"))
     aliases = {
-        "full_name": ("фио", "фамилия имя отчество", "fullname", "full_name"),
+        "full_name": ("фио", "фамилия имя отчество", "фамилия", "ф.и.о", "ф. и. о", "fullname", "full_name",
+                      "autocomplete=name"),  # PROFILE_LABELS_1591R19
         "gender": ("пол", "gender"),
-        "birth_date": ("дата рождения", "birth", "birthday"),
+        "birth_date": ("дата рождения", "дата рожд", "рождения", "birth", "birthday", "bday"),
         "passport_series": ("серия паспорта", "passport series", "series"),
         "passport_number": ("номер паспорта", "passport number", "passportnumber"),
         "passport_issue_date": ("дата выдачи", "issue date", "issuedate"),
         "passport_issued_by": ("кем выдан", "issuer", "issued by"),
         "country": ("страна", "country"),
-        "region": ("область", "регион", "region"),
-        "district": ("район", "district"),
-        "locality": ("населённый пункт", "город", "city", "locality"),
-        "street": ("улица", "street"),
+        "region": ("область", "регион", "край", "республика", "region", "address-level1"),
+        "district": ("район", "р-н", "district"),
+        "locality": ("населённый пункт", "населенный пункт", "населённый", "населенный", "город", "city",
+                     "locality", "address-level2"),
+        "street": ("улица", "ул.", "street", "address-line1"),
         "house": ("дом", "house"),
         "building": ("корпус", "building"),
         "apartment": ("квартира", "apartment", "flat"),
     }
-    for f in fields:
+    extended = capture_form_fields_1591r19(page)  # PROFILE_LABELS_1591R19
+    if extended:
+        try:
+            d = worker.get("diagnostic")
+            if d:
+                d.write("form_fields_1591r19", fields=extended, url=page.url)
+        except Exception:
+            pass
+    matched = extended or fields
+    consumed = set()
+    for index, f in enumerate(matched):
         value = str(f.get("value") or "").strip()
-        if not value:
+        if not value or str(f.get("type") or "").lower() in _SKIP_FIELD_TYPES_1591R19:
             continue
         hay = " ".join(str(f.get(k) or "") for k in
-                       ("label", "name", "id", "placeholder", "ariaLabel")).lower()
+                       ("label", "name", "id", "placeholder", "ariaLabel", "near", "attrs")).lower().replace("ё", "е")
         for key, words in aliases.items():
             if profile.get(key):
                 continue
-            if any(word in hay for word in words):
+            if any(_alias_hit_1591r19(hay, word) for word in words):
                 profile[key] = value
+                consumed.add(index)
                 break
+    _profile_fallback_1591r19(profile, matched, consumed)
     worker["success_profile"] = profile
     worker["profile"] = dict(profile)
     return profile, fields
