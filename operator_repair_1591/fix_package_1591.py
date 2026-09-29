@@ -24,7 +24,10 @@ Changes made in place (idempotent, refuses any other package):
 7. test_beeline.py: a portal modal over the basket is dismissed (close button, Escape,
    pointer-events as a last resort) before the tariff buttons and the eSIM radio; the eSIM
    click falls back to force=True and a JS click; CDP page close gets 20 s and one retry.
-8. manifest.json, edits.json, SHA256SUMS.txt, verification.json, test_results.txt are
+8. test_beeline.py: the tariff card is found by its title (TARIFF_NAME) and «выбрать» is
+   clicked inside it; the old "second button" rule picked the paid tariff after the site
+   reordered the cards. The overlay dismisser leaves the dialog we need untouched.
+9. manifest.json, edits.json, SHA256SUMS.txt, verification.json, test_results.txt are
    regenerated so every checksum the installer verifies is consistent again.
 """
 from __future__ import annotations
@@ -45,7 +48,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "8f5fc960fc6cc44faebc19eae0709057f3c8c627d623d9219a0c85cff81d3012",
                          "437155a246d1e370a68cc29ec54850944837f0a575600c57c9f30b9849ebdf73",
                          "b835682314ab8958af4500f7176ca660608f14f09bb7bd02827eb503a23597b0",
-                         "31cbd8b287f7c1deea89a669fabdcd14fab0bfee631b7ce87c5531493a05265a"}
+                         "31cbd8b287f7c1deea89a669fabdcd14fab0bfee631b7ce87c5531493a05265a",
+                         "14ada30d264a994bdb675655b495c662217298a6b0327e6ea98dce99e4675433"}
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -56,6 +60,149 @@ ERROR_MARKER = "ERROR_RECOVERY_1591R5"
 # cover the basket page. Playwright clicks on the eSIM radio and the tariff buttons were
 # intercepted, every attempt failed and the row looped through same-row restarts forever.
 OVERLAY_MARKER = "OVERLAY_DISMISS_1591R6"
+
+# Revision 7: the tariff card was chosen by position (second «выбрать»); the site reordered
+# the cards. The card is now found by its title. The overlay dismisser leaves a dialog alone
+# when it contains what is about to be clicked (the tariff picker is itself a modal).
+TARIFF_MARKER = "TARIFF_BY_NAME_1591R7"
+OVERLAY_HELPER_R7 = r'''# OVERLAY_DISMISS_1591R6 / TARIFF_BY_NAME_1591R7
+_MODAL_DIALOG_SELECTOR = '[role="dialog"][aria-modal="true"]'
+_CHOOSE_BUTTON_RE = re.compile(r"^\s*выбрать\s*$", re.I)
+
+
+def _blocking_dialog_indexes(page, keep_text=None, keep_selector=None):
+    """Indexes of visible modal dialogs that do NOT contain what we are about to click."""
+    return list(page.evaluate("""([keepText, keepSelector]) => {
+        const out = [];
+        [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].forEach((el, i) => {
+            const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+            if (!(r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden')) return;
+            if (keepSelector && el.querySelector(keepSelector)) return;
+            if (keepText && (el.innerText || '').includes(keepText)) return;
+            out.push(i);
+        });
+        return out;
+    }""", [keep_text or "", keep_selector or ""]) or [])
+
+
+def _visible_modal_dialogs(page):
+    return len(_blocking_dialog_indexes(page))
+
+
+def dismiss_blocking_overlays(page, attempts=3, keep_text=None, keep_selector=None):
+    """Close a portal modal that intercepts clicks; never the dialog we need.
+
+    Order: a visible close button inside the dialog, then Escape; as a last resort the
+    dialog stops intercepting pointer events. The DOM is never removed, the basket is kept.
+    A dialog containing keep_text or an element matching keep_selector is left untouched.
+    Returns True when no blocking dialog is visible afterwards.
+    """
+    for _ in range(attempts):
+        try:
+            blocking = _blocking_dialog_indexes(page, keep_text, keep_selector)
+        except Exception:
+            return True
+        if not blocking:
+            return True
+        closed = False
+        dialog = page.locator(_MODAL_DIALOG_SELECTOR).nth(blocking[-1])
+        for close_button in (
+            dialog.get_by_role("button", name=re.compile(r"закрыть|close|✕|×", re.I)),
+            dialog.locator('button[aria-label*="акрыть" i], button[aria-label*="close" i], [data-testid*="close" i]'),
+        ):
+            try:
+                if close_button.count() > 0:
+                    close_button.first.click(timeout=1500, no_wait_after=True)
+                    closed = True
+                    break
+            except Exception:
+                pass
+        if not closed and not keep_text and not keep_selector:
+            # Escape would close the protected dialog too; use it only when nothing is protected.
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+        try:
+            page.wait_for_timeout(300)
+        except Exception:
+            pass
+    try:
+        blocking = _blocking_dialog_indexes(page, keep_text, keep_selector)
+        if not blocking:
+            return True
+        page.evaluate("""(indexes) => {
+            const all = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+            indexes.forEach(i => { if (all[i]) all[i].style.pointerEvents = 'none'; });
+        }""", blocking)
+        print("Модальное окно не закрылось; снял перехват кликов, DOM не трогал.", flush=True)
+    except Exception:
+        pass
+    return False
+
+
+def _tariff_choose_button(page, diagnostic=None, timeout=10000):
+    """«выбрать» inside the card titled TARIFF_NAME; the card order is never assumed."""
+    title = page.get_by_text(TARIFF_NAME, exact=True).first
+    try:
+        title.wait_for(state="visible", timeout=timeout)
+        card = title.locator(
+            "xpath=ancestor::*[.//button[normalize-space(.)='выбрать' or normalize-space(.)='Выбрать']][1]"
+        )
+        button = card.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+        if button.count() > 0:
+            return button.first
+    except Exception:
+        pass
+    try:
+        titles = page.locator("text=/подписка/i").all_inner_texts()[:10]
+        choose_count = page.get_by_role("button", name=_CHOOSE_BUTTON_RE).count()
+    except Exception:
+        titles, choose_count = [], -1
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_card_not_found", tariff=TARIFF_NAME, titles=titles, choose_buttons=choose_count)
+        except Exception:
+            pass
+    print(
+        f"Карточка «{TARIFF_NAME}» с кнопкой «выбрать» не найдена; на экране: {titles}, "
+        f"кнопок «выбрать»: {choose_count}",
+        flush=True,
+    )
+    raise RuntimeError(
+        f"RECOVERABLE_RESTART_ROW: карточка тарифа «{TARIFF_NAME}» с кнопкой «выбрать» не найдена."
+    )
+
+
+'''
+OLD_CHOOSE_LOOP_R6 = '''        for choose_attempt in range(1, 4):
+            dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6
+            choose_button = page.get_by_role(
+                "button", name="выбрать", exact=True
+            ).nth(1)
+'''
+NEW_CHOOSE_LOOP_R7 = '''        for choose_attempt in range(1, 4):
+            dismiss_blocking_overlays(page, keep_text=TARIFF_NAME)  # OVERLAY_DISMISS_1591R6
+            choose_button = _tariff_choose_button(page, diagnostic)  # TARIFF_BY_NAME_1591R7
+'''
+OLD_ESIM_DISMISS_R6 = '''        dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6
+        radio = page.locator('input#esim[name="sim"]')
+'''
+NEW_ESIM_DISMISS_R7 = '''        dismiss_blocking_overlays(page, keep_selector='input#esim[name="sim"]')  # OVERLAY_DISMISS_1591R6
+        radio = page.locator('input#esim[name="sim"]')
+'''
+README_NOTE_R7 = '''
+
+РЕВИЗИЯ 7 (fix_package_1591.py)
+Выбор тарифа по названию. Раньше нажималась ВТОРАЯ кнопка «выбрать» на экране «выберите
+тариф»; сайт поменял порядок карточек, и вторая кнопка стала принадлежать платной
+«подписка bee HIT», а bee START оказалась первой. Теперь ищется карточка с текстом
+TARIFF_NAME («подписка bee START») и нажимается кнопка «выбрать» внутри неё; при
+неудаче в лог пишутся реальные названия карточек и число кнопок. Закрыватель модальных
+окон из ревизии 6 больше не трогает диалог, в котором находится нужный элемент
+(экран выбора тарифа сам является диалогом с крестиком); Escape не нажимается, когда
+есть защищаемый диалог. Маркер: TARIFF_BY_NAME_1591R7.
+'''
 OVERLAY_HELPER_R6 = r'''# OVERLAY_DISMISS_1591R6
 _MODAL_DIALOG_SELECTOR = '[role="dialog"][aria-modal="true"]'
 
@@ -672,6 +819,23 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
     out_start = starts[0]
     out_end = out_start + len(old_lines)
 
+    # A block that lies inside the replacement text of an earlier edit is a change to that
+    # edit, not a new one: rewrite its replacement in place.
+    delta = 0
+    for change in sorted(reflected, key=lambda c: c["start"]):
+        out_s = change["start"] + delta
+        out_e = out_s + len(change["replacement"])
+        if out_s <= out_start and out_end <= out_e:
+            joined = "".join(change["replacement"])
+            if joined.count(old_block) != 1:
+                raise SystemExit("edits.json: block ambiguous inside an earlier edit; source unchanged")
+            target = next((c for c in edits if c is change or c == change), None)
+            if target is None:
+                raise SystemExit("edits.json: earlier edit not found; source unchanged")
+            target["replacement"] = joined.replace(old_block, new_block, 1).splitlines(keepends=True)
+            return
+        delta += len(change["replacement"]) - (change["end"] - change["start"])
+
     def to_input(x):
         delta = 0
         for change in sorted(reflected, key=lambda c: c["start"]):
@@ -705,8 +869,8 @@ def main(argv: list[str]) -> int:
         if not (package / name).is_file():
             raise SystemExit(f"{package / name}: missing; this is not the extracted 15.91 package")
     source = app.read_text("utf-8")
-    if all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER)):
-        print("Already revision 6; nothing changed.")
+    if all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER, TARIFF_MARKER)):
+        print("Already revision 7; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -814,6 +978,24 @@ def main(argv: list[str]) -> int:
         new_source = new_source[:a] + new_fn + new_source[b:]
         add_edit(edits["test_beeline.py"], source, old_fn, new_fn, reflected)
 
+    # 8 (r7). Tariff card by name; the overlay dismisser protects the dialog we need.
+    if TARIFF_MARKER not in source:
+        for old, new, what in ((OVERLAY_HELPER_R6, OVERLAY_HELPER_R7, "overlay helper"),
+                               (OLD_CHOOSE_LOOP_R6, NEW_CHOOSE_LOOP_R7, "choose loop by name"),
+                               (OLD_ESIM_DISMISS_R6, NEW_ESIM_DISMISS_R7, "esim dismiss keep")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                # Built from a pre-r6 package in this run: fold r7 into the r6 entry just recorded.
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: r6 entry for {what} not found")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(test_src, "test_update.py", "exec")
     compile(install_src, "install.py", "exec")
@@ -834,7 +1016,7 @@ def main(argv: list[str]) -> int:
     # A server that already runs the first 15.91 build is upgraded in place as well.
     manifest["files"]["test_beeline.py"]["previous_output_sha256"] = sorted(ACCEPTED_PACKAGE_SHAS)
     manifest["files"]["test_beeline.py"]["output_sha256"] = hashlib.sha256(new_source.encode("utf-8")).hexdigest()
-    manifest["revision"] = 6
+    manifest["revision"] = 7
 
     app.write_text(new_source, "utf-8")
     (package / "test_update.py").write_text(test_src, "utf-8")
@@ -843,7 +1025,8 @@ def main(argv: list[str]) -> int:
     (package / "edits.json").write_text(json.dumps(edits, ensure_ascii=False, indent=2), "utf-8")
     readme = package / "README.txt"
     for heading, note in (("РЕВИЗИЯ 2", README_NOTE), ("РЕВИЗИЯ 3", README_NOTE_R3), ("РЕВИЗИЯ 4", README_NOTE_R4),
-                          ("РЕВИЗИЯ 5", README_NOTE_R5), ("РЕВИЗИЯ 6", README_NOTE_R6)):
+                          ("РЕВИЗИЯ 5", README_NOTE_R5), ("РЕВИЗИЯ 6", README_NOTE_R6),
+                          ("РЕВИЗИЯ 7", README_NOTE_R7)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -856,7 +1039,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 6, "result": "OK",
+    verification.update({"python": sys.version, "revision": 7, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -872,7 +1055,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 6 applied to", package)
+    print("Revision 7 applied to", package)
     return 0
 
 

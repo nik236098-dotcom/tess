@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 6 лежит в `beeline_integrated_io_15_91_r6/`. В нём нет
+Опубликована папка `beeline_integrated_io_15_91_r6/`; ревизия 7 получается из неё запуском `fix_package_1591.py` (см. ниже). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -25,7 +25,9 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r6
+cp -r /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r6 /root/pkg_r7
+python3 /root/tess/operator_repair_1591/fix_package_1591.py /root/pkg_r7   # собирает ревизию 7 и гоняет 58 тестов
+cd /root/pkg_r7
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -69,7 +71,13 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    каждой попыткой «выбрать» и перед каждой попыткой выбора eSIM; для eSIM добавлены
    клик `force=True` и JS-fallback. Закрытие вкладки через CDP: 20 с и одна повторная
    попытка. Маркер: `OVERLAY_DISMISS_1591R6`.
-8. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+8. **Выбор тарифа по названию (ревизия 7).** Раньше нажималась вторая кнопка «выбрать»
+   на экране «выберите тариф»; сайт поменял порядок карточек, и она стала вести на платную
+   «подписка bee HIT». Теперь ищется карточка с текстом `TARIFF_NAME` и нажимается
+   «выбрать» внутри неё; при неудаче в лог пишутся реальные названия карточек. Закрыватель
+   модальных окон не трогает диалог, в котором находится нужный элемент. Маркер:
+   `TARIFF_BY_NAME_1591R7`.
+9. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -91,7 +99,7 @@ PACKAGE_1591_DIR=pkg python3 -m unittest -v test_fix_package  # с пакето�
 
 ---
 
-日本語: 同僚の 15.91 パッケージに対する修正スクリプトと、修正済みパッケージ（リビジョン6）です。
+日本語: 同僚の 15.91 パッケージに対する修正スクリプトと、修正済みパッケージ（リビジョン7）です。
 SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分割配信に置き換え、Python 3.13 依存だった
 ハッシュテストを修正し、インストーラーがパッケージ内のコピーをそのまま配置するようにしました。
 プロキシのログイン情報はコードから外し、サーバーの `telegram_config.json` の `"proxy"` キーから
