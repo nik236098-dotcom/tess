@@ -21,7 +21,10 @@ Changes made in place (idempotent, refuses any other package):
    closes the error page, opens a fresh one and retries the row once; a second error on
    the same row skips it (logged, Telegram notice). A worker is never stopped by an error.
    The rule is also written into the DeepSeek system instructions and the task text.
-7. manifest.json, edits.json, SHA256SUMS.txt, verification.json, test_results.txt are
+7. test_beeline.py: a portal modal over the basket is dismissed (close button, Escape,
+   pointer-events as a last resort) before the tariff buttons and the eSIM radio; the eSIM
+   click falls back to force=True and a JS click; CDP page close gets 20 s and one retry.
+8. manifest.json, edits.json, SHA256SUMS.txt, verification.json, test_results.txt are
    regenerated so every checksum the installer verifies is consistent again.
 """
 from __future__ import annotations
@@ -41,12 +44,184 @@ EXPECTED_INPUT_OUTPUT_SHA = "9e216a70bb1e931c2e9568687c26564a0132bccd6b748dd42fe
 ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "8f5fc960fc6cc44faebc19eae0709057f3c8c627d623d9219a0c85cff81d3012",
                          "437155a246d1e370a68cc29ec54850944837f0a575600c57c9f30b9849ebdf73",
-                         "b835682314ab8958af4500f7176ca660608f14f09bb7bd02827eb503a23597b0"}
+                         "b835682314ab8958af4500f7176ca660608f14f09bb7bd02827eb503a23597b0",
+                         "31cbd8b287f7c1deea89a669fabdcd14fab0bfee631b7ce87c5531493a05265a"}
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
 # error on the same row skips it. A worker slot is never stopped because of an error.
 ERROR_MARKER = "ERROR_RECOVERY_1591R5"
+
+# Revision 6: a portal modal (role="dialog" aria-modal="true", "подбор номера") started to
+# cover the basket page. Playwright clicks on the eSIM radio and the tariff buttons were
+# intercepted, every attempt failed and the row looped through same-row restarts forever.
+OVERLAY_MARKER = "OVERLAY_DISMISS_1591R6"
+OVERLAY_HELPER_R6 = r'''# OVERLAY_DISMISS_1591R6
+_MODAL_DIALOG_SELECTOR = '[role="dialog"][aria-modal="true"]'
+
+
+def _visible_modal_dialogs(page):
+    return int(page.evaluate("""() => [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')]
+        .filter(el => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+            return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'; }).length""") or 0)
+
+
+def dismiss_blocking_overlays(page, attempts=3):
+    """Close a portal modal that intercepts clicks on the basket page.
+
+    Order: a visible close button inside the dialog, then Escape; as a last resort the
+    dialog stops intercepting pointer events. The DOM is never removed, the basket is kept.
+    Returns True when no modal dialog is visible afterwards.
+    """
+    for _ in range(attempts):
+        try:
+            if not _visible_modal_dialogs(page):
+                return True
+        except Exception:
+            return True
+        closed = False
+        dialog = page.locator(_MODAL_DIALOG_SELECTOR).last
+        for close_button in (
+            dialog.get_by_role("button", name=re.compile(r"закрыть|close|✕|×", re.I)),
+            dialog.locator('button[aria-label*="акрыть" i], button[aria-label*="close" i], [data-testid*="close" i]'),
+        ):
+            try:
+                if close_button.count() > 0:
+                    close_button.first.click(timeout=1500, no_wait_after=True)
+                    closed = True
+                    break
+            except Exception:
+                pass
+        if not closed:
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+        try:
+            page.wait_for_timeout(300)
+        except Exception:
+            pass
+    try:
+        if not _visible_modal_dialogs(page):
+            return True
+        page.evaluate("""() => document.querySelectorAll('[role="dialog"][aria-modal="true"]')
+            .forEach(el => { el.style.pointerEvents = 'none'; })""")
+        print("Модальное окно не закрылось; снял перехват кликов, DOM не трогал.", flush=True)
+    except Exception:
+        pass
+    return False
+
+
+'''
+OLD_SELECT_ESIM_ATTEMPT = '''        print(f"Выбор eSIM: попытка {attempt}/3...", flush=True)
+        radio = page.locator('input#esim[name="sim"]')
+        try:
+            radio.wait_for(state="visible", timeout=10000)
+            expect(radio).to_be_enabled(timeout=10000)
+            # При повторном рендере locator находит актуальный input.
+            if not esim_state(page)["selected"]:
+                radio.click(timeout=5000)
+        except PlaywrightTimeoutError:
+            print("Нажатие не подтверждено; проверяю состояние переключателя.")
+'''
+NEW_SELECT_ESIM_ATTEMPT = '''        print(f"Выбор eSIM: попытка {attempt}/3...", flush=True)
+        dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6
+        radio = page.locator('input#esim[name="sim"]')
+        try:
+            radio.wait_for(state="visible", timeout=10000)
+            expect(radio).to_be_enabled(timeout=10000)
+            # При повторном рендере locator находит актуальный input.
+            if not esim_state(page)["selected"]:
+                radio.click(timeout=5000)
+        except PlaywrightTimeoutError:
+            print("Нажатие не подтверждено; проверяю состояние переключателя.")
+        if not esim_state(page)["selected"]:
+            # The pointer may still be intercepted by a portal layer: click through it.
+            try:
+                radio.click(timeout=3000, force=True, no_wait_after=True)
+            except Exception:
+                pass
+        if not esim_state(page)["selected"]:
+            try:
+                page.evaluate("""() => {
+                    const el = document.querySelector('input#esim[name="sim"]');
+                    if (!el) return;
+                    const label = el.closest('label');
+                    if (label) label.click(); else el.click();
+                    if (!el.checked) {
+                        el.checked = true;
+                        for (const t of ['input', 'change']) el.dispatchEvent(new Event(t, {bubbles: true}));
+                    }
+                }""")
+            except Exception:
+                pass
+'''
+OLD_TARIFF_CLICK = '''            last_error = None
+            for candidate in candidates:
+                try:
+                    expect(candidate.first).to_be_visible(timeout=20000)
+                    candidate.first.click(timeout=15000, no_wait_after=True)
+                    return
+                except (PlaywrightTimeoutError, AssertionError) as exc:
+                    last_error = exc
+'''
+NEW_TARIFF_CLICK = '''            last_error = None
+            dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6
+            for candidate in candidates:
+                try:
+                    expect(candidate.first).to_be_visible(timeout=20000)
+                    try:
+                        candidate.first.click(timeout=15000, no_wait_after=True)
+                    except PlaywrightTimeoutError:
+                        # The button is ready; a portal modal intercepts the pointer.
+                        dismiss_blocking_overlays(page)
+                        candidate.first.click(timeout=15000, no_wait_after=True, force=True)
+                    return
+                except (PlaywrightTimeoutError, AssertionError) as exc:
+                    last_error = exc
+'''
+OLD_CHOOSE_LOOP = '''        for choose_attempt in range(1, 4):
+            choose_button = page.get_by_role(
+                "button", name="выбрать", exact=True
+            ).nth(1)
+'''
+NEW_CHOOSE_LOOP = '''        for choose_attempt in range(1, 4):
+            dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6
+            choose_button = page.get_by_role(
+                "button", name="выбрать", exact=True
+            ).nth(1)
+'''
+OLD_CDP_DEF = "def _close_cdp_page_for_worker(cdp_url, info, timeout=8):\n"
+NEW_CDP_DEF = "def _close_cdp_page_for_worker_once(cdp_url, info, timeout=20):\n"
+CDP_WRAPPER_R6 = '''
+
+def _close_cdp_page_for_worker(cdp_url, info, timeout=20, attempts=2):
+    """OVERLAY_DISMISS_1591R6: a Chromium busy with orphan pages needs more than 8 s;
+    retry once before reporting failure. The caller already refuses to create a
+    replacement while the old page is still open."""
+    for attempt in range(1, attempts + 1):
+        try:
+            if _close_cdp_page_for_worker_once(cdp_url, info, timeout=timeout):
+                return True
+        except Exception:
+            pass
+        if attempt < attempts:
+            time.sleep(2)
+    return False
+'''
+README_NOTE_R6 = '''
+
+РЕВИЗИЯ 6 (fix_package_1591.py)
+Портальное модальное окно (role="dialog" aria-modal="true", «подбор номера») стало
+перекрывать корзину: клики Playwright по eSIM и кнопкам тарифа перехватывались, и
+строка бесконечно уходила в same-row restart. Добавлен dismiss_blocking_overlays():
+кнопка закрытия внутри диалога, затем Escape, в крайнем случае снятие перехвата
+кликов без удаления DOM. Вызывается перед «изменить», перед каждой попыткой «выбрать»
+и перед каждой попыткой выбора eSIM; для eSIM добавлены клик force=True и JS-fallback.
+Таймаут закрытия вкладки через CDP увеличен с 8 до 20 с плюс одна повторная попытка.
+Маркер: OVERLAY_DISMISS_1591R6. Изменены select_esim, run_registration (только
+click_tariff_change и цикл «выбрать») и _close_cdp_page_for_worker.
+'''
 MISSION_RULE_R5 = (
     "\n\nПРАВИЛО ОШИБКИ РЕГИСТРАЦИИ (ERROR_RECOVERY_1591R5): /registration/error — не успех, "
     "но и не вечное ожидание. Сначала детальный анализ страницы (DOM, текст ошибки, console/network) "
@@ -219,7 +394,7 @@ SUPERVISOR) и в текст задания AUTO_ERROR_ASSIST. Запрет clos
 # Before: every tick in SUCCESS_ASSIST re-queued a full developer-agent run every 45 s
 # while the page did not change, and each run posted an identical report.
 ASSIST_MARKER = "AUTO_ASSIST_BUDGET_1591R4"
-RESIGNED_HANDLERS = {"queue_success_assist", "queue_error_assist", "tick_error_assist"}
+RESIGNED_HANDLERS = {"queue_success_assist", "queue_error_assist", "tick_error_assist", "run_registration"}
 OLD_SUCCESS_THROTTLE = '''    now = monotonic()
     last = float(worker.get("success_ai_last_at") or 0)
     if not force and now - last < 45:
@@ -516,8 +691,8 @@ def main(argv: list[str]) -> int:
         if not (package / name).is_file():
             raise SystemExit(f"{package / name}: missing; this is not the extracted 15.91 package")
     source = app.read_text("utf-8")
-    if MARKER in source and PROXY_MARKER in source and ASSIST_MARKER in source and ERROR_MARKER in source:
-        print("Already revision 5; nothing changed.")
+    if all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER)):
+        print("Already revision 6; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -602,6 +777,26 @@ def main(argv: list[str]) -> int:
         new_source = new_source[:a] + new_mission + new_source[b:]
         add_edit(edits["test_beeline.py"], source, old_mission, new_mission, reflected)
 
+    # 7 (r6). Portal modal over the basket: dismiss it, click through it, longer CDP close.
+    if OVERLAY_MARKER not in source:
+        anchor = "def esim_state(page):\n"
+        new_source = replace_once(new_source, anchor, OVERLAY_HELPER_R6 + anchor, "esim_state anchor")
+        add_edit(edits["test_beeline.py"], source, anchor, OVERLAY_HELPER_R6 + anchor, reflected)
+        for old, new, what in ((OLD_SELECT_ESIM_ATTEMPT, NEW_SELECT_ESIM_ATTEMPT, "select_esim attempt"),
+                               (OLD_TARIFF_CLICK, NEW_TARIFF_CLICK, "click_tariff_change loop"),
+                               (OLD_CHOOSE_LOOP, NEW_CHOOSE_LOOP, "second choose loop"),
+                               (OLD_CDP_DEF, NEW_CDP_DEF, "CDP close def")):
+            new_source = replace_once(new_source, old, new, what)
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        fn = only_function(new_source, "_close_cdp_page_for_worker_once")
+        _, b = node_range(new_source, fn)
+        new_source = new_source[:b] + CDP_WRAPPER_R6 + new_source[b:]
+        # edits.json: the wrapper is appended right after the renamed function's last line.
+        fn_old = only_function(source, "_close_cdp_page_for_worker")
+        _, b_old = node_range(source, fn_old)
+        last_line = source[:b_old].splitlines(keepends=True)[-1]
+        add_edit(edits["test_beeline.py"], source, last_line, last_line + CDP_WRAPPER_R6, reflected)
+
     compile(new_source, "test_beeline.py", "exec")
     compile(test_src, "test_update.py", "exec")
     compile(install_src, "install.py", "exec")
@@ -622,7 +817,7 @@ def main(argv: list[str]) -> int:
     # A server that already runs the first 15.91 build is upgraded in place as well.
     manifest["files"]["test_beeline.py"]["previous_output_sha256"] = sorted(ACCEPTED_PACKAGE_SHAS)
     manifest["files"]["test_beeline.py"]["output_sha256"] = hashlib.sha256(new_source.encode("utf-8")).hexdigest()
-    manifest["revision"] = 5
+    manifest["revision"] = 6
 
     app.write_text(new_source, "utf-8")
     (package / "test_update.py").write_text(test_src, "utf-8")
@@ -631,7 +826,7 @@ def main(argv: list[str]) -> int:
     (package / "edits.json").write_text(json.dumps(edits, ensure_ascii=False, indent=2), "utf-8")
     readme = package / "README.txt"
     for heading, note in (("РЕВИЗИЯ 2", README_NOTE), ("РЕВИЗИЯ 3", README_NOTE_R3), ("РЕВИЗИЯ 4", README_NOTE_R4),
-                          ("РЕВИЗИЯ 5", README_NOTE_R5)):
+                          ("РЕВИЗИЯ 5", README_NOTE_R5), ("РЕВИЗИЯ 6", README_NOTE_R6)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -644,7 +839,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 5, "result": "OK",
+    verification.update({"python": sys.version, "revision": 6, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -660,7 +855,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 5 applied to", package)
+    print("Revision 6 applied to", package)
     return 0
 
 
