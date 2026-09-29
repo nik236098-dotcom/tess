@@ -17,7 +17,11 @@ Changes made in place (idempotent, refuses any other package):
 5. test_beeline.py: autonomous SUCCESS/ERROR assist requests get a budget per page
    state (two per unchanged URL, then one per 30 minutes, none while the previous one
    is unanswered) instead of a full agent run and an identical report every 45 seconds.
-6. manifest.json, edits.json, SHA256SUMS.txt, verification.json, test_results.txt are
+6. test_beeline.py: registration/error policy. After the analysis report the runtime
+   closes the error page, opens a fresh one and retries the row once; a second error on
+   the same row skips it (logged, Telegram notice). A worker is never stopped by an error.
+   The rule is also written into the DeepSeek system instructions and the task text.
+7. manifest.json, edits.json, SHA256SUMS.txt, verification.json, test_results.txt are
    regenerated so every checksum the installer verifies is consistent again.
 """
 from __future__ import annotations
@@ -36,13 +40,186 @@ EXPECTED_INPUT_OUTPUT_SHA = "9e216a70bb1e931c2e9568687c26564a0132bccd6b748dd42fe
 # test_beeline.py of the first build and of revision 2 are both accepted as input.
 ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "8f5fc960fc6cc44faebc19eae0709057f3c8c627d623d9219a0c85cff81d3012",
-                         "437155a246d1e370a68cc29ec54850944837f0a575600c57c9f30b9849ebdf73"}
+                         "437155a246d1e370a68cc29ec54850944837f0a575600c57c9f30b9849ebdf73",
+                         "b835682314ab8958af4500f7176ca660608f14f09bb7bd02827eb503a23597b0"}
+
+# Revision 5: registration/error policy. After the detailed analysis and its report the
+# runtime closes the error page, opens a fresh one and retries the row once; a second
+# error on the same row skips it. A worker slot is never stopped because of an error.
+ERROR_MARKER = "ERROR_RECOVERY_1591R5"
+MISSION_RULE_R5 = (
+    "\n\nПРАВИЛО ОШИБКИ РЕГИСТРАЦИИ (ERROR_RECOVERY_1591R5): /registration/error — не успех, "
+    "но и не вечное ожидание. Сначала детальный анализ страницы (DOM, текст ошибки, console/network) "
+    "и мини-отчёт. После отчёта разрешено БЕЗ разрешения пользователя закрыть error-вкладку и открыть "
+    "новую: runtime делает это автоматически сразу после твоего отчёта и повторяет ту же строку один раз. "
+    "При повторной ошибке на той же строке строка пропускается без нового анализа, worker берёт "
+    "следующую. Ни одна ошибка не должна приводить к потере worker. Запрет close/restart/reload "
+    "остаётся только для SUCCESS_GUARD.")
+AGENT_ERROR_BLOCK_R5 = '''ERROR SUPERVISOR:
+- /registration/error НИКОГДА не является success.
+- Сначала самостоятельно изучи DOM, видимый текст, console/network и последние ответы API.
+  Определи конкретную причину и, если это безопасно, попробуй исправить на текущей странице.
+- Затем отправь мини-отчёт: причина, что проверил, что попробовал, результат, URL.
+- После детального анализа и отчёта РАЗРЕШЕНО без разрешения пользователя закрыть
+  error-вкладку и открыть новую: runtime делает это автоматически сразу после твоего
+  отчёта и повторяет ту же строку один раз. При повторной ошибке на той же строке
+  строка пропускается, worker переходит к следующей.
+- Из-за error worker никогда не теряется: слот всегда получает новую вкладку.
+- Запрет close/restart/reload/back/navigate действует только на SUCCESS GUARD.
+
+'''
+QUEUE_ERROR_TEXT_R5 = '''    text = (
+        f"[AUTO_ERROR_ASSIST TAB {tab_id}] "
+        "После mobile-id-auth открылась /registration/error. Это НЕ success. "
+        "Сначала автономно проанализируй текущую physical-вкладку: DOM, видимый текст "
+        "ошибки, DevTools console и network, последние запросы/ответы и состояние формы. "
+        "Определи конкретную причину и, если это безопасно, попробуй исправить её на этой "
+        "странице. Затем ОБЯЗАТЕЛЬНО отправь мини-отчёт: причина, что проверил, что "
+        "попробовал, результат, URL. Сразу после твоего отчёта runtime без разрешения "
+        "пользователя закроет эту error-вкладку, откроет новую и повторит строку один раз; "
+        "при повторной ошибке строка будет пропущена. Worker при этом не теряется. "
+        "Сам вкладку не закрывай: это сделает runtime после отчёта. "
+        f"Причина вызова: {reason}. URL: {url}"
+    )
+'''
+TICK_ERROR_R5 = '''# ERROR_RECOVERY_1591R5
+ERROR_ASSIST_MAX_SECONDS = 300
+ERROR_SKIP_DWELL_SECONDS = 15
+ERROR_ROW_MAX_ATTEMPTS = 2
+
+
+def _error_row_key(worker):
+    row = worker.get("row")
+    try:
+        return _row_number_value(row) or str(row)
+    except Exception:
+        return str(row)
+
+
+def _error_analysis_delivered(worker):
+    state = (worker.get("auto_assist_state") or {}).get("ERROR") or {}
+    if int(state.get("count") or 0) < 1:
+        return False
+    try:
+        return not _auto_assist_pending("ERROR", worker.get("id") or 0)
+    except Exception:
+        return True
+
+
+def _error_recover(base_dir, worker, reason):
+    """Close the error page, open a fresh one; retry the row once, then skip it.
+
+    Runs without user permission. A worker slot is never stopped because of an error.
+    """
+    key = _error_row_key(worker)
+    counts = worker.setdefault("error_retry_counts", {})
+    counts[key] = int(counts.get(key) or 0) + 1
+    attempt = counts[key]
+    try:
+        capture_blackbox(worker, "error_recovery")
+    except Exception:
+        pass
+    worker["error_guard"] = False
+    worker["success_guard"] = False
+    worker["error_assist_entered_at"] = None
+    worker["auto_assist_state"] = {}
+    worker["phase"] = "ERROR_RECOVERY"
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        print(f"[Вкладка {worker['id']}] ERROR RECOVERY: новая вкладка не создана ({reason}).", flush=True)
+        return False
+    if attempt < ERROR_ROW_MAX_ATTEMPTS:
+        set_tab_status(
+            worker, "♻️",
+            f"registration/error: {reason}. Вкладка закрыта, открыта новая; "
+            f"повторяю строку (попытка {attempt + 1}).",
+        )
+        external_heartbeat(worker, "error_retry_same_row")
+        return True
+    # Second error on the same row: skip it; the next row starts on the fresh page.
+    try:
+        with (Path(base_dir) / "error_skipped_rows.txt").open("a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{key}\t{reason}\n")
+    except Exception:
+        pass
+    try:
+        chat = str(load_telegram_config().get("chat_id") or "")
+        if chat:
+            _io1591.enqueue_notice(
+                globals(), chat,
+                f"⏭ Вкладка {worker['id']}: строка {key} пропущена после повторной "
+                f"registration/error ({reason}). Worker продолжает со следующей строкой.",
+            )
+    except Exception:
+        pass
+    worker["row"] = None
+    worker["phase"] = "IDLE"
+    set_tab_status(worker, "⏭", f"Строка {key} пропущена после повторной registration/error. Беру следующую.")
+    external_heartbeat(worker, "error_row_skipped")
+    return True
+
+
+def tick_error_assist(base_dir, worker):
+    page = worker["page"]
+    worker["error_guard"] = True
+    now = monotonic()
+    if not worker.get("error_assist_entered_at"):
+        worker["error_assist_entered_at"] = now
+    entered = float(worker["error_assist_entered_at"])
+
+    if page.is_closed():
+        # A closed error page never costs the worker slot: open a fresh page and go on.
+        _error_recover(base_dir, worker, "error-страница закрыта извне")
+        return
+
+    # If Operator safely repaired the page and it becomes a real contract page,
+    # promote it into the immutable SUCCESS GUARD.
+    if _post_auth_contract_page(page) and not _post_auth_error_page(page):
+        worker["error_guard"] = False
+        worker["error_assist_entered_at"] = None
+        enter_success_guard(
+            worker,
+            "DeepSeek/сайт вывел error-state на страницу договора",
+        )
+        return
+
+    key = _error_row_key(worker)
+    if int((worker.get("error_retry_counts") or {}).get(key) or 0) >= ERROR_ROW_MAX_ATTEMPTS - 1:
+        # Repeated error on the same row: no second analysis; skip after a short dwell.
+        external_heartbeat(worker, "error_repeat_skip_pending")
+        if now - entered >= ERROR_SKIP_DWELL_SECONDS:
+            _error_recover(base_dir, worker, "повторная ошибка регистрации на той же строке")
+        return
+
+    queue_error_assist(
+        worker,
+        "registration/error открыта; проанализируй DOM/console/network и отправь отчёт",
+    )
+    external_heartbeat(worker, "error_assist_observing")
+    if _error_analysis_delivered(worker):
+        _error_recover(base_dir, worker, "детальный анализ завершён")
+    elif now - entered >= ERROR_ASSIST_MAX_SECONDS:
+        _error_recover(base_dir, worker, "анализ не получен за отведённое время")
+'''
+README_NOTE_R5 = '''
+
+РЕВИЗИЯ 5 (fix_package_1591.py)
+Правило ошибки регистрации (ERROR_RECOVERY_1591R5). После детального анализа и отчёта
+DeepSeek runtime без разрешения пользователя закрывает error-вкладку, открывает новую и
+повторяет ту же строку один раз; при повторной ошибке на той же строке строка
+пропускается (без нового анализа, запись в error_skipped_rows.txt и уведомление в
+Telegram), worker берёт следующую. Если анализ не пришёл за 5 минут, восстановление
+выполняется всё равно. Закрытая извне error-страница тоже больше не останавливает
+worker. Правило добавлено в системные инструкции (OPERATOR_MISSION_1586, блок ERROR
+SUPERVISOR) и в текст задания AUTO_ERROR_ASSIST. Запрет close/restart остаётся только
+для SUCCESS_GUARD. Изменён tick_error_assist; обработчики подписи/страницы не тронуты.
+'''
 
 # Revision 4: autonomous SUCCESS/ERROR assist requests get a budget per page state.
 # Before: every tick in SUCCESS_ASSIST re-queued a full developer-agent run every 45 s
 # while the page did not change, and each run posted an identical report.
 ASSIST_MARKER = "AUTO_ASSIST_BUDGET_1591R4"
-RESIGNED_HANDLERS = {"queue_success_assist", "queue_error_assist"}
+RESIGNED_HANDLERS = {"queue_success_assist", "queue_error_assist", "tick_error_assist"}
 OLD_SUCCESS_THROTTLE = '''    now = monotonic()
     last = float(worker.get("success_ai_last_at") or 0)
     if not force and now - last < 45:
@@ -282,6 +459,19 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def node_range(source: str, node) -> tuple:
+    """Character offsets of the whole lines a top-level node occupies."""
+    lines = source.splitlines(keepends=True)
+    return sum(map(len, lines[:node.lineno - 1])), sum(map(len, lines[:node.end_lineno]))
+
+
+def only_function(source: str, name: str):
+    nodes = [n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.FunctionDef) and n.name == name]
+    if len(nodes) != 1:
+        raise SystemExit(f"Expected one {name}; found {len(nodes)}. Source unchanged.")
+    return nodes[0]
+
+
 def replace_once(text: str, old: str, new: str, what: str) -> str:
     if text.count(old) != 1:
         raise SystemExit(f"{what}: expected exactly one occurrence, found {text.count(old)}; nothing changed")
@@ -326,8 +516,8 @@ def main(argv: list[str]) -> int:
         if not (package / name).is_file():
             raise SystemExit(f"{package / name}: missing; this is not the extracted 15.91 package")
     source = app.read_text("utf-8")
-    if MARKER in source and PROXY_MARKER in source and ASSIST_MARKER in source:
-        print("Already revision 4; nothing changed.")
+    if MARKER in source and PROXY_MARKER in source and ASSIST_MARKER in source and ERROR_MARKER in source:
+        print("Already revision 5; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -373,6 +563,45 @@ def main(argv: list[str]) -> int:
         add_edit(edits["test_beeline.py"], source, OLD_SUCCESS_THROTTLE, NEW_SUCCESS_THROTTLE, reflected)
         add_edit(edits["test_beeline.py"], source, OLD_ERROR_THROTTLE, NEW_ERROR_THROTTLE, reflected)
         add_edit(edits["test_beeline.py"], source, QUEUE_ERROR_DEF, ASSIST_HELPER + QUEUE_ERROR_DEF, reflected)
+    # 6 (r5). registration/error: analyse, report, then close/reopen, retry once, skip.
+    if ERROR_MARKER not in source:
+        if ASSIST_MARKER not in new_source:
+            raise SystemExit("revision 5 needs the revision 4 assist budget; nothing changed")
+        # a) runtime: replace tick_error_assist and add the recovery helpers before it
+        fn = only_function(new_source, "tick_error_assist")
+        a, b = node_range(new_source, fn)
+        old_tick = new_source[a:b]
+        new_source = new_source[:a] + TICK_ERROR_R5 + new_source[b:]
+        add_edit(edits["test_beeline.py"], source, old_tick, TICK_ERROR_R5, reflected)
+        # b) AUTO_ERROR_ASSIST task text
+        fn = only_function(new_source, "queue_error_assist")
+        assigns = [n for n in ast.walk(fn) if isinstance(n, ast.Assign)
+                   and any(isinstance(t, ast.Name) and t.id == "text" for t in n.targets)]
+        if len(assigns) != 1:
+            raise SystemExit("queue_error_assist: text assignment not unambiguous")
+        a, b = node_range(new_source, assigns[0])
+        old_text = new_source[a:b]
+        new_source = new_source[:a] + QUEUE_ERROR_TEXT_R5 + new_source[b:]
+        add_edit(edits["test_beeline.py"], source, old_text, QUEUE_ERROR_TEXT_R5, reflected)
+        # c) ERROR SUPERVISOR block of the agent system prompt
+        a = new_source.index("ERROR SUPERVISOR:\n")
+        b = new_source.index("Правила действий:\n", a)
+        old_block = new_source[a:b]
+        new_source = new_source[:a] + AGENT_ERROR_BLOCK_R5 + new_source[b:]
+        add_edit(edits["test_beeline.py"], source, old_block, AGENT_ERROR_BLOCK_R5, reflected)
+        # d) the priority mission constant
+        missions = [n for n in ast.parse(new_source).body if isinstance(n, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == "OPERATOR_MISSION_1586" for t in n.targets)]
+        if len(missions) != 1:
+            raise SystemExit("OPERATOR_MISSION_1586 not unambiguous")
+        a, b = node_range(new_source, missions[0])
+        old_mission = new_source[a:b]
+        if not old_mission.rstrip("\n").endswith('"""'):
+            raise SystemExit("OPERATOR_MISSION_1586 is not a triple-quoted literal")
+        new_mission = old_mission.rstrip("\n")[:-3] + MISSION_RULE_R5 + '"""\n'
+        new_source = new_source[:a] + new_mission + new_source[b:]
+        add_edit(edits["test_beeline.py"], source, old_mission, new_mission, reflected)
+
     compile(new_source, "test_beeline.py", "exec")
     compile(test_src, "test_update.py", "exec")
     compile(install_src, "install.py", "exec")
@@ -393,7 +622,7 @@ def main(argv: list[str]) -> int:
     # A server that already runs the first 15.91 build is upgraded in place as well.
     manifest["files"]["test_beeline.py"]["previous_output_sha256"] = sorted(ACCEPTED_PACKAGE_SHAS)
     manifest["files"]["test_beeline.py"]["output_sha256"] = hashlib.sha256(new_source.encode("utf-8")).hexdigest()
-    manifest["revision"] = 4
+    manifest["revision"] = 5
 
     app.write_text(new_source, "utf-8")
     (package / "test_update.py").write_text(test_src, "utf-8")
@@ -401,7 +630,8 @@ def main(argv: list[str]) -> int:
     (package / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), "utf-8")
     (package / "edits.json").write_text(json.dumps(edits, ensure_ascii=False, indent=2), "utf-8")
     readme = package / "README.txt"
-    for heading, note in (("РЕВИЗИЯ 2", README_NOTE), ("РЕВИЗИЯ 3", README_NOTE_R3), ("РЕВИЗИЯ 4", README_NOTE_R4)):
+    for heading, note in (("РЕВИЗИЯ 2", README_NOTE), ("РЕВИЗИЯ 3", README_NOTE_R3), ("РЕВИЗИЯ 4", README_NOTE_R4),
+                          ("РЕВИЗИЯ 5", README_NOTE_R5)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -414,7 +644,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 4, "result": "OK",
+    verification.update({"python": sys.version, "revision": 5, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -430,7 +660,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 4 applied to", package)
+    print("Revision 5 applied to", package)
     return 0
 
 

@@ -59,7 +59,7 @@ class PackageTests(unittest.TestCase):
         cls.pkg = Path(cls.tmp.name) / "pkg"
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
-        if fix.MARKER not in source or fix.PROXY_MARKER not in source or fix.ASSIST_MARKER not in source:
+        if any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER)):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
     @classmethod
@@ -120,7 +120,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-4", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-5", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -182,13 +182,100 @@ class PackageTests(unittest.TestCase):
         answered(); clock[0] += 100
         self.assertFalse(queue(worker, "c", force=True), "force cannot exceed the per-state budget")
 
+    def _error_harness(self, analysis_pending=True, retried_before=False, page_closed=False):
+        events = []; notices = []
+        class Page:
+            url = "https://example.test/registration/error"
+            def __init__(self): self.closed = page_closed
+            def is_closed(self): return self.closed
+        page = Page(); clock = [5000.0]
+        worker = {"id": 2, "page": page, "phase": "ERROR_ASSIST", "row": ("7", "ROW-A", "x"), "stopped": False}
+        if retried_before:
+            worker["error_retry_counts"] = {"ROW-A": 1}
+        pending = [analysis_pending]
+        def restart(w):
+            events.append("restart"); w["page"] = Page(); w["phase"] = "RESTART_ROW_READY"; return True
+        def queue_error(w, reason, force=False):
+            events.append("queue"); w.setdefault("auto_assist_state", {})["ERROR"] = {"count": 1, "url": page.url}; return True
+        io = types.SimpleNamespace(enqueue_notice=lambda ns, chat, text, markup=None: notices.append(text))
+        ns = {"monotonic": lambda: clock[0], "time": __import__("time"), "Path": Path, "print": lambda *a, **k: None,
+              "_post_auth_contract_page": lambda p: False, "_post_auth_error_page": lambda p: True,
+              "queue_error_assist": queue_error, "_auto_assist_pending": lambda kind, tab: pending[0],
+              "restart_same_row_in_new_page": restart, "enter_success_guard": lambda w, n: events.append("success_guard"),
+              "set_tab_status": lambda *a: None, "external_heartbeat": lambda *a: None,
+              "capture_blackbox": lambda *a, **k: events.append("blackbox"),
+              "_row_number_value": lambda row: str(row[1]),
+              "load_telegram_config": lambda: {"chat_id": "1"}, "_io1591": io,
+              "ERROR_ASSIST_MAX_SECONDS": 300, "ERROR_SKIP_DWELL_SECONDS": 15, "ERROR_ROW_MAX_ATTEMPTS": 2}
+        exec_functions(self.source, ["tick_error_assist", "_error_recover", "_error_row_key", "_error_analysis_delivered"], ns)
+        return ns["tick_error_assist"], worker, events, notices, clock, pending
+
+    def test_error_page_is_held_until_the_analysis_report_then_retried_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            tick, worker, events, notices, clock, pending = self._error_harness()
+            for _ in range(5):
+                clock[0] += 10; tick(d, worker)
+            self.assertNotIn("restart", events, "no recovery while the analysis is unanswered")
+            self.assertEqual(worker["phase"], "ERROR_ASSIST")
+            pending[0] = False  # the analysis report has been delivered
+            clock[0] += 1; tick(d, worker)
+            self.assertIn("restart", events)
+            self.assertEqual(worker["phase"], "RESTART_ROW_READY", "same row is retried on a fresh page")
+            self.assertFalse(worker["error_guard"]); self.assertEqual(worker["error_retry_counts"], {"ROW-A": 1})
+            self.assertEqual(notices, [])
+
+    def test_second_error_on_same_row_skips_without_new_analysis(self):
+        with tempfile.TemporaryDirectory() as d:
+            tick, worker, events, notices, clock, pending = self._error_harness(retried_before=True)
+            tick(d, worker); clock[0] += 14; tick(d, worker)
+            self.assertNotIn("queue", events); self.assertNotIn("restart", events)
+            clock[0] += 2; tick(d, worker)
+            self.assertIn("restart", events); self.assertEqual(worker["phase"], "IDLE"); self.assertIsNone(worker["row"])
+            self.assertEqual(len(notices), 1); self.assertIn("ROW-A", notices[0])
+            self.assertIn("ROW-A", (Path(d) / "error_skipped_rows.txt").read_text("utf-8"))
+
+    def test_error_recovery_happens_even_if_analysis_never_arrives(self):
+        with tempfile.TemporaryDirectory() as d:
+            tick, worker, events, notices, clock, pending = self._error_harness()
+            tick(d, worker); clock[0] += 299; tick(d, worker)
+            self.assertNotIn("restart", events)
+            clock[0] += 2; tick(d, worker)
+            self.assertIn("restart", events); self.assertEqual(worker["phase"], "RESTART_ROW_READY")
+
+    def test_externally_closed_error_page_does_not_stop_the_worker(self):
+        with tempfile.TemporaryDirectory() as d:
+            tick, worker, events, notices, clock, pending = self._error_harness(page_closed=True)
+            tick(d, worker)
+            self.assertFalse(worker["stopped"]); self.assertNotEqual(worker["phase"], "MANUAL_STOP")
+            self.assertIn("restart", events)
+
+    def test_unrepaired_build_stops_worker_on_closed_error_page(self):
+        original = Path(PACKAGE, "test_beeline.py").read_text("utf-8")
+        class Page:
+            url = "x"
+            def is_closed(self): return True
+        worker = {"id": 2, "page": Page(), "phase": "ERROR_ASSIST", "stopped": False}
+        ns = {"set_tab_status": lambda *a: None}
+        exec_functions(original, ["tick_error_assist"], ns)
+        ns["tick_error_assist"]("/tmp", worker)
+        self.assertTrue(worker["stopped"]); self.assertEqual(worker["phase"], "MANUAL_STOP")
+
+    def test_error_rule_is_in_every_prompt_layer(self):
+        self.assertIn("ERROR_RECOVERY_1591R5", self.source.split("OPERATOR_MISSION_1586 = ", 1)[1].split('"""')[1])
+        agent = self.source.split("def _agent_system_prompt(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("РАЗРЕШЕНО без разрешения пользователя закрыть", agent)
+        self.assertNotIn("Destructive recovery без анализа запрещён", agent)
+        queue = self.source.split("def queue_error_assist(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("повторит строку один раз", queue)
+        self.assertNotIn("НЕ делай автоматический retry", queue)
+
     def test_upgrade_from_revision_2_package(self):
         with tempfile.TemporaryDirectory() as d:
             r2 = Path(d) / "r2"
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 4", run.stdout)
+            self.assertIn("Already revision 5", run.stdout)
 
 
 if __name__ == "__main__":
