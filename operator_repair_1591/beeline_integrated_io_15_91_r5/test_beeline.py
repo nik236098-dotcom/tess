@@ -883,15 +883,15 @@ def queue_error_assist(worker, reason, force=False):
 
     text = (
         f"[AUTO_ERROR_ASSIST TAB {tab_id}] "
-        "После mobile-id-auth открылась /registration/error. Это НЕ success, "
-        "но также НЕ делай автоматический retry/restart/close/reload/back/navigation. "
+        "После mobile-id-auth открылась /registration/error. Это НЕ success. "
         "Сначала автономно проанализируй текущую physical-вкладку: DOM, видимый текст "
         "ошибки, DevTools console и network, последние запросы/ответы и состояние формы. "
-        "Определи конкретную причину ошибки и попробуй безопасно исправить её НА ЭТОЙ "
-        "странице, если это возможно без потери состояния. Если исправление невозможно, "
-        "оставь страницу открытой и дай пользователю мини-отчёт: что произошло, какая "
-        "причина установлена, что ты попробовал, что получилось и на каком URL осталась "
-        "вкладка. Никакого destructive recovery без отдельного решения после анализа. "
+        "Определи конкретную причину и, если это безопасно, попробуй исправить её на этой "
+        "странице. Затем ОБЯЗАТЕЛЬНО отправь мини-отчёт: причина, что проверил, что "
+        "попробовал, результат, URL. Сразу после твоего отчёта runtime автоматически, без "
+        "отдельного подтверждения, закроет эту error-вкладку, откроет новую и повторит строку один раз; "
+        "при повторной ошибке строка будет пропущена. Worker при этом не теряется. "
+        "Сам вкладку не закрывай: это сделает runtime после отчёта. "
         f"Причина вызова: {reason}. URL: {url}"
     )
     try:
@@ -1716,7 +1716,9 @@ OPERATOR_API_MISSION_V1584 = """ТВОЯ ПОСТОЯННАЯ ГЛАВНАЯ З�
 
 OPERATOR_MISSION_1586 = """У ТЕБЯ ЕСТЬ ПОСТОЯННОЕ АКТИВНОЕ ПОРУЧЕНИЕ, ОНО НЕ ЗАВИСИТ ОТ НОВЫХ СООБЩЕНИЙ ПОЛЬЗОВАТЕЛЯ. Твоя главная задача — автономный SUCCESS/ERROR SUPERVISOR процесса регистрации eSIM. Ты обязан самостоятельно сопровождать каждую вкладку после mobile-id-auth, распознавать SUCCESS/ERROR/post-auth состояния, анализировать живую physical-вкладку, DOM, validation, console/network и доводить безопасно исправимый post-auth процесс до корректного завершения без ожидания отдельного поручения пользователя. Если не заполнено или невалидно любое обязательное поле — сам определи именно это поле по текущей странице; не ограничивайся заранее известным списком. Уже корректные значения не меняй. На SUCCESS_GUARD и ERROR_GUARD запрещены destructive close/restart/reload/back/forward/navigation. /registration/error НИКОГДА не является успехом. Настоящий SUCCESS фиксируется только после подтверждённого финального post-sign состояния. После вмешательства отправляй фактический мини-отчёт: блокер, что проверил, что именно изменил и на какие значения, состояние кнопки подписания, действие/результат и финальный URL. Мониторинг кода, воркеров, Telegram и прокси — вторичная техническая функция.
 
-КРИТИЧЕСКОЕ ПРАВИЛО РОЛИ: никогда не говори «у меня нет задачи», «конкретного поручения нет», «я в режиме ожидания», «я просто наблюдатель» или эквивалент. Постоянная задача уже назначена выше. Если пользователь спрашивает «какая у тебя задача?», первым делом ответь, что твоя постоянная главная задача — автономный SUCCESS/ERROR Supervisor, а затем кратко опиши текущий живой статус. Для утверждений о состоянии «сейчас» используй только текущую service/runtime session и текущие вкладки; исторические ошибки не выдавай за текущие без свежего подтверждения."""
+КРИТИЧЕСКОЕ ПРАВИЛО РОЛИ: никогда не говори «у меня нет задачи», «конкретного поручения нет», «я в режиме ожидания», «я просто наблюдатель» или эквивалент. Постоянная задача уже назначена выше. Если пользователь спрашивает «какая у тебя задача?», первым делом ответь, что твоя постоянная главная задача — автономный SUCCESS/ERROR Supervisor, а затем кратко опиши текущий живой статус. Для утверждений о состоянии «сейчас» используй только текущую service/runtime session и текущие вкладки; исторические ошибки не выдавай за текущие без свежего подтверждения.
+
+ПРАВИЛО ОШИБКИ РЕГИСТРАЦИИ (ERROR_RECOVERY_1591R5): /registration/error — не успех, но и не вечное ожидание. Сначала детальный анализ страницы (DOM, текст ошибки, console/network) и мини-отчёт. После отчёта error-вкладка закрывается и открывается новая автоматически, без отдельного подтверждения: runtime делает это сразу после твоего отчёта и повторяет ту же строку один раз. При повторной ошибке на той же строке строка пропускается без нового анализа, worker берёт следующую. Ни одна ошибка не должна приводить к потере worker. Запрет close/restart/reload остаётся только для SUCCESS_GUARD."""
 
 def _agent_system_prompt(status_map, pages, user_text):
     try:
@@ -1767,12 +1769,15 @@ def _agent_system_prompt(status_map, pages, user_text):
 
 ERROR SUPERVISOR:
 - /registration/error НИКОГДА не является success.
-- Но появление /registration/error после auth также НЕ является разрешением немедленно
-  закрыть/перезапустить/reload/back/navigate вкладку.
 - Сначала самостоятельно изучи DOM, видимый текст, console/network и последние ответы API.
-  Определи конкретную причину и попробуй безопасное исправление на текущей странице.
-- Если безопасно исправить нельзя, оставь страницу открытой и отправь мини-отчёт пользователю.
-  Destructive recovery без анализа запрещён.
+  Определи конкретную причину и, если это безопасно, попробуй исправить на текущей странице.
+- Затем отправь мини-отчёт: причина, что проверил, что попробовал, результат, URL.
+- После детального анализа и отчёта error-вкладка закрывается и открывается новая
+  АВТОМАТИЧЕСКИ, без отдельного подтверждения: runtime делает это сразу после твоего
+  отчёта и повторяет ту же строку один раз. При повторной ошибке на той же строке
+  строка пропускается, worker переходит к следующей.
+- Из-за error worker никогда не теряется: слот всегда получает новую вкладку.
+- Запрет close/restart/reload/back/navigate действует только на SUCCESS GUARD.
 
 Правила действий:
 1. Сначала read-only диагностика, если задача не является прямой командой пользователя.
@@ -6165,35 +6170,124 @@ def enter_error_guard(worker, note):
     queue_error_assist(worker, note, force=True)
 
 
+# ERROR_RECOVERY_1591R5
+ERROR_ASSIST_MAX_SECONDS = 300
+ERROR_SKIP_DWELL_SECONDS = 15
+ERROR_ROW_MAX_ATTEMPTS = 2
+
+
+def _error_row_key(worker):
+    row = worker.get("row")
+    try:
+        return _row_number_value(row) or str(row)
+    except Exception:
+        return str(row)
+
+
+def _error_analysis_delivered(worker):
+    state = (worker.get("auto_assist_state") or {}).get("ERROR") or {}
+    if int(state.get("count") or 0) < 1:
+        return False
+    try:
+        return not _auto_assist_pending("ERROR", worker.get("id") or 0)
+    except Exception:
+        return True
+
+
+def _error_recover(base_dir, worker, reason):
+    """Close the error page, open a fresh one; retry the row once, then skip it.
+
+    Runs without user permission. A worker slot is never stopped because of an error.
+    """
+    key = _error_row_key(worker)
+    counts = worker.setdefault("error_retry_counts", {})
+    counts[key] = int(counts.get(key) or 0) + 1
+    attempt = counts[key]
+    try:
+        capture_blackbox(worker, "error_recovery")
+    except Exception:
+        pass
+    worker["error_guard"] = False
+    worker["success_guard"] = False
+    worker["error_assist_entered_at"] = None
+    worker["auto_assist_state"] = {}
+    worker["phase"] = "ERROR_RECOVERY"
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        print(f"[Вкладка {worker['id']}] ERROR RECOVERY: новая вкладка не создана ({reason}).", flush=True)
+        return False
+    if attempt < ERROR_ROW_MAX_ATTEMPTS:
+        set_tab_status(
+            worker, "♻️",
+            f"registration/error: {reason}. Вкладка закрыта, открыта новая; "
+            f"повторяю строку (попытка {attempt + 1}).",
+        )
+        external_heartbeat(worker, "error_retry_same_row")
+        return True
+    # Second error on the same row: skip it; the next row starts on the fresh page.
+    try:
+        with (Path(base_dir) / "error_skipped_rows.txt").open("a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{key}\t{reason}\n")
+    except Exception:
+        pass
+    try:
+        chat = str(load_telegram_config().get("chat_id") or "")
+        if chat:
+            _io1591.enqueue_notice(
+                globals(), chat,
+                f"⏭ Вкладка {worker['id']}: строка {key} пропущена после повторной "
+                f"registration/error ({reason}). Worker продолжает со следующей строкой.",
+            )
+    except Exception:
+        pass
+    worker["row"] = None
+    worker["phase"] = "IDLE"
+    set_tab_status(worker, "⏭", f"Строка {key} пропущена после повторной registration/error. Беру следующую.")
+    external_heartbeat(worker, "error_row_skipped")
+    return True
+
+
 def tick_error_assist(base_dir, worker):
     page = worker["page"]
     worker["error_guard"] = True
+    now = monotonic()
+    if not worker.get("error_assist_entered_at"):
+        worker["error_assist_entered_at"] = now
+    entered = float(worker["error_assist_entered_at"])
 
     if page.is_closed():
-        worker["phase"] = "MANUAL_STOP"
-        worker["stopped"] = True
-        set_tab_status(
-            worker, "🔴",
-            "Error-страница закрыта извне. Автоматически строку не повторяю."
-        )
+        # A closed error page never costs the worker slot: open a fresh page and go on.
+        _error_recover(base_dir, worker, "error-страница закрыта извне")
         return
 
     # If Operator safely repaired the page and it becomes a real contract page,
     # promote it into the immutable SUCCESS GUARD.
     if _post_auth_contract_page(page) and not _post_auth_error_page(page):
         worker["error_guard"] = False
+        worker["error_assist_entered_at"] = None
         enter_success_guard(
             worker,
             "DeepSeek/сайт вывел error-state на страницу договора",
         )
         return
 
-    # Do not retry merely because time passed. Re-inspect periodically.
+    key = _error_row_key(worker)
+    if int((worker.get("error_retry_counts") or {}).get(key) or 0) >= ERROR_ROW_MAX_ATTEMPTS - 1:
+        # Repeated error on the same row: no second analysis; skip after a short dwell.
+        external_heartbeat(worker, "error_repeat_skip_pending")
+        if now - entered >= ERROR_SKIP_DWELL_SECONDS:
+            _error_recover(base_dir, worker, "повторная ошибка регистрации на той же строке")
+        return
+
     queue_error_assist(
         worker,
-        "registration/error всё ещё открыта; повторно проверь DOM/console/network",
+        "registration/error открыта; проанализируй DOM/console/network и отправь отчёт",
     )
     external_heartbeat(worker, "error_assist_observing")
+    if _error_analysis_delivered(worker):
+        _error_recover(base_dir, worker, "детальный анализ завершён")
+    elif now - entered >= ERROR_ASSIST_MAX_SECONDS:
+        _error_recover(base_dir, worker, "анализ не получен за отведённое время")
 
 
 def _post_auth_error_page(page):
