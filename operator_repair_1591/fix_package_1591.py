@@ -27,7 +27,10 @@ Changes made in place (idempotent, refuses any other package):
 8. test_beeline.py: the tariff card is found by its title (TARIFF_NAME) and «выбрать» is
    clicked inside it; the old "second button" rule picked the paid tariff after the site
    reordered the cards. The overlay dismisser leaves the dialog we need untouched.
-9. manifest.json, edits.json, SHA256SUMS.txt, verification.json, test_results.txt are
+9. test_beeline.py: the parent watchdog counts real page activity as ROW_START progress,
+   long registration steps refresh the heartbeat, and the «изменить» retry happens in
+   place before any basket reload.
+10. manifest.json, edits.json, SHA256SUMS.txt, verification.json, test_results.txt are
    regenerated so every checksum the installer verifies is consistent again.
 """
 from __future__ import annotations
@@ -49,7 +52,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "437155a246d1e370a68cc29ec54850944837f0a575600c57c9f30b9849ebdf73",
                          "b835682314ab8958af4500f7176ca660608f14f09bb7bd02827eb503a23597b0",
                          "31cbd8b287f7c1deea89a669fabdcd14fab0bfee631b7ce87c5531493a05265a",
-                         "14ada30d264a994bdb675655b495c662217298a6b0327e6ea98dce99e4675433"}
+                         "14ada30d264a994bdb675655b495c662217298a6b0327e6ea98dce99e4675433",
+                         "ec65b2fa802131dbd7f2e679f422c40ddae10cc842bff784869925e14b16c105"}
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -65,6 +69,84 @@ OVERLAY_MARKER = "OVERLAY_DISMISS_1591R6"
 # the cards. The card is now found by its title. The overlay dismisser leaves a dialog alone
 # when it contains what is about to be clicked (the tariff picker is itself a modal).
 TARIFF_MARKER = "TARIFF_BY_NAME_1591R7"
+
+# Revision 8: the parent watchdog judged ROW_START by the last phase publish only, so a
+# row busy with real page loading for 120 s was "stalled" and recovered mid-action; the
+# «изменить» retry reloaded the basket (losing its state) before trying again in place.
+ROWSTART_MARKER = "ROW_START_ACTIVITY_1591R8"
+ROW_PROGRESS_HELPER_R8 = '''# ROW_START_ACTIVITY_1591R8
+def _row_progress(page, note):
+    """Refresh the worker heartbeat from inside a long registration step."""
+    publisher = getattr(page, "_publish_worker_phase", None)
+    if publisher is None:
+        return
+    try:
+        publisher("ROW_START", note)
+    except Exception:
+        pass
+
+
+'''
+OLD_WATCHDOG_ROW_START = '''        if phase == "ROW_START":
+            if logical_age >= ROW_START_STALL_SECONDS:
+                stalled.append((tab_id, proc, info, logical_age))
+            continue
+'''
+NEW_WATCHDOG_ROW_START = '''        if phase == "ROW_START":
+            # ROW_START_ACTIVITY_1591R8: real page activity (requests, navigation) is
+            # progress too; only a row that is silent on BOTH clocks is stalled.
+            activity_age = now - float(info.get("activity_time") or info.get("time") or now)
+            if min(logical_age, activity_age) >= ROW_START_STALL_SECONDS:
+                stalled.append((tab_id, proc, info, min(logical_age, activity_age)))
+            continue
+'''
+OLD_TARIFF_OPEN = '''        print("Открываю выбор тарифа...")
+'''
+NEW_TARIFF_OPEN = '''        _row_progress(page, "открываю выбор тарифа")  # ROW_START_ACTIVITY_1591R8
+        print("Открываю выбор тарифа...")
+'''
+OLD_TARIFF_RETRY = '''        except (PlaywrightTimeoutError, AssertionError):
+            diagnostic.snapshot("tariff_change_button_not_ready")
+            print("Кнопка «изменить» не найдена с первой попытки. Обновляю только эту вкладку...", flush=True)
+            page.reload(wait_until="domcontentloaded", timeout=60000)
+            click_tariff_change()
+'''
+NEW_TARIFF_RETRY = '''        except (PlaywrightTimeoutError, AssertionError):
+            diagnostic.snapshot("tariff_change_button_not_ready")
+            # ROW_START_ACTIVITY_1591R8: a reload resets the basket; retry in place first.
+            print("Кнопка «изменить» не нажалась с первой попытки. Повторяю без перезагрузки...", flush=True)
+            _row_progress(page, "повтор «изменить» без перезагрузки")
+            page.wait_for_timeout(3000)
+            try:
+                click_tariff_change()
+            except (PlaywrightTimeoutError, AssertionError):
+                print("Кнопка «изменить» не нажалась повторно. Обновляю только эту вкладку...", flush=True)
+                page.reload(wait_until="domcontentloaded", timeout=60000)
+                click_tariff_change()
+'''
+OLD_CHOOSE_PRINT = '''        print("Нажимаю вторую кнопку «выбрать», как в записи...")
+'''
+NEW_CHOOSE_PRINT = '''        _row_progress(page, "нажимаю «выбрать» в карточке тарифа")  # ROW_START_ACTIVITY_1591R8
+        print("Нажимаю «выбрать» в карточке тарифа...")
+'''
+OLD_ESIM_CALL = '''        select_esim(page)
+        field = page.get_by_placeholder("+7 999 999 99")
+'''
+NEW_ESIM_CALL = '''        _row_progress(page, "выбор eSIM")  # ROW_START_ACTIVITY_1591R8
+        select_esim(page)
+        field = page.get_by_placeholder("+7 999 999 99")
+'''
+README_NOTE_R8 = '''
+
+РЕВИЗИЯ 8 (fix_package_1591.py)
+Watchdog и ROW_START. Родительский watchdog считал «нет прогресса» только по времени
+последней публикации фазы, поэтому строка, которая 120 секунд реально грузила страницы
+корзины и тарифа, признавалась зависшей и «восстанавливалась» посреди работы. Теперь
+учитывается и реальная активность страницы (запросы, навигация), а длинные шаги
+(открытие выбора тарифа, «выбрать», eSIM) сами обновляют heartbeat. Повтор клика по
+«изменить» сначала выполняется на месте, без reload корзины; reload остаётся крайним
+средством. Маркер: ROW_START_ACTIVITY_1591R8. Изменены parent_watchdog и run_registration.
+'''
 OVERLAY_HELPER_R7 = r'''# OVERLAY_DISMISS_1591R6 / TARIFF_BY_NAME_1591R7
 _MODAL_DIALOG_SELECTOR = '[role="dialog"][aria-modal="true"]'
 _CHOOSE_BUTTON_RE = re.compile(r"^\s*выбрать\s*$", re.I)
@@ -829,7 +911,7 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
             joined = "".join(change["replacement"])
             if joined.count(old_block) != 1:
                 raise SystemExit("edits.json: block ambiguous inside an earlier edit; source unchanged")
-            target = next((c for c in edits if c is change or c == change), None)
+            target = change.get("_orig") or next((c for c in edits if c is change), None)
             if target is None:
                 raise SystemExit("edits.json: earlier edit not found; source unchanged")
             target["replacement"] = joined.replace(old_block, new_block, 1).splitlines(keepends=True)
@@ -851,9 +933,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
     in_start, in_end = to_input(out_start), to_input(out_end)
     absorbed = [c for c in reflected if in_start <= c["start"] and c["end"] <= in_end
                 and c["start"] + 0 >= in_start]
-    for c in list(edits):
-        if any(c is a or c == a for a in absorbed):
-            edits.remove(c)
+    for a in absorbed:
+        orig = a.get("_orig", a)
+        if any(orig is c for c in edits):
+            edits.remove(orig)
     edits.append({"start": in_start, "end": in_end, "replacement": new_block.splitlines(keepends=True)})
     edits.sort(key=lambda c: c["start"])
 
@@ -869,14 +952,20 @@ def main(argv: list[str]) -> int:
         if not (package / name).is_file():
             raise SystemExit(f"{package / name}: missing; this is not the extracted 15.91 package")
     source = app.read_text("utf-8")
-    if all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER, TARIFF_MARKER)):
-        print("Already revision 7; nothing changed.")
+    if all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER, TARIFF_MARKER, ROWSTART_MARKER)):
+        print("Already revision 8; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
     manifest = json.loads((package / "manifest.json").read_text("utf-8"))
     edits = json.loads((package / "edits.json").read_text("utf-8"))
-    reflected = [dict(x) for x in edits["test_beeline.py"]]  # edits already present in `source`
+    # Edits already present in `source`, as snapshots (their replacement lengths must stay
+    # those of `source`) linked to the live entries they describe.
+    reflected = []
+    for entry in edits["test_beeline.py"]:
+        snapshot = dict(entry)
+        snapshot["_orig"] = entry
+        reflected.append(snapshot)
     new_source = source
     test_src = (package / "test_update.py").read_text("utf-8")
     install_src = (package / "install.py").read_text("utf-8")
@@ -996,6 +1085,27 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: r6 entry for {what} not found")
 
+    # 9 (r8). Activity-aware ROW_START watchdog; heartbeat from long steps; retry in place.
+    if ROWSTART_MARKER not in source:
+        anchor = "def esim_state(page):\n"
+        for old, new, what in ((anchor, ROW_PROGRESS_HELPER_R8 + anchor, "row progress helper"),
+                               (OLD_WATCHDOG_ROW_START, NEW_WATCHDOG_ROW_START, "watchdog ROW_START"),
+                               (OLD_TARIFF_OPEN, NEW_TARIFF_OPEN, "tariff open progress"),
+                               (OLD_TARIFF_RETRY, NEW_TARIFF_RETRY, "tariff retry in place"),
+                               (OLD_CHOOSE_PRINT, NEW_CHOOSE_PRINT, "choose progress"),
+                               (OLD_ESIM_CALL, NEW_ESIM_CALL, "esim progress")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(test_src, "test_update.py", "exec")
     compile(install_src, "install.py", "exec")
@@ -1016,7 +1126,7 @@ def main(argv: list[str]) -> int:
     # A server that already runs the first 15.91 build is upgraded in place as well.
     manifest["files"]["test_beeline.py"]["previous_output_sha256"] = sorted(ACCEPTED_PACKAGE_SHAS)
     manifest["files"]["test_beeline.py"]["output_sha256"] = hashlib.sha256(new_source.encode("utf-8")).hexdigest()
-    manifest["revision"] = 7
+    manifest["revision"] = 8
 
     app.write_text(new_source, "utf-8")
     (package / "test_update.py").write_text(test_src, "utf-8")
@@ -1026,7 +1136,7 @@ def main(argv: list[str]) -> int:
     readme = package / "README.txt"
     for heading, note in (("РЕВИЗИЯ 2", README_NOTE), ("РЕВИЗИЯ 3", README_NOTE_R3), ("РЕВИЗИЯ 4", README_NOTE_R4),
                           ("РЕВИЗИЯ 5", README_NOTE_R5), ("РЕВИЗИЯ 6", README_NOTE_R6),
-                          ("РЕВИЗИЯ 7", README_NOTE_R7)):
+                          ("РЕВИЗИЯ 7", README_NOTE_R7), ("РЕВИЗИЯ 8", README_NOTE_R8)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -1039,7 +1149,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 7, "result": "OK",
+    verification.update({"python": sys.version, "revision": 8, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -1055,7 +1165,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 7 applied to", package)
+    print("Revision 8 applied to", package)
     return 0
 
 

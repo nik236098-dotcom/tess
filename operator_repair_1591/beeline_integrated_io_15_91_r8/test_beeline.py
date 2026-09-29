@@ -4499,31 +4499,47 @@ def write_success_record(base_dir, worker):
 
 
 
-# OVERLAY_DISMISS_1591R6
+# OVERLAY_DISMISS_1591R6 / TARIFF_BY_NAME_1591R7
 _MODAL_DIALOG_SELECTOR = '[role="dialog"][aria-modal="true"]'
+_CHOOSE_BUTTON_RE = re.compile(r"^\s*выбрать\s*$", re.I)
+
+
+def _blocking_dialog_indexes(page, keep_text=None, keep_selector=None):
+    """Indexes of visible modal dialogs that do NOT contain what we are about to click."""
+    return list(page.evaluate("""([keepText, keepSelector]) => {
+        const out = [];
+        [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].forEach((el, i) => {
+            const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+            if (!(r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden')) return;
+            if (keepSelector && el.querySelector(keepSelector)) return;
+            if (keepText && (el.innerText || '').includes(keepText)) return;
+            out.push(i);
+        });
+        return out;
+    }""", [keep_text or "", keep_selector or ""]) or [])
 
 
 def _visible_modal_dialogs(page):
-    return int(page.evaluate("""() => [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')]
-        .filter(el => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
-            return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'; }).length""") or 0)
+    return len(_blocking_dialog_indexes(page))
 
 
-def dismiss_blocking_overlays(page, attempts=3):
-    """Close a portal modal that intercepts clicks on the basket page.
+def dismiss_blocking_overlays(page, attempts=3, keep_text=None, keep_selector=None):
+    """Close a portal modal that intercepts clicks; never the dialog we need.
 
     Order: a visible close button inside the dialog, then Escape; as a last resort the
     dialog stops intercepting pointer events. The DOM is never removed, the basket is kept.
-    Returns True when no modal dialog is visible afterwards.
+    A dialog containing keep_text or an element matching keep_selector is left untouched.
+    Returns True when no blocking dialog is visible afterwards.
     """
     for _ in range(attempts):
         try:
-            if not _visible_modal_dialogs(page):
-                return True
+            blocking = _blocking_dialog_indexes(page, keep_text, keep_selector)
         except Exception:
             return True
+        if not blocking:
+            return True
         closed = False
-        dialog = page.locator(_MODAL_DIALOG_SELECTOR).last
+        dialog = page.locator(_MODAL_DIALOG_SELECTOR).nth(blocking[-1])
         for close_button in (
             dialog.get_by_role("button", name=re.compile(r"закрыть|close|✕|×", re.I)),
             dialog.locator('button[aria-label*="акрыть" i], button[aria-label*="close" i], [data-testid*="close" i]'),
@@ -4535,7 +4551,8 @@ def dismiss_blocking_overlays(page, attempts=3):
                     break
             except Exception:
                 pass
-        if not closed:
+        if not closed and not keep_text and not keep_selector:
+            # Escape would close the protected dialog too; use it only when nothing is protected.
             try:
                 page.keyboard.press("Escape")
             except Exception:
@@ -4545,14 +4562,62 @@ def dismiss_blocking_overlays(page, attempts=3):
         except Exception:
             pass
     try:
-        if not _visible_modal_dialogs(page):
+        blocking = _blocking_dialog_indexes(page, keep_text, keep_selector)
+        if not blocking:
             return True
-        page.evaluate("""() => document.querySelectorAll('[role="dialog"][aria-modal="true"]')
-            .forEach(el => { el.style.pointerEvents = 'none'; })""")
+        page.evaluate("""(indexes) => {
+            const all = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+            indexes.forEach(i => { if (all[i]) all[i].style.pointerEvents = 'none'; });
+        }""", blocking)
         print("Модальное окно не закрылось; снял перехват кликов, DOM не трогал.", flush=True)
     except Exception:
         pass
     return False
+
+
+def _tariff_choose_button(page, diagnostic=None, timeout=10000):
+    """«выбрать» inside the card titled TARIFF_NAME; the card order is never assumed."""
+    title = page.get_by_text(TARIFF_NAME, exact=True).first
+    try:
+        title.wait_for(state="visible", timeout=timeout)
+        card = title.locator(
+            "xpath=ancestor::*[.//button[normalize-space(.)='выбрать' or normalize-space(.)='Выбрать']][1]"
+        )
+        button = card.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+        if button.count() > 0:
+            return button.first
+    except Exception:
+        pass
+    try:
+        titles = page.locator("text=/подписка/i").all_inner_texts()[:10]
+        choose_count = page.get_by_role("button", name=_CHOOSE_BUTTON_RE).count()
+    except Exception:
+        titles, choose_count = [], -1
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_card_not_found", tariff=TARIFF_NAME, titles=titles, choose_buttons=choose_count)
+        except Exception:
+            pass
+    print(
+        f"Карточка «{TARIFF_NAME}» с кнопкой «выбрать» не найдена; на экране: {titles}, "
+        f"кнопок «выбрать»: {choose_count}",
+        flush=True,
+    )
+    raise RuntimeError(
+        f"RECOVERABLE_RESTART_ROW: карточка тарифа «{TARIFF_NAME}» с кнопкой «выбрать» не найдена."
+    )
+
+
+# ROW_START_ACTIVITY_1591R8
+def _row_progress(page, note):
+    """Refresh the worker heartbeat from inside a long registration step."""
+    publisher = getattr(page, "_publish_worker_phase", None)
+    if publisher is None:
+        return
+    try:
+        publisher("ROW_START", note)
+    except Exception:
+        pass
 
 
 def esim_state(page):
@@ -4586,7 +4651,7 @@ def select_esim(page):
         if esim_state(page)["selected"] and wait_esim_stable(page, timeout=2):
             return
         print(f"Выбор eSIM: попытка {attempt}/3...", flush=True)
-        dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6
+        dismiss_blocking_overlays(page, keep_selector='input#esim[name="sim"]')  # OVERLAY_DISMISS_1591R6
         radio = page.locator('input#esim[name="sim"]')
         try:
             radio.wait_for(state="visible", timeout=10000)
@@ -5017,6 +5082,7 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
 
         # При пяти одновременных вкладках корзина может дорисовываться заметно
         # дольше. Не используем фиксированные 5 секунд: ждём именно готовую кнопку.
+        _row_progress(page, "открываю выбор тарифа")  # ROW_START_ACTIVITY_1591R8
         print("Открываю выбор тарифа...")
         def click_tariff_change():
             candidates = [
@@ -5043,17 +5109,23 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
             click_tariff_change()
         except (PlaywrightTimeoutError, AssertionError):
             diagnostic.snapshot("tariff_change_button_not_ready")
-            print("Кнопка «изменить» не найдена с первой попытки. Обновляю только эту вкладку...", flush=True)
-            page.reload(wait_until="domcontentloaded", timeout=60000)
-            click_tariff_change()
+            # ROW_START_ACTIVITY_1591R8: a reload resets the basket; retry in place first.
+            print("Кнопка «изменить» не нажалась с первой попытки. Повторяю без перезагрузки...", flush=True)
+            _row_progress(page, "повтор «изменить» без перезагрузки")
+            page.wait_for_timeout(3000)
+            try:
+                click_tariff_change()
+            except (PlaywrightTimeoutError, AssertionError):
+                print("Кнопка «изменить» не нажалась повторно. Обновляю только эту вкладку...", flush=True)
+                page.reload(wait_until="domcontentloaded", timeout=60000)
+                click_tariff_change()
 
-        print("Нажимаю вторую кнопку «выбрать», как в записи...")
+        _row_progress(page, "нажимаю «выбрать» в карточке тарифа")  # ROW_START_ACTIVITY_1591R8
+        print("Нажимаю «выбрать» в карточке тарифа...")
         choose_clicked = False
         for choose_attempt in range(1, 4):
-            dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6
-            choose_button = page.get_by_role(
-                "button", name="выбрать", exact=True
-            ).nth(1)
+            dismiss_blocking_overlays(page, keep_text=TARIFF_NAME)  # OVERLAY_DISMISS_1591R6
+            choose_button = _tariff_choose_button(page, diagnostic)  # TARIFF_BY_NAME_1591R7
             try:
                 choose_button.click(timeout=7000, no_wait_after=True)
                 choose_clicked = True
@@ -5124,6 +5196,7 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
             print("На странице найдено название bee START. Выбираю eSIM...")
         else:
             print("Форма eSIM уже доступна. Продолжаю без ожидания заголовка тарифа...")
+        _row_progress(page, "выбор eSIM")  # ROW_START_ACTIVITY_1591R8
         select_esim(page)
         field = page.get_by_placeholder("+7 999 999 99")
         expect(field).to_be_visible(timeout=15000)
@@ -7332,8 +7405,11 @@ def parent_watchdog(processes, heartbeat):
         # tariff/eSIM transitions and can legitimately take tens of seconds.
         # The old 18-second parent watchdog was closing healthy pages mid-action.
         if phase == "ROW_START":
-            if logical_age >= ROW_START_STALL_SECONDS:
-                stalled.append((tab_id, proc, info, logical_age))
+            # ROW_START_ACTIVITY_1591R8: real page activity (requests, navigation) is
+            # progress too; only a row that is silent on BOTH clocks is stalled.
+            activity_age = now - float(info.get("activity_time") or info.get("time") or now)
+            if min(logical_age, activity_age) >= ROW_START_STALL_SECONDS:
+                stalled.append((tab_id, proc, info, min(logical_age, activity_age)))
             continue
 
         # Other blocking phases still get a watchdog, but not the destructive

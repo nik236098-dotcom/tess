@@ -384,31 +384,47 @@
       "start": 4519,
       "end": 4520,
       "replacement": [
-        "# OVERLAY_DISMISS_1591R6\n",
+        "# OVERLAY_DISMISS_1591R6 / TARIFF_BY_NAME_1591R7\n",
         "_MODAL_DIALOG_SELECTOR = '[role=\"dialog\"][aria-modal=\"true\"]'\n",
+        "_CHOOSE_BUTTON_RE = re.compile(r\"^\\s*выбрать\\s*$\", re.I)\n",
+        "\n",
+        "\n",
+        "def _blocking_dialog_indexes(page, keep_text=None, keep_selector=None):\n",
+        "    \"\"\"Indexes of visible modal dialogs that do NOT contain what we are about to click.\"\"\"\n",
+        "    return list(page.evaluate(\"\"\"([keepText, keepSelector]) => {\n",
+        "        const out = [];\n",
+        "        [...document.querySelectorAll('[role=\"dialog\"][aria-modal=\"true\"]')].forEach((el, i) => {\n",
+        "            const r = el.getBoundingClientRect(); const s = getComputedStyle(el);\n",
+        "            if (!(r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden')) return;\n",
+        "            if (keepSelector && el.querySelector(keepSelector)) return;\n",
+        "            if (keepText && (el.innerText || '').includes(keepText)) return;\n",
+        "            out.push(i);\n",
+        "        });\n",
+        "        return out;\n",
+        "    }\"\"\", [keep_text or \"\", keep_selector or \"\"]) or [])\n",
         "\n",
         "\n",
         "def _visible_modal_dialogs(page):\n",
-        "    return int(page.evaluate(\"\"\"() => [...document.querySelectorAll('[role=\"dialog\"][aria-modal=\"true\"]')]\n",
-        "        .filter(el => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el);\n",
-        "            return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'; }).length\"\"\") or 0)\n",
+        "    return len(_blocking_dialog_indexes(page))\n",
         "\n",
         "\n",
-        "def dismiss_blocking_overlays(page, attempts=3):\n",
-        "    \"\"\"Close a portal modal that intercepts clicks on the basket page.\n",
+        "def dismiss_blocking_overlays(page, attempts=3, keep_text=None, keep_selector=None):\n",
+        "    \"\"\"Close a portal modal that intercepts clicks; never the dialog we need.\n",
         "\n",
         "    Order: a visible close button inside the dialog, then Escape; as a last resort the\n",
         "    dialog stops intercepting pointer events. The DOM is never removed, the basket is kept.\n",
-        "    Returns True when no modal dialog is visible afterwards.\n",
+        "    A dialog containing keep_text or an element matching keep_selector is left untouched.\n",
+        "    Returns True when no blocking dialog is visible afterwards.\n",
         "    \"\"\"\n",
         "    for _ in range(attempts):\n",
         "        try:\n",
-        "            if not _visible_modal_dialogs(page):\n",
-        "                return True\n",
+        "            blocking = _blocking_dialog_indexes(page, keep_text, keep_selector)\n",
         "        except Exception:\n",
         "            return True\n",
+        "        if not blocking:\n",
+        "            return True\n",
         "        closed = False\n",
-        "        dialog = page.locator(_MODAL_DIALOG_SELECTOR).last\n",
+        "        dialog = page.locator(_MODAL_DIALOG_SELECTOR).nth(blocking[-1])\n",
         "        for close_button in (\n",
         "            dialog.get_by_role(\"button\", name=re.compile(r\"закрыть|close|✕|×\", re.I)),\n",
         "            dialog.locator('button[aria-label*=\"акрыть\" i], button[aria-label*=\"close\" i], [data-testid*=\"close\" i]'),\n",
@@ -420,7 +436,8 @@
         "                    break\n",
         "            except Exception:\n",
         "                pass\n",
-        "        if not closed:\n",
+        "        if not closed and not keep_text and not keep_selector:\n",
+        "            # Escape would close the protected dialog too; use it only when nothing is protected.\n",
         "            try:\n",
         "                page.keyboard.press(\"Escape\")\n",
         "            except Exception:\n",
@@ -430,14 +447,69 @@
         "        except Exception:\n",
         "            pass\n",
         "    try:\n",
-        "        if not _visible_modal_dialogs(page):\n",
+        "        blocking = _blocking_dialog_indexes(page, keep_text, keep_selector)\n",
+        "        if not blocking:\n",
         "            return True\n",
-        "        page.evaluate(\"\"\"() => document.querySelectorAll('[role=\"dialog\"][aria-modal=\"true\"]')\n",
-        "            .forEach(el => { el.style.pointerEvents = 'none'; })\"\"\")\n",
+        "        page.evaluate(\"\"\"(indexes) => {\n",
+        "            const all = document.querySelectorAll('[role=\"dialog\"][aria-modal=\"true\"]');\n",
+        "            indexes.forEach(i => { if (all[i]) all[i].style.pointerEvents = 'none'; });\n",
+        "        }\"\"\", blocking)\n",
         "        print(\"Модальное окно не закрылось; снял перехват кликов, DOM не трогал.\", flush=True)\n",
         "    except Exception:\n",
         "        pass\n",
         "    return False\n",
+        "\n",
+        "\n",
+        "def _tariff_choose_button(page, diagnostic=None, timeout=10000):\n",
+        "    \"\"\"«выбрать» inside the card titled TARIFF_NAME; the card order is never assumed.\"\"\"\n",
+        "    title = page.get_by_text(TARIFF_NAME, exact=True).first\n",
+        "    try:\n",
+        "        title.wait_for(state=\"visible\", timeout=timeout)\n",
+        "        card = title.locator(\n",
+        "            \"xpath=ancestor::*[.//button[normalize-space(.)='выбрать' or normalize-space(.)='Выбрать']][1]\"\n",
+        "        )\n",
+        "        button = card.get_by_role(\"button\", name=_CHOOSE_BUTTON_RE)\n",
+        "        if button.count() > 0:\n",
+        "            return button.first\n",
+        "    except Exception:\n",
+        "        pass\n",
+        "    try:\n",
+        "        titles = page.locator(\"text=/подписка/i\").all_inner_texts()[:10]\n",
+        "        choose_count = page.get_by_role(\"button\", name=_CHOOSE_BUTTON_RE).count()\n",
+        "    except Exception:\n",
+        "        titles, choose_count = [], -1\n",
+        "    if diagnostic is not None:\n",
+        "        try:\n",
+        "            diagnostic.write(\"tariff_card_not_found\", tariff=TARIFF_NAME, titles=titles, choose_buttons=choose_count)\n",
+        "        except Exception:\n",
+        "            pass\n",
+        "    print(\n",
+        "        f\"Карточка «{TARIFF_NAME}» с кнопкой «выбрать» не найдена; на экране: {titles}, \"\n",
+        "        f\"кнопок «выбрать»: {choose_count}\",\n",
+        "        flush=True,\n",
+        "    )\n",
+        "    raise RuntimeError(\n",
+        "        f\"RECOVERABLE_RESTART_ROW: карточка тарифа «{TARIFF_NAME}» с кнопкой «выбрать» не найдена.\"\n",
+        "    )\n",
+        "\n",
+        "\n",
+        "def esim_state(page):\n"
+      ]
+    },
+    {
+      "start": 4519,
+      "end": 4520,
+      "replacement": [
+        "# ROW_START_ACTIVITY_1591R8\n",
+        "def _row_progress(page, note):\n",
+        "    \"\"\"Refresh the worker heartbeat from inside a long registration step.\"\"\"\n",
+        "    publisher = getattr(page, \"_publish_worker_phase\", None)\n",
+        "    if publisher is None:\n",
+        "        return\n",
+        "    try:\n",
+        "        publisher(\"ROW_START\", note)\n",
+        "    except Exception:\n",
+        "        pass\n",
         "\n",
         "\n",
         "def esim_state(page):\n"
@@ -448,7 +520,7 @@
       "end": 4559,
       "replacement": [
         "        print(f\"Выбор eSIM: попытка {attempt}/3...\", flush=True)\n",
-        "        dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6\n",
+        "        dismiss_blocking_overlays(page, keep_selector='input#esim[name=\"sim\"]')  # OVERLAY_DISMISS_1591R6\n",
         "        radio = page.locator('input#esim[name=\"sim\"]')\n",
         "        try:\n",
         "            radio.wait_for(state=\"visible\", timeout=10000)\n",
@@ -481,6 +553,14 @@
       ]
     },
     {
+      "start": 4960,
+      "end": 4961,
+      "replacement": [
+        "        _row_progress(page, \"открываю выбор тарифа\")  # ROW_START_ACTIVITY_1591R8\n",
+        "        print(\"Открываю выбор тарифа...\")\n"
+      ]
+    },
+    {
       "start": 4966,
       "end": 4974,
       "replacement": [
@@ -501,14 +581,47 @@
       ]
     },
     {
+      "start": 4978,
+      "end": 4983,
+      "replacement": [
+        "        except (PlaywrightTimeoutError, AssertionError):\n",
+        "            diagnostic.snapshot(\"tariff_change_button_not_ready\")\n",
+        "            # ROW_START_ACTIVITY_1591R8: a reload resets the basket; retry in place first.\n",
+        "            print(\"Кнопка «изменить» не нажалась с первой попытки. Повторяю без перезагрузки...\", flush=True)\n",
+        "            _row_progress(page, \"повтор «изменить» без перезагрузки\")\n",
+        "            page.wait_for_timeout(3000)\n",
+        "            try:\n",
+        "                click_tariff_change()\n",
+        "            except (PlaywrightTimeoutError, AssertionError):\n",
+        "                print(\"Кнопка «изменить» не нажалась повторно. Обновляю только эту вкладку...\", flush=True)\n",
+        "                page.reload(wait_until=\"domcontentloaded\", timeout=60000)\n",
+        "                click_tariff_change()\n"
+      ]
+    },
+    {
+      "start": 4984,
+      "end": 4985,
+      "replacement": [
+        "        _row_progress(page, \"нажимаю «выбрать» в карточке тарифа\")  # ROW_START_ACTIVITY_1591R8\n",
+        "        print(\"Нажимаю «выбрать» в карточке тарифа...\")\n"
+      ]
+    },
+    {
       "start": 4986,
       "end": 4990,
       "replacement": [
         "        for choose_attempt in range(1, 4):\n",
-        "            dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6\n",
-        "            choose_button = page.get_by_role(\n",
-        "                \"button\", name=\"выбрать\", exact=True\n",
-        "            ).nth(1)\n"
+        "            dismiss_blocking_overlays(page, keep_text=TARIFF_NAME)  # OVERLAY_DISMISS_1591R6\n",
+        "            choose_button = _tariff_choose_button(page, diagnostic)  # TARIFF_BY_NAME_1591R7\n"
+      ]
+    },
+    {
+      "start": 5060,
+      "end": 5062,
+      "replacement": [
+        "        _row_progress(page, \"выбор eSIM\")  # ROW_START_ACTIVITY_1591R8\n",
+        "        select_esim(page)\n",
+        "        field = page.get_by_placeholder(\"+7 999 999 99\")\n"
       ]
     },
     {
@@ -779,6 +892,19 @@
       "end": 7128,
       "replacement": [
         "        if _io1591.guarded(info) or phase in skip_phases:\n"
+      ]
+    },
+    {
+      "start": 7146,
+      "end": 7150,
+      "replacement": [
+        "        if phase == \"ROW_START\":\n",
+        "            # ROW_START_ACTIVITY_1591R8: real page activity (requests, navigation) is\n",
+        "            # progress too; only a row that is silent on BOTH clocks is stalled.\n",
+        "            activity_age = now - float(info.get(\"activity_time\") or info.get(\"time\") or now)\n",
+        "            if min(logical_age, activity_age) >= ROW_START_STALL_SECONDS:\n",
+        "                stalled.append((tab_id, proc, info, min(logical_age, activity_age)))\n",
+        "            continue\n"
       ]
     }
   ],
