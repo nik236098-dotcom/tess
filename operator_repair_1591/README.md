@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 11 лежит в `beeline_integrated_io_15_91_r11/`. В нём нет
+Готовый пакет ревизии 12 лежит в `beeline_integrated_io_15_91_r12/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -52,7 +52,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r11
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r12
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -135,7 +135,15 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    линии завершается, родитель перезапускает его и возвращает сообщения в очередь. Супервизор
    дополнительно перезапускает линию, которая дольше 15 минут в любом состоянии `busy_*`.
    Маркер: `OBSERVER_TIMEOUT_1591R11`.
-13. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+13. **Профиль из текста договора (ревизия 12).** На экране договора ФИО, пол и дата рождения
+   показаны обычным текстом, а оба захвата читали только `value` полей формы, поэтому в
+   SUCCESS-сообщении эти поля были пустыми. Добавлен `capture_success_profile_text_1591r12`:
+   пары «подпись: значение» из DOM и текста страницы, включая iframe; подписи сопоставляются
+   целиком, значения проверяются по типу, уже считанное не перезаписывается; один раз на worker
+   текст страницы сохраняется в diagnostics (`success_page_text_v1591r12`). Основа: candidate
+   DeepSeek `CANDIDATE_1592_PROFILE_TEXT`, ужесточённый (без «серия»/«номер»/«дом» по вхождению,
+   «ё» в подписях, синхронизация `worker["profile"]`). Маркер: `SUCCESS_PROFILE_TEXT_1591R12`.
+14. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -169,3 +177,4 @@ SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分
 リビジョン10では、CAPTCHA マッチャー `symbol_matching.py` を同じ結果のまま約4倍高速化しました（14.0 → 14.1）。
 `fresh_install.sh` は新しいサーバーの構築と移行を 1 コマンドで行います。
 リビジョン11では、DeepSeek 監視レーンが応答しないタブの evaluate で永久に停止する問題を修正しました。
+リビジョン12では、契約画面のテキストから氏名・性別・生年月日を読み取り、SUCCESS レポートを補完します。

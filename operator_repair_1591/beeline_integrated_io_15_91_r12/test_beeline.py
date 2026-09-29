@@ -4495,11 +4495,196 @@ def capture_contract_details(page, worker):
     return profile
 
 
+# SUCCESS_PROFILE_TEXT_1591R12
+# The contract screen shows the name, gender and birth date as plain text, not as form
+# fields, so the input-based captures above leave them empty. This capture reads
+# "label: value" pairs from the page text (main frame and iframes), validates every
+# value by type and never overwrites a value that is already captured.
+_PROFILE_TEXT_LABELS_1591R12 = {
+    "full_name": ("фио", "фамилия имя отчество", "ф и о", "fullname", "full name"),
+    "gender": ("пол", "gender"),
+    "birth_date": ("дата рождения", "birth date", "birthdate"),
+    "passport_series": ("серия паспорта", "серия"),
+    "passport_number": ("номер паспорта",),
+    "passport_issue_date": ("дата выдачи",),
+    "passport_issued_by": ("кем выдан",),
+    "country": ("страна",),
+    "region": ("область", "регион"),
+    "district": ("район",),
+    "locality": ("населенный пункт", "город", "г."),
+    "street": ("улица", "ул."),
+    "house": ("дом", "номер дома", "д."),
+    "building": ("корпус", "строение", "корп."),
+    "apartment": ("квартира", "кв."),
+}
+_DATE_RE_1591R12 = re.compile(r"\b\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b")
+_FIO_RE_1591R12 = re.compile(
+    r"^[А-ЯЁA-Z][А-Яа-яЁёA-Za-z.\-]{0,30}(\s+[А-ЯЁA-Z][А-Яа-яЁёA-Za-z.\-]{0,30}){1,3}$"
+)
+_GENDER_RE_1591R12 = re.compile(r"^(мужской|женский|муж|жен|м|ж|male|female)$", re.I)
+_PROFILE_TEXT_VALUE_RE_1591R12 = {
+    "passport_series": re.compile(r"^\d{2}\s?\d{2}$"),
+    "passport_number": re.compile(r"^\d{6}$"),
+    "house": re.compile(r"^\d{1,4}[а-яa-z]?(\s*/\s*\d{1,3})?$", re.I),
+    "building": re.compile(r"^[\dа-яa-z\-]{1,6}$", re.I),
+    "apartment": re.compile(r"^\d{1,5}[а-яa-z]?$", re.I),
+}
+
+
+def _text_label_key_1591r12(label):
+    """Profile key for a visible label, or None. Labels are matched whole (or as the first
+    word of a longer label), so «номер договора» or «домашний телефон» never match."""
+    hay = _norm_label(label).strip(" :;-–—\t.,")
+    if not hay or len(hay) > 40:
+        return None
+    for key, words in _PROFILE_TEXT_LABELS_1591R12.items():
+        for word in words:
+            word = _norm_label(word)
+            if hay == word or hay.startswith(word + " "):
+                return key
+    return None
+
+
+def _text_value_ok_1591r12(key, value):
+    value = str(value or "").strip().strip(":;,")
+    if not value or value in ("—", "-", "–") or len(value) > 160:
+        return False
+    if key == "full_name":
+        return bool(_FIO_RE_1591R12.match(value))
+    if key == "gender":
+        return bool(_GENDER_RE_1591R12.match(value))
+    if key in ("birth_date", "passport_issue_date"):
+        return bool(_DATE_RE_1591R12.search(value))
+    pattern = _PROFILE_TEXT_VALUE_RE_1591R12.get(key)
+    return bool(pattern.match(value)) if pattern else True
+
+
+_PROFILE_TEXT_JS_1591R12 = r"""
+() => {
+  const vis = el => {
+    try {
+      const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
+    } catch (_) { return false; }
+  };
+  const txt = el => ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim();
+  const pairs = [];
+  const seen = new Set();
+  const push = (label, value) => {
+    label = String(label || '').replace(/\s+/g, ' ').trim().replace(/[:：]\s*$/, '');
+    value = String(value || '').replace(/\s+/g, ' ').trim()
+      .replace(/^[:：\-–—]\s*/, '').replace(/[;,]\s*$/, '');
+    if (!label || !value || label.length > 40 || value.length > 160) return;
+    if (value === label) return;
+    const k = label + '|' + value;
+    if (seen.has(k)) return;
+    seen.add(k);
+    pairs.push({label: label, value: value});
+  };
+  const containers = 'tr,dl,li,p,div,section,article,fieldset';
+  document.querySelectorAll(
+    'dt,th,[class*="label"],[class*="Label"],[class*="title"],[class*="name"]'
+  ).forEach(el => {
+    if (!vis(el)) return;
+    const label = txt(el);
+    if (!label || label.length > 40) return;
+    let value = '';
+    const sib = el.nextElementSibling;
+    if (sib && vis(sib)) value = txt(sib);
+    if (!value) {
+      const row = el.closest(containers);
+      if (row) {
+        const t = txt(row);
+        const i = t.indexOf(label);
+        if (i >= 0) value = t.slice(i + label.length);
+      }
+    }
+    push(label, value);
+  });
+  document.querySelectorAll('span,div,li,p,strong,b,em,small,a,label,dd,td').forEach(el => {
+    if (!vis(el) || (el.children && el.children.length)) return;
+    const t = txt(el);
+    if (!t || t.length > 140) return;
+    const m = t.match(/^([^:：]{2,40})[:：]\s*(.+)$/);
+    if (m) push(m[1], m[2]);
+  });
+  let text = '';
+  try { text = (document.body && (document.body.innerText || '')) || ''; } catch (_) {}
+  return {pairs: pairs, text: text.slice(0, 20000)};
+}
+"""
+
+
+def capture_success_profile_text_1591r12(page, worker):
+    """Fill missing profile fields from the visible text of the contract screen."""
+    targets, collected, texts = [], [], []
+    if page is not None:
+        targets.append(page)
+        try:
+            for frame in page.frames:
+                if frame not in targets:
+                    targets.append(frame)
+        except Exception:
+            pass
+    for target in targets:
+        try:
+            data = target.evaluate(_PROFILE_TEXT_JS_1591R12)
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        for item in data.get("pairs") or []:
+            if isinstance(item, dict):
+                collected.append((item.get("label"), item.get("value")))
+        if data.get("text"):
+            texts.append(str(data.get("text")))
+
+    profile = dict(worker.get("success_profile") or {})
+
+    def put(key, value):
+        if not key or profile.get(key):
+            return
+        if _text_value_ok_1591r12(key, value):
+            profile[key] = str(value).strip().strip(":;,")
+
+    for label, value in collected:
+        put(_text_label_key_1591r12(label), value)
+
+    for text in texts:
+        lines = [line.strip() for line in re.split(r"[\r\n]+", text)]
+        for index, line in enumerate(lines):
+            if not line:
+                continue
+            match = re.match(r"^([^:：]{2,40})[:：]\s*(.+)$", line)
+            if match:
+                put(_text_label_key_1591r12(match.group(1)), match.group(2))
+            elif _text_label_key_1591r12(line) and index + 1 < len(lines):
+                following = lines[index + 1]
+                if following and not _text_label_key_1591r12(following):
+                    put(_text_label_key_1591r12(line), following)
+
+    worker["success_profile"] = profile
+    worker["profile"] = dict(profile)
+    try:
+        diagnostic = worker.get("diagnostic")
+        if diagnostic and texts and not worker.get("success_text_dump_done"):
+            worker["success_text_dump_done"] = True
+            diagnostic.write("success_page_text_v1591r12", url=str(getattr(page, "url", "") or ""),
+                             text="\n".join(texts)[:20000])
+    except Exception:
+        pass
+    return profile
+
+
 _capture_contract_details_before_v1583 = capture_contract_details
 def capture_contract_details(page, worker):
     result = _capture_contract_details_before_v1583(page, worker)
     try:
         final_profile_capture_v1583(page, worker)
+    except Exception:
+        pass
+    try:
+        capture_success_profile_text_1591r12(page, worker)  # SUCCESS_PROFILE_TEXT_1591R12
     except Exception:
         pass
     return worker.get("success_profile") or result

@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-11", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-12", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -280,7 +280,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 11", run.stdout)
+            self.assertIn("Already revision 12", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -314,7 +314,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 11)
+        self.assertEqual(manifest["revision"], 12)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -351,6 +351,81 @@ class PackageTests(unittest.TestCase):
         self.assertIn("AI_LANE_BUSY_CEILING_SECONDS)", self.source, "the supervisor must restart lanes stuck in busy_*")
         self.assertIn('(not state.startswith("busy_") and (now - last) > idle_limit)', self.source, "idle rule stays")
         self.assertEqual(self.source.count("_observer_collect_pages_unbounded("), 2, "definition plus the one call in the wrapper")
+
+
+    def _profile_ns(self):
+        names = ["_norm_label", "_text_label_key_1591r12", "_text_value_ok_1591r12", "capture_success_profile_text_1591r12"]
+        tree = ast.parse(self.source)
+        nodes = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in names) or (
+            isinstance(n, ast.Assign) and any(isinstance(x, ast.Name) and x.id.endswith("_1591R12") for x in n.targets))]
+        ns = {"re": __import__("re")}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), "pkg", "exec"), ns)
+        return ns
+
+    def test_profile_text_capture_fills_missing_fields_without_overwriting(self):
+        ns = self._profile_ns()
+        key = ns["_text_label_key_1591r12"]
+        self.assertEqual(key("ФИО:"), "full_name"); self.assertEqual(key("Пол"), "gender")
+        self.assertEqual(key("Населённый пункт"), "locality", "ё in the label must still match")
+        self.assertIsNone(key("Номер договора")); self.assertIsNone(key("Домашний телефон")); self.assertIsNone(key("Полный адрес"))
+        ok = ns["_text_value_ok_1591r12"]
+        self.assertTrue(ok("full_name", "Иванов Иван Иванович")); self.assertFalse(ok("full_name", "договор №5"))
+        self.assertTrue(ok("passport_number", "123456")); self.assertFalse(ok("passport_number", "987654321"))
+        self.assertTrue(ok("house", "12а")); self.assertFalse(ok("house", "Культуры"))
+        class Page:
+            url = "https://saratov.beeline.ru/registration/contract"
+            frames = []
+            def evaluate(self, js):
+                return {"pairs": [{"label": "ФИО", "value": "Иванов Иван Иванович"}, {"label": "Пол", "value": "Мужской"},
+                                  {"label": "Номер договора", "value": "987654321"}, {"label": "Дом", "value": "Культуры"}],
+                        "text": "Дата рождения\n01.02.1990\nСерия: 63 21\nГород: Саратов\n"}
+        class Diag:
+            def __init__(self): self.calls = []
+            def write(self, *a, **k): self.calls.append((a, k))
+        worker = {"success_profile": {"passport_number": "111111", "full_name": "Уже Есть Значение"}, "diagnostic": Diag()}
+        profile = ns["capture_success_profile_text_1591r12"](Page(), worker)
+        self.assertEqual(profile["full_name"], "Уже Есть Значение", "captured values are never overwritten")
+        self.assertEqual(profile["gender"], "Мужской"); self.assertEqual(profile["birth_date"], "01.02.1990")
+        self.assertEqual(profile["passport_series"], "63 21"); self.assertEqual(profile["locality"], "Саратов")
+        self.assertEqual(profile["passport_number"], "111111"); self.assertNotIn("house", profile)
+        self.assertEqual(worker["profile"], profile)
+        ns["capture_success_profile_text_1591r12"](Page(), worker)
+        self.assertEqual(len(worker["diagnostic"].calls), 1, "the page text is dumped once per worker")
+        self.assertEqual(worker["diagnostic"].calls[0][0][0], "success_page_text_v1591r12")
+        wrapper = self.source.split("_capture_contract_details_before_v1583 = capture_contract_details", 1)[1].split("\ndef ", 2)[1]
+        self.assertIn("capture_success_profile_text_1591r12(page, worker)", wrapper, "the text capture runs from the shared wrapper")
+
+    def test_profile_text_capture_reads_a_real_contract_page(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("playwright not installed")
+        ns = self._profile_ns()
+        html = ("<h1>Договор об оказании услуг связи</h1>"
+                "<div><span class='label'>Номер договора:</span><span>987654321</span></div>"
+                "<dl><dt>ФИО</dt><dd>Иванов Иван Иванович</dd><dt>Пол</dt><dd>Мужской</dd>"
+                "<dt>Дата рождения</dt><dd>01.02.1990</dd></dl>"
+                "<p>Домашний телефон: 12</p><p>Город: Саратов</p><div><span>Дом: 12а</span></div>"
+                "<label for='pn'>Номер паспорта</label><input id='pn' value='123456'>"
+                "<div style='display:none'>ФИО: Скрытый Текст Невидимый</div>")
+        class Diag:
+            def write(self, *a, **k): pass
+        worker = {"success_profile": {"passport_number": "123456"}, "diagnostic": Diag()}
+        try:
+            with sync_playwright() as p:
+                try:
+                    browser = p.chromium.launch(headless=True)
+                except Exception:
+                    browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+                page = browser.new_page(); page.set_content(html)
+                profile = ns["capture_success_profile_text_1591r12"](page, worker)
+                browser.close()
+        except Exception as exc:
+            self.skipTest(f"chromium not available: {type(exc).__name__}")
+        self.assertEqual(profile["full_name"], "Иванов Иван Иванович"); self.assertEqual(profile["gender"], "Мужской")
+        self.assertEqual(profile["birth_date"], "01.02.1990"); self.assertEqual(profile["locality"], "Саратов")
+        self.assertEqual(profile["house"], "12а"); self.assertEqual(profile["passport_number"], "123456")
+        self.assertNotIn("987654321", profile.values()); self.assertNotIn("Скрытый Текст Невидимый", profile.values())
 
 
 def _load_module(name, path):

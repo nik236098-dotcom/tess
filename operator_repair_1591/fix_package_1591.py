@@ -59,7 +59,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "14ada30d264a994bdb675655b495c662217298a6b0327e6ea98dce99e4675433",
                          "ec65b2fa802131dbd7f2e679f422c40ddae10cc842bff784869925e14b16c105",
                          "6023e5266b8317cd0051fbec7988d0f65e30c10f26fc95309d960ebf995997c9",
-                         "6852517bf0eadb15f70359ac93b9c49632926cb3aef9f817c712ea099330248b"}
+                         "6852517bf0eadb15f70359ac93b9c49632926cb3aef9f817c712ea099330248b",
+                         "747c7f08c994baa104d82ebb5d3302215bc4f1147e238b66629bd5037710c47d"}
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -364,6 +365,232 @@ Playwright нет таймаута: если вкладка перестала �
 дольше 15 минут находится в любом состоянии busy_* (агент разработчика обновляет состояние на
 каждом раунде, поэтому легитимная работа под потолок не попадает).
 Маркер: OBSERVER_TIMEOUT_1591R11. Изменены _observer_collect_pages и _ensure_ai_lane_alive (в main).
+'''
+# Revision 12: on the contract/signature screen the name, gender and birth date are plain
+# text, not form fields, so capture_contract_details/final_profile_capture_v1583 (which read
+# input/select/textarea values only) leave them empty in the SUCCESS record. A text capture
+# reads "label: value" pairs from the page and its frames, validates each value by type,
+# never overwrites captured values and dumps the page text once per worker for diagnostics.
+PROFILE_MARKER = "SUCCESS_PROFILE_TEXT_1591R12"
+OLD_CAPTURE_WRAPPER = '''_capture_contract_details_before_v1583 = capture_contract_details
+def capture_contract_details(page, worker):
+    result = _capture_contract_details_before_v1583(page, worker)
+    try:
+        final_profile_capture_v1583(page, worker)
+    except Exception:
+        pass
+    return worker.get("success_profile") or result
+'''
+NEW_CAPTURE_WRAPPER = '''_capture_contract_details_before_v1583 = capture_contract_details
+def capture_contract_details(page, worker):
+    result = _capture_contract_details_before_v1583(page, worker)
+    try:
+        final_profile_capture_v1583(page, worker)
+    except Exception:
+        pass
+    try:
+        capture_success_profile_text_1591r12(page, worker)  # SUCCESS_PROFILE_TEXT_1591R12
+    except Exception:
+        pass
+    return worker.get("success_profile") or result
+'''
+PROFILE_TEXT_HELPER_R12 = r'''# SUCCESS_PROFILE_TEXT_1591R12
+# The contract screen shows the name, gender and birth date as plain text, not as form
+# fields, so the input-based captures above leave them empty. This capture reads
+# "label: value" pairs from the page text (main frame and iframes), validates every
+# value by type and never overwrites a value that is already captured.
+_PROFILE_TEXT_LABELS_1591R12 = {
+    "full_name": ("фио", "фамилия имя отчество", "ф и о", "fullname", "full name"),
+    "gender": ("пол", "gender"),
+    "birth_date": ("дата рождения", "birth date", "birthdate"),
+    "passport_series": ("серия паспорта", "серия"),
+    "passport_number": ("номер паспорта",),
+    "passport_issue_date": ("дата выдачи",),
+    "passport_issued_by": ("кем выдан",),
+    "country": ("страна",),
+    "region": ("область", "регион"),
+    "district": ("район",),
+    "locality": ("населенный пункт", "город", "г."),
+    "street": ("улица", "ул."),
+    "house": ("дом", "номер дома", "д."),
+    "building": ("корпус", "строение", "корп."),
+    "apartment": ("квартира", "кв."),
+}
+_DATE_RE_1591R12 = re.compile(r"\b\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b")
+_FIO_RE_1591R12 = re.compile(
+    r"^[А-ЯЁA-Z][А-Яа-яЁёA-Za-z.\-]{0,30}(\s+[А-ЯЁA-Z][А-Яа-яЁёA-Za-z.\-]{0,30}){1,3}$"
+)
+_GENDER_RE_1591R12 = re.compile(r"^(мужской|женский|муж|жен|м|ж|male|female)$", re.I)
+_PROFILE_TEXT_VALUE_RE_1591R12 = {
+    "passport_series": re.compile(r"^\d{2}\s?\d{2}$"),
+    "passport_number": re.compile(r"^\d{6}$"),
+    "house": re.compile(r"^\d{1,4}[а-яa-z]?(\s*/\s*\d{1,3})?$", re.I),
+    "building": re.compile(r"^[\dа-яa-z\-]{1,6}$", re.I),
+    "apartment": re.compile(r"^\d{1,5}[а-яa-z]?$", re.I),
+}
+
+
+def _text_label_key_1591r12(label):
+    """Profile key for a visible label, or None. Labels are matched whole (or as the first
+    word of a longer label), so «номер договора» or «домашний телефон» never match."""
+    hay = _norm_label(label).strip(" :;-–—\t.,")
+    if not hay or len(hay) > 40:
+        return None
+    for key, words in _PROFILE_TEXT_LABELS_1591R12.items():
+        for word in words:
+            word = _norm_label(word)
+            if hay == word or hay.startswith(word + " "):
+                return key
+    return None
+
+
+def _text_value_ok_1591r12(key, value):
+    value = str(value or "").strip().strip(":;,")
+    if not value or value in ("—", "-", "–") or len(value) > 160:
+        return False
+    if key == "full_name":
+        return bool(_FIO_RE_1591R12.match(value))
+    if key == "gender":
+        return bool(_GENDER_RE_1591R12.match(value))
+    if key in ("birth_date", "passport_issue_date"):
+        return bool(_DATE_RE_1591R12.search(value))
+    pattern = _PROFILE_TEXT_VALUE_RE_1591R12.get(key)
+    return bool(pattern.match(value)) if pattern else True
+
+
+_PROFILE_TEXT_JS_1591R12 = r"""
+() => {
+  const vis = el => {
+    try {
+      const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
+    } catch (_) { return false; }
+  };
+  const txt = el => ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim();
+  const pairs = [];
+  const seen = new Set();
+  const push = (label, value) => {
+    label = String(label || '').replace(/\s+/g, ' ').trim().replace(/[:：]\s*$/, '');
+    value = String(value || '').replace(/\s+/g, ' ').trim()
+      .replace(/^[:：\-–—]\s*/, '').replace(/[;,]\s*$/, '');
+    if (!label || !value || label.length > 40 || value.length > 160) return;
+    if (value === label) return;
+    const k = label + '|' + value;
+    if (seen.has(k)) return;
+    seen.add(k);
+    pairs.push({label: label, value: value});
+  };
+  const containers = 'tr,dl,li,p,div,section,article,fieldset';
+  document.querySelectorAll(
+    'dt,th,[class*="label"],[class*="Label"],[class*="title"],[class*="name"]'
+  ).forEach(el => {
+    if (!vis(el)) return;
+    const label = txt(el);
+    if (!label || label.length > 40) return;
+    let value = '';
+    const sib = el.nextElementSibling;
+    if (sib && vis(sib)) value = txt(sib);
+    if (!value) {
+      const row = el.closest(containers);
+      if (row) {
+        const t = txt(row);
+        const i = t.indexOf(label);
+        if (i >= 0) value = t.slice(i + label.length);
+      }
+    }
+    push(label, value);
+  });
+  document.querySelectorAll('span,div,li,p,strong,b,em,small,a,label,dd,td').forEach(el => {
+    if (!vis(el) || (el.children && el.children.length)) return;
+    const t = txt(el);
+    if (!t || t.length > 140) return;
+    const m = t.match(/^([^:：]{2,40})[:：]\s*(.+)$/);
+    if (m) push(m[1], m[2]);
+  });
+  let text = '';
+  try { text = (document.body && (document.body.innerText || '')) || ''; } catch (_) {}
+  return {pairs: pairs, text: text.slice(0, 20000)};
+}
+"""
+
+
+def capture_success_profile_text_1591r12(page, worker):
+    """Fill missing profile fields from the visible text of the contract screen."""
+    targets, collected, texts = [], [], []
+    if page is not None:
+        targets.append(page)
+        try:
+            for frame in page.frames:
+                if frame not in targets:
+                    targets.append(frame)
+        except Exception:
+            pass
+    for target in targets:
+        try:
+            data = target.evaluate(_PROFILE_TEXT_JS_1591R12)
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        for item in data.get("pairs") or []:
+            if isinstance(item, dict):
+                collected.append((item.get("label"), item.get("value")))
+        if data.get("text"):
+            texts.append(str(data.get("text")))
+
+    profile = dict(worker.get("success_profile") or {})
+
+    def put(key, value):
+        if not key or profile.get(key):
+            return
+        if _text_value_ok_1591r12(key, value):
+            profile[key] = str(value).strip().strip(":;,")
+
+    for label, value in collected:
+        put(_text_label_key_1591r12(label), value)
+
+    for text in texts:
+        lines = [line.strip() for line in re.split(r"[\r\n]+", text)]
+        for index, line in enumerate(lines):
+            if not line:
+                continue
+            match = re.match(r"^([^:：]{2,40})[:：]\s*(.+)$", line)
+            if match:
+                put(_text_label_key_1591r12(match.group(1)), match.group(2))
+            elif _text_label_key_1591r12(line) and index + 1 < len(lines):
+                following = lines[index + 1]
+                if following and not _text_label_key_1591r12(following):
+                    put(_text_label_key_1591r12(line), following)
+
+    worker["success_profile"] = profile
+    worker["profile"] = dict(profile)
+    try:
+        diagnostic = worker.get("diagnostic")
+        if diagnostic and texts and not worker.get("success_text_dump_done"):
+            worker["success_text_dump_done"] = True
+            diagnostic.write("success_page_text_v1591r12", url=str(getattr(page, "url", "") or ""),
+                             text="\n".join(texts)[:20000])
+    except Exception:
+        pass
+    return profile
+
+
+'''
+README_NOTE_R12 = '''
+
+РЕВИЗИЯ 12 (fix_package_1591.py)
+Неполный профиль в SUCCESS-сообщении. На экране договора ФИО, пол и дата рождения показаны
+обычным текстом, а не полями формы, а оба существующих захвата (capture_contract_details и
+final_profile_capture_v1583) читают только value у input/select/textarea, поэтому эти поля
+оставались пустыми. Добавлен текстовый захват capture_success_profile_text_1591r12: читает
+пары «подпись: значение» из DOM и текста страницы, включая iframe; подписи сопоставляются
+целиком («номер договора» или «домашний телефон» не принимаются за номер паспорта и дом);
+каждое значение проверяется по типу (ФИО 2–4 слова с заглавных, пол, даты, серия 4 цифры,
+номер 6 цифр, дом/корпус/квартира короткие); уже считанные значения не перезаписываются.
+Вызывается из той же обёртки capture_contract_details, то есть во всех прежних точках
+(post-auth review, sign-wait, finalize_success). Один раз на worker текст страницы
+сохраняется в diagnostics (success_page_text_v1591r12) для проверки на реальном договоре.
+Маркер: SUCCESS_PROFILE_TEXT_1591R12.
 '''
 README_NOTE_R10 = '''
 
@@ -1189,8 +1416,9 @@ def main(argv: list[str]) -> int:
     speed_file = package / "symbol_matching.py"
     speed_done = speed_file.is_file() and MATCHER_SPEED_MARKER in speed_file.read_text("utf-8")
     if speed_done and all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER,
-                                                TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER)):
-        print("Already revision 11; nothing changed.")
+                                                TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER,
+                                                PROFILE_MARKER)):
+        print("Already revision 12; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -1382,6 +1610,13 @@ def main(argv: list[str]) -> int:
             new_source = replace_once(new_source, old, new, what)
             add_edit(edits["test_beeline.py"], source, old, new, reflected)
 
+    # 13 (r12). Text capture of the contract screen for the SUCCESS profile.
+    if PROFILE_MARKER not in source:
+        new_source = replace_once(new_source, OLD_CAPTURE_WRAPPER, PROFILE_TEXT_HELPER_R12 + NEW_CAPTURE_WRAPPER,
+                                  "contract capture wrapper")
+        add_edit(edits["test_beeline.py"], source, OLD_CAPTURE_WRAPPER, PROFILE_TEXT_HELPER_R12 + NEW_CAPTURE_WRAPPER,
+                 reflected)
+
     compile(new_source, "test_beeline.py", "exec")
     compile(test_src, "test_update.py", "exec")
     compile(install_src, "install.py", "exec")
@@ -1402,7 +1637,7 @@ def main(argv: list[str]) -> int:
     # A server that already runs the first 15.91 build is upgraded in place as well.
     manifest["files"]["test_beeline.py"]["previous_output_sha256"] = sorted(ACCEPTED_PACKAGE_SHAS)
     manifest["files"]["test_beeline.py"]["output_sha256"] = hashlib.sha256(new_source.encode("utf-8")).hexdigest()
-    manifest["revision"] = 11
+    manifest["revision"] = 12
 
     app.write_text(new_source, "utf-8")
     (package / "test_update.py").write_text(test_src, "utf-8")
@@ -1414,7 +1649,7 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 5", README_NOTE_R5), ("РЕВИЗИЯ 6", README_NOTE_R6),
                           ("РЕВИЗИЯ 7", README_NOTE_R7), ("РЕВИЗИЯ 8", README_NOTE_R8),
                           ("РЕВИЗИЯ 9", README_NOTE_R9), ("РЕВИЗИЯ 10", README_NOTE_R10),
-                          ("РЕВИЗИЯ 11", README_NOTE_R11)):
+                          ("РЕВИЗИЯ 11", README_NOTE_R11), ("РЕВИЗИЯ 12", README_NOTE_R12)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -1427,7 +1662,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 11, "result": "OK",
+    verification.update({"python": sys.version, "revision": 12, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -1443,7 +1678,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 11 applied to", package)
+    print("Revision 12 applied to", package)
     return 0
 
 
