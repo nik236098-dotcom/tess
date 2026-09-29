@@ -63,15 +63,25 @@ def mask(text):
 
 
 def cdp_url_from_journal():
+    """Port from the newest «Chromium #N готов» line of the current boot, else from ss."""
     try:
-        log = subprocess.run(["journalctl", "-u", "beeline", "-n", "5000", "--no-pager", "-o", "cat"],
-                             capture_output=True, text=True, timeout=30).stdout
+        log = subprocess.run(["journalctl", "-u", "beeline", "-b", "--no-pager", "-o", "cat"],
+                             capture_output=True, text=True, timeout=60).stdout
+        hits = re.findall(r"Chromium #\d+ готов: (http://127\.0\.0\.1:\d+)", log)
+        if hits:
+            return hits[-1]
     except Exception as exc:
-        raise SystemExit(f"journalctl недоступен ({exc}); укажите порт CDP аргументом")
-    hits = re.findall(r"Chromium #\d+ готов: (http://127\.0\.0\.1:\d+)", log)
-    if not hits:
-        raise SystemExit("В журнале нет строки «Chromium #1 готов: http://127.0.0.1:PORT»; укажите порт аргументом")
-    return hits[-1]
+        print(f"journalctl недоступен ({exc}), ищу порт через ss")
+    try:
+        ss = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True, timeout=30).stdout
+    except Exception as exc:
+        raise SystemExit(f"ss недоступен ({exc}); укажите порт CDP аргументом")
+    ports = [m.group(1) for m in re.finditer(r"127\.0\.0\.1:(\d+)\s.*(?:chrom|headless_shell)", ss, re.I)]
+    if not ports:
+        raise SystemExit("Порт CDP не найден ни в журнале, ни в ss -ltnp; укажите его аргументом")
+    if len(ports) > 1:
+        print("Найдено несколько портов Chromium:", ports, "— беру первый; остальные можно передать аргументом")
+    return f"http://127.0.0.1:{ports[0]}"
 
 
 def main(argv):
