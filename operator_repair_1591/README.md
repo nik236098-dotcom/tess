@@ -5,6 +5,33 @@
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
 
+## Новый сервер или переезд одной командой
+
+`fresh_install.sh` собирает сервер целиком из этого репозитория: системные пакеты и Xvfb,
+venv с Playwright/Chromium/numpy/OpenCV, код последней папки `beeline_integrated_io_15_91_r*/`,
+`local_matcher.py`, `PROJECT_RULES.md`, заготовки `batch_support.py`/`console_wait.py`, конфиги,
+preflight `install.py`, служба systemd и запуск. Ubuntu 22.04/24.04, под sudo.
+
+Переезд со старого сервера (конфиги, `clients.txt`, прогресс, результаты копируются по SSH,
+спросит пароль root старого сервера; бот на старом сервере перед этим остановить):
+
+```
+curl -fsSL https://raw.githubusercontent.com/nik236098-dotcom/tess/codex/operator-observer-15.87/operator_repair_1591/fresh_install.sh \
+  | sudo MIGRATE_FROM=root@СТАРЫЙ_IP:/opt/beeline bash
+```
+
+Совсем новый сервер без переезда (скрипт спросит ключ DeepSeek, токен и chat_id Telegram и прокси;
+в неинтерактивном запуске их задают переменные `DEEPSEEK_API_KEY`, `TELEGRAM_BOT_TOKEN`,
+`TELEGRAM_CHAT_ID`, `TELEGRAM_PROXY`):
+
+```
+curl -fsSL https://raw.githubusercontent.com/nik236098-dotcom/tess/codex/operator-observer-15.87/operator_repair_1591/fresh_install.sh | sudo bash
+```
+
+Код всегда берётся из пакета последней ревизии, поэтому старый сервер может быть любой версии.
+Дальнейшие обновления на таком сервере: `git clone` репозитория в домашнюю папку, затем
+`install.py` из последней папки пакета, как описано ниже (`sudo` перед `--apply`).
+
 ## Установка с сервера (Ubuntu)
 
 Один раз перед первой установкой добавьте прокси в конфиг (значение — то, что
@@ -118,6 +145,7 @@ python3 pkg/install.py --app /opt/beeline   # только проверка
 ```
 python3 -m unittest -v test_fix_package                       # без пакета: хэш и разметка edits
 PACKAGE_1591_DIR=pkg python3 -m unittest -v test_fix_package  # с пакетом: реальный logger, установщик, чексуммы
+# FreshInstallTests прогоняют fresh_install.sh в офлайн-режиме (без apt/venv/systemd), переезд требует rsync
 # тесты эквивалентности матчера 14.0/14.1 требуют numpy и opencv-python-headless
 ```
 
@@ -131,3 +159,4 @@ SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分
 自律的な SUCCESS/ERROR 分析要求を「2回まで、その後は30分に1回」に制限し、同一内容の報告が
 毎分届く問題を解消しています。
 リビジョン10では、CAPTCHA マッチャー `symbol_matching.py` を同じ結果のまま約4倍高速化しました（14.0 → 14.1）。
+`fresh_install.sh` は新しいサーバーの構築と移行を 1 コマンドで行います。

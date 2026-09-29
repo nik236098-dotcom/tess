@@ -452,5 +452,73 @@ class MatcherEquivalenceTests(unittest.TestCase):
         self.assertLess(totals["new"], totals["old"], "the 14.1 shape_costs must not be slower than 14.0")
 
 
+class FreshInstallTests(unittest.TestCase):
+    """fresh_install.sh builds a server from the repository alone (offline mode: no apt, venv, systemd)."""
+    SCRIPT = Path(__file__).resolve().parent / "fresh_install.sh"
+    CODE = ("test_beeline.py", "server_controller.py", "operator_runtime_io.py", "symbol_matching.py",
+            "local_matcher.py", "batch_support.py", "console_wait.py", "PROJECT_RULES.md")
+
+    def _run(self, app, **env):
+        full = dict(os.environ, APP_DIR=str(app), SKIP_APT="1", SKIP_VENV="1", NO_SERVICE="1", **env)
+        return subprocess.run(["bash", str(self.SCRIPT)], env=full, capture_output=True, text=True, timeout=600)
+
+    def test_fresh_install_from_repository(self):
+        with tempfile.TemporaryDirectory() as d:
+            app = Path(d) / "app"
+            run = self._run(app, DEEPSEEK_API_KEY="k", TELEGRAM_BOT_TOKEN="t", TELEGRAM_CHAT_ID="1",
+                            TELEGRAM_PROXY="socks5h://u:p@h:1")
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            self.assertIn("CHECK OK", run.stdout)
+            for name in self.CODE:
+                self.assertTrue((app / name).is_file(), name)
+            package = max(Path(__file__).resolve().parent.glob("beeline_integrated_io_15_91_r*"),
+                          key=lambda x: int(x.name.rsplit("r", 1)[1]))
+            for name in ("test_beeline.py", "server_controller.py", "operator_runtime_io.py", "symbol_matching.py"):
+                self.assertEqual((app / name).read_bytes(), (package / name).read_bytes(), name)
+            self.assertEqual((app / "local_matcher.py").read_bytes(),
+                             (Path(__file__).resolve().parent.parent / "local_matcher.py").read_bytes())
+            self.assertIn("def wait_confirmation", (app / "batch_support.py").read_text("utf-8"))
+            for name in ("telegram_config.json", "deepseek_config.json"):
+                self.assertEqual((app / name).stat().st_mode & 0o777, 0o600, name)
+            self.assertEqual(json.loads((app / "telegram_config.json").read_text())["proxy"], "socks5h://u:p@h:1")
+            self.assertTrue((app / "clients.txt").exists())
+
+    def test_fresh_install_refuses_without_secrets_when_not_interactive(self):
+        with tempfile.TemporaryDirectory() as d:
+            run = self._run(Path(d) / "app", DEEPSEEK_API_KEY="k")
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn("TELEGRAM_BOT_TOKEN", run.stdout + run.stderr)
+
+    @unittest.skipUnless(shutil.which("rsync"), "rsync not installed")
+    def test_migration_keeps_data_and_replaces_code(self):
+        with tempfile.TemporaryDirectory() as d:
+            old, app = Path(d) / "old", Path(d) / "app"
+            for sub in ("venv", "__pycache__", "last_match", "results"):
+                (old / sub).mkdir(parents=True)
+            (old / "test_beeline.py").write_text("OLD CODE")
+            (old / "symbol_matching.py").write_text("OLD MATCHER")
+            (old / "PROJECT_RULES.md").write_text("custom rules")
+            (old / "batch_support.py").write_text("# custom batch\ndef load_clients(p): return []\ndef wait_confirmation(*a, **k): return None\ndef save_result(*a, **k): return None\n")
+            (old / "telegram_config.json").write_text(json.dumps({"token": "T", "chat_id": "C", "proxy": "socks5h://u:p@h:1"}))
+            (old / "deepseek_config.json").write_text(json.dumps({"api_key": "K"}))
+            (old / "clients.txt").write_text("79990000000\tIvanov\n")
+            (old / "progress.sqlite3").write_text("progress")
+            (old / "results" / "2026.jsonl").write_text("res")
+            (old / "venv" / "x").write_text("junk"); (old / "last_match" / "x").write_text("junk")
+            run = self._run(app, MIGRATE_FROM=str(old))
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            self.assertIn("CHECK OK", run.stdout)
+            # data and customised files travel, code is the package copy, junk stays behind
+            self.assertEqual((app / "clients.txt").read_text(), "79990000000\tIvanov\n")
+            self.assertEqual((app / "progress.sqlite3").read_text(), "progress")
+            self.assertEqual((app / "results" / "2026.jsonl").read_text(), "res")
+            self.assertEqual((app / "PROJECT_RULES.md").read_text(), "custom rules")
+            self.assertTrue((app / "batch_support.py").read_text().startswith("# custom batch"))
+            self.assertEqual(json.loads((app / "telegram_config.json").read_text())["token"], "T")
+            self.assertIn(fix.MATCHER_SPEED_MARKER, (app / "symbol_matching.py").read_text("utf-8"))
+            self.assertIn(fix.MATCHER_MARKER, (app / "test_beeline.py").read_text("utf-8"))
+            self.assertFalse((app / "venv").exists()); self.assertFalse((app / "last_match").exists())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
