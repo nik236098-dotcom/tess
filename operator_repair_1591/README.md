@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 10 лежит в `beeline_integrated_io_15_91_r10/`. В нём нет
+Готовый пакет ревизии 11 лежит в `beeline_integrated_io_15_91_r11/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -52,7 +52,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r10
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r11
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -127,7 +127,15 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    файл только поверх серверного 14.0 (sha256 `915368d6…`, копия в
    `matcher_r10/symbol_matching_14_0_reference.py`) или уже установленного 14.1, иначе
    останавливается. `local_matcher.py` не трогается. Маркер: `MATCHER_SPEED_1591R10`.
-12. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+12. **Молчание DeepSeek до перезапуска (ревизия 11).** Линии FAST и DEV каждые 5 секунд
+   собирают worker-страницы через CDP и ставят телеметрию вызовом `page.evaluate`, у которого в
+   Playwright нет таймаута. Если вкладка перестала отвечать, вызов висит вечно, линия остаётся в
+   `busy_browser`, супервизор её не трогает, и сообщения копятся в очереди до перезапуска службы.
+   Теперь сбор страниц идёт в отдельном потоке с дедлайном 45 секунд: при превышении процесс
+   линии завершается, родитель перезапускает его и возвращает сообщения в очередь. Супервизор
+   дополнительно перезапускает линию, которая дольше 15 минут в любом состоянии `busy_*`.
+   Маркер: `OBSERVER_TIMEOUT_1591R11`.
+13. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -160,3 +168,4 @@ SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分
 毎分届く問題を解消しています。
 リビジョン10では、CAPTCHA マッチャー `symbol_matching.py` を同じ結果のまま約4倍高速化しました（14.0 → 14.1）。
 `fresh_install.sh` は新しいサーバーの構築と移行を 1 コマンドで行います。
+リビジョン11では、DeepSeek 監視レーンが応答しないタブの evaluate で永久に停止する問題を修正しました。

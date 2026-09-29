@@ -3652,8 +3652,50 @@ def _run_operator_terminal(command, timeout=120, cwd=None):
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "cwd": real_cwd}
 
 
-def _observer_collect_pages(cdp_urls, with_screenshots=True):
-    """Connects read-only to both Chromium instances and snapshots worker pages."""
+# OBSERVER_TIMEOUT_1591R11
+OBSERVER_COLLECT_TIMEOUT_SECONDS = 45
+AI_LANE_BUSY_CEILING_SECONDS = 900
+
+
+def _observer_collect_pages(cdp_urls, with_screenshots=True, timeout=None):
+    """Bounded page collection for the DeepSeek lanes.
+
+    page.evaluate has no timeout in Playwright: on a page that stopped answering (a tab
+    being replaced, a hung renderer) it never returns, the lane stays in busy_browser and
+    the supervisor leaves it alone. The unbounded collector therefore runs in its own
+    thread with its own Playwright instance; if it exceeds the deadline the lane process
+    exits and the parent respawns it, releasing its inbox claims.
+    """
+    import threading
+    limit = float(OBSERVER_COLLECT_TIMEOUT_SECONDS if timeout is None else timeout)
+    outcome = {}
+
+    def run():
+        try:
+            outcome["pages"] = _observer_collect_pages_unbounded(cdp_urls, with_screenshots=with_screenshots)
+        except BaseException as exc:  # re-raised in the caller
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=run, name="observer-collect-1591", daemon=True)
+    worker.start()
+    worker.join(limit)
+    if worker.is_alive():
+        print(
+            f"[AI] Сбор страниц не завершился за {limit:.0f} с (evaluate завис на неотвечающей "
+            "вкладке) — процесс наблюдателя завершается, родитель перезапустит его.",
+            flush=True,
+        )
+        os._exit(3)
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("pages", [])
+
+
+def _observer_collect_pages_unbounded(cdp_urls, with_screenshots=True):
+    """Connects read-only to both Chromium instances and snapshots worker pages.
+
+    Unbounded: call _observer_collect_pages, which adds the deadline.
+    """
     collected = []
     with sync_playwright() as p:
         for browser_no, cdp_url in enumerate(cdp_urls, 1):
@@ -7748,9 +7790,11 @@ def main():
             # Do not kill legitimate long work because of elapsed time.
             # A busy process is controlled by per-request socket timeout/retry and
             # tool completion. Only an IDLE process with a dead heartbeat is stale.
+            # OBSERVER_TIMEOUT_1591R11: a lane stuck in busy_* beyond the hard ceiling is
+            # restarted as well; a hung evaluate never comes back on its own.
             stale = (
-                not state.startswith("busy_")
-                and (now - last) > idle_limit
+                (not state.startswith("busy_") and (now - last) > idle_limit)
+                or (state.startswith("busy_") and (now - last) > AI_LANE_BUSY_CEILING_SECONDS)
             )
 
             if not dead and not stale:

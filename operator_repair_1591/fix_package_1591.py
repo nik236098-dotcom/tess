@@ -284,6 +284,87 @@ NEW_TEST_FIXTURE = ("        self.old={'test_beeline.py':b'old app','server_cont
                     "'operator_runtime_io.py':b'helper','symbol_matching.py':b'new matcher'})\n")
 OLD_TEST_COMPILE_LIST = "for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py'):"
 NEW_TEST_COMPILE_LIST = "for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py','symbol_matching.py'):"
+# Revision 11: the DeepSeek lanes hang in page.evaluate (no timeout in Playwright) when a
+# worker tab stops answering; the lane stays in busy_browser and the supervisor never restarts
+# it, so Telegram goes silent until the service is restarted. The page collector now runs in
+# its own thread with a deadline; on overrun the lane process exits and the parent respawns
+# it (releasing its inbox claims). The supervisor also restarts a lane stuck in busy_* beyond
+# a hard ceiling.
+OBSERVER_MARKER = "OBSERVER_TIMEOUT_1591R11"
+OLD_COLLECT_DEF = ('def _observer_collect_pages(cdp_urls, with_screenshots=True):\n'
+                   '    """Connects read-only to both Chromium instances and snapshots worker pages."""\n')
+NEW_COLLECT_DEF = ('def _observer_collect_pages_unbounded(cdp_urls, with_screenshots=True):\n'
+                   '    """Connects read-only to both Chromium instances and snapshots worker pages.\n'
+                   '\n'
+                   '    Unbounded: call _observer_collect_pages, which adds the deadline.\n'
+                   '    """\n')
+OBSERVER_HELPER_R11 = '''# OBSERVER_TIMEOUT_1591R11
+OBSERVER_COLLECT_TIMEOUT_SECONDS = 45
+AI_LANE_BUSY_CEILING_SECONDS = 900
+
+
+def _observer_collect_pages(cdp_urls, with_screenshots=True, timeout=None):
+    """Bounded page collection for the DeepSeek lanes.
+
+    page.evaluate has no timeout in Playwright: on a page that stopped answering (a tab
+    being replaced, a hung renderer) it never returns, the lane stays in busy_browser and
+    the supervisor leaves it alone. The unbounded collector therefore runs in its own
+    thread with its own Playwright instance; if it exceeds the deadline the lane process
+    exits and the parent respawns it, releasing its inbox claims.
+    """
+    import threading
+    limit = float(OBSERVER_COLLECT_TIMEOUT_SECONDS if timeout is None else timeout)
+    outcome = {}
+
+    def run():
+        try:
+            outcome["pages"] = _observer_collect_pages_unbounded(cdp_urls, with_screenshots=with_screenshots)
+        except BaseException as exc:  # re-raised in the caller
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=run, name="observer-collect-1591", daemon=True)
+    worker.start()
+    worker.join(limit)
+    if worker.is_alive():
+        print(
+            f"[AI] Сбор страниц не завершился за {limit:.0f} с (evaluate завис на неотвечающей "
+            "вкладке) — процесс наблюдателя завершается, родитель перезапустит его.",
+            flush=True,
+        )
+        os._exit(3)
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("pages", [])
+
+
+'''
+OLD_LANE_STALE = '''            stale = (
+                not state.startswith("busy_")
+                and (now - last) > idle_limit
+            )
+'''
+NEW_LANE_STALE = '''            # OBSERVER_TIMEOUT_1591R11: a lane stuck in busy_* beyond the hard ceiling is
+            # restarted as well; a hung evaluate never comes back on its own.
+            stale = (
+                (not state.startswith("busy_") and (now - last) > idle_limit)
+                or (state.startswith("busy_") and (now - last) > AI_LANE_BUSY_CEILING_SECONDS)
+            )
+'''
+README_NOTE_R11 = '''
+
+РЕВИЗИЯ 11 (fix_package_1591.py)
+Молчание DeepSeek до перезапуска. Линии FAST и DEV каждые 5 секунд собирают список
+worker-страниц через CDP и ставят на них телеметрию вызовом page.evaluate. У этого вызова в
+Playwright нет таймаута: если вкладка перестала отвечать (например, закрывается при
+восстановлении), вызов не возвращается никогда, линия остаётся в состоянии busy_browser, а
+супервизор такие линии не перезапускает. Сообщения копятся в очереди без claim до перезапуска
+службы, после которого разбираются все разом. Теперь сбор страниц идёт в отдельном потоке с
+дедлайном 45 секунд; при превышении процесс линии завершается, родитель перезапускает его и
+возвращает его сообщения в очередь. Супервизор дополнительно перезапускает линию, которая
+дольше 15 минут находится в любом состоянии busy_* (агент разработчика обновляет состояние на
+каждом раунде, поэтому легитимная работа под потолок не попадает).
+Маркер: OBSERVER_TIMEOUT_1591R11. Изменены _observer_collect_pages и _ensure_ai_lane_alive (в main).
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -1108,8 +1189,8 @@ def main(argv: list[str]) -> int:
     speed_file = package / "symbol_matching.py"
     speed_done = speed_file.is_file() and MATCHER_SPEED_MARKER in speed_file.read_text("utf-8")
     if speed_done and all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER,
-                                                TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER)):
-        print("Already revision 10; nothing changed.")
+                                                TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER)):
+        print("Already revision 11; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -1294,6 +1375,13 @@ def main(argv: list[str]) -> int:
         test_src = replace_once(test_src, OLD_TEST_COMPILE_LIST, NEW_TEST_COMPILE_LIST, "test_update.py compile list")
         test_src = replace_once(test_src, OLD_TEST_FIXTURE, NEW_TEST_FIXTURE, "test_update.py installer fixture")
 
+    # 12 (r11). Bounded page collection in the DeepSeek lanes; busy ceiling in the supervisor.
+    if OBSERVER_MARKER not in source:
+        for old, new, what in ((OLD_COLLECT_DEF, OBSERVER_HELPER_R11 + NEW_COLLECT_DEF, "observer collect wrapper"),
+                               (OLD_LANE_STALE, NEW_LANE_STALE, "lane busy ceiling")):
+            new_source = replace_once(new_source, old, new, what)
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+
     compile(new_source, "test_beeline.py", "exec")
     compile(test_src, "test_update.py", "exec")
     compile(install_src, "install.py", "exec")
@@ -1314,7 +1402,7 @@ def main(argv: list[str]) -> int:
     # A server that already runs the first 15.91 build is upgraded in place as well.
     manifest["files"]["test_beeline.py"]["previous_output_sha256"] = sorted(ACCEPTED_PACKAGE_SHAS)
     manifest["files"]["test_beeline.py"]["output_sha256"] = hashlib.sha256(new_source.encode("utf-8")).hexdigest()
-    manifest["revision"] = 10
+    manifest["revision"] = 11
 
     app.write_text(new_source, "utf-8")
     (package / "test_update.py").write_text(test_src, "utf-8")
@@ -1325,7 +1413,8 @@ def main(argv: list[str]) -> int:
     for heading, note in (("РЕВИЗИЯ 2", README_NOTE), ("РЕВИЗИЯ 3", README_NOTE_R3), ("РЕВИЗИЯ 4", README_NOTE_R4),
                           ("РЕВИЗИЯ 5", README_NOTE_R5), ("РЕВИЗИЯ 6", README_NOTE_R6),
                           ("РЕВИЗИЯ 7", README_NOTE_R7), ("РЕВИЗИЯ 8", README_NOTE_R8),
-                          ("РЕВИЗИЯ 9", README_NOTE_R9), ("РЕВИЗИЯ 10", README_NOTE_R10)):
+                          ("РЕВИЗИЯ 9", README_NOTE_R9), ("РЕВИЗИЯ 10", README_NOTE_R10),
+                          ("РЕВИЗИЯ 11", README_NOTE_R11)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -1338,7 +1427,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 10, "result": "OK",
+    verification.update({"python": sys.version, "revision": 11, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -1354,7 +1443,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 10 applied to", package)
+    print("Revision 11 applied to", package)
     return 0
 
 

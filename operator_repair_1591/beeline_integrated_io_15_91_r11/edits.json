@@ -331,6 +331,56 @@
       ]
     },
     {
+      "start": 3630,
+      "end": 3632,
+      "replacement": [
+        "# OBSERVER_TIMEOUT_1591R11\n",
+        "OBSERVER_COLLECT_TIMEOUT_SECONDS = 45\n",
+        "AI_LANE_BUSY_CEILING_SECONDS = 900\n",
+        "\n",
+        "\n",
+        "def _observer_collect_pages(cdp_urls, with_screenshots=True, timeout=None):\n",
+        "    \"\"\"Bounded page collection for the DeepSeek lanes.\n",
+        "\n",
+        "    page.evaluate has no timeout in Playwright: on a page that stopped answering (a tab\n",
+        "    being replaced, a hung renderer) it never returns, the lane stays in busy_browser and\n",
+        "    the supervisor leaves it alone. The unbounded collector therefore runs in its own\n",
+        "    thread with its own Playwright instance; if it exceeds the deadline the lane process\n",
+        "    exits and the parent respawns it, releasing its inbox claims.\n",
+        "    \"\"\"\n",
+        "    import threading\n",
+        "    limit = float(OBSERVER_COLLECT_TIMEOUT_SECONDS if timeout is None else timeout)\n",
+        "    outcome = {}\n",
+        "\n",
+        "    def run():\n",
+        "        try:\n",
+        "            outcome[\"pages\"] = _observer_collect_pages_unbounded(cdp_urls, with_screenshots=with_screenshots)\n",
+        "        except BaseException as exc:  # re-raised in the caller\n",
+        "            outcome[\"error\"] = exc\n",
+        "\n",
+        "    worker = threading.Thread(target=run, name=\"observer-collect-1591\", daemon=True)\n",
+        "    worker.start()\n",
+        "    worker.join(limit)\n",
+        "    if worker.is_alive():\n",
+        "        print(\n",
+        "            f\"[AI] Сбор страниц не завершился за {limit:.0f} с (evaluate завис на неотвечающей \"\n",
+        "            \"вкладке) — процесс наблюдателя завершается, родитель перезапустит его.\",\n",
+        "            flush=True,\n",
+        "        )\n",
+        "        os._exit(3)\n",
+        "    if \"error\" in outcome:\n",
+        "        raise outcome[\"error\"]\n",
+        "    return outcome.get(\"pages\", [])\n",
+        "\n",
+        "\n",
+        "def _observer_collect_pages_unbounded(cdp_urls, with_screenshots=True):\n",
+        "    \"\"\"Connects read-only to both Chromium instances and snapshots worker pages.\n",
+        "\n",
+        "    Unbounded: call _observer_collect_pages, which adds the deadline.\n",
+        "    \"\"\"\n"
+      ]
+    },
+    {
       "start": 3690,
       "end": 3735,
       "replacement": [
@@ -978,6 +1028,18 @@
         "            if min(logical_age, activity_age) >= ROW_START_STALL_SECONDS:\n",
         "                stalled.append((tab_id, proc, info, min(logical_age, activity_age)))\n",
         "            continue\n"
+      ]
+    },
+    {
+      "start": 7430,
+      "end": 7434,
+      "replacement": [
+        "            # OBSERVER_TIMEOUT_1591R11: a lane stuck in busy_* beyond the hard ceiling is\n",
+        "            # restarted as well; a hung evaluate never comes back on its own.\n",
+        "            stale = (\n",
+        "                (not state.startswith(\"busy_\") and (now - last) > idle_limit)\n",
+        "                or (state.startswith(\"busy_\") and (now - last) > AI_LANE_BUSY_CEILING_SECONDS)\n",
+        "            )\n"
       ]
     },
     {
