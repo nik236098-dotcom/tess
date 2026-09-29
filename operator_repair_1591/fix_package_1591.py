@@ -63,7 +63,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "747c7f08c994baa104d82ebb5d3302215bc4f1147e238b66629bd5037710c47d",
                          "e0f5748ea3f7c19e6409a1e4f63fc9e00c322f8c38365134af0f13bf4bd8e14f",
                          "04e07acd1a019a943c72237a6c6c61b34134f7b753ce3f3b484c832ce742ae9d",
-                         "21772a39422eeae8224f580beecad29171105885101b76f100190f6d64fd3e7c"}
+                         "21772a39422eeae8224f580beecad29171105885101b76f100190f6d64fd3e7c",
+                         "1cc1769f3ec9bd04b325be73fed182a4a05f082339820682601c3bd4be7483f6"}
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -980,6 +981,97 @@ README_NOTE_R15 = '''
 уведомление «пропущена без повтора», worker берёт следующую строку. Все остальные ошибки
 регистрации идут по правилу ревизии 5 без изменений. Маркер: PERSDATA_SKIP_1591R15.
 '''
+# Revision 16: every /registration/error after the confirmation is handled without DeepSeek:
+# the tab is replaced and the row is skipped at once (the retry-once of revision 5 is gone).
+ERRORSKIP_MARKER = "ERROR_SKIP_ALWAYS_1591R16"
+OLD_GUARD_HEAD_R15 = '''def enter_error_guard(worker, note):
+    # PERSDATA_SKIP_1591R15: a deterministic refusal is skipped at once, without the paid
+    # analysis and without a retry that would only repeat the same answer.
+    final = _error_page_final_reason(worker.get("page"))
+    if final and _error_skip_final(worker, final):
+        return
+    worker["error_guard"] = True
+    worker["success_guard"] = False
+    worker["phase"] = "ERROR_ASSIST"
+'''
+NEW_GUARD_HEAD_R16 = '''def enter_error_guard(worker, note):
+    # ERROR_SKIP_ALWAYS_1591R16: every /registration/error after the confirmation is handled
+    # without DeepSeek: the tab is replaced and the row is skipped at once. A page that names
+    # the cause (PERSDATA_SKIP_1591R15) supplies the precise reason for the record.
+    reason = _error_page_final_reason(worker.get("page")) or "registration/error после подтверждения"
+    if _error_skip_final(worker, reason):
+        return
+    # No fresh page yet: the error tick repeats the skip after a short dwell, still without
+    # an analysis request (the repeat-error branch of ERROR_RECOVERY_1591R5).
+    worker.setdefault("error_retry_counts", {})[_error_row_key(worker)] = ERROR_ROW_MAX_ATTEMPTS - 1
+    worker["error_guard"] = True
+    worker["success_guard"] = False
+    worker["phase"] = "ERROR_ASSIST"
+'''
+OLD_GUARD_TAIL = '''    set_tab_status(
+        worker, "🧠",
+        "Registration error — DeepSeek сначала анализирует. Автоперезапуск запрещён."
+    )
+    external_heartbeat(worker, note)
+    queue_error_assist(worker, note, force=True)
+'''
+NEW_GUARD_TAIL_R16 = '''    set_tab_status(
+        worker, "♻️",
+        "Registration error — вкладка будет перезапущена, строка пропущена. DeepSeek не вызывается."
+    )
+    external_heartbeat(worker, note)
+'''
+OLD_MISSION_R5_TEXT = ("ПРАВИЛО ОШИБКИ РЕГИСТРАЦИИ (ERROR_RECOVERY_1591R5): /registration/error — не успех, "
+    "но и не вечное ожидание. Сначала детальный анализ страницы (DOM, текст ошибки, console/network) "
+    "и мини-отчёт. После отчёта error-вкладка закрывается и открывается новая автоматически, без отдельного подтверждения: "
+    "runtime делает это сразу после твоего отчёта и повторяет ту же строку один раз. "
+    "При повторной ошибке на той же строке строка пропускается без нового анализа, worker берёт "
+    "следующую. Ни одна ошибка не должна приводить к потере worker. Запрет close/restart/reload "
+    "остаётся только для SUCCESS_GUARD.\"\"\"\n")
+NEW_MISSION_R16_TEXT = ("ПРАВИЛО ОШИБКИ РЕГИСТРАЦИИ (ERROR_RECOVERY_1591R5, ERROR_SKIP_ALWAYS_1591R16): "
+    "/registration/error — не успех. Runtime обрабатывает её сам, автоматически, без отдельного подтверждения "
+    "и без запроса к DeepSeek: error-вкладка закрывается, открывается новая, строка пропускается и записывается "
+    "в error_skipped_rows.txt, worker берёт следующую. Анализировать такие страницы не нужно. "
+    "Ни одна ошибка не должна приводить к потере worker. Запрет close/restart/reload "
+    "остаётся только для SUCCESS_GUARD.\"\"\"\n")
+OLD_AGENT_BLOCK_R5 = '''ERROR SUPERVISOR:
+- /registration/error НИКОГДА не является success.
+- Сначала самостоятельно изучи DOM, видимый текст, console/network и последние ответы API.
+  Определи конкретную причину и, если это безопасно, попробуй исправить на текущей странице.
+- Затем отправь мини-отчёт: причина, что проверил, что попробовал, результат, URL.
+- После детального анализа и отчёта error-вкладка закрывается и открывается новая
+  АВТОМАТИЧЕСКИ, без отдельного подтверждения: runtime делает это сразу после твоего
+  отчёта и повторяет ту же строку один раз. При повторной ошибке на той же строке
+  строка пропускается, worker переходит к следующей.
+- Из-за error worker никогда не теряется: слот всегда получает новую вкладку.
+- Запрет close/restart/reload/back/navigate действует только на SUCCESS GUARD.
+'''
+NEW_AGENT_BLOCK_R16 = '''ERROR SUPERVISOR:
+- /registration/error НИКОГДА не является success.
+- Такие страницы runtime обрабатывает АВТОМАТИЧЕСКИ, без отдельного подтверждения и без
+  твоего анализа: error-вкладка закрывается, открывается новая, строка пропускается
+  (error_skipped_rows.txt), worker переходит к следующей.
+- Не запрашивай и не проводи анализ /registration/error по своей инициативе.
+- Из-за error worker никогда не теряется: слот всегда получает новую вкладку.
+- Запрет close/restart/reload/back/navigate действует только на SUCCESS GUARD.
+'''
+OLD_QUEUE_SENTENCE_R5 = ('        "отдельного подтверждения, закроет эту error-вкладку, откроет новую и повторит строку один раз; "\n'
+                         '        "при повторной ошибке строка будет пропущена. Worker при этом не теряется. "\n')
+NEW_QUEUE_SENTENCE_R16 = ('        "отдельного подтверждения, закроет эту error-вкладку, откроет новую и пропустит строку без повтора. "\n'
+                          '        "Worker при этом не теряется. "\n')
+README_NOTE_R16 = '''
+
+РЕВИЗИЯ 16 (fix_package_1591.py)
+Ошибка регистрации без DeepSeek. Любая /registration/error после подтверждения теперь
+обрабатывается runtime сразу и без анализа: вкладка закрывается, открывается новая, строка
+пропускается с записью в error_skipped_rows.txt и уведомлением в Telegram, worker берёт
+следующую. Повтор «один раз» из ревизии 5 убран: он стоил новой капчи, нового подтверждения у
+клиента и платного анализа, а на волнах ошибок сайта давал те же ошибки. Если новую вкладку
+создать не удалось, worker через 15 секунд повторяет пропуск (ветка повторной ошибки r5), тоже
+без запроса к DeepSeek. Правило в системных инструкциях DeepSeek обновлено: анализировать такие
+страницы не нужно. Причина на странице (r15) по-прежнему записывается в третью колонку.
+Маркер: ERROR_SKIP_ALWAYS_1591R16.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -1806,8 +1898,9 @@ def main(argv: list[str]) -> int:
     speed_done = speed_file.is_file() and MATCHER_SPEED_MARKER in speed_file.read_text("utf-8")
     if speed_done and all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER,
                                                 TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER,
-                                                PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER, PERSDATA_MARKER)):
-        print("Already revision 15; nothing changed.")
+                                                PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER, PERSDATA_MARKER,
+                                                ERRORSKIP_MARKER)):
+        print("Already revision 16; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -2041,6 +2134,25 @@ def main(argv: list[str]) -> int:
         new_source = replace_once(new_source, OLD_ENTER_ERROR_GUARD, NEW_ENTER_ERROR_GUARD, "enter_error_guard")
         add_edit(edits["test_beeline.py"], source, OLD_ENTER_ERROR_GUARD, NEW_ENTER_ERROR_GUARD, reflected)
 
+    # 17 (r16). Every registration error: replace the tab and skip the row, no DeepSeek.
+    if ERRORSKIP_MARKER not in source:
+        for old, new, what in ((OLD_GUARD_HEAD_R15, NEW_GUARD_HEAD_R16, "enter_error_guard head r16"),
+                               (OLD_GUARD_TAIL, NEW_GUARD_TAIL_R16, "enter_error_guard tail r16"),
+                               (OLD_MISSION_R5_TEXT, NEW_MISSION_R16_TEXT, "mission rule r16"),
+                               (OLD_AGENT_BLOCK_R5, NEW_AGENT_BLOCK_R16, "agent error block r16"),
+                               (OLD_QUEUE_SENTENCE_R5, NEW_QUEUE_SENTENCE_R16, "queue_error_assist text r16")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -2066,7 +2178,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | {CONTROLLER_OUTPUT_SHA_R12}
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 15
+    manifest["revision"] = 16
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -2081,7 +2193,7 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 9", README_NOTE_R9), ("РЕВИЗИЯ 10", README_NOTE_R10),
                           ("РЕВИЗИЯ 11", README_NOTE_R11), ("РЕВИЗИЯ 12", README_NOTE_R12),
                           ("РЕВИЗИЯ 13", README_NOTE_R13), ("РЕВИЗИЯ 14", README_NOTE_R14),
-                          ("РЕВИЗИЯ 15", README_NOTE_R15)):
+                          ("РЕВИЗИЯ 15", README_NOTE_R15), ("РЕВИЗИЯ 16", README_NOTE_R16)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -2094,7 +2206,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 15, "result": "OK",
+    verification.update({"python": sys.version, "revision": 16, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -2110,7 +2222,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 15 applied to", package)
+    print("Revision 16 applied to", package)
     return 0
 
 

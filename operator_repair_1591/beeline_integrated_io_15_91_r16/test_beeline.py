@@ -889,8 +889,8 @@ def queue_error_assist(worker, reason, force=False):
         "Определи конкретную причину и, если это безопасно, попробуй исправить её на этой "
         "странице. Затем ОБЯЗАТЕЛЬНО отправь мини-отчёт: причина, что проверил, что "
         "попробовал, результат, URL. Сразу после твоего отчёта runtime автоматически, без "
-        "отдельного подтверждения, закроет эту error-вкладку, откроет новую и повторит строку один раз; "
-        "при повторной ошибке строка будет пропущена. Worker при этом не теряется. "
+        "отдельного подтверждения, закроет эту error-вкладку, откроет новую и пропустит строку без повтора. "
+        "Worker при этом не теряется. "
         "Сам вкладку не закрывай: это сделает runtime после отчёта. "
         f"Причина вызова: {reason}. URL: {url}"
     )
@@ -1718,7 +1718,7 @@ OPERATOR_MISSION_1586 = """У ТЕБЯ ЕСТЬ ПОСТОЯННОЕ АКТИВ�
 
 КРИТИЧЕСКОЕ ПРАВИЛО РОЛИ: никогда не говори «у меня нет задачи», «конкретного поручения нет», «я в режиме ожидания», «я просто наблюдатель» или эквивалент. Постоянная задача уже назначена выше. Если пользователь спрашивает «какая у тебя задача?», первым делом ответь, что твоя постоянная главная задача — автономный SUCCESS/ERROR Supervisor, а затем кратко опиши текущий живой статус. Для утверждений о состоянии «сейчас» используй только текущую service/runtime session и текущие вкладки; исторические ошибки не выдавай за текущие без свежего подтверждения.
 
-ПРАВИЛО ОШИБКИ РЕГИСТРАЦИИ (ERROR_RECOVERY_1591R5): /registration/error — не успех, но и не вечное ожидание. Сначала детальный анализ страницы (DOM, текст ошибки, console/network) и мини-отчёт. После отчёта error-вкладка закрывается и открывается новая автоматически, без отдельного подтверждения: runtime делает это сразу после твоего отчёта и повторяет ту же строку один раз. При повторной ошибке на той же строке строка пропускается без нового анализа, worker берёт следующую. Ни одна ошибка не должна приводить к потере worker. Запрет close/restart/reload остаётся только для SUCCESS_GUARD."""
+ПРАВИЛО ОШИБКИ РЕГИСТРАЦИИ (ERROR_RECOVERY_1591R5, ERROR_SKIP_ALWAYS_1591R16): /registration/error — не успех. Runtime обрабатывает её сам, автоматически, без отдельного подтверждения и без запроса к DeepSeek: error-вкладка закрывается, открывается новая, строка пропускается и записывается в error_skipped_rows.txt, worker берёт следующую. Анализировать такие страницы не нужно. Ни одна ошибка не должна приводить к потере worker. Запрет close/restart/reload остаётся только для SUCCESS_GUARD."""
 
 def _agent_system_prompt(status_map, pages, user_text):
     try:
@@ -1769,13 +1769,10 @@ def _agent_system_prompt(status_map, pages, user_text):
 
 ERROR SUPERVISOR:
 - /registration/error НИКОГДА не является success.
-- Сначала самостоятельно изучи DOM, видимый текст, console/network и последние ответы API.
-  Определи конкретную причину и, если это безопасно, попробуй исправить на текущей странице.
-- Затем отправь мини-отчёт: причина, что проверил, что попробовал, результат, URL.
-- После детального анализа и отчёта error-вкладка закрывается и открывается новая
-  АВТОМАТИЧЕСКИ, без отдельного подтверждения: runtime делает это сразу после твоего
-  отчёта и повторяет ту же строку один раз. При повторной ошибке на той же строке
-  строка пропускается, worker переходит к следующей.
+- Такие страницы runtime обрабатывает АВТОМАТИЧЕСКИ, без отдельного подтверждения и без
+  твоего анализа: error-вкладка закрывается, открывается новая, строка пропускается
+  (error_skipped_rows.txt), worker переходит к следующей.
+- Не запрашивай и не проводи анализ /registration/error по своей инициативе.
 - Из-за error worker никогда не теряется: слот всегда получает новую вкладку.
 - Запрет close/restart/reload/back/navigate действует только на SUCCESS GUARD.
 
@@ -6612,20 +6609,23 @@ def _error_skip_final(worker, reason):
 
 
 def enter_error_guard(worker, note):
-    # PERSDATA_SKIP_1591R15: a deterministic refusal is skipped at once, without the paid
-    # analysis and without a retry that would only repeat the same answer.
-    final = _error_page_final_reason(worker.get("page"))
-    if final and _error_skip_final(worker, final):
+    # ERROR_SKIP_ALWAYS_1591R16: every /registration/error after the confirmation is handled
+    # without DeepSeek: the tab is replaced and the row is skipped at once. A page that names
+    # the cause (PERSDATA_SKIP_1591R15) supplies the precise reason for the record.
+    reason = _error_page_final_reason(worker.get("page")) or "registration/error после подтверждения"
+    if _error_skip_final(worker, reason):
         return
+    # No fresh page yet: the error tick repeats the skip after a short dwell, still without
+    # an analysis request (the repeat-error branch of ERROR_RECOVERY_1591R5).
+    worker.setdefault("error_retry_counts", {})[_error_row_key(worker)] = ERROR_ROW_MAX_ATTEMPTS - 1
     worker["error_guard"] = True
     worker["success_guard"] = False
     worker["phase"] = "ERROR_ASSIST"
     set_tab_status(
-        worker, "🧠",
-        "Registration error — DeepSeek сначала анализирует. Автоперезапуск запрещён."
+        worker, "♻️",
+        "Registration error — вкладка будет перезапущена, строка пропущена. DeepSeek не вызывается."
     )
     external_heartbeat(worker, note)
-    queue_error_assist(worker, note, force=True)
 
 
 # ERROR_RECOVERY_1591R5
