@@ -6840,16 +6840,22 @@ def tick_post_auth_review(base_dir, worker):
     except Exception:
         pass
 
-    # A real site error is not success, but even here we do NOT destroy/reload
-    # the already-confirmed page. DeepSeek gets the page and decides how to help.
+    # POST_AUTH_ERROR_ROUTE_1591R14: /registration/error after auth is an ERROR under the
+    # registration/error policy (revision 5): DeepSeek analyses, then the runtime closes
+    # the tab, opens a new one and retries the row once; a repeat skips the row. This
+    # used to become SUCCESS_ASSIST, which has no recovery, and the worker waited for ever.
     if _post_auth_error_page(page):
-        worker["phase"] = "SUCCESS_ASSIST"
-        set_tab_status(
-            worker, "🧠",
-            "Подтверждение уже прошло. На post-auth странице ошибка — DeepSeek помогает."
+        capture_blackbox(worker, "registration_error_after_auth")
+        print(
+            f"[Вкладка {worker['id']}] На post-auth странице открылась /registration/error. "
+            "Это НЕ success. Сначала DeepSeek анализирует страницу; затем runtime повторит "
+            "строку по правилу registration/error.",
+            flush=True,
         )
-        external_heartbeat(worker, "success_post_auth_error")
-        queue_success_assist(worker, "post-auth error page")
+        enter_error_guard(
+            worker,
+            "после mobile-id-auth открылась /registration/error (post-auth review)",
+        )
         return
 
     # Site normally fills region itself. Touch it only when it is genuinely empty.

@@ -1020,6 +1020,29 @@
       ]
     },
     {
+      "start": 6386,
+      "end": 6397,
+      "replacement": [
+        "    # POST_AUTH_ERROR_ROUTE_1591R14: /registration/error after auth is an ERROR under the\n",
+        "    # registration/error policy (revision 5): DeepSeek analyses, then the runtime closes\n",
+        "    # the tab, opens a new one and retries the row once; a repeat skips the row. This\n",
+        "    # used to become SUCCESS_ASSIST, which has no recovery, and the worker waited for ever.\n",
+        "    if _post_auth_error_page(page):\n",
+        "        capture_blackbox(worker, \"registration_error_after_auth\")\n",
+        "        print(\n",
+        "            f\"[Вкладка {worker['id']}] На post-auth странице открылась /registration/error. \"\n",
+        "            \"Это НЕ success. Сначала DeepSeek анализирует страницу; затем runtime повторит \"\n",
+        "            \"строку по правилу registration/error.\",\n",
+        "            flush=True,\n",
+        "        )\n",
+        "        enter_error_guard(\n",
+        "            worker,\n",
+        "            \"после mobile-id-auth открылась /registration/error (post-auth review)\",\n",
+        "        )\n",
+        "        return\n"
+      ]
+    },
+    {
       "start": 6681,
       "end": 6681,
       "replacement": [

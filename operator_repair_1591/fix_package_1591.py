@@ -61,7 +61,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "6023e5266b8317cd0051fbec7988d0f65e30c10f26fc95309d960ebf995997c9",
                          "6852517bf0eadb15f70359ac93b9c49632926cb3aef9f817c712ea099330248b",
                          "747c7f08c994baa104d82ebb5d3302215bc4f1147e238b66629bd5037710c47d",
-                         "e0f5748ea3f7c19e6409a1e4f63fc9e00c322f8c38365134af0f13bf4bd8e14f"}
+                         "e0f5748ea3f7c19e6409a1e4f63fc9e00c322f8c38365134af0f13bf4bd8e14f",
+                         "04e07acd1a019a943c72237a6c6c61b34134f7b753ce3f3b484c832ce742ae9d"}
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -832,6 +833,52 @@ SUCCESS/ERROR-экране) и перед взятием новой строки
 завершении приходят уведомления. Пока хоть один worker занят строкой или разбором DeepSeek,
 перезапуск ждёт. Маркер: SCHEDULED_RESTART_1591R13 (test_beeline.py и server_controller.py).
 '''
+# Revision 14: /registration/error reached from the post-auth review went to SUCCESS_ASSIST
+# ("post-auth error page"), a branch with a success guard and no recovery, so the worker waited
+# for ever. It now takes the registration/error policy of revision 5 like the confirmation
+# and resend ticks do: analysis, then close, reopen, retry once, skip on repeat.
+POSTAUTH_MARKER = "POST_AUTH_ERROR_ROUTE_1591R14"
+OLD_POST_AUTH_ERROR = '''    # A real site error is not success, but even here we do NOT destroy/reload
+    # the already-confirmed page. DeepSeek gets the page and decides how to help.
+    if _post_auth_error_page(page):
+        worker["phase"] = "SUCCESS_ASSIST"
+        set_tab_status(
+            worker, "🧠",
+            "Подтверждение уже прошло. На post-auth странице ошибка — DeepSeek помогает."
+        )
+        external_heartbeat(worker, "success_post_auth_error")
+        queue_success_assist(worker, "post-auth error page")
+        return
+'''
+NEW_POST_AUTH_ERROR = '''    # POST_AUTH_ERROR_ROUTE_1591R14: /registration/error after auth is an ERROR under the
+    # registration/error policy (revision 5): DeepSeek analyses, then the runtime closes
+    # the tab, opens a new one and retries the row once; a repeat skips the row. This
+    # used to become SUCCESS_ASSIST, which has no recovery, and the worker waited for ever.
+    if _post_auth_error_page(page):
+        capture_blackbox(worker, "registration_error_after_auth")
+        print(
+            f"[Вкладка {worker['id']}] На post-auth странице открылась /registration/error. "
+            "Это НЕ success. Сначала DeepSeek анализирует страницу; затем runtime повторит "
+            "строку по правилу registration/error.",
+            flush=True,
+        )
+        enter_error_guard(
+            worker,
+            "после mobile-id-auth открылась /registration/error (post-auth review)",
+        )
+        return
+'''
+README_NOTE_R14 = '''
+
+РЕВИЗИЯ 14 (fix_package_1591.py)
+Ошибка регистрации на post-auth странице. Если /registration/error открывалась не сразу после
+подтверждения, а уже в фазе POST_AUTH_REVIEW (после циклов «отправить снова»), worker уходил в
+SUCCESS_ASSIST с пометкой «post-auth error page»: SUCCESS-guard, восстановления нет, worker
+ждал бесконечно, а DeepSeek получал повторные платные запросы. Теперь такая страница
+обрабатывается по правилу ревизии 5, как и в tick_confirmation/tick_resend: анализ DeepSeek,
+затем закрытие вкладки, новая вкладка, один повтор строки, при повторе пропуск.
+Маркер: POST_AUTH_ERROR_ROUTE_1591R14. Изменён tick_post_auth_review (переподписан в manifest).
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -1326,7 +1373,8 @@ SUPERVISOR) и в текст задания AUTO_ERROR_ASSIST. Запрет clos
 # Before: every tick in SUCCESS_ASSIST re-queued a full developer-agent run every 45 s
 # while the page did not change, and each run posted an identical report.
 ASSIST_MARKER = "AUTO_ASSIST_BUDGET_1591R4"
-RESIGNED_HANDLERS = {"queue_success_assist", "queue_error_assist", "tick_error_assist", "run_registration", "main"}
+RESIGNED_HANDLERS = {"queue_success_assist", "queue_error_assist", "tick_error_assist", "run_registration", "main",
+                     "tick_post_auth_review"}
 OLD_SUCCESS_THROTTLE = '''    now = monotonic()
     last = float(worker.get("success_ai_last_at") or 0)
     if not force and now - last < 45:
@@ -1657,8 +1705,8 @@ def main(argv: list[str]) -> int:
     speed_done = speed_file.is_file() and MATCHER_SPEED_MARKER in speed_file.read_text("utf-8")
     if speed_done and all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER,
                                                 TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER,
-                                                PROFILE_MARKER, RESTART_MARKER)):
-        print("Already revision 13; nothing changed.")
+                                                PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER)):
+        print("Already revision 14; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -1882,6 +1930,11 @@ def main(argv: list[str]) -> int:
             add_edit(edits["server_controller.py"], ctrl_source, old, new, ctrl_reflected)
         test_src = replace_once(test_src, OLD_TEST_CTRL_NS, NEW_TEST_CTRL_NS, "test_update.py controller fixture")
 
+    # 15 (r14). /registration/error in the post-auth review follows the error policy.
+    if POSTAUTH_MARKER not in source:
+        new_source = replace_once(new_source, OLD_POST_AUTH_ERROR, NEW_POST_AUTH_ERROR, "post-auth error route")
+        add_edit(edits["test_beeline.py"], source, OLD_POST_AUTH_ERROR, NEW_POST_AUTH_ERROR, reflected)
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -1907,7 +1960,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | {CONTROLLER_OUTPUT_SHA_R12}
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 13
+    manifest["revision"] = 14
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -1921,7 +1974,7 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 7", README_NOTE_R7), ("РЕВИЗИЯ 8", README_NOTE_R8),
                           ("РЕВИЗИЯ 9", README_NOTE_R9), ("РЕВИЗИЯ 10", README_NOTE_R10),
                           ("РЕВИЗИЯ 11", README_NOTE_R11), ("РЕВИЗИЯ 12", README_NOTE_R12),
-                          ("РЕВИЗИЯ 13", README_NOTE_R13)):
+                          ("РЕВИЗИЯ 13", README_NOTE_R13), ("РЕВИЗИЯ 14", README_NOTE_R14)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -1934,7 +1987,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 13, "result": "OK",
+    verification.update({"python": sys.version, "revision": 14, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -1950,7 +2003,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 13 applied to", package)
+    print("Revision 14 applied to", package)
     return 0
 
 

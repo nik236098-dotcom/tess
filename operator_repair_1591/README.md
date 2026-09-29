@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 13 лежит в `beeline_integrated_io_15_91_r13/`. В нём нет
+Готовый пакет ревизии 14 лежит в `beeline_integrated_io_15_91_r14/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -52,7 +52,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r13
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r14
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -153,7 +153,14 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    процесс заново; в Telegram приходят уведомления о начале и завершении. Пока хоть один worker
    занят строкой или разбором DeepSeek, перезапуск ждёт. Маркер: `SCHEDULED_RESTART_1591R13`
    (`test_beeline.py` и `server_controller.py`).
-15. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+15. **Ошибка регистрации на post-auth странице (ревизия 14).** Если `/registration/error`
+   открывалась уже в фазе `POST_AUTH_REVIEW` (после циклов «отправить снова»), worker уходил в
+   `SUCCESS_ASSIST` с пометкой «post-auth error page»: SUCCESS-guard, восстановления нет, worker
+   ждал бесконечно, DeepSeek получал повторные платные запросы. Теперь такая страница идёт по
+   правилу ревизии 5, как в `tick_confirmation`/`tick_resend`: анализ, закрытие вкладки, новая
+   вкладка, один повтор строки, при повторе пропуск. `tick_post_auth_review` переподписан в
+   manifest. Маркер: `POST_AUTH_ERROR_ROUTE_1591R14`.
+16. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -189,3 +196,4 @@ SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分
 リビジョン11では、DeepSeek 監視レーンが応答しないタブの evaluate で永久に停止する問題を修正しました。
 リビジョン12では、契約画面のテキストから氏名・性別・生年月日を読み取り、SUCCESS レポートを補完します。
 リビジョン13では、Telegram の `/restart 20m` で計画的な再起動を設定できます（各ワーカーが現在の行を完了してから再起動）。
+リビジョン14では、post-auth 画面での registration/error をリビジョン5のエラー方針で処理します。
