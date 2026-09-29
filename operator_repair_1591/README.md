@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 5 лежит в `beeline_integrated_io_15_91_r5/`. В нём нет
+Готовый пакет ревизии 6 лежит в `beeline_integrated_io_15_91_r6/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -25,7 +25,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r5
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r6
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -62,7 +62,14 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    выполняется всё равно; закрытая извне error-страница тоже не останавливает worker.
    Правило записано в системные инструкции DeepSeek и в текст задания. Маркер:
    `ERROR_RECOVERY_1591R5`.
-7. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+7. **Модальное окно поверх корзины (ревизия 6).** Портальный диалог («подбор номера»)
+   перехватывал клики по eSIM и кнопкам тарифа, и строка бесконечно перезапускалась.
+   Добавлен `dismiss_blocking_overlays()`: кнопка закрытия, затем Escape, в крайнем
+   случае снятие перехвата кликов без удаления DOM. Вызывается перед «изменить», перед
+   каждой попыткой «выбрать» и перед каждой попыткой выбора eSIM; для eSIM добавлены
+   клик `force=True` и JS-fallback. Закрытие вкладки через CDP: 20 с и одна повторная
+   попытка. Маркер: `OVERLAY_DISMISS_1591R6`.
+8. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -84,7 +91,7 @@ PACKAGE_1591_DIR=pkg python3 -m unittest -v test_fix_package  # с пакето�
 
 ---
 
-日本語: 同僚の 15.91 パッケージに対する修正スクリプトと、修正済みパッケージ（リビジョン5）です。
+日本語: 同僚の 15.91 パッケージに対する修正スクリプトと、修正済みパッケージ（リビジョン6）です。
 SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分割配信に置き換え、Python 3.13 依存だった
 ハッシュテストを修正し、インストーラーがパッケージ内のコピーをそのまま配置するようにしました。
 プロキシのログイン情報はコードから外し、サーバーの `telegram_config.json` の `"proxy"` キーから

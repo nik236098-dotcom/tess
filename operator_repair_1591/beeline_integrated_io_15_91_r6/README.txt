@@ -154,3 +154,14 @@ Telegram), worker берёт следующую. Если анализ не пр
 worker. Правило добавлено в системные инструкции (OPERATOR_MISSION_1586, блок ERROR
 SUPERVISOR) и в текст задания AUTO_ERROR_ASSIST. Запрет close/restart остаётся только
 для SUCCESS_GUARD. Изменён tick_error_assist; обработчики подписи/страницы не тронуты.
+
+РЕВИЗИЯ 6 (fix_package_1591.py)
+Портальное модальное окно (role="dialog" aria-modal="true", «подбор номера») стало
+перекрывать корзину: клики Playwright по eSIM и кнопкам тарифа перехватывались, и
+строка бесконечно уходила в same-row restart. Добавлен dismiss_blocking_overlays():
+кнопка закрытия внутри диалога, затем Escape, в крайнем случае снятие перехвата
+кликов без удаления DOM. Вызывается перед «изменить», перед каждой попыткой «выбрать»
+и перед каждой попыткой выбора eSIM; для eSIM добавлены клик force=True и JS-fallback.
+Таймаут закрытия вкладки через CDP увеличен с 8 до 20 с плюс одна повторная попытка.
+Маркер: OVERLAY_DISMISS_1591R6. Изменены select_esim, run_registration (только
+click_tariff_change и цикл «выбрать») и _close_cdp_page_for_worker (имя и вызовы прежние).

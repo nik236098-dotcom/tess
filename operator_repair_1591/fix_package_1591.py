@@ -192,21 +192,23 @@ NEW_CHOOSE_LOOP = '''        for choose_attempt in range(1, 4):
             ).nth(1)
 '''
 OLD_CDP_DEF = "def _close_cdp_page_for_worker(cdp_url, info, timeout=8):\n"
-NEW_CDP_DEF = "def _close_cdp_page_for_worker_once(cdp_url, info, timeout=20):\n"
-CDP_WRAPPER_R6 = '''
-
-def _close_cdp_page_for_worker(cdp_url, info, timeout=20, attempts=2):
+CDP_HEAD_R6 = '''def _close_cdp_page_for_worker(cdp_url, info, timeout=20, attempts=2):
     """OVERLAY_DISMISS_1591R6: a Chromium busy with orphan pages needs more than 8 s;
-    retry once before reporting failure. The caller already refuses to create a
-    replacement while the old page is still open."""
+    one real close attempt is retried once. Refusals (guard, no window_name) are final.
+    The caller already refuses to create a replacement while the old page is open."""
+'''
+CDP_TAIL_R6 = '''
+    if _io1591.guarded(info or {}) or not str((info or {}).get("window_name") or "").strip():
+        return _once(cdp_url, info, timeout=timeout)
+    import time as _time
     for attempt in range(1, attempts + 1):
         try:
-            if _close_cdp_page_for_worker_once(cdp_url, info, timeout=timeout):
+            if _once(cdp_url, info, timeout=timeout):
                 return True
         except Exception:
             pass
         if attempt < attempts:
-            time.sleep(2)
+            _time.sleep(2)
     return False
 '''
 README_NOTE_R6 = '''
@@ -220,7 +222,7 @@ README_NOTE_R6 = '''
 и перед каждой попыткой выбора eSIM; для eSIM добавлены клик force=True и JS-fallback.
 Таймаут закрытия вкладки через CDP увеличен с 8 до 20 с плюс одна повторная попытка.
 Маркер: OVERLAY_DISMISS_1591R6. Изменены select_esim, run_registration (только
-click_tariff_change и цикл «выбрать») и _close_cdp_page_for_worker.
+click_tariff_change и цикл «выбрать») и _close_cdp_page_for_worker (имя и вызовы прежние).
 '''
 MISSION_RULE_R5 = (
     "\n\nПРАВИЛО ОШИБКИ РЕГИСТРАЦИИ (ERROR_RECOVERY_1591R5): /registration/error — не успех, "
@@ -657,26 +659,38 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
     """Record the new change in edits.json using the ORIGINAL (input) line numbers.
 
     `reflected` are the edits already applied in output_before (default: all of `edits`);
-    edits appended during the same run are not part of output_before and must not shift lines.
+    edits appended during the same run are not part of output_before and must not shift
+    lines. An earlier edit that lies completely inside old_block is absorbed: its effect
+    is already part of old_block, so the new entry replaces it. Partial overlaps are refused.
     """
     reflected = edits if reflected is None else reflected
     out_lines = output_before.splitlines(keepends=True)
     old_lines = old_block.splitlines(keepends=True)
     starts = [i for i in range(len(out_lines)) if out_lines[i:i + len(old_lines)] == old_lines]
     if len(starts) != 1:
-        raise SystemExit("edits.json: SUCCESS push block not unique in the package output")
+        raise SystemExit(f"edits.json: block not unique in the package output ({len(starts)} matches): {old_lines[0][:60]!r}")
     out_start = starts[0]
-    delta = 0
-    for change in sorted(reflected, key=lambda c: c["start"]):
-        shift = len(change["replacement"]) - (change["end"] - change["start"])
-        if change["start"] + delta + shift <= out_start:
-            delta += shift
-    in_start = out_start - delta
-    for change in edits:
-        if change["start"] < in_start + len(old_lines) and in_start < change["end"]:
-            raise SystemExit("edits.json: the SUCCESS push block overlaps an existing edit")
-    edits.append({"start": in_start, "end": in_start + len(old_lines),
-                  "replacement": new_block.splitlines(keepends=True)})
+    out_end = out_start + len(old_lines)
+
+    def to_input(x):
+        delta = 0
+        for change in sorted(reflected, key=lambda c: c["start"]):
+            shift = len(change["replacement"]) - (change["end"] - change["start"])
+            out_s = change["start"] + delta
+            out_e = out_s + len(change["replacement"])
+            if out_e <= x:
+                delta += shift
+            elif out_s < x < out_e:
+                raise SystemExit("edits.json: the new block cuts through an earlier edit; source unchanged")
+        return x - delta
+
+    in_start, in_end = to_input(out_start), to_input(out_end)
+    absorbed = [c for c in reflected if in_start <= c["start"] and c["end"] <= in_end
+                and c["start"] + 0 >= in_start]
+    for c in list(edits):
+        if any(c is a or c == a for a in absorbed):
+            edits.remove(c)
+    edits.append({"start": in_start, "end": in_end, "replacement": new_block.splitlines(keepends=True)})
     edits.sort(key=lambda c: c["start"])
 
 
@@ -784,18 +798,21 @@ def main(argv: list[str]) -> int:
         add_edit(edits["test_beeline.py"], source, anchor, OVERLAY_HELPER_R6 + anchor, reflected)
         for old, new, what in ((OLD_SELECT_ESIM_ATTEMPT, NEW_SELECT_ESIM_ATTEMPT, "select_esim attempt"),
                                (OLD_TARIFF_CLICK, NEW_TARIFF_CLICK, "click_tariff_change loop"),
-                               (OLD_CHOOSE_LOOP, NEW_CHOOSE_LOOP, "second choose loop"),
-                               (OLD_CDP_DEF, NEW_CDP_DEF, "CDP close def")):
+                               (OLD_CHOOSE_LOOP, NEW_CHOOSE_LOOP, "second choose loop")):
             new_source = replace_once(new_source, old, new, what)
             add_edit(edits["test_beeline.py"], source, old, new, reflected)
-        fn = only_function(new_source, "_close_cdp_page_for_worker_once")
-        _, b = node_range(new_source, fn)
-        new_source = new_source[:b] + CDP_WRAPPER_R6 + new_source[b:]
-        # edits.json: the wrapper is appended right after the renamed function's last line.
-        fn_old = only_function(source, "_close_cdp_page_for_worker")
-        _, b_old = node_range(source, fn_old)
-        last_line = source[:b_old].splitlines(keepends=True)[-1]
-        add_edit(edits["test_beeline.py"], source, last_line, last_line + CDP_WRAPPER_R6, reflected)
+        # CDP close: the original body becomes the nested _once(); the same top-level name
+        # gains a 20 s timeout and one retry. Tests that extract the function by name still work.
+        fn = only_function(new_source, "_close_cdp_page_for_worker")
+        a, b = node_range(new_source, fn)
+        old_fn = new_source[a:b]
+        if not old_fn.startswith(OLD_CDP_DEF):
+            raise SystemExit("_close_cdp_page_for_worker signature differs; source unchanged")
+        nested = "".join(("    " + line if line.strip() else line) for line in old_fn.splitlines(keepends=True))
+        nested = nested.replace("    " + OLD_CDP_DEF, "    def _once(cdp_url, info, timeout=20):\n", 1)
+        new_fn = CDP_HEAD_R6 + nested + CDP_TAIL_R6
+        new_source = new_source[:a] + new_fn + new_source[b:]
+        add_edit(edits["test_beeline.py"], source, old_fn, new_fn, reflected)
 
     compile(new_source, "test_beeline.py", "exec")
     compile(test_src, "test_update.py", "exec")

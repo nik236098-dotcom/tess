@@ -4499,6 +4499,62 @@ def write_success_record(base_dir, worker):
 
 
 
+# OVERLAY_DISMISS_1591R6
+_MODAL_DIALOG_SELECTOR = '[role="dialog"][aria-modal="true"]'
+
+
+def _visible_modal_dialogs(page):
+    return int(page.evaluate("""() => [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')]
+        .filter(el => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+            return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'; }).length""") or 0)
+
+
+def dismiss_blocking_overlays(page, attempts=3):
+    """Close a portal modal that intercepts clicks on the basket page.
+
+    Order: a visible close button inside the dialog, then Escape; as a last resort the
+    dialog stops intercepting pointer events. The DOM is never removed, the basket is kept.
+    Returns True when no modal dialog is visible afterwards.
+    """
+    for _ in range(attempts):
+        try:
+            if not _visible_modal_dialogs(page):
+                return True
+        except Exception:
+            return True
+        closed = False
+        dialog = page.locator(_MODAL_DIALOG_SELECTOR).last
+        for close_button in (
+            dialog.get_by_role("button", name=re.compile(r"закрыть|close|✕|×", re.I)),
+            dialog.locator('button[aria-label*="акрыть" i], button[aria-label*="close" i], [data-testid*="close" i]'),
+        ):
+            try:
+                if close_button.count() > 0:
+                    close_button.first.click(timeout=1500, no_wait_after=True)
+                    closed = True
+                    break
+            except Exception:
+                pass
+        if not closed:
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+        try:
+            page.wait_for_timeout(300)
+        except Exception:
+            pass
+    try:
+        if not _visible_modal_dialogs(page):
+            return True
+        page.evaluate("""() => document.querySelectorAll('[role="dialog"][aria-modal="true"]')
+            .forEach(el => { el.style.pointerEvents = 'none'; })""")
+        print("Модальное окно не закрылось; снял перехват кликов, DOM не трогал.", flush=True)
+    except Exception:
+        pass
+    return False
+
+
 def esim_state(page):
     return page.evaluate("""() => {
         const el = document.querySelector('input#esim[name="sim"]');
@@ -4530,6 +4586,7 @@ def select_esim(page):
         if esim_state(page)["selected"] and wait_esim_stable(page, timeout=2):
             return
         print(f"Выбор eSIM: попытка {attempt}/3...", flush=True)
+        dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6
         radio = page.locator('input#esim[name="sim"]')
         try:
             radio.wait_for(state="visible", timeout=10000)
@@ -4539,6 +4596,26 @@ def select_esim(page):
                 radio.click(timeout=5000)
         except PlaywrightTimeoutError:
             print("Нажатие не подтверждено; проверяю состояние переключателя.")
+        if not esim_state(page)["selected"]:
+            # The pointer may still be intercepted by a portal layer: click through it.
+            try:
+                radio.click(timeout=3000, force=True, no_wait_after=True)
+            except Exception:
+                pass
+        if not esim_state(page)["selected"]:
+            try:
+                page.evaluate("""() => {
+                    const el = document.querySelector('input#esim[name="sim"]');
+                    if (!el) return;
+                    const label = el.closest('label');
+                    if (label) label.click(); else el.click();
+                    if (!el.checked) {
+                        el.checked = true;
+                        for (const t of ['input', 'change']) el.dispatchEvent(new Event(t, {bubbles: true}));
+                    }
+                }""")
+            except Exception:
+                pass
         if wait_esim_stable(page):
             print("Выбор eSIM устойчиво подтверждён.")
             return
@@ -4947,10 +5024,16 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
                 page.locator("button").filter(has_text=re.compile(r"^\s*изменить\s*$", re.I)),
             ]
             last_error = None
+            dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6
             for candidate in candidates:
                 try:
                     expect(candidate.first).to_be_visible(timeout=20000)
-                    candidate.first.click(timeout=15000, no_wait_after=True)
+                    try:
+                        candidate.first.click(timeout=15000, no_wait_after=True)
+                    except PlaywrightTimeoutError:
+                        # The button is ready; a portal modal intercepts the pointer.
+                        dismiss_blocking_overlays(page)
+                        candidate.first.click(timeout=15000, no_wait_after=True, force=True)
                     return
                 except (PlaywrightTimeoutError, AssertionError) as exc:
                     last_error = exc
@@ -4967,6 +5050,7 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
         print("Нажимаю вторую кнопку «выбрать», как в записи...")
         choose_clicked = False
         for choose_attempt in range(1, 4):
+            dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6
             choose_button = page.get_by_role(
                 "button", name="выбрать", exact=True
             ).nth(1)
@@ -6991,51 +7075,68 @@ def _wait_cdp(port, timeout=25):
 
 
 
-def _close_cdp_page_for_worker(cdp_url, info, timeout=8):
-    """Close only the exact physical worker page from heartbeat identity."""
-    if _io1591.guarded(info or {}):
-        return False
-    expected_name = str((info or {}).get("window_name") or "").strip()
-    if not expected_name:
-        print(
-            "[WATCHDOG] У worker нет точного window_name — чужие вкладки не закрываю.",
-            flush=True,
-        )
-        return False
-
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.connect_over_cdp(
-                cdp_url, timeout=int(timeout * 1000)
+def _close_cdp_page_for_worker(cdp_url, info, timeout=20, attempts=2):
+    """OVERLAY_DISMISS_1591R6: a Chromium busy with orphan pages needs more than 8 s;
+    one real close attempt is retried once. Refusals (guard, no window_name) are final.
+    The caller already refuses to create a replacement while the old page is open."""
+    def _once(cdp_url, info, timeout=20):
+        """Close only the exact physical worker page from heartbeat identity."""
+        if _io1591.guarded(info or {}):
+            return False
+        expected_name = str((info or {}).get("window_name") or "").strip()
+        if not expected_name:
+            print(
+                "[WATCHDOG] У worker нет точного window_name — чужие вкладки не закрываю.",
+                flush=True,
             )
-            for context in browser.contexts:
-                for page in context.pages:
-                    try:
-                        name = str(page.evaluate("() => window.name || ''"))
-                    except Exception:
-                        continue
-                    if name != expected_name:
-                        continue
-                    page.close(run_before_unload=False)
-                    print(
-                        f"[WATCHDOG] Закрыта точная worker-вкладка {expected_name}.",
-                        flush=True,
-                    )
-                    return True
+            return False
 
-        # Page already absent is safe: there is nothing left to close.
-        print(
-            f"[WATCHDOG] {expected_name} уже отсутствует. Чужие вкладки не трогаю.",
-            flush=True,
-        )
-        return True
-    except Exception as exc:
-        print(
-            f"[WATCHDOG] Не удалось закрыть {expected_name}: "
-            f"{type(exc).__name__}: {exc}",
-            flush=True,
-        )
-        return False
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.connect_over_cdp(
+                    cdp_url, timeout=int(timeout * 1000)
+                )
+                for context in browser.contexts:
+                    for page in context.pages:
+                        try:
+                            name = str(page.evaluate("() => window.name || ''"))
+                        except Exception:
+                            continue
+                        if name != expected_name:
+                            continue
+                        page.close(run_before_unload=False)
+                        print(
+                            f"[WATCHDOG] Закрыта точная worker-вкладка {expected_name}.",
+                            flush=True,
+                        )
+                        return True
+
+            # Page already absent is safe: there is nothing left to close.
+            print(
+                f"[WATCHDOG] {expected_name} уже отсутствует. Чужие вкладки не трогаю.",
+                flush=True,
+            )
+            return True
+        except Exception as exc:
+            print(
+                f"[WATCHDOG] Не удалось закрыть {expected_name}: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return False
+
+    if _io1591.guarded(info or {}) or not str((info or {}).get("window_name") or "").strip():
+        return _once(cdp_url, info, timeout=timeout)
+    import time as _time
+    for attempt in range(1, attempts + 1):
+        try:
+            if _once(cdp_url, info, timeout=timeout):
+                return True
+        except Exception:
+            pass
+        if attempt < attempts:
+            _time.sleep(2)
+    return False
 
 
 
