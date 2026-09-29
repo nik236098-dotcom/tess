@@ -285,3 +285,17 @@ SUCCESS_ASSIST с пометкой «post-auth error page»: SUCCESS-guard, во
 отчётов DeepSeek поиском по чату. Число рабочих вкладок на Chromium увеличено с 3 до 4
 (TABS_PER_BROWSER = 4): каскад, статусы, watchdog и промпты DeepSeek берут число из
 константы, поэтому больше ничего не менялось. Маркер: SUCCESS_TAG_1591R17.
+
+РЕВИЗИЯ 18 (fix_package_1591.py)
+Зависание всего Chromium. Когда браузер принимает CDP-соединение, но не отвечает на
+команды (BrowserType.connect_over_cdp: Timeout), watchdog не мог закрыть ни одну вкладку и
+крутился по кругу: «старую вкладку закрыть не удалось; replacement пока не создаю».
+Теперь _close_cdp_page_for_worker отмечает такие отказы по адресу браузера
+(_note_cdp_result / cdp_unreachable_seconds); если они длятся BROWSER_HANG_RESTART_SECONDS
+(120 с), restart_browser_instance завершает worker этого браузера, убивает Chromium,
+поднимает новый на том же порту (запасной вариант — свободный порт) и пересоздаёт вкладки:
+строки в работе повторяются, вкладки под success/error guard и завершившие confirm берут
+следующую строку, слоты DONE/MANUAL_STOP/RESTART_WAIT не трогаются. Если Chromium не
+поднялся — выход с RESTART_EXIT_CODE, контроллер перезапускает процесс. Флаги запуска
+Chromium повторены в _chromium_launch_args. В watchdog-статусе Telegram литеральный «\n»
+заменён настоящим переводом строки. Маркер: BROWSER_HANG_1591R18.

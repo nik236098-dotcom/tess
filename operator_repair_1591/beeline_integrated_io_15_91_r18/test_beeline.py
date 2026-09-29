@@ -7455,6 +7455,84 @@ def _wait_cdp(port, timeout=25):
     return False
 
 
+# BROWSER_HANG_1591R18: a Chromium whose CDP socket accepts the connection but never
+# answers (connect_over_cdp timeout) blocks every tab of that browser. The watchdog can
+# only replace tabs, so after BROWSER_HANG_RESTART_SECONDS of continuous refusals the
+# whole browser process is replaced on the same port and its workers are respawned.
+BROWSER_HANG_RESTART_SECONDS = 120
+_CDP_UNREACHABLE_SINCE = {}
+
+
+def _note_cdp_result(cdp_url, exc, now=None):
+    """Remember since when `cdp_url` refuses CDP commands; `exc=None` means it answered."""
+    key = str(cdp_url)
+    if exc is None:
+        _CDP_UNREACHABLE_SINCE.pop(key, None)
+        return
+    text = f"{type(exc).__name__}: {exc}"
+    if "connect_over_cdp" in text and "Timeout" in text:
+        _CDP_UNREACHABLE_SINCE.setdefault(key, now if now is not None else monotonic())
+
+
+def cdp_unreachable_seconds(cdp_url, now=None):
+    since = _CDP_UNREACHABLE_SINCE.get(str(cdp_url))
+    if since is None:
+        return 0.0
+    return (now if now is not None else monotonic()) - since
+
+
+def _chromium_launch_args(chromium_exe, port, profile):
+    """Same flags as args_i in main() (test_update checks that literal list stays there)."""
+    return [
+        chromium_exe,
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={profile}",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-popup-blocking",
+        "about:blank",
+    ]
+
+
+def _terminate_chromium(instance):
+    proc = instance.get("proc")
+    try:
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+    except Exception:
+        pass
+    if instance.get("profile"):
+        shutil.rmtree(str(instance["profile"]), ignore_errors=True)
+
+
+def _relaunch_chromium(instance, chromium_exe, popen=None, wait_cdp=None, free_port=None):
+    """Start a fresh Chromium for `instance`: the old port first (cdp_url stays valid for
+    the observers), a free port as the fallback. Returns False when neither came up."""
+    popen = popen or subprocess.Popen
+    wait_cdp = wait_cdp or _wait_cdp
+    free_port = free_port or _free_local_port
+    for attempt in range(2):
+        port = instance["port"] if attempt == 0 else free_port()
+        profile = tempfile.mkdtemp(prefix=f"esim_pw_browser{instance['id']}_")
+        instance["proc"] = popen(_chromium_launch_args(chromium_exe, port, profile))
+        instance["profile"] = profile
+        if wait_cdp(port):
+            _CDP_UNREACHABLE_SINCE.pop(str(instance.get("cdp_url")), None)
+            instance["port"] = port
+            instance["cdp_url"] = f"http://127.0.0.1:{port}"
+            _CDP_UNREACHABLE_SINCE.pop(instance["cdp_url"], None)
+            return True
+        _terminate_chromium(instance)
+    return False
+
+
 
 def _close_cdp_page_for_worker(cdp_url, info, timeout=20, attempts=2):
     """OVERLAY_DISMISS_1591R6: a Chromium busy with orphan pages needs more than 8 s;
@@ -7477,6 +7555,7 @@ def _close_cdp_page_for_worker(cdp_url, info, timeout=20, attempts=2):
                 browser = p.chromium.connect_over_cdp(
                     cdp_url, timeout=int(timeout * 1000)
                 )
+                _note_cdp_result(cdp_url, None)  # BROWSER_HANG_1591R18: the browser answered
                 for context in browser.contexts:
                     for page in context.pages:
                         try:
@@ -7499,6 +7578,7 @@ def _close_cdp_page_for_worker(cdp_url, info, timeout=20, attempts=2):
             )
             return True
         except Exception as exc:
+            _note_cdp_result(cdp_url, exc)  # BROWSER_HANG_1591R18
             print(
                 f"[WATCHDOG] Не удалось закрыть {expected_name}: "
                 f"{type(exc).__name__}: {exc}",
@@ -7963,7 +8043,7 @@ def main():
             flush=True,
         )
     print(f"Загружено новых записей: {len(clients)} (в исходном файле: {total_source_rows})")
-    print("ЭКСПЕРИМЕНТ: запускаю 1 Chromium и 3 рабочие вкладки. Общая очередь строк.")
+    print(f"Запускаю {BROWSER_COUNT} Chromium и {TAB_COUNT} рабочие вкладки. Общая очередь строк.")  # BROWSER_HANG_1591R18
 
     # Два полностью независимых Chromium: отдельный процесс, CDP-порт и профиль.
     # Общими остаются только очередь строк, Telegram status_map и persistent progress.
@@ -8208,6 +8288,74 @@ def main():
             processes[tab_id] = proc
             return proc, ready_event
 
+        def restart_browser_instance(browser_idx, reason):  # BROWSER_HANG_1591R18
+            """Chromium stopped answering CDP: replace the browser process and its worker tabs.
+
+            A tab still working a row gets the same row again. A tab under success/error
+            guard, or one that already completed its confirm cycle, takes the next row so
+            nothing is submitted twice. DONE / MANUAL_STOP / RESTART_WAIT slots stay as they are.
+            When no Chromium comes up, the process exits with RESTART_EXIT_CODE and the
+            controller relaunches everything.
+            """
+            instance = browser_instances[browser_idx]
+            first_tab = browser_idx * TABS_PER_BROWSER + 1
+            tab_ids = [t for t in range(first_tab, first_tab + TABS_PER_BROWSER) if t in processes]
+            print(
+                f"[BROWSER RESTART] Chromium #{instance['id']}: {reason} "
+                f"Перезапускаю браузер и вкладки {tab_ids}.",
+                flush=True,
+            )
+            plans = []
+            for tab_id in tab_ids:
+                proc = processes.get(tab_id)
+                info = dict(heartbeat.get(str(tab_id)) or {})
+                phase = str(info.get("phase") or "")
+                if phase in {"DONE", "MANUAL_STOP", "RESTART_WAIT"}:
+                    continue
+                guarded = bool(info.get("success_guard")) or bool(info.get("error_guard")) or phase in {
+                    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "SUCCESS_STOP", "ERROR_ASSIST",
+                }
+                row = None if (guarded or bool(info.get("completed_confirm_cycle"))) else info.get("row")
+                plans.append((tab_id, row))
+                try:
+                    if proc is not None and proc.is_alive():
+                        proc.terminate()
+                        proc.join(timeout=5)
+                        if proc.is_alive():
+                            proc.kill()
+                            proc.join(timeout=3)
+                except Exception:
+                    pass
+                heartbeat.pop(str(tab_id), None)
+                status_map[str(tab_id)] = {
+                    "text": (
+                        f"♻️ Вкладка {tab_id}\nChromium перестал отвечать — браузер перезапущен.\n"
+                        + ("Повторяю эту же строку." if row is not None else "Беру следующую строку.")
+                    ),
+                    "time": time.time(),
+                }
+            _terminate_chromium(instance)
+            if not _relaunch_chromium(instance, chromium_exe):
+                print(
+                    f"[BROWSER RESTART] Chromium #{instance['id']} не поднял CDP-порт; "
+                    "выхожу для перезапуска процесса контроллером.",
+                    flush=True,
+                )
+                _restart_notify(
+                    f"⚠️ Chromium #{instance['id']} перестал отвечать ({reason}) и не запустился заново. "
+                    "Перезапускаю весь процесс."
+                )
+                raise SystemExit(RESTART_EXIT_CODE)
+            print(f"[BROWSER RESTART] Chromium #{instance['id']} готов: {instance['cdp_url']}", flush=True)
+            _restart_notify(
+                f"♻️ Chromium #{instance['id']} перестал отвечать ({reason}) Браузер перезапущен, "
+                f"вкладки {[t for t, _ in plans]} пересозданы: строки в работе повторяются, "
+                "завершённые берут следующую."
+            )
+            for tab_id, row in plans:
+                new_proc, _ = spawn_worker(tab_id, row)
+                processes[tab_id] = new_proc
+
         def recover_dead_workers():
             """Restore capacity when a worker process died unexpectedly."""
             recovered = False
@@ -8303,7 +8451,7 @@ def main():
 
                 status_map[str(tab_id)] = {
                     "text": (
-                        f"♻️ Вкладка {tab_id}\\n{reason}\\n"
+                        f"♻️ Вкладка {tab_id}\n{reason}\n"  # BROWSER_HANG_1591R18: real line break
                         + (
                             "Цикл завершён — беру следующую строку."
                             if completed
@@ -8319,6 +8467,13 @@ def main():
                     browser_instances[browser_idx]["cdp_url"], info
                 )
                 if not closed_old_tab:
+                    hang = cdp_unreachable_seconds(browser_instances[browser_idx]["cdp_url"])  # BROWSER_HANG_1591R18
+                    if hang >= BROWSER_HANG_RESTART_SECONDS:
+                        restart_browser_instance(
+                            browser_idx,
+                            f"CDP не отвечает {int(hang)} сек (вкладка {tab_id}: {reason})",
+                        )
+                        return True
                     print(
                         f"[WATCHDOG] TAB {tab_id}: старую вкладку закрыть не удалось; "
                         "replacement пока не создаю.",

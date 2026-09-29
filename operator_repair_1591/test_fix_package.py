@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-17", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-18", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -283,7 +283,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 17", run.stdout)
+            self.assertIn("Already revision 18", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -317,7 +317,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 17)
+        self.assertEqual(manifest["revision"], 18)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -589,6 +589,69 @@ class PackageTests(unittest.TestCase):
         lines = text.split("\n")
         self.assertEqual(lines[0], "#успешно"); self.assertTrue(lines[1].startswith("✅ УСПЕХ — Вкладка 2"))
         self.assertIn("Строка: 5/10", text); self.assertIn("eSIM: 89", text)
+
+    def test_browser_hang_restarts_the_whole_chromium(self):
+        src = self.source
+        self.assertEqual(src.count("BROWSER_HANG_1591R18"), 7)
+        self.assertIn("BROWSER_HANG_RESTART_SECONDS = 120", src)
+        # Watchdog: a browser that keeps refusing CDP is restarted instead of retried forever.
+        fail_branch = src[src.index("if not closed_old_tab:"):src.index("replacement пока не создаю")]
+        self.assertIn("cdp_unreachable_seconds(browser_instances[browser_idx][\"cdp_url\"])", fail_branch)
+        self.assertIn("restart_browser_instance(", fail_branch)
+        self.assertIn("def restart_browser_instance(browser_idx, reason):", src)
+        self.assertIn("raise SystemExit(RESTART_EXIT_CODE)", src[src.index("def restart_browser_instance"):src.index("def recover_dead_workers")])
+        # The literal "\\n" in the watchdog status became a real line break.
+        self.assertIn('f"♻️ Вкладка {tab_id}\\n{reason}\\n"', src)
+        self.assertNotIn('f"♻️ Вкладка {tab_id}\\\\n{reason}\\\\n"', src)
+        self.assertNotIn("ЭКСПЕРИМЕНТ: запускаю 1 Chromium и 3 рабочие вкладки", src)
+        # _close_cdp_page_for_worker records connect timeouts per browser and clears them on success.
+        cdp_fn = src[src.index("def _close_cdp_page_for_worker"):src.index("def _once(") + 400]
+        self.assertIn("_note_cdp_result(cdp_url, None)", src[src.index("def _close_cdp_page_for_worker"):src.index("import time as _time")])
+        self.assertIn("_note_cdp_result(cdp_url, exc)", src[src.index("def _close_cdp_page_for_worker"):src.index("import time as _time")])
+        import subprocess as _sp, tempfile as _tf, shutil as _sh
+        ns = {"_CDP_UNREACHABLE_SINCE": {}, "monotonic": lambda: 1000.0, "subprocess": _sp,
+              "tempfile": _tf, "shutil": _sh, "_free_local_port": lambda: 45999, "_wait_cdp": lambda port: False}
+        exec_functions(src, ["_note_cdp_result", "cdp_unreachable_seconds", "_chromium_launch_args",
+                             "_terminate_chromium", "_relaunch_chromium"], ns)
+        class Timeout(Exception):
+            pass
+        url = "http://127.0.0.1:52495"
+        ns["_note_cdp_result"](url, RuntimeError("Target closed"), now=10.0)
+        self.assertEqual(ns["cdp_unreachable_seconds"](url, now=50.0), 0.0)
+        ns["_note_cdp_result"](url, Timeout("BrowserType.connect_over_cdp: Timeout 20000ms exceeded."), now=10.0)
+        ns["_note_cdp_result"](url, Timeout("BrowserType.connect_over_cdp: Timeout 20000ms exceeded."), now=40.0)
+        self.assertEqual(ns["cdp_unreachable_seconds"](url, now=140.0), 130.0)
+        ns["_note_cdp_result"](url, None)
+        self.assertEqual(ns["cdp_unreachable_seconds"](url, now=200.0), 0.0)
+        args = ns["_chromium_launch_args"]("/bin/chromium", 52495, "/tmp/prof")
+        self.assertIn("--no-sandbox", args); self.assertIn("--remote-debugging-port=52495", args)
+        self.assertEqual(args[-1], "about:blank")
+        launched, made = [], []
+        class FakeProc:
+            def poll(self): return None
+            def terminate(self): launched.append("terminate")
+            def wait(self, timeout=None): return 0
+            def kill(self): pass
+        def popen(argv):
+            made.append(argv); return FakeProc()
+        ns["_CDP_UNREACHABLE_SINCE"][url] = 5.0
+        inst = {"id": 1, "port": 52495, "profile": "", "proc": None, "cdp_url": url}
+        # First attempt on the old port succeeds: cdp_url unchanged, hang record cleared.
+        self.assertTrue(ns["_relaunch_chromium"](inst, "/bin/chromium", popen=popen, wait_cdp=lambda p: True))
+        self.assertEqual(inst["cdp_url"], url); self.assertEqual(inst["port"], 52495)
+        self.assertIn("--remote-debugging-port=52495", made[-1]); self.assertNotIn(url, ns["_CDP_UNREACHABLE_SINCE"])
+        _sh.rmtree(inst["profile"], ignore_errors=True)
+        # Old port dead: the fallback port is used and the old Chromium attempt is terminated.
+        inst = {"id": 1, "port": 52495, "profile": "", "proc": None, "cdp_url": url}
+        seen = []
+        self.assertTrue(ns["_relaunch_chromium"](inst, "/bin/chromium", popen=popen,
+                                                 wait_cdp=lambda p: seen.append(p) or p == 45999, free_port=lambda: 45999))
+        self.assertEqual(seen, [52495, 45999]); self.assertEqual(inst["cdp_url"], "http://127.0.0.1:45999")
+        self.assertIn("terminate", launched)
+        _sh.rmtree(inst["profile"], ignore_errors=True)
+        inst = {"id": 1, "port": 52495, "profile": "", "proc": None, "cdp_url": url}
+        self.assertFalse(ns["_relaunch_chromium"](inst, "/bin/chromium", popen=popen, wait_cdp=lambda p: False, free_port=lambda: 45999))
+        _sh.rmtree(inst["profile"], ignore_errors=True)
 
 
 def _load_module(name, path):

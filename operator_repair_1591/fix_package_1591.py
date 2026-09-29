@@ -65,7 +65,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "04e07acd1a019a943c72237a6c6c61b34134f7b753ce3f3b484c832ce742ae9d",
                          "21772a39422eeae8224f580beecad29171105885101b76f100190f6d64fd3e7c",
                          "1cc1769f3ec9bd04b325be73fed182a4a05f082339820682601c3bd4be7483f6",
-                         "3bee3697775d818df6c1fe82c3096574f00a1c289aaf26c7a7e96d2f614b7597"}
+                         "3bee3697775d818df6c1fe82c3096574f00a1c289aaf26c7a7e96d2f614b7597",
+                         "1ba0e4f3af9dcc2fa8d78e5eee0033ec48489c402f4c49be9d4e799eb1a786ec"}  # r17 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -1093,6 +1094,236 @@ README_NOTE_R17 = '''
 (TABS_PER_BROWSER = 4): каскад, статусы, watchdog и промпты DeepSeek берут число из
 константы, поэтому больше ничего не менялось. Маркер: SUCCESS_TAG_1591R17.
 '''
+# Revision 18: a Chromium that stops answering CDP (connect_over_cdp timeouts on every
+# watchdog attempt) is replaced as a whole, workers included. Also the literal "\n" in the
+# watchdog's Telegram status text becomes a real line break.
+BROWSER_MARKER = "BROWSER_HANG_1591R18"
+OLD_WAIT_CDP = '''def _wait_cdp(port, timeout=25):
+    deadline = monotonic() + timeout
+    url = f"http://127.0.0.1:{port}/json/version"
+    while monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=1) as response:
+                if response.status == 200:
+                    return True
+        except Exception:
+            time.sleep(0.2)
+    return False
+'''
+BROWSER_HELPERS_R18 = '''
+
+# BROWSER_HANG_1591R18: a Chromium whose CDP socket accepts the connection but never
+# answers (connect_over_cdp timeout) blocks every tab of that browser. The watchdog can
+# only replace tabs, so after BROWSER_HANG_RESTART_SECONDS of continuous refusals the
+# whole browser process is replaced on the same port and its workers are respawned.
+BROWSER_HANG_RESTART_SECONDS = 120
+_CDP_UNREACHABLE_SINCE = {}
+
+
+def _note_cdp_result(cdp_url, exc, now=None):
+    """Remember since when `cdp_url` refuses CDP commands; `exc=None` means it answered."""
+    key = str(cdp_url)
+    if exc is None:
+        _CDP_UNREACHABLE_SINCE.pop(key, None)
+        return
+    text = f"{type(exc).__name__}: {exc}"
+    if "connect_over_cdp" in text and "Timeout" in text:
+        _CDP_UNREACHABLE_SINCE.setdefault(key, now if now is not None else monotonic())
+
+
+def cdp_unreachable_seconds(cdp_url, now=None):
+    since = _CDP_UNREACHABLE_SINCE.get(str(cdp_url))
+    if since is None:
+        return 0.0
+    return (now if now is not None else monotonic()) - since
+
+
+def _chromium_launch_args(chromium_exe, port, profile):
+    """Same flags as args_i in main() (test_update checks that literal list stays there)."""
+    return [
+        chromium_exe,
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={profile}",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-popup-blocking",
+        "about:blank",
+    ]
+
+
+def _terminate_chromium(instance):
+    proc = instance.get("proc")
+    try:
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+    except Exception:
+        pass
+    if instance.get("profile"):
+        shutil.rmtree(str(instance["profile"]), ignore_errors=True)
+
+
+def _relaunch_chromium(instance, chromium_exe, popen=None, wait_cdp=None, free_port=None):
+    """Start a fresh Chromium for `instance`: the old port first (cdp_url stays valid for
+    the observers), a free port as the fallback. Returns False when neither came up."""
+    popen = popen or subprocess.Popen
+    wait_cdp = wait_cdp or _wait_cdp
+    free_port = free_port or _free_local_port
+    for attempt in range(2):
+        port = instance["port"] if attempt == 0 else free_port()
+        profile = tempfile.mkdtemp(prefix=f"esim_pw_browser{instance['id']}_")
+        instance["proc"] = popen(_chromium_launch_args(chromium_exe, port, profile))
+        instance["profile"] = profile
+        if wait_cdp(port):
+            _CDP_UNREACHABLE_SINCE.pop(str(instance.get("cdp_url")), None)
+            instance["port"] = port
+            instance["cdp_url"] = f"http://127.0.0.1:{port}"
+            _CDP_UNREACHABLE_SINCE.pop(instance["cdp_url"], None)
+            return True
+        _terminate_chromium(instance)
+    return False
+'''
+OLD_CDP_CONNECT_R6 = '''                browser = p.chromium.connect_over_cdp(
+                    cdp_url, timeout=int(timeout * 1000)
+                )
+'''
+NEW_CDP_CONNECT_R18 = OLD_CDP_CONNECT_R6 + '''                _note_cdp_result(cdp_url, None)  # BROWSER_HANG_1591R18: the browser answered
+'''
+OLD_CDP_EXCEPT_R6 = '''        except Exception as exc:
+            print(
+                f"[WATCHDOG] Не удалось закрыть {expected_name}: "
+'''
+NEW_CDP_EXCEPT_R18 = '''        except Exception as exc:
+            _note_cdp_result(cdp_url, exc)  # BROWSER_HANG_1591R18
+            print(
+                f"[WATCHDOG] Не удалось закрыть {expected_name}: "
+'''
+OLD_EXPERIMENT_LINE = '''    print("ЭКСПЕРИМЕНТ: запускаю 1 Chromium и 3 рабочие вкладки. Общая очередь строк.")
+'''
+NEW_EXPERIMENT_LINE = '''    print(f"Запускаю {BROWSER_COUNT} Chromium и {TAB_COUNT} рабочие вкладки. Общая очередь строк.")  # BROWSER_HANG_1591R18
+'''
+OLD_DEAD_HEAD = '''        def recover_dead_workers():
+            """Restore capacity when a worker process died unexpectedly."""
+'''
+RESTART_BROWSER_FN_R18 = '''        def restart_browser_instance(browser_idx, reason):  # BROWSER_HANG_1591R18
+            """Chromium stopped answering CDP: replace the browser process and its worker tabs.
+
+            A tab still working a row gets the same row again. A tab under success/error
+            guard, or one that already completed its confirm cycle, takes the next row so
+            nothing is submitted twice. DONE / MANUAL_STOP / RESTART_WAIT slots stay as they are.
+            When no Chromium comes up, the process exits with RESTART_EXIT_CODE and the
+            controller relaunches everything.
+            """
+            instance = browser_instances[browser_idx]
+            first_tab = browser_idx * TABS_PER_BROWSER + 1
+            tab_ids = [t for t in range(first_tab, first_tab + TABS_PER_BROWSER) if t in processes]
+            print(
+                f"[BROWSER RESTART] Chromium #{instance['id']}: {reason} "
+                f"Перезапускаю браузер и вкладки {tab_ids}.",
+                flush=True,
+            )
+            plans = []
+            for tab_id in tab_ids:
+                proc = processes.get(tab_id)
+                info = dict(heartbeat.get(str(tab_id)) or {})
+                phase = str(info.get("phase") or "")
+                if phase in {"DONE", "MANUAL_STOP", "RESTART_WAIT"}:
+                    continue
+                guarded = bool(info.get("success_guard")) or bool(info.get("error_guard")) or phase in {
+                    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "SUCCESS_STOP", "ERROR_ASSIST",
+                }
+                row = None if (guarded or bool(info.get("completed_confirm_cycle"))) else info.get("row")
+                plans.append((tab_id, row))
+                try:
+                    if proc is not None and proc.is_alive():
+                        proc.terminate()
+                        proc.join(timeout=5)
+                        if proc.is_alive():
+                            proc.kill()
+                            proc.join(timeout=3)
+                except Exception:
+                    pass
+                heartbeat.pop(str(tab_id), None)
+                status_map[str(tab_id)] = {
+                    "text": (
+                        f"♻️ Вкладка {tab_id}\\nChromium перестал отвечать — браузер перезапущен.\\n"
+                        + ("Повторяю эту же строку." if row is not None else "Беру следующую строку.")
+                    ),
+                    "time": time.time(),
+                }
+            _terminate_chromium(instance)
+            if not _relaunch_chromium(instance, chromium_exe):
+                print(
+                    f"[BROWSER RESTART] Chromium #{instance['id']} не поднял CDP-порт; "
+                    "выхожу для перезапуска процесса контроллером.",
+                    flush=True,
+                )
+                _restart_notify(
+                    f"⚠️ Chromium #{instance['id']} перестал отвечать ({reason}) и не запустился заново. "
+                    "Перезапускаю весь процесс."
+                )
+                raise SystemExit(RESTART_EXIT_CODE)
+            print(f"[BROWSER RESTART] Chromium #{instance['id']} готов: {instance['cdp_url']}", flush=True)
+            _restart_notify(
+                f"♻️ Chromium #{instance['id']} перестал отвечать ({reason}) Браузер перезапущен, "
+                f"вкладки {[t for t, _ in plans]} пересозданы: строки в работе повторяются, "
+                "завершённые берут следующую."
+            )
+            for tab_id, row in plans:
+                new_proc, _ = spawn_worker(tab_id, row)
+                processes[tab_id] = new_proc
+
+'''
+NEW_DEAD_HEAD = RESTART_BROWSER_FN_R18 + OLD_DEAD_HEAD
+OLD_CLOSE_FAIL = '''                if not closed_old_tab:
+                    print(
+                        f"[WATCHDOG] TAB {tab_id}: старую вкладку закрыть не удалось; "
+                        "replacement пока не создаю.",
+                        flush=True,
+                    )
+                    continue
+'''
+NEW_CLOSE_FAIL = '''                if not closed_old_tab:
+                    hang = cdp_unreachable_seconds(browser_instances[browser_idx]["cdp_url"])  # BROWSER_HANG_1591R18
+                    if hang >= BROWSER_HANG_RESTART_SECONDS:
+                        restart_browser_instance(
+                            browser_idx,
+                            f"CDP не отвечает {int(hang)} сек (вкладка {tab_id}: {reason})",
+                        )
+                        return True
+                    print(
+                        f"[WATCHDOG] TAB {tab_id}: старую вкладку закрыть не удалось; "
+                        "replacement пока не создаю.",
+                        flush=True,
+                    )
+                    continue
+'''
+OLD_STATUS_NL = r'''                        f"♻️ Вкладка {tab_id}\\n{reason}\\n"
+'''
+NEW_STATUS_NL = r'''                        f"♻️ Вкладка {tab_id}\n{reason}\n"  # BROWSER_HANG_1591R18: real line break
+'''
+README_NOTE_R18 = '''
+
+РЕВИЗИЯ 18 (fix_package_1591.py)
+Зависание всего Chromium. Когда браузер принимает CDP-соединение, но не отвечает на
+команды (BrowserType.connect_over_cdp: Timeout), watchdog не мог закрыть ни одну вкладку и
+крутился по кругу: «старую вкладку закрыть не удалось; replacement пока не создаю».
+Теперь _close_cdp_page_for_worker отмечает такие отказы по адресу браузера
+(_note_cdp_result / cdp_unreachable_seconds); если они длятся BROWSER_HANG_RESTART_SECONDS
+(120 с), restart_browser_instance завершает worker этого браузера, убивает Chromium,
+поднимает новый на том же порту (запасной вариант — свободный порт) и пересоздаёт вкладки:
+строки в работе повторяются, вкладки под success/error guard и завершившие confirm берут
+следующую строку, слоты DONE/MANUAL_STOP/RESTART_WAIT не трогаются. Если Chromium не
+поднялся — выход с RESTART_EXIT_CODE, контроллер перезапускает процесс. Флаги запуска
+Chromium повторены в _chromium_launch_args. В watchdog-статусе Telegram литеральный «\\n»
+заменён настоящим переводом строки. Маркер: BROWSER_HANG_1591R18.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -1920,8 +2151,8 @@ def main(argv: list[str]) -> int:
     if speed_done and all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER,
                                                 TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER,
                                                 PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER, PERSDATA_MARKER,
-                                                ERRORSKIP_MARKER, SUCCESSTAG_MARKER)):
-        print("Already revision 17; nothing changed.")
+                                                ERRORSKIP_MARKER, SUCCESSTAG_MARKER, BROWSER_MARKER)):
+        print("Already revision 18; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -2181,6 +2412,27 @@ def main(argv: list[str]) -> int:
             new_source = replace_once(new_source, old, new, what)
             add_edit(edits["test_beeline.py"], source, old, new, reflected)
 
+    # 19 (r18). Whole-browser restart when Chromium stops answering CDP; real "\n" in the status.
+    if BROWSER_MARKER not in source:
+        for old, new, what in ((OLD_WAIT_CDP, OLD_WAIT_CDP + BROWSER_HELPERS_R18, "browser hang helpers"),
+                               (OLD_CDP_CONNECT_R6, NEW_CDP_CONNECT_R18, "cdp connect note"),
+                               (OLD_CDP_EXCEPT_R6, NEW_CDP_EXCEPT_R18, "cdp except note"),
+                               (OLD_EXPERIMENT_LINE, NEW_EXPERIMENT_LINE, "startup banner"),
+                               (OLD_DEAD_HEAD, NEW_DEAD_HEAD, "restart_browser_instance"),
+                               (OLD_CLOSE_FAIL, NEW_CLOSE_FAIL, "watchdog browser hang trigger"),
+                               (OLD_STATUS_NL, NEW_STATUS_NL, "watchdog status line break")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -2206,7 +2458,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | {CONTROLLER_OUTPUT_SHA_R12}
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 17
+    manifest["revision"] = 18
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -2222,7 +2474,7 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 11", README_NOTE_R11), ("РЕВИЗИЯ 12", README_NOTE_R12),
                           ("РЕВИЗИЯ 13", README_NOTE_R13), ("РЕВИЗИЯ 14", README_NOTE_R14),
                           ("РЕВИЗИЯ 15", README_NOTE_R15), ("РЕВИЗИЯ 16", README_NOTE_R16),
-                          ("РЕВИЗИЯ 17", README_NOTE_R17)):
+                          ("РЕВИЗИЯ 17", README_NOTE_R17), ("РЕВИЗИЯ 18", README_NOTE_R18)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -2235,7 +2487,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 17, "result": "OK",
+    verification.update({"python": sys.version, "revision": 18, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -2251,7 +2503,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 17 applied to", package)
+    print("Revision 18 applied to", package)
     return 0
 
 

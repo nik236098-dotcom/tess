@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 17 лежит в `beeline_integrated_io_15_91_r17/`. В нём нет
+Готовый пакет ревизии 18 лежит в `beeline_integrated_io_15_91_r18/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -52,7 +52,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r17
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r18
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -176,7 +176,16 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    строки `#успешно`, чтобы успехи находились поиском среди отчётов DeepSeek. Рабочих вкладок на
    Chromium стало 4 вместо 3 (`TABS_PER_BROWSER = 4`); остальной код берёт число из константы.
    Маркер: `SUCCESS_TAG_1591R17`.
-19. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+19. **Перезапуск зависшего Chromium (ревизия 18).** Если браузер принимает CDP-соединение,
+   но не отвечает на команды (`connect_over_cdp: Timeout` при каждой попытке watchdog закрыть
+   вкладку), раньше watchdog крутился по кругу и все вкладки этого Chromium стояли. Теперь
+   отказы CDP учитываются по адресу браузера; через 120 секунд непрерывных отказов
+   `restart_browser_instance` завершает worker'ы браузера, убивает Chromium, поднимает новый на
+   том же порту и пересоздаёт вкладки: строки в работе повторяются, вкладки под guard берут
+   следующую строку. Если Chromium не поднялся — выход с кодом планового перезапуска, контроллер
+   перезапускает процесс. Заодно литеральный `\n` в watchdog-статусе Telegram стал настоящим
+   переводом строки. Маркер `BROWSER_HANG_1591R18`.
+20. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
