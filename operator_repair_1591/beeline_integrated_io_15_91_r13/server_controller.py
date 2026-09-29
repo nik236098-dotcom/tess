@@ -166,6 +166,41 @@ def _download_document(file_id, destination):
     destination.write_bytes(r.content)
 
 
+# SCHEDULED_RESTART_1591R13
+def _restart_command(argument):
+    """/restart, /restart off, /restart 20m, /restart 1h, /restart now."""
+    argument = str(argument or "").strip().lower()
+    if not argument:
+        minutes = app.restart_policy_minutes(BASE_DIR)
+        state = f"каждые {minutes} мин" if minutes > 0 else "выключен"
+        pending = (" Сейчас ожидается перезапуск: worker дорабатывают строки."
+                   if app.restart_drain_requested(BASE_DIR) else "")
+        return (f"♻️ Плановый перезапуск: {state}.{pending}\n"
+                "Команды: /restart off, /restart 20m, /restart 1h, /restart now")
+    if argument == "now":
+        app.request_restart_drain(BASE_DIR, "manual")
+        return ("♻️ Запрошен перезапуск: worker дорабатывают текущие строки, новые не берут; "
+                "затем процесс перезапустится.")
+    minutes = app.parse_restart_setting(argument)
+    if minutes is None:
+        return "Не понял интервал. Примеры: /restart off, /restart 20m, /restart 1h, /restart now"
+    app.write_restart_policy(BASE_DIR, minutes)
+    if minutes <= 0:
+        return "♻️ Плановый перезапуск выключен."
+    return (f"♻️ Плановый перезапуск включён: каждые {minutes} мин. Worker дорабатывают строки "
+            "до конца (подтверждение, подпись, разбор DeepSeek), затем процесс перезапускается.")
+
+
+def _restart_after_drain(proc):
+    """Relaunch the automation that exited on purpose (RESTART_EXIT_CODE) after its drain."""
+    if proc.proc is None or proc.proc.poll() != app.RESTART_EXIT_CODE:
+        return False
+    proc.proc = None
+    ok, answer = proc.start()
+    _send(("♻️ Плановый перезапуск выполнен. " if ok else "⚠️ Плановый перезапуск: запуск не удался. ") + answer)
+    return True
+
+
 class AutomationProcess:
     def __init__(self):
         self.proc = None
@@ -288,6 +323,7 @@ def main():
     )
 
     while True:
+        _restart_after_drain(proc)  # SCHEDULED_RESTART_1591R13
         proc.reap()
 
         r, err = app.telegram_api(
@@ -354,6 +390,11 @@ def main():
                             "Текущий файл будет заменён только после успешной проверки.\n"
                             "Если процесс сейчас работает — после загрузки он автоматически перезапустится."
                         )
+                        continue
+
+                    if text.startswith("/restart"):  # SCHEDULED_RESTART_1591R13
+                        waiting_upload = False
+                        _send(_restart_command(text[len("/restart"):]))
                         continue
 
                     # Any slash-command belongs to controller namespace and is

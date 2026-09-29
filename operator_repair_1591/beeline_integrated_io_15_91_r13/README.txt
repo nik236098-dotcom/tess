@@ -237,3 +237,15 @@ final_profile_capture_v1583) читают только value у input/select/tex
 (post-auth review, sign-wait, finalize_success). Один раз на worker текст страницы
 сохраняется в diagnostics (success_page_text_v1591r12) для проверки на реальном договоре.
 Маркер: SUCCESS_PROFILE_TEXT_1591R12.
+
+РЕВИЗИЯ 13 (fix_package_1591.py)
+Плановый перезапуск. Команды в Telegram: /restart 20m (каждые 20 минут; можно 45, 1h),
+/restart off (выключить), /restart now (запросить сейчас), /restart (показать настройку).
+Настройка хранится в restart_policy.json и читается runtime на ходу, перезапуск для смены не
+нужен. По таймеру runtime открывает «дренаж» (restart_drain.json): каждый worker доводит
+текущую строку до конца (циклы подтверждения, подпись договора, разбор DeepSeek на
+SUCCESS/ERROR-экране) и перед взятием новой строки останавливается с фазой RESTART_WAIT; новые
+слоты и замены после SUCCESS_STOP не создаются. Когда живых worker не осталось, runtime
+завершается кодом 75, контроллер видит этот код и запускает процесс заново, о начале и
+завершении приходят уведомления. Пока хоть один worker занят строкой или разбором DeepSeek,
+перезапуск ждёт. Маркер: SCHEDULED_RESTART_1591R13 (test_beeline.py и server_controller.py).

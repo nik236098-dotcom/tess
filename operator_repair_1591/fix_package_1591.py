@@ -60,7 +60,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "ec65b2fa802131dbd7f2e679f422c40ddae10cc842bff784869925e14b16c105",
                          "6023e5266b8317cd0051fbec7988d0f65e30c10f26fc95309d960ebf995997c9",
                          "6852517bf0eadb15f70359ac93b9c49632926cb3aef9f817c712ea099330248b",
-                         "747c7f08c994baa104d82ebb5d3302215bc4f1147e238b66629bd5037710c47d"}
+                         "747c7f08c994baa104d82ebb5d3302215bc4f1147e238b66629bd5037710c47d",
+                         "e0f5748ea3f7c19e6409a1e4f63fc9e00c322f8c38365134af0f13bf4bd8e14f"}
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -591,6 +592,245 @@ final_profile_capture_v1583) читают только value у input/select/tex
 (post-auth review, sign-wait, finalize_success). Один раз на worker текст страницы
 сохраняется в diagnostics (success_page_text_v1591r12) для проверки на реальном договоре.
 Маркер: SUCCESS_PROFILE_TEXT_1591R12.
+'''
+# Revision 13: scheduled graceful restart. Every N minutes (Telegram: /restart 20m, /restart off,
+# /restart now, /restart) the runtime enters a drain: each worker finishes its current row to the
+# end (confirmation cycle, signing, DeepSeek assist included) and does not take a new one; when
+# no worker is left the runtime exits with RESTART_EXIT_CODE and the controller relaunches it.
+RESTART_MARKER = "SCHEDULED_RESTART_1591R13"
+CONTROLLER_OUTPUT_SHA_R12 = "506a84c41558332c75cbf55abc8e940520a589b3bc754a6845ca1dd7515740e8"
+RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
+RESTART_POLICY_FILE_NAME = "restart_policy.json"
+RESTART_DRAIN_FILE_NAME = "restart_drain.json"
+RESTART_EXIT_CODE = 75
+_RESTART_SETTING_RE = re.compile(r"^(\\d+)\\s*(m|min|мин|h|ч|hour|час)?$")
+
+
+def parse_restart_setting(text):
+    """'off' -> 0, '20m'/'20' -> 20, '1h' -> 60, otherwise None (1 minute .. 24 hours)."""
+    low = str(text or "").strip().lower()
+    if low in {"off", "выкл", "0", "stop", "none"}:
+        return 0
+    match = _RESTART_SETTING_RE.match(low)
+    if not match:
+        return None
+    value = int(match.group(1))
+    minutes = value * 60 if (match.group(2) or "m") in {"h", "ч", "hour", "час"} else value
+    return minutes if 1 <= minutes <= 24 * 60 else None
+
+
+def restart_policy_minutes(base_dir):
+    try:
+        data = json.loads((Path(base_dir) / RESTART_POLICY_FILE_NAME).read_text(encoding="utf-8"))
+        return max(0, int(data.get("interval_minutes") or 0))
+    except Exception:
+        return 0
+
+
+def write_restart_policy(base_dir, minutes):
+    path = Path(base_dir) / RESTART_POLICY_FILE_NAME
+    path.write_text(json.dumps({"interval_minutes": int(minutes), "updated_at": time.time()},
+                               ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def restart_drain_requested(base_dir):
+    return (Path(base_dir) / RESTART_DRAIN_FILE_NAME).is_file()
+
+
+def request_restart_drain(base_dir, reason=""):
+    path = Path(base_dir) / RESTART_DRAIN_FILE_NAME
+    if not path.is_file():
+        path.write_text(json.dumps({"requested_at": time.time(), "reason": str(reason)}, ensure_ascii=False),
+                        encoding="utf-8")
+
+
+def clear_restart_drain(base_dir):
+    try:
+        (Path(base_dir) / RESTART_DRAIN_FILE_NAME).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _restart_notify(text):
+    """Durable Telegram notice; delivered by the controller's sender even across the restart."""
+    try:
+        chat = str(load_telegram_config().get("chat_id") or "").strip()
+        if chat:
+            _io1591.enqueue_notice(globals(), chat, str(text))
+    except Exception as exc:
+        print(f"[RESTART] Уведомление не поставлено в очередь: {type(exc).__name__}: {exc}", flush=True)
+
+
+'''
+OLD_WORKER_GATE = '''            else:
+                try:
+                    row = rows.get_nowait()
+                except Exception:
+                    worker["phase"] = "DONE"
+'''
+NEW_WORKER_GATE = '''            else:
+                if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13
+                    # The current row was finished to the end above; do not take a new one.
+                    worker["phase"] = "RESTART_WAIT"
+                    external_heartbeat(worker, "restart_wait")
+                    set_tab_status(worker, "♻️", "Строка завершена; жду плановый перезапуск")
+                    print(f"[Вкладка {tab_id}] Плановый перезапуск: строка завершена, новую не беру.", flush=True)
+                    break
+                try:
+                    row = rows.get_nowait()
+                except Exception:
+                    worker["phase"] = "DONE"
+'''
+OLD_DEAD_SKIP = '''                    "DONE", "SUCCESS_STOP", "MANUAL_STOP",
+                    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST",
+                } or bool(info.get("success_guard")) or bool(info.get("error_guard")):
+'''
+NEW_DEAD_SKIP = '''                    "DONE", "SUCCESS_STOP", "MANUAL_STOP", "RESTART_WAIT",
+                    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST",
+                } or bool(info.get("success_guard")) or bool(info.get("error_guard")):
+'''
+OLD_CASCADE_HEAD = '''        # Для каждого Chromium свой последовательный cascade.
+        while any(front in cascade_next for front in cascade_front.values()):
+            ensure_ai_receiver_alive()
+'''
+NEW_CASCADE_HEAD = '''        # SCHEDULED_RESTART_1591R13: the timer opens a drain; while draining no new slot
+        # or replacement worker is started, workers finish their rows and exit, and the
+        # runtime then leaves with RESTART_EXIT_CODE for the controller to relaunch it.
+        restart_started_at = monotonic()
+        restart_notified = False
+
+        def _restart_tick():
+            nonlocal restart_notified
+            if not restart_drain_requested(base_dir):
+                minutes = restart_policy_minutes(base_dir)
+                if minutes <= 0 or monotonic() - restart_started_at < minutes * 60:
+                    return False
+                request_restart_drain(base_dir, f"every {minutes} min")
+                print(f"[RESTART] Прошло {minutes} мин: worker дорабатывают строки, новые не берут.", flush=True)
+            if not restart_notified:
+                restart_notified = True
+                _restart_notify(
+                    "♻️ Плановый перезапуск: worker дорабатывают текущие строки "
+                    "(подтверждение, подпись, разбор DeepSeek), новые не берут; "
+                    "когда все закончат, процесс перезапустится."
+                )
+            return True
+
+        # Для каждого Chromium свой последовательный cascade.
+        while any(front in cascade_next for front in cascade_front.values()):
+            if _restart_tick():
+                break
+            ensure_ai_receiver_alive()
+'''
+OLD_FINAL_LOOP = '''            recover_dead_workers()
+
+            # Успешная страница принадлежит общему Chromium и остаётся открытой.
+            # Завершившийся SUCCESS_STOP-процесс заменяем новым процессом/вкладкой,
+            # чтобы количество рабочих слотов не уменьшалось.
+            replaced_success = False
+            for tab_id, proc in list(processes.items()):
+                if proc.is_alive():
+                    continue
+                info = heartbeat.get(str(tab_id)) or {}
+                if info.get("phase") == "SUCCESS_STOP":
+'''
+NEW_FINAL_LOOP = '''            recover_dead_workers()
+            draining = _restart_tick()  # SCHEDULED_RESTART_1591R13
+
+            # Успешная страница принадлежит общему Chromium и остаётся открытой.
+            # Завершившийся SUCCESS_STOP-процесс заменяем новым процессом/вкладкой,
+            # чтобы количество рабочих слотов не уменьшалось.
+            replaced_success = False
+            for tab_id, proc in list(processes.items()):
+                if proc.is_alive():
+                    continue
+                info = heartbeat.get(str(tab_id)) or {}
+                if info.get("phase") == "SUCCESS_STOP" and not draining:
+'''
+OLD_QUEUE_DONE = '''        for proc in processes.values():
+            proc.join(timeout=1)
+
+        print(f"Все {TAB_COUNT} worker-слота завершили обработку очереди.")
+'''
+NEW_QUEUE_DONE = '''        for proc in processes.values():
+            proc.join(timeout=1)
+
+        if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13
+            clear_restart_drain(base_dir)
+            print("[RESTART] Все worker завершили строки; выхожу для планового перезапуска.", flush=True)
+            _restart_notify("♻️ Все worker завершили строки. Перезапускаю процесс.")
+            raise SystemExit(RESTART_EXIT_CODE)
+
+        print(f"Все {TAB_COUNT} worker-слота завершили обработку очереди.")
+'''
+OLD_CTRL_CLASS = "class AutomationProcess:\n"
+NEW_CTRL_CLASS = '''# SCHEDULED_RESTART_1591R13
+def _restart_command(argument):
+    """/restart, /restart off, /restart 20m, /restart 1h, /restart now."""
+    argument = str(argument or "").strip().lower()
+    if not argument:
+        minutes = app.restart_policy_minutes(BASE_DIR)
+        state = f"каждые {minutes} мин" if minutes > 0 else "выключен"
+        pending = (" Сейчас ожидается перезапуск: worker дорабатывают строки."
+                   if app.restart_drain_requested(BASE_DIR) else "")
+        return (f"♻️ Плановый перезапуск: {state}.{pending}\\n"
+                "Команды: /restart off, /restart 20m, /restart 1h, /restart now")
+    if argument == "now":
+        app.request_restart_drain(BASE_DIR, "manual")
+        return ("♻️ Запрошен перезапуск: worker дорабатывают текущие строки, новые не берут; "
+                "затем процесс перезапустится.")
+    minutes = app.parse_restart_setting(argument)
+    if minutes is None:
+        return "Не понял интервал. Примеры: /restart off, /restart 20m, /restart 1h, /restart now"
+    app.write_restart_policy(BASE_DIR, minutes)
+    if minutes <= 0:
+        return "♻️ Плановый перезапуск выключен."
+    return (f"♻️ Плановый перезапуск включён: каждые {minutes} мин. Worker дорабатывают строки "
+            "до конца (подтверждение, подпись, разбор DeepSeek), затем процесс перезапускается.")
+
+
+def _restart_after_drain(proc):
+    """Relaunch the automation that exited on purpose (RESTART_EXIT_CODE) after its drain."""
+    if proc.proc is None or proc.proc.poll() != app.RESTART_EXIT_CODE:
+        return False
+    proc.proc = None
+    ok, answer = proc.start()
+    _send(("♻️ Плановый перезапуск выполнен. " if ok else "⚠️ Плановый перезапуск: запуск не удался. ") + answer)
+    return True
+
+
+class AutomationProcess:
+'''
+OLD_CTRL_SLASH = '''                    # Any slash-command belongs to controller namespace and is
+                    # deliberately kept away from DeepSeek.
+                    if text.startswith("/"):
+'''
+NEW_CTRL_SLASH = '''                    if text.startswith("/restart"):  # SCHEDULED_RESTART_1591R13
+                        waiting_upload = False
+                        _send(_restart_command(text[len("/restart"):]))
+                        continue
+
+                    # Any slash-command belongs to controller namespace and is
+                    # deliberately kept away from DeepSeek.
+                    if text.startswith("/"):
+'''
+OLD_CTRL_LOOP = "    while True:\n        proc.reap()\n"
+OLD_TEST_CTRL_NS = "'_send':lambda *a:None,'_typing':lambda:None,'MENU_MARKUP':'{}',\n"
+NEW_TEST_CTRL_NS = "'_send':lambda *a:None,'_typing':lambda:None,'MENU_MARKUP':'{}','_restart_after_drain':lambda p:False,\n"
+NEW_CTRL_LOOP = "    while True:\n        _restart_after_drain(proc)  # SCHEDULED_RESTART_1591R13\n        proc.reap()\n"
+README_NOTE_R13 = '''
+
+РЕВИЗИЯ 13 (fix_package_1591.py)
+Плановый перезапуск. Команды в Telegram: /restart 20m (каждые 20 минут; можно 45, 1h),
+/restart off (выключить), /restart now (запросить сейчас), /restart (показать настройку).
+Настройка хранится в restart_policy.json и читается runtime на ходу, перезапуск для смены не
+нужен. По таймеру runtime открывает «дренаж» (restart_drain.json): каждый worker доводит
+текущую строку до конца (циклы подтверждения, подпись договора, разбор DeepSeek на
+SUCCESS/ERROR-экране) и перед взятием новой строки останавливается с фазой RESTART_WAIT; новые
+слоты и замены после SUCCESS_STOP не создаются. Когда живых worker не осталось, runtime
+завершается кодом 75, контроллер видит этот код и запускает процесс заново, о начале и
+завершении приходят уведомления. Пока хоть один worker занят строкой или разбором DeepSeek,
+перезапуск ждёт. Маркер: SCHEDULED_RESTART_1591R13 (test_beeline.py и server_controller.py).
 '''
 README_NOTE_R10 = '''
 
@@ -1417,8 +1657,8 @@ def main(argv: list[str]) -> int:
     speed_done = speed_file.is_file() and MATCHER_SPEED_MARKER in speed_file.read_text("utf-8")
     if speed_done and all(m in source for m in (MARKER, PROXY_MARKER, ASSIST_MARKER, ERROR_MARKER, OVERLAY_MARKER,
                                                 TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER,
-                                                PROFILE_MARKER)):
-        print("Already revision 12; nothing changed.")
+                                                PROFILE_MARKER, RESTART_MARKER)):
+        print("Already revision 13; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -1434,6 +1674,13 @@ def main(argv: list[str]) -> int:
     new_source = source
     test_src = (package / "test_update.py").read_text("utf-8")
     install_src = (package / "install.py").read_text("utf-8")
+    ctrl_source = (package / "server_controller.py").read_text("utf-8")
+    ctrl_reflected = []
+    for entry in edits["server_controller.py"]:
+        snapshot = dict(entry)
+        snapshot["_orig"] = entry
+        ctrl_reflected.append(snapshot)
+    new_ctrl = ctrl_source
 
     if MARKER not in source:
         # 1. SUCCESS push
@@ -1617,7 +1864,26 @@ def main(argv: list[str]) -> int:
         add_edit(edits["test_beeline.py"], source, OLD_CAPTURE_WRAPPER, PROFILE_TEXT_HELPER_R12 + NEW_CAPTURE_WRAPPER,
                  reflected)
 
+    # 14 (r13). Scheduled graceful restart: runtime drain + controller command and relaunch.
+    if RESTART_MARKER not in source:
+        anchor = "def parent_watchdog(processes, heartbeat):\n"
+        for old, new, what in ((anchor, RESTART_HELPER_R13 + anchor, "restart helpers"),
+                               (OLD_WORKER_GATE, NEW_WORKER_GATE, "worker restart gate"),
+                               (OLD_DEAD_SKIP, NEW_DEAD_SKIP, "dead recovery skip"),
+                               (OLD_CASCADE_HEAD, NEW_CASCADE_HEAD, "restart timer"),
+                               (OLD_FINAL_LOOP, NEW_FINAL_LOOP, "no replacement while draining"),
+                               (OLD_QUEUE_DONE, NEW_QUEUE_DONE, "restart exit")):
+            new_source = replace_once(new_source, old, new, what)
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        for old, new, what in ((OLD_CTRL_CLASS, NEW_CTRL_CLASS, "controller restart helpers"),
+                               (OLD_CTRL_SLASH, NEW_CTRL_SLASH, "controller /restart"),
+                               (OLD_CTRL_LOOP, NEW_CTRL_LOOP, "controller relaunch")):
+            new_ctrl = replace_once(new_ctrl, old, new, what)
+            add_edit(edits["server_controller.py"], ctrl_source, old, new, ctrl_reflected)
+        test_src = replace_once(test_src, OLD_TEST_CTRL_NS, NEW_TEST_CTRL_NS, "test_update.py controller fixture")
+
     compile(new_source, "test_beeline.py", "exec")
+    compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
     compile(install_src, "install.py", "exec")
 
@@ -1637,9 +1903,14 @@ def main(argv: list[str]) -> int:
     # A server that already runs the first 15.91 build is upgraded in place as well.
     manifest["files"]["test_beeline.py"]["previous_output_sha256"] = sorted(ACCEPTED_PACKAGE_SHAS)
     manifest["files"]["test_beeline.py"]["output_sha256"] = hashlib.sha256(new_source.encode("utf-8")).hexdigest()
-    manifest["revision"] = 12
+    ctrl_meta = manifest["files"]["server_controller.py"]
+    previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | {CONTROLLER_OUTPUT_SHA_R12}
+    ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
+    ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
+    manifest["revision"] = 13
 
     app.write_text(new_source, "utf-8")
+    (package / "server_controller.py").write_text(new_ctrl, "utf-8")
     (package / "test_update.py").write_text(test_src, "utf-8")
     (package / "install.py").write_text(install_src, "utf-8")
     (package / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), "utf-8")
@@ -1649,7 +1920,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 5", README_NOTE_R5), ("РЕВИЗИЯ 6", README_NOTE_R6),
                           ("РЕВИЗИЯ 7", README_NOTE_R7), ("РЕВИЗИЯ 8", README_NOTE_R8),
                           ("РЕВИЗИЯ 9", README_NOTE_R9), ("РЕВИЗИЯ 10", README_NOTE_R10),
-                          ("РЕВИЗИЯ 11", README_NOTE_R11), ("РЕВИЗИЯ 12", README_NOTE_R12)):
+                          ("РЕВИЗИЯ 11", README_NOTE_R11), ("РЕВИЗИЯ 12", README_NOTE_R12),
+                          ("РЕВИЗИЯ 13", README_NOTE_R13)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -1662,7 +1934,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 12, "result": "OK",
+    verification.update({"python": sys.version, "revision": 13, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -1678,7 +1950,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 12 applied to", package)
+    print("Revision 13 applied to", package)
     return 0
 
 

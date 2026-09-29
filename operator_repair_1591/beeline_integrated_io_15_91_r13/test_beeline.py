@@ -7518,6 +7518,13 @@ def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heart
                 row = pending_initial_row
                 pending_initial_row = None
             else:
+                if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13
+                    # The current row was finished to the end above; do not take a new one.
+                    worker["phase"] = "RESTART_WAIT"
+                    external_heartbeat(worker, "restart_wait")
+                    set_tab_status(worker, "♻️", "Строка завершена; жду плановый перезапуск")
+                    print(f"[Вкладка {tab_id}] Плановый перезапуск: строка завершена, новую не беру.", flush=True)
+                    break
                 try:
                     row = rows.get_nowait()
                 except Exception:
@@ -7632,6 +7639,68 @@ def _matcher_cpu_age(proc, now):
         state["progress_at"] = now
     state["cpu"], state["time"] = cpu, now
     return now - state["progress_at"]
+
+
+# SCHEDULED_RESTART_1591R13
+RESTART_POLICY_FILE_NAME = "restart_policy.json"
+RESTART_DRAIN_FILE_NAME = "restart_drain.json"
+RESTART_EXIT_CODE = 75
+_RESTART_SETTING_RE = re.compile(r"^(\d+)\s*(m|min|мин|h|ч|hour|час)?$")
+
+
+def parse_restart_setting(text):
+    """'off' -> 0, '20m'/'20' -> 20, '1h' -> 60, otherwise None (1 minute .. 24 hours)."""
+    low = str(text or "").strip().lower()
+    if low in {"off", "выкл", "0", "stop", "none"}:
+        return 0
+    match = _RESTART_SETTING_RE.match(low)
+    if not match:
+        return None
+    value = int(match.group(1))
+    minutes = value * 60 if (match.group(2) or "m") in {"h", "ч", "hour", "час"} else value
+    return minutes if 1 <= minutes <= 24 * 60 else None
+
+
+def restart_policy_minutes(base_dir):
+    try:
+        data = json.loads((Path(base_dir) / RESTART_POLICY_FILE_NAME).read_text(encoding="utf-8"))
+        return max(0, int(data.get("interval_minutes") or 0))
+    except Exception:
+        return 0
+
+
+def write_restart_policy(base_dir, minutes):
+    path = Path(base_dir) / RESTART_POLICY_FILE_NAME
+    path.write_text(json.dumps({"interval_minutes": int(minutes), "updated_at": time.time()},
+                               ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def restart_drain_requested(base_dir):
+    return (Path(base_dir) / RESTART_DRAIN_FILE_NAME).is_file()
+
+
+def request_restart_drain(base_dir, reason=""):
+    path = Path(base_dir) / RESTART_DRAIN_FILE_NAME
+    if not path.is_file():
+        path.write_text(json.dumps({"requested_at": time.time(), "reason": str(reason)}, ensure_ascii=False),
+                        encoding="utf-8")
+
+
+def clear_restart_drain(base_dir):
+    try:
+        (Path(base_dir) / RESTART_DRAIN_FILE_NAME).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _restart_notify(text):
+    """Durable Telegram notice; delivered by the controller's sender even across the restart."""
+    try:
+        chat = str(load_telegram_config().get("chat_id") or "").strip()
+        if chat:
+            _io1591.enqueue_notice(globals(), chat, str(text))
+    except Exception as exc:
+        print(f"[RESTART] Уведомление не поставлено в очередь: {type(exc).__name__}: {exc}", flush=True)
 
 
 def parent_watchdog(processes, heartbeat):
@@ -8068,7 +8137,7 @@ def main():
                 info = heartbeat.get(str(tab_id)) or {}
                 phase = str(info.get("phase") or "")
                 if phase in {
-                    "DONE", "SUCCESS_STOP", "MANUAL_STOP",
+                    "DONE", "SUCCESS_STOP", "MANUAL_STOP", "RESTART_WAIT",
                     "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST",
                 } or bool(info.get("success_guard")) or bool(info.get("error_guard")):
                     print(
@@ -8507,8 +8576,33 @@ def main():
                 flush=True,
             )
 
+        # SCHEDULED_RESTART_1591R13: the timer opens a drain; while draining no new slot
+        # or replacement worker is started, workers finish their rows and exit, and the
+        # runtime then leaves with RESTART_EXIT_CODE for the controller to relaunch it.
+        restart_started_at = monotonic()
+        restart_notified = False
+
+        def _restart_tick():
+            nonlocal restart_notified
+            if not restart_drain_requested(base_dir):
+                minutes = restart_policy_minutes(base_dir)
+                if minutes <= 0 or monotonic() - restart_started_at < minutes * 60:
+                    return False
+                request_restart_drain(base_dir, f"every {minutes} min")
+                print(f"[RESTART] Прошло {minutes} мин: worker дорабатывают строки, новые не берут.", flush=True)
+            if not restart_notified:
+                restart_notified = True
+                _restart_notify(
+                    "♻️ Плановый перезапуск: worker дорабатывают текущие строки "
+                    "(подтверждение, подпись, разбор DeepSeek), новые не берут; "
+                    "когда все закончат, процесс перезапустится."
+                )
+            return True
+
         # Для каждого Chromium свой последовательный cascade.
         while any(front in cascade_next for front in cascade_front.values()):
+            if _restart_tick():
+                break
             ensure_ai_receiver_alive()
             ensure_ai_observers_alive()
             execute_ai_runtime_actions()
@@ -8552,6 +8646,7 @@ def main():
             ensure_ai_observers_alive()
             execute_ai_runtime_actions()
             recover_dead_workers()
+            draining = _restart_tick()  # SCHEDULED_RESTART_1591R13
 
             # Успешная страница принадлежит общему Chromium и остаётся открытой.
             # Завершившийся SUCCESS_STOP-процесс заменяем новым процессом/вкладкой,
@@ -8561,7 +8656,7 @@ def main():
                 if proc.is_alive():
                     continue
                 info = heartbeat.get(str(tab_id)) or {}
-                if info.get("phase") == "SUCCESS_STOP":
+                if info.get("phase") == "SUCCESS_STOP" and not draining:
                     print(
                         f"[Запуск] Вкладка {tab_id} успешна и оставлена открытой. "
                         "Создаю новую рабочую вкладку для следующей строки.",
@@ -8582,6 +8677,12 @@ def main():
 
         for proc in processes.values():
             proc.join(timeout=1)
+
+        if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13
+            clear_restart_drain(base_dir)
+            print("[RESTART] Все worker завершили строки; выхожу для планового перезапуска.", flush=True)
+            _restart_notify("♻️ Все worker завершили строки. Перезапускаю процесс.")
+            raise SystemExit(RESTART_EXIT_CODE)
 
         print(f"Все {TAB_COUNT} worker-слота завершили обработку очереди.")
         try:

@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-12", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-13", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -280,7 +280,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 12", run.stdout)
+            self.assertIn("Already revision 13", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -314,7 +314,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 12)
+        self.assertEqual(manifest["revision"], 13)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -426,6 +426,81 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(profile["birth_date"], "01.02.1990"); self.assertEqual(profile["locality"], "Саратов")
         self.assertEqual(profile["house"], "12а"); self.assertEqual(profile["passport_number"], "123456")
         self.assertNotIn("987654321", profile.values()); self.assertNotIn("Скрытый Текст Невидимый", profile.values())
+
+
+    def _restart_ns(self, base):
+        ns = {"re": __import__("re"), "json": json, "time": __import__("time"), "Path": Path,
+              "print": lambda *a, **k: None, "load_telegram_config": lambda: {"chat_id": "42"},
+              "_io1591": types.SimpleNamespace(enqueue_notice=lambda ns_, chat, text, markup=None: None)}
+        exec_functions(self.source, ["parse_restart_setting", "restart_policy_minutes", "write_restart_policy",
+                                     "restart_drain_requested", "request_restart_drain", "clear_restart_drain"], ns)
+        for name in ("RESTART_POLICY_FILE_NAME", "RESTART_DRAIN_FILE_NAME", "RESTART_EXIT_CODE"):
+            ns[name] = getattr(types.SimpleNamespace(RESTART_POLICY_FILE_NAME="restart_policy.json",
+                                                     RESTART_DRAIN_FILE_NAME="restart_drain.json", RESTART_EXIT_CODE=75), name)
+        import re as _re
+        ns["_RESTART_SETTING_RE"] = _re.compile(r"^(\d+)\s*(m|min|мин|h|ч|hour|час)?$")
+        return ns
+
+    def test_scheduled_restart_settings_and_drain_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            ns = self._restart_ns(d)
+            parse = ns["parse_restart_setting"]
+            self.assertEqual(parse("off"), 0); self.assertEqual(parse("0"), 0)
+            self.assertEqual(parse("20m"), 20); self.assertEqual(parse("20"), 20); self.assertEqual(parse("1h"), 60)
+            self.assertEqual(parse("45 мин"), 45); self.assertIsNone(parse("abc")); self.assertIsNone(parse("0m")); self.assertIsNone(parse("48h"))
+            self.assertEqual(ns["restart_policy_minutes"](d), 0, "no file means off")
+            ns["write_restart_policy"](d, 20)
+            self.assertEqual(ns["restart_policy_minutes"](d), 20)
+            self.assertFalse(ns["restart_drain_requested"](d))
+            ns["request_restart_drain"](d, "test"); ns["request_restart_drain"](d, "again")
+            self.assertTrue(ns["restart_drain_requested"](d))
+            self.assertEqual(json.loads((Path(d) / "restart_drain.json").read_text())["reason"], "test", "first request wins")
+            ns["clear_restart_drain"](d); ns["clear_restart_drain"](d)
+            self.assertFalse(ns["restart_drain_requested"](d))
+        self.assertEqual(self.source.count("if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13"), 2, "worker gate and the exit check")
+        self.assertIn('worker["phase"] = "RESTART_WAIT"', self.source)
+        self.assertIn('"DONE", "SUCCESS_STOP", "MANUAL_STOP", "RESTART_WAIT",', self.source, "a RESTART_WAIT worker is not respawned")
+        self.assertIn('if info.get("phase") == "SUCCESS_STOP" and not draining:', self.source, "no replacement slot while draining")
+        self.assertIn("raise SystemExit(RESTART_EXIT_CODE)", self.source)
+        gate = self.source.index("if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13")
+        self.assertLess(gate, self.source.index("row = rows.get_nowait()"), "the gate runs before a new row is taken")
+
+    def test_controller_restart_command_and_relaunch(self):
+        control = (self.pkg / "server_controller.py").read_text("utf-8")
+        self.assertIn("_restart_after_drain(proc)  # SCHEDULED_RESTART_1591R13", control)
+        self.assertIn('if text.startswith("/restart"):', control)
+        with tempfile.TemporaryDirectory() as d:
+            helpers = self._restart_ns(d)
+            app = types.SimpleNamespace(RESTART_EXIT_CODE=75, **{k: helpers[k] for k in (
+                "parse_restart_setting", "restart_policy_minutes", "write_restart_policy",
+                "restart_drain_requested", "request_restart_drain")})
+            sent = []
+            ns = {"app": app, "BASE_DIR": Path(d), "_send": sent.append}
+            exec_functions(control, ["_restart_command", "_restart_after_drain"], ns)
+            self.assertIn("выключен", ns["_restart_command"](""))
+            self.assertIn("каждые 20 мин", ns["_restart_command"](" 20m"))
+            self.assertEqual(helpers["restart_policy_minutes"](d), 20)
+            self.assertIn("каждые 20 мин", ns["_restart_command"](""))
+            self.assertIn("Не понял", ns["_restart_command"]("soon"))
+            self.assertIn("выключен", ns["_restart_command"]("off")); self.assertEqual(helpers["restart_policy_minutes"](d), 0)
+            self.assertIn("Запрошен", ns["_restart_command"]("now")); self.assertTrue(helpers["restart_drain_requested"](d))
+            self.assertIn("ожидается перезапуск", ns["_restart_command"](""))
+            class FakePopen:
+                def __init__(self, code): self.code = code
+                def poll(self): return self.code
+            class FakeProc:
+                def __init__(self, code):
+                    self.proc = FakePopen(code); self.started = 0
+                def start(self):
+                    self.started += 1
+                    return True, "▶️ Запущено. PID 1."
+            running = FakeProc(None)
+            self.assertFalse(ns["_restart_after_drain"](running)); self.assertEqual(running.started, 0)
+            crashed = FakeProc(1)
+            self.assertFalse(ns["_restart_after_drain"](crashed), "an ordinary exit is left to reap(), not relaunched")
+            drained = FakeProc(75)
+            self.assertTrue(ns["_restart_after_drain"](drained)); self.assertEqual(drained.started, 1)
+            self.assertIn("Плановый перезапуск выполнен", sent[-1])
 
 
 def _load_module(name, path):

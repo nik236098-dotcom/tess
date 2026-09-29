@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 12 лежит в `beeline_integrated_io_15_91_r12/`. В нём нет
+Готовый пакет ревизии 13 лежит в `beeline_integrated_io_15_91_r13/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -52,7 +52,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r12
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r13
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -143,7 +143,17 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    текст страницы сохраняется в diagnostics (`success_page_text_v1591r12`). Основа: candidate
    DeepSeek `CANDIDATE_1592_PROFILE_TEXT`, ужесточённый (без «серия»/«номер»/«дом» по вхождению,
    «ё» в подписях, синхронизация `worker["profile"]`). Маркер: `SUCCESS_PROFILE_TEXT_1591R12`.
-14. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+14. **Плановый перезапуск (ревизия 13).** Команды в Telegram: `/restart 20m` (каждые 20 минут,
+   можно `45`, `1h`), `/restart off`, `/restart now`, `/restart` (показать настройку). Настройка
+   хранится в `restart_policy.json` и подхватывается на ходу. По таймеру runtime открывает
+   «дренаж» (`restart_drain.json`): каждый worker доводит текущую строку до конца (подтверждение,
+   подпись договора, разбор DeepSeek на SUCCESS/ERROR-экране) и перед взятием новой строки
+   останавливается с фазой `RESTART_WAIT`; новые слоты и замены после `SUCCESS_STOP` не создаются.
+   Когда живых worker не осталось, runtime завершается кодом 75, контроллер видит его и запускает
+   процесс заново; в Telegram приходят уведомления о начале и завершении. Пока хоть один worker
+   занят строкой или разбором DeepSeek, перезапуск ждёт. Маркер: `SCHEDULED_RESTART_1591R13`
+   (`test_beeline.py` и `server_controller.py`).
+15. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
@@ -178,3 +188,4 @@ SUCCESS プッシュの 4000 文字切り詰めを durable キュー経由の分
 `fresh_install.sh` は新しいサーバーの構築と移行を 1 コマンドで行います。
 リビジョン11では、DeepSeek 監視レーンが応答しないタブの evaluate で永久に停止する問題を修正しました。
 リビジョン12では、契約画面のテキストから氏名・性別・生年月日を読み取り、SUCCESS レポートを補完します。
+リビジョン13では、Telegram の `/restart 20m` で計画的な再起動を設定できます（各ワーカーが現在の行を完了してから再起動）。

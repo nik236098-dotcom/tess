@@ -1130,6 +1130,24 @@
       ]
     },
     {
+      "start": 7032,
+      "end": 7037,
+      "replacement": [
+        "            else:\n",
+        "                if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13\n",
+        "                    # The current row was finished to the end above; do not take a new one.\n",
+        "                    worker[\"phase\"] = \"RESTART_WAIT\"\n",
+        "                    external_heartbeat(worker, \"restart_wait\")\n",
+        "                    set_tab_status(worker, \"♻️\", \"Строка завершена; жду плановый перезапуск\")\n",
+        "                    print(f\"[Вкладка {tab_id}] Плановый перезапуск: строка завершена, новую не беру.\", flush=True)\n",
+        "                    break\n",
+        "                try:\n",
+        "                    row = rows.get_nowait()\n",
+        "                except Exception:\n",
+        "                    worker[\"phase\"] = \"DONE\"\n"
+      ]
+    },
+    {
       "start": 7096,
       "end": 7097,
       "replacement": [
@@ -1186,6 +1204,68 @@
         "    return now - state[\"progress_at\"]\n",
         "\n",
         "\n",
+        "# SCHEDULED_RESTART_1591R13\n",
+        "RESTART_POLICY_FILE_NAME = \"restart_policy.json\"\n",
+        "RESTART_DRAIN_FILE_NAME = \"restart_drain.json\"\n",
+        "RESTART_EXIT_CODE = 75\n",
+        "_RESTART_SETTING_RE = re.compile(r\"^(\\d+)\\s*(m|min|мин|h|ч|hour|час)?$\")\n",
+        "\n",
+        "\n",
+        "def parse_restart_setting(text):\n",
+        "    \"\"\"'off' -> 0, '20m'/'20' -> 20, '1h' -> 60, otherwise None (1 minute .. 24 hours).\"\"\"\n",
+        "    low = str(text or \"\").strip().lower()\n",
+        "    if low in {\"off\", \"выкл\", \"0\", \"stop\", \"none\"}:\n",
+        "        return 0\n",
+        "    match = _RESTART_SETTING_RE.match(low)\n",
+        "    if not match:\n",
+        "        return None\n",
+        "    value = int(match.group(1))\n",
+        "    minutes = value * 60 if (match.group(2) or \"m\") in {\"h\", \"ч\", \"hour\", \"час\"} else value\n",
+        "    return minutes if 1 <= minutes <= 24 * 60 else None\n",
+        "\n",
+        "\n",
+        "def restart_policy_minutes(base_dir):\n",
+        "    try:\n",
+        "        data = json.loads((Path(base_dir) / RESTART_POLICY_FILE_NAME).read_text(encoding=\"utf-8\"))\n",
+        "        return max(0, int(data.get(\"interval_minutes\") or 0))\n",
+        "    except Exception:\n",
+        "        return 0\n",
+        "\n",
+        "\n",
+        "def write_restart_policy(base_dir, minutes):\n",
+        "    path = Path(base_dir) / RESTART_POLICY_FILE_NAME\n",
+        "    path.write_text(json.dumps({\"interval_minutes\": int(minutes), \"updated_at\": time.time()},\n",
+        "                               ensure_ascii=False, indent=2), encoding=\"utf-8\")\n",
+        "\n",
+        "\n",
+        "def restart_drain_requested(base_dir):\n",
+        "    return (Path(base_dir) / RESTART_DRAIN_FILE_NAME).is_file()\n",
+        "\n",
+        "\n",
+        "def request_restart_drain(base_dir, reason=\"\"):\n",
+        "    path = Path(base_dir) / RESTART_DRAIN_FILE_NAME\n",
+        "    if not path.is_file():\n",
+        "        path.write_text(json.dumps({\"requested_at\": time.time(), \"reason\": str(reason)}, ensure_ascii=False),\n",
+        "                        encoding=\"utf-8\")\n",
+        "\n",
+        "\n",
+        "def clear_restart_drain(base_dir):\n",
+        "    try:\n",
+        "        (Path(base_dir) / RESTART_DRAIN_FILE_NAME).unlink()\n",
+        "    except FileNotFoundError:\n",
+        "        pass\n",
+        "\n",
+        "\n",
+        "def _restart_notify(text):\n",
+        "    \"\"\"Durable Telegram notice; delivered by the controller's sender even across the restart.\"\"\"\n",
+        "    try:\n",
+        "        chat = str(load_telegram_config().get(\"chat_id\") or \"\").strip()\n",
+        "        if chat:\n",
+        "            _io1591.enqueue_notice(globals(), chat, str(text))\n",
+        "    except Exception as exc:\n",
+        "        print(f\"[RESTART] Уведомление не поставлено в очередь: {type(exc).__name__}: {exc}\", flush=True)\n",
+        "\n",
+        "\n",
         "def parent_watchdog(processes, heartbeat):\n"
       ]
     },
@@ -1235,6 +1315,15 @@
       ]
     },
     {
+      "start": 7521,
+      "end": 7524,
+      "replacement": [
+        "                    \"DONE\", \"SUCCESS_STOP\", \"MANUAL_STOP\", \"RESTART_WAIT\",\n",
+        "                    \"POST_AUTH_REVIEW\", \"SIGN_WAIT\", \"SUCCESS_ASSIST\", \"ERROR_ASSIST\",\n",
+        "                } or bool(info.get(\"success_guard\")) or bool(info.get(\"error_guard\")):\n"
+      ]
+    },
+    {
       "start": 7664,
       "end": 7670,
       "replacement": [
@@ -1246,6 +1335,74 @@
         "            if phase == \"PROTECTED_CHECK\" and proc is not None:\n",
         "                matcher_age = min(matcher_age, _matcher_cpu_age(proc, now))  # MATCHER_HEARTBEAT_1591R9\n",
         "            return phase, logical_age, matcher_age, bool(proc and proc.is_alive())\n"
+      ]
+    },
+    {
+      "start": 7958,
+      "end": 7961,
+      "replacement": [
+        "        # SCHEDULED_RESTART_1591R13: the timer opens a drain; while draining no new slot\n",
+        "        # or replacement worker is started, workers finish their rows and exit, and the\n",
+        "        # runtime then leaves with RESTART_EXIT_CODE for the controller to relaunch it.\n",
+        "        restart_started_at = monotonic()\n",
+        "        restart_notified = False\n",
+        "\n",
+        "        def _restart_tick():\n",
+        "            nonlocal restart_notified\n",
+        "            if not restart_drain_requested(base_dir):\n",
+        "                minutes = restart_policy_minutes(base_dir)\n",
+        "                if minutes <= 0 or monotonic() - restart_started_at < minutes * 60:\n",
+        "                    return False\n",
+        "                request_restart_drain(base_dir, f\"every {minutes} min\")\n",
+        "                print(f\"[RESTART] Прошло {minutes} мин: worker дорабатывают строки, новые не берут.\", flush=True)\n",
+        "            if not restart_notified:\n",
+        "                restart_notified = True\n",
+        "                _restart_notify(\n",
+        "                    \"♻️ Плановый перезапуск: worker дорабатывают текущие строки \"\n",
+        "                    \"(подтверждение, подпись, разбор DeepSeek), новые не берут; \"\n",
+        "                    \"когда все закончат, процесс перезапустится.\"\n",
+        "                )\n",
+        "            return True\n",
+        "\n",
+        "        # Для каждого Chromium свой последовательный cascade.\n",
+        "        while any(front in cascade_next for front in cascade_front.values()):\n",
+        "            if _restart_tick():\n",
+        "                break\n",
+        "            ensure_ai_receiver_alive()\n"
+      ]
+    },
+    {
+      "start": 8002,
+      "end": 8013,
+      "replacement": [
+        "            recover_dead_workers()\n",
+        "            draining = _restart_tick()  # SCHEDULED_RESTART_1591R13\n",
+        "\n",
+        "            # Успешная страница принадлежит общему Chromium и остаётся открытой.\n",
+        "            # Завершившийся SUCCESS_STOP-процесс заменяем новым процессом/вкладкой,\n",
+        "            # чтобы количество рабочих слотов не уменьшалось.\n",
+        "            replaced_success = False\n",
+        "            for tab_id, proc in list(processes.items()):\n",
+        "                if proc.is_alive():\n",
+        "                    continue\n",
+        "                info = heartbeat.get(str(tab_id)) or {}\n",
+        "                if info.get(\"phase\") == \"SUCCESS_STOP\" and not draining:\n"
+      ]
+    },
+    {
+      "start": 8031,
+      "end": 8035,
+      "replacement": [
+        "        for proc in processes.values():\n",
+        "            proc.join(timeout=1)\n",
+        "\n",
+        "        if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13\n",
+        "            clear_restart_drain(base_dir)\n",
+        "            print(\"[RESTART] Все worker завершили строки; выхожу для планового перезапуска.\", flush=True)\n",
+        "            _restart_notify(\"♻️ Все worker завершили строки. Перезапускаю процесс.\")\n",
+        "            raise SystemExit(RESTART_EXIT_CODE)\n",
+        "\n",
+        "        print(f\"Все {TAB_COUNT} worker-слота завершили обработку очереди.\")\n"
       ]
     }
   ],
@@ -1265,6 +1422,48 @@
         "    return app._io1591.enqueue_notice(\n",
         "        vars(app), _chat_id(), str(text), MENU_MARKUP if menu else None\n",
         "    )\n"
+      ]
+    },
+    {
+      "start": 174,
+      "end": 175,
+      "replacement": [
+        "# SCHEDULED_RESTART_1591R13\n",
+        "def _restart_command(argument):\n",
+        "    \"\"\"/restart, /restart off, /restart 20m, /restart 1h, /restart now.\"\"\"\n",
+        "    argument = str(argument or \"\").strip().lower()\n",
+        "    if not argument:\n",
+        "        minutes = app.restart_policy_minutes(BASE_DIR)\n",
+        "        state = f\"каждые {minutes} мин\" if minutes > 0 else \"выключен\"\n",
+        "        pending = (\" Сейчас ожидается перезапуск: worker дорабатывают строки.\"\n",
+        "                   if app.restart_drain_requested(BASE_DIR) else \"\")\n",
+        "        return (f\"♻️ Плановый перезапуск: {state}.{pending}\\n\"\n",
+        "                \"Команды: /restart off, /restart 20m, /restart 1h, /restart now\")\n",
+        "    if argument == \"now\":\n",
+        "        app.request_restart_drain(BASE_DIR, \"manual\")\n",
+        "        return (\"♻️ Запрошен перезапуск: worker дорабатывают текущие строки, новые не берут; \"\n",
+        "                \"затем процесс перезапустится.\")\n",
+        "    minutes = app.parse_restart_setting(argument)\n",
+        "    if minutes is None:\n",
+        "        return \"Не понял интервал. Примеры: /restart off, /restart 20m, /restart 1h, /restart now\"\n",
+        "    app.write_restart_policy(BASE_DIR, minutes)\n",
+        "    if minutes <= 0:\n",
+        "        return \"♻️ Плановый перезапуск выключен.\"\n",
+        "    return (f\"♻️ Плановый перезапуск включён: каждые {minutes} мин. Worker дорабатывают строки \"\n",
+        "            \"до конца (подтверждение, подпись, разбор DeepSeek), затем процесс перезапускается.\")\n",
+        "\n",
+        "\n",
+        "def _restart_after_drain(proc):\n",
+        "    \"\"\"Relaunch the automation that exited on purpose (RESTART_EXIT_CODE) after its drain.\"\"\"\n",
+        "    if proc.proc is None or proc.proc.poll() != app.RESTART_EXIT_CODE:\n",
+        "        return False\n",
+        "    proc.proc = None\n",
+        "    ok, answer = proc.start()\n",
+        "    _send((\"♻️ Плановый перезапуск выполнен. \" if ok else \"⚠️ Плановый перезапуск: запуск не удался. \") + answer)\n",
+        "    return True\n",
+        "\n",
+        "\n",
+        "class AutomationProcess:\n"
       ]
     },
     {
@@ -1292,10 +1491,33 @@
       ]
     },
     {
+      "start": 292,
+      "end": 294,
+      "replacement": [
+        "    while True:\n",
+        "        _restart_after_drain(proc)  # SCHEDULED_RESTART_1591R13\n",
+        "        proc.reap()\n"
+      ]
+    },
+    {
       "start": 310,
       "end": 311,
       "replacement": [
         "                update_failed = False\n"
+      ]
+    },
+    {
+      "start": 361,
+      "end": 364,
+      "replacement": [
+        "                    if text.startswith(\"/restart\"):  # SCHEDULED_RESTART_1591R13\n",
+        "                        waiting_upload = False\n",
+        "                        _send(_restart_command(text[len(\"/restart\"):]))\n",
+        "                        continue\n",
+        "\n",
+        "                    # Any slash-command belongs to controller namespace and is\n",
+        "                    # deliberately kept away from DeepSeek.\n",
+        "                    if text.startswith(\"/\"):\n"
       ]
     },
     {
