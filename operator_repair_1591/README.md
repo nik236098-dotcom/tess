@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 22 лежит в `beeline_integrated_io_15_91_r22/`. В нём нет
+Готовый пакет ревизии 23 лежит в `beeline_integrated_io_15_91_r23/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -53,7 +53,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r22
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r23
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -209,7 +209,12 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    повторяется в новой вкладке, после второго INVALID_ROW пропускается, и следующая строка тоже
    начинается в новой вкладке. Строки, пропущенные после registration/error, записываются в файл
    прогресса и не возвращаются в очередь после планового перезапуска. Маркер `ROW_SKIP_PERSIST_1591R22`.
-24. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+24. **Страница договора в записи об успехе (ревизия 23).** Ссылка eSIM с `hash_order` вне исходной
+   сессии браузера ведёт на начальную страницу сайта. Теперь при фиксации успеха сохраняются адрес
+   страницы подписанного договора и ссылки на документы с неё (договор, PDF, QR): поля `final_url`
+   и `final_links` в `successful_sims.jsonl`, строка «Страница договора» и список документов в
+   сообщении `#успешно`. Сессий диагностики хранится 40 вместо 5. Маркер `FINAL_PAGE_1591R23`.
+25. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

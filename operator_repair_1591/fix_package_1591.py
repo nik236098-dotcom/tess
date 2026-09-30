@@ -70,7 +70,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "e8f5e036c2f33ab9d8f27a98deceb25356511cd253fc871f929c16d619f45d75",  # r18 output
                          "341513d5df545f6711f9c5f1e0de7d464d586b6c0afe4ac2fc019a27308457ec",  # r19 output
                          "bb57f0437e52c61d801e94020c3d72f9bbca2b2bbef09b63e0d746e5de9a59f2",  # r20 output
-                         "90ddb7d43cfbb2d944a1fb23c62aed15cb3a9d3090810864402aa31b5410a1b0"}  # r21 output
+                         "90ddb7d43cfbb2d944a1fb23c62aed15cb3a9d3090810864402aa31b5410a1b0",  # r21 output
+                         "fd1ed72b18db63993d0c288fa7ad8449e3e7827fa2b2697569dd79a9053ec3dc"}  # r22 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -1809,6 +1810,109 @@ README_NOTE_R22 = '''
 error_skipped_rows.txt, но не в файл прогресса, и каждый плановый перезапуск возвращал их в
 очередь: оба пути пропуска теперь вызывают remember_processed_number. Маркер: ROW_SKIP_PERSIST_1591R22.
 '''
+# Revision 23: the SUCCESS record and push carry only the frozen eSIM-offer URL, which the
+# site redirects to its start page outside the original browser session. The page the worker
+# is on when the success is recorded (the signed contract) is now saved too — its URL and its
+# document-like links (contract, PDF, QR, download) — as "final_url"/"final_links" in
+# successful_sims.jsonl and as extra lines of the #успешно push. Diagnostics keep 40 sessions
+# instead of 5: with a restart every 20 minutes, 5 sessions covered only a few hours.
+FINAL_PAGE_MARKER = "FINAL_PAGE_1591R23"
+OLD_DIAG_KEEP = "DIAGNOSTIC_SESSIONS_TO_KEEP = 5\n"
+NEW_DIAG_KEEP = "DIAGNOSTIC_SESSIONS_TO_KEEP = 40  # FINAL_PAGE_1591R23: restarts every 20 min made 5 sessions a few hours\n"
+OLD_WRITE_SUCCESS_HEAD = '''def write_success_record(base_dir, worker):
+    n,a,b=row_parts(worker.get("row"))
+    rec={
+'''
+FINAL_PAGE_HELPERS_R23 = r'''# FINAL_PAGE_1591R23
+_FINAL_LINKS_JS_1591R23 = r"""() => {
+  const out = [];
+  const seen = new Set();
+  const want = /договор|pdf|скачать|qr|esim|e-sim|загруз|документ|contract|download|профил/i;
+  const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+  for (const el of document.querySelectorAll('a[href], [data-href], button[formaction]')) {
+    const href = el.href || el.getAttribute('data-href') || el.getAttribute('formaction') || '';
+    const text = clean(el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('download'));
+    if (!href || href.startsWith('javascript:') || seen.has(href)) continue;
+    if (!(want.test(text) || want.test(href))) continue;
+    seen.add(href);
+    out.push({text: text.slice(0, 80), href: href.slice(0, 500)});
+    if (out.length >= 8) break;
+  }
+  for (const img of document.querySelectorAll('img')) {
+    const alt = clean(img.alt), src = String(img.src || '');
+    if (!(/qr/i.test(alt) || /qr/i.test(src))) continue;
+    out.push(src.startsWith('data:') ? {text: 'QR-код на странице (встроенное изображение)', href: ''}
+                                     : {text: 'QR-код: ' + (alt || 'изображение'), href: src.slice(0, 500)});
+    if (out.length >= 10) break;
+  }
+  return out;
+}"""
+
+
+def capture_final_page_1591r23(page, worker=None):
+    """URL of the page the worker is on when the success is recorded (the signed contract)
+    plus its document-like links: contract, PDF, QR, download. Read-only."""
+    result = {"url": "", "links": []}
+    if page is None:
+        return result
+    try:
+        result["url"] = str(page.url or "")
+    except Exception:
+        pass
+    try:
+        links = page.evaluate(_FINAL_LINKS_JS_1591R23)
+        if isinstance(links, list):
+            result["links"] = [x for x in links if isinstance(x, dict)][:10]
+    except Exception:
+        pass
+    if worker is not None:
+        worker["final_url"] = result["url"]
+        worker["final_links"] = result["links"]
+    return result
+
+
+def _final_links_lines_1591r23(links):
+    out = []
+    for item in (links or [])[:10]:
+        text = str((item or {}).get("text") or "").strip() or "документ"
+        href = str((item or {}).get("href") or "").strip()
+        out.append(f"{text}: {href}" if href else text)
+    return out
+
+
+'''
+NEW_WRITE_SUCCESS_HEAD = FINAL_PAGE_HELPERS_R23 + '''def write_success_record(base_dir, worker):
+    n,a,b=row_parts(worker.get("row"))
+    final = capture_final_page_1591r23(worker.get("page"), worker)  # FINAL_PAGE_1591R23
+    rec={
+'''
+OLD_REC_PROFILE = '''        "profile":dict(worker.get("success_profile") or {}),
+    }
+'''
+NEW_REC_PROFILE = '''        "profile":dict(worker.get("success_profile") or {}),
+        "final_url": final.get("url") or "",  # FINAL_PAGE_1591R23
+        "final_links": list(final.get("links") or []),
+    }
+'''
+OLD_SUCCESS_TAIL = '''        f"Ссылка eSIM: {rec.get('sim_url') or '—'}",
+    ])
+'''
+NEW_SUCCESS_TAIL = '''        f"Ссылка eSIM: {rec.get('sim_url') or '—'}",
+        f"Страница договора: {rec.get('final_url') or '—'}",  # FINAL_PAGE_1591R23
+        *_final_links_lines_1591r23(rec.get("final_links")),
+    ])
+'''
+README_NOTE_R23 = '''
+
+РЕВИЗИЯ 23 (fix_package_1591.py)
+Ссылка в записи об успехе — намеренно замороженный адрес страницы предложения eSIM, который вне
+исходной сессии браузера сайт перенаправляет на начальную страницу. Теперь при фиксации успеха
+сохраняется и страница, на которой стоит worker (подписанный договор): её адрес и ссылки на
+документы (договор, PDF, QR, скачивание) — поля final_url/final_links в successful_sims.jsonl и
+строки «Страница договора: …» и список документов в сообщении #успешно
+(capture_final_page_1591r23). Число хранимых сессий диагностики увеличено с 5 до 40: при
+перезапуске каждые 20 минут 5 сессий покрывали лишь несколько часов. Маркер: FINAL_PAGE_1591R23.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -2642,8 +2746,9 @@ def main(argv: list[str]) -> int:
                                                 PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER, PERSDATA_MARKER,
                                                 ERRORSKIP_MARKER, SUCCESSTAG_MARKER, BROWSER_MARKER,
                                                 PROFILE_LABELS_MARKER, PROXY_DIRECT_MARKER,
-                                                RESTART_RELAUNCH_MARKER, ROW_SKIP_MARKER)):
-        print("Already revision 22; nothing changed.")
+                                                RESTART_RELAUNCH_MARKER, ROW_SKIP_MARKER,
+                                                FINAL_PAGE_MARKER)):
+        print("Already revision 23; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -2990,6 +3095,15 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 24 (r23). Final (contract) page URL and document links in the success record and push.
+    if FINAL_PAGE_MARKER not in source:
+        for old, new, what in ((OLD_DIAG_KEEP, NEW_DIAG_KEEP, "diagnostic sessions to keep"),
+                               (OLD_WRITE_SUCCESS_HEAD, NEW_WRITE_SUCCESS_HEAD, "final page helpers"),
+                               (OLD_REC_PROFILE, NEW_REC_PROFILE, "success record final page"),
+                               (OLD_SUCCESS_TAIL, NEW_SUCCESS_TAIL, "success message final page")):
+            new_source = replace_once(new_source, old, new, what)
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -3015,7 +3129,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | CONTROLLER_ACCEPTED_SHAS
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 22
+    manifest["revision"] = 23
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -3035,7 +3149,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 19", README_NOTE_R19),
                           ("РЕВИЗИЯ 20", README_NOTE_R20),
                           ("РЕВИЗИЯ 21", README_NOTE_R21),
-                          ("РЕВИЗИЯ 22", README_NOTE_R22)):
+                          ("РЕВИЗИЯ 22", README_NOTE_R22),
+                          ("РЕВИЗИЯ 23", README_NOTE_R23)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -3048,7 +3163,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 22, "result": "OK",
+    verification.update({"python": sys.version, "revision": 23, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -3064,7 +3179,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 22 applied to", package)
+    print("Revision 23 applied to", package)
     return 0
 
 

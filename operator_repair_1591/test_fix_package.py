@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-22", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-23", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -303,7 +303,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 22", run.stdout)
+            self.assertIn("Already revision 23", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -337,7 +337,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 22)
+        self.assertEqual(manifest["revision"], 23)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -664,12 +664,79 @@ class PackageTests(unittest.TestCase):
         self.assertIn("TABS_PER_BROWSER = 4", self.source)
         self.assertNotIn("TABS_PER_BROWSER = 3", self.source)
         ns = {"row_parts": lambda row: (row[0], row[1], row[2]), "_success_profile_lines": lambda profile: ["ФИО: X"]}
-        exec_functions(self.source, ["_success_message"], ns)
+        exec_functions(self.source, ["_success_message", "_final_links_lines_1591r23"], ns)
         text = ns["_success_message"]({"id": 2, "row": (5, "79990000000", "1234"), "total_rows": 10},
                                       {"profile": {}, "sim_number": "89", "sim_url": "u"})
         lines = text.split("\n")
         self.assertEqual(lines[0], "#успешно"); self.assertTrue(lines[1].startswith("✅ УСПЕХ — Вкладка 2"))
         self.assertIn("Строка: 5/10", text); self.assertIn("eSIM: 89", text)
+        self.assertIn("Страница договора: —", text)  # FINAL_PAGE_1591R23
+
+    def test_success_record_and_push_carry_the_contract_page(self):
+        self.assertIn("DIAGNOSTIC_SESSIONS_TO_KEEP = 40", self.source)
+        ns = {"row_parts": lambda row: (row[0], row[1], row[2]), "_success_profile_lines": lambda profile: ["ФИО: X"],
+              "json": json, "Path": Path}
+        for node in ast.parse(self.source).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "_FINAL_LINKS_JS_1591R23" for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(self.source, ["_success_message", "write_success_record", "capture_final_page_1591r23",
+                                     "_final_links_lines_1591r23"], ns)
+        class Page:
+            url = "https://saratov.beeline.ru/registration/esim/contract?id=42"
+            def evaluate(self, js): return [{"text": "Скачать договор", "href": "https://x/contract.pdf"},
+                                            {"text": "QR-код на странице (встроенное изображение)", "href": ""}]
+        with tempfile.TemporaryDirectory() as d:
+            worker = {"id": 3, "row": (5, "79990000000", "1234"), "total_rows": 10, "page": Page(),
+                      "reserved_sim_number": "89", "reserved_sim_url": "u", "success_profile": {"full_name": "A B"}}
+            rec = ns["write_success_record"](Path(d), worker)
+            saved = json.loads((Path(d) / "successful_sims.jsonl").read_text("utf-8").splitlines()[-1])
+        self.assertEqual(rec["final_url"], Page.url); self.assertEqual(saved["final_url"], Page.url)
+        self.assertEqual(saved["final_links"][0]["href"], "https://x/contract.pdf"); self.assertEqual(saved["sim_url"], "u")
+        text = ns["_success_message"](worker, rec)
+        self.assertIn("Страница договора: https://saratov.beeline.ru/registration/esim/contract?id=42", text)
+        self.assertIn("Скачать договор: https://x/contract.pdf", text); self.assertIn("QR-код на странице (встроенное изображение)", text)
+        self.assertTrue(text.index("Ссылка eSIM: u") < text.index("Страница договора"))
+        # No page (or a page that fails): the record is still written, fields stay empty.
+        class Broken:
+            @property
+            def url(self): raise RuntimeError("closed")
+            def evaluate(self, js): raise RuntimeError("closed")
+        self.assertEqual(ns["capture_final_page_1591r23"](Broken()), {"url": "", "links": []})
+        self.assertEqual(ns["capture_final_page_1591r23"](None), {"url": "", "links": []})
+        self.assertEqual(ns["_final_links_lines_1591r23"](None), [])
+
+    def test_final_page_links_are_collected_in_a_browser(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("playwright not installed")
+        ns = {}
+        for node in ast.parse(self.source).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "_FINAL_LINKS_JS_1591R23" for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(self.source, ["capture_final_page_1591r23"], ns)
+        html = ("<h1>Договор подписан</h1><a href='/docs/contract-42.pdf'>Скачать договор</a>"
+                "<a href='/'>На главную</a><a href='/help'>Помощь</a>"
+                "<a href='/esim/qr?order=42' aria-label='QR-код eSIM'></a>"
+                "<img alt='QR код' src='data:image/png;base64,iVBORw0KGgo='>"
+                "<a href='javascript:void(0)'>Договор (всплывающее окно)</a>")
+        try:
+            with sync_playwright() as p:
+                try:
+                    browser = p.chromium.launch(headless=True)
+                except Exception:
+                    browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+                page = browser.new_page(); page.set_content(html)
+                worker = {}
+                result = ns["capture_final_page_1591r23"](page, worker)
+                browser.close()
+        except Exception as exc:
+            self.skipTest(f"chromium not available: {type(exc).__name__}")
+        hrefs = [x["href"] for x in result["links"]]
+        self.assertTrue(any(h.endswith("/docs/contract-42.pdf") for h in hrefs)); self.assertTrue(any("/esim/qr?order=42" in h for h in hrefs))
+        self.assertFalse(any(h.endswith("/help") for h in hrefs)); self.assertFalse(any(h.startswith("javascript:") for h in hrefs))
+        self.assertIn({"text": "QR-код на странице (встроенное изображение)", "href": ""}, result["links"])
+        self.assertEqual(worker["final_links"], result["links"]); self.assertTrue(worker["final_url"].startswith("about:"))
 
     def test_browser_hang_restarts_the_whole_chromium(self):
         src = self.source

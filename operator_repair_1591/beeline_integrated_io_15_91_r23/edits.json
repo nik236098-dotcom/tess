@@ -19,6 +19,13 @@
       ]
     },
     {
+      "start": 189,
+      "end": 190,
+      "replacement": [
+        "DIAGNOSTIC_SESSIONS_TO_KEEP = 40  # FINAL_PAGE_1591R23: restarts every 20 min made 5 sessions a few hours\n"
+      ]
+    },
+    {
       "start": 448,
       "end": 449,
       "replacement": [
@@ -646,6 +653,93 @@
         "    return \"\\n\".join([\n",
         "        \"#успешно\",  # SUCCESS_TAG_1591R17: searchable among the DeepSeek reports\n",
         "        f\"✅ УСПЕХ — Вкладка {worker['id']}\",\n"
+      ]
+    },
+    {
+      "start": 4498,
+      "end": 4500,
+      "replacement": [
+        "        f\"Ссылка eSIM: {rec.get('sim_url') or '—'}\",\n",
+        "        f\"Страница договора: {rec.get('final_url') or '—'}\",  # FINAL_PAGE_1591R23\n",
+        "        *_final_links_lines_1591r23(rec.get(\"final_links\")),\n",
+        "    ])\n"
+      ]
+    },
+    {
+      "start": 4502,
+      "end": 4505,
+      "replacement": [
+        "# FINAL_PAGE_1591R23\n",
+        "_FINAL_LINKS_JS_1591R23 = r\"\"\"() => {\n",
+        "  const out = [];\n",
+        "  const seen = new Set();\n",
+        "  const want = /договор|pdf|скачать|qr|esim|e-sim|загруз|документ|contract|download|профил/i;\n",
+        "  const clean = s => String(s || '').replace(/\\s+/g, ' ').trim();\n",
+        "  for (const el of document.querySelectorAll('a[href], [data-href], button[formaction]')) {\n",
+        "    const href = el.href || el.getAttribute('data-href') || el.getAttribute('formaction') || '';\n",
+        "    const text = clean(el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('download'));\n",
+        "    if (!href || href.startsWith('javascript:') || seen.has(href)) continue;\n",
+        "    if (!(want.test(text) || want.test(href))) continue;\n",
+        "    seen.add(href);\n",
+        "    out.push({text: text.slice(0, 80), href: href.slice(0, 500)});\n",
+        "    if (out.length >= 8) break;\n",
+        "  }\n",
+        "  for (const img of document.querySelectorAll('img')) {\n",
+        "    const alt = clean(img.alt), src = String(img.src || '');\n",
+        "    if (!(/qr/i.test(alt) || /qr/i.test(src))) continue;\n",
+        "    out.push(src.startsWith('data:') ? {text: 'QR-код на странице (встроенное изображение)', href: ''}\n",
+        "                                     : {text: 'QR-код: ' + (alt || 'изображение'), href: src.slice(0, 500)});\n",
+        "    if (out.length >= 10) break;\n",
+        "  }\n",
+        "  return out;\n",
+        "}\"\"\"\n",
+        "\n",
+        "\n",
+        "def capture_final_page_1591r23(page, worker=None):\n",
+        "    \"\"\"URL of the page the worker is on when the success is recorded (the signed contract)\n",
+        "    plus its document-like links: contract, PDF, QR, download. Read-only.\"\"\"\n",
+        "    result = {\"url\": \"\", \"links\": []}\n",
+        "    if page is None:\n",
+        "        return result\n",
+        "    try:\n",
+        "        result[\"url\"] = str(page.url or \"\")\n",
+        "    except Exception:\n",
+        "        pass\n",
+        "    try:\n",
+        "        links = page.evaluate(_FINAL_LINKS_JS_1591R23)\n",
+        "        if isinstance(links, list):\n",
+        "            result[\"links\"] = [x for x in links if isinstance(x, dict)][:10]\n",
+        "    except Exception:\n",
+        "        pass\n",
+        "    if worker is not None:\n",
+        "        worker[\"final_url\"] = result[\"url\"]\n",
+        "        worker[\"final_links\"] = result[\"links\"]\n",
+        "    return result\n",
+        "\n",
+        "\n",
+        "def _final_links_lines_1591r23(links):\n",
+        "    out = []\n",
+        "    for item in (links or [])[:10]:\n",
+        "        text = str((item or {}).get(\"text\") or \"\").strip() or \"документ\"\n",
+        "        href = str((item or {}).get(\"href\") or \"\").strip()\n",
+        "        out.append(f\"{text}: {href}\" if href else text)\n",
+        "    return out\n",
+        "\n",
+        "\n",
+        "def write_success_record(base_dir, worker):\n",
+        "    n,a,b=row_parts(worker.get(\"row\"))\n",
+        "    final = capture_final_page_1591r23(worker.get(\"page\"), worker)  # FINAL_PAGE_1591R23\n",
+        "    rec={\n"
+      ]
+    },
+    {
+      "start": 4511,
+      "end": 4513,
+      "replacement": [
+        "        \"profile\":dict(worker.get(\"success_profile\") or {}),\n",
+        "        \"final_url\": final.get(\"url\") or \"\",  # FINAL_PAGE_1591R23\n",
+        "        \"final_links\": list(final.get(\"links\") or []),\n",
+        "    }\n"
       ]
     },
     {

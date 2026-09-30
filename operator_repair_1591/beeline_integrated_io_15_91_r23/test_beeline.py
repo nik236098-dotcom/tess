@@ -191,7 +191,7 @@ class Diagnostics:
 
 DIAGNOSTICS_DIR = Path(__file__).resolve().parent / "diagnostics"
 
-DIAGNOSTIC_SESSIONS_TO_KEEP = 5
+DIAGNOSTIC_SESSIONS_TO_KEEP = 40  # FINAL_PAGE_1591R23: restarts every 20 min made 5 sessions a few hours
 
 
 def create_diagnostic_session():
@@ -4707,11 +4707,71 @@ def _success_message(worker, rec):
         "",
         f"eSIM: {rec.get('sim_number') or '—'}",
         f"Ссылка eSIM: {rec.get('sim_url') or '—'}",
+        f"Страница договора: {rec.get('final_url') or '—'}",  # FINAL_PAGE_1591R23
+        *_final_links_lines_1591r23(rec.get("final_links")),
     ])
+
+
+# FINAL_PAGE_1591R23
+_FINAL_LINKS_JS_1591R23 = r"""() => {
+  const out = [];
+  const seen = new Set();
+  const want = /договор|pdf|скачать|qr|esim|e-sim|загруз|документ|contract|download|профил/i;
+  const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+  for (const el of document.querySelectorAll('a[href], [data-href], button[formaction]')) {
+    const href = el.href || el.getAttribute('data-href') || el.getAttribute('formaction') || '';
+    const text = clean(el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('download'));
+    if (!href || href.startsWith('javascript:') || seen.has(href)) continue;
+    if (!(want.test(text) || want.test(href))) continue;
+    seen.add(href);
+    out.push({text: text.slice(0, 80), href: href.slice(0, 500)});
+    if (out.length >= 8) break;
+  }
+  for (const img of document.querySelectorAll('img')) {
+    const alt = clean(img.alt), src = String(img.src || '');
+    if (!(/qr/i.test(alt) || /qr/i.test(src))) continue;
+    out.push(src.startsWith('data:') ? {text: 'QR-код на странице (встроенное изображение)', href: ''}
+                                     : {text: 'QR-код: ' + (alt || 'изображение'), href: src.slice(0, 500)});
+    if (out.length >= 10) break;
+  }
+  return out;
+}"""
+
+
+def capture_final_page_1591r23(page, worker=None):
+    """URL of the page the worker is on when the success is recorded (the signed contract)
+    plus its document-like links: contract, PDF, QR, download. Read-only."""
+    result = {"url": "", "links": []}
+    if page is None:
+        return result
+    try:
+        result["url"] = str(page.url or "")
+    except Exception:
+        pass
+    try:
+        links = page.evaluate(_FINAL_LINKS_JS_1591R23)
+        if isinstance(links, list):
+            result["links"] = [x for x in links if isinstance(x, dict)][:10]
+    except Exception:
+        pass
+    if worker is not None:
+        worker["final_url"] = result["url"]
+        worker["final_links"] = result["links"]
+    return result
+
+
+def _final_links_lines_1591r23(links):
+    out = []
+    for item in (links or [])[:10]:
+        text = str((item or {}).get("text") or "").strip() or "документ"
+        href = str((item or {}).get("href") or "").strip()
+        out.append(f"{text}: {href}" if href else text)
+    return out
 
 
 def write_success_record(base_dir, worker):
     n,a,b=row_parts(worker.get("row"))
+    final = capture_final_page_1591r23(worker.get("page"), worker)  # FINAL_PAGE_1591R23
     rec={
         "tab":worker["id"],
         "row":n,
@@ -4720,6 +4780,8 @@ def write_success_record(base_dir, worker):
         "sim_number":worker.get("reserved_sim_number"),
         "sim_url":worker.get("reserved_sim_url"),
         "profile":dict(worker.get("success_profile") or {}),
+        "final_url": final.get("url") or "",  # FINAL_PAGE_1591R23
+        "final_links": list(final.get("links") or []),
     }
     with (base_dir/"successful_sims.jsonl").open("a",encoding="utf-8") as f:
         f.write(json.dumps(rec,ensure_ascii=False)+"\n")
