@@ -41,6 +41,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -77,7 +78,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "aac470f2ecd3e0d4d34b399860cda4393a0fa1896b24d206ea2c794558e853a2",  # r25 output
                          "72110535925a3167e91c621a29e2d46d090f7e76b03bb250df9f35530bdcaa5d",  # r26 output
                          "786a170bbe7f1861e225ec19f150c20ca176f5dbb55beeeb02924522cb29a6f3",  # r27 output
-                         "6482ff2cfbc544f86587731e6d84a7ba5c9858987ca5700b60032d2ec4a905cf"}  # r28 output
+                         "6482ff2cfbc544f86587731e6d84a7ba5c9858987ca5700b60032d2ec4a905cf",  # r28 output
+                         "e2c48c93641a62328a976b2197be2b3fba0ff0586819709eacc52afd27042e52",  # r29 output
+                         "0b6cc34c63b6cfb1eb2f38909d41b05966eb1251b77c52cf1012d7cd4e95c3ab"}  # r30 output (prompt only)
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -2732,6 +2735,297 @@ README_NOTE_R29 = '''
 запросившему его процессу, поэтому при старте оставшийся файл сбрасывается с записью в журнал.
 Маркер: STALE_DRAIN_RESET_1591R29.
 '''
+# Revision 30: the signing step made deterministic and coordinated with DeepSeek.
+# (a) Before the local signing the portal overlays are dismissed (r6 helper, so far used for
+#     tariff/eSIM only); after the click the r25 trace is checked for the signing request
+#     (checksignature / POST) and, when nothing was sent and the button is still there, the
+#     signature is redrawn and the button clicked ONCE more.
+# (b) While a DeepSeek SUCCESS_ASSIST session works on the tab (ai_busy:<tab> in status_map,
+#     set by the observer) the local code does not sign, for at most AI_YIELD_MAX_SECONDS.
+# (c) DeepSeek's mandate: when the runtime's click did not go through it must dismiss overlays,
+#     redraw, click once, verify the network answer and end its report with
+#     «VERDICT: SIGNED | PAYMENT | NOT_SIGNED». The observer stores the verdict in status_map
+#     (verdict:<tab>); settle_success uses SIGNED as evidence and PAYMENT as the payment step.
+AI_VERDICT_MARKER = "AI_VERDICT_1591R30"
+SIGN_ROBUST_MARKER = "SIGN_ROBUST_1591R31"  # the code part (r31); r30 is the prompt only
+OLD_POST_AUTH_DEF = "def tick_post_auth_review(base_dir, worker):\n"
+AI_VERDICT_HELPERS_R30 = r'''# SIGN_ROBUST_1591R31
+AI_BUSY_MAX_SECONDS = 150      # a DeepSeek session older than this no longer blocks the local signing
+AI_YIELD_MAX_SECONDS = 120     # the local code yields to DeepSeek at most this long per row
+AI_VERDICT_MAX_AGE = 900
+SIGN_SENT_RE_1591R30 = re.compile(r"checksignature|/sign", re.I)
+
+
+def _ai_busy_1591r30(worker):
+    """True while a DeepSeek SUCCESS_ASSIST session is working on this tab (bounded)."""
+    sm = worker.get("status_map")
+    if sm is None:
+        return False
+    try:
+        info = sm.get(f"ai_busy:{worker.get('id')}") or {}
+    except Exception:
+        return False
+    now = time.time()
+    if not info or now - float(info.get("time") or 0) > AI_BUSY_MAX_SECONDS:
+        worker["ai_yield_since"] = None
+        return False
+    since = worker.get("ai_yield_since")
+    if since is None:
+        worker["ai_yield_since"] = now
+        return True
+    return now - float(since) < AI_YIELD_MAX_SECONDS
+
+
+def _ai_verdict_1591r30(worker):
+    """DeepSeek's VERDICT for this tab, if given after the local click and still fresh."""
+    sm = worker.get("status_map")
+    if sm is None:
+        return ""
+    try:
+        info = sm.get(f"verdict:{worker.get('id')}") or {}
+    except Exception:
+        return ""
+    when = float(info.get("time") or 0)
+    if not info or time.time() - when > AI_VERDICT_MAX_AGE:
+        return ""
+    if when < float(worker.get("sign_clicked_at") or 0):
+        return ""
+    return str(info.get("verdict") or "").upper()
+
+
+def _ai_mark_busy_1591r30(status_map, request_text, update_id):
+    """Observer side: this SUCCESS_ASSIST request is being worked on — the tab's local code yields."""
+    m = re.search(r"\[AUTO_SUCCESS_ASSIST TAB (\d+)\]", str(request_text or ""))
+    if not m or status_map is None:
+        return None
+    tab = int(m.group(1))
+    try:
+        status_map[f"ai_busy:{tab}"] = {"time": time.time(), "update": update_id}
+    except Exception:
+        pass
+    return tab
+
+
+def _ai_success_verdict_1591r30(status_map, request_text, response_text):
+    """Observer side: record DeepSeek's VERDICT for the tab named in the request; clear busy."""
+    m = re.search(r"\[AUTO_SUCCESS_ASSIST TAB (\d+)\]", str(request_text or ""))
+    if not m or status_map is None:
+        return None
+    tab = int(m.group(1))
+    try:
+        status_map.pop(f"ai_busy:{tab}", None)
+    except Exception:
+        pass
+    v = re.search(r"VERDICT:\s*(SIGNED|PAYMENT|NOT_SIGNED)", str(response_text or ""), re.I)
+    if not v:
+        return None
+    verdict = v.group(1).upper()
+    try:
+        status_map[f"verdict:{tab}"] = {"verdict": verdict, "time": time.time(),
+                                        "text": str(response_text or "")[-300:]}
+    except Exception:
+        pass
+    print(f"[AI VERDICT] TAB {tab}: {verdict}", flush=True)
+    return verdict
+
+
+_SIGNATURE_CANVAS_FILLED_JS_1591R30 = r"""() => {
+  const list = [...document.querySelectorAll('canvas')].filter(c => {
+    const r = c.getBoundingClientRect(); return r.width >= 250 && r.height >= 120;
+  });
+  if (!list.length) return null;
+  const c = list[0];
+  try {
+    const blank = document.createElement('canvas'); blank.width = c.width; blank.height = c.height;
+    return c.toDataURL() !== blank.toDataURL();
+  } catch (e) { return null; }
+}"""
+
+
+def _signature_canvas_filled_1591r30(page):
+    """True/False when the signature pad is/is not drawn on; None when unknown."""
+    try:
+        return page.evaluate(_SIGNATURE_CANVAS_FILLED_JS_1591R30)
+    except Exception:
+        return None
+
+
+def _sign_prepare_1591r30(page, worker):
+    """Before the local signing: no portal modal may intercept the click."""
+    try:
+        dismiss_blocking_overlays(page, keep_text="подписать")
+    except Exception:
+        pass
+
+
+def _sign_request_sent_1591r30(trace):
+    for r in (trace or {}).get("responses") or []:
+        url = str(r.get("url") or "")
+        if SIGN_SENT_RE_1591R30.search(url):
+            return True
+        if str(r.get("method")) in ("POST", "PUT", "PATCH") and int(r.get("status") or 0) < 400 and "esim" in url.lower():
+            return True
+    return False
+
+
+def _sign_retry_if_unsent_1591r30(page, worker):
+    """The click sent nothing and the button is still there: overlays away, redraw, ONE more click."""
+    trace = worker.get("sign_trace") or {}
+    if _sign_request_sent_1591r30(trace) or int(worker.get("sign_retries") or 0) >= 1:
+        return False
+    try:
+        if _signature_button_locator(page) is None:
+            return False
+    except Exception:
+        return False
+    worker["sign_retries"] = int(worker.get("sign_retries") or 0) + 1
+    filled = _signature_canvas_filled_1591r30(page)
+    canvas = "пуст" if filled is False else ("не пуст" if filled else "?")
+    print(
+        f"[Вкладка {worker.get('id')}] Подпись: запрос на сервер не ушёл (холст {canvas}) — "
+        "снимаю оверлеи и повторяю один раз.",
+        flush=True,
+    )
+    _sign_prepare_1591r30(page, worker)
+    _sign_trace_begin_1591r25(page, worker)
+    try:
+        fill_signature_and_submit(page, worker.get("diagnostic"))
+        worker["sign_clicked_at"] = time.time()
+        return True
+    except Exception as exc:
+        print(f"[Вкладка {worker.get('id')}] Повтор подписи не удался: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
+        return False
+    finally:
+        _sign_trace_end_1591r25(page, worker, note="retry")
+
+
+'''
+NEW_POST_AUTH_DEF = AI_VERDICT_HELPERS_R30 + OLD_POST_AUTH_DEF
+OLD_BUTTON_BLOCK = '''    button = _signature_button_locator(page)
+    if button is not None:
+        try:
+            enabled = button.is_enabled()
+'''
+NEW_BUTTON_BLOCK_R30 = '''    button = _signature_button_locator(page)
+    if button is not None and _ai_busy_1591r30(worker):  # SIGN_ROBUST_1591R31: DeepSeek is on this tab
+        set_tab_status(worker, "🧠", "Подтверждение успешно. DeepSeek работает с вкладкой — подпись отложена.")
+        external_heartbeat(worker, "sign_yield_to_ai")
+        return
+    if button is not None:
+        try:
+            enabled = button.is_enabled()
+'''
+OLD_SIGN_CALL_R25 = '''            capture_contract_details(page, worker)
+            _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25
+            try:
+                fill_signature_and_submit(page, worker.get("diagnostic"))
+            finally:
+                _sign_trace_end_1591r25(page, worker)
+            worker["phase"] = "SIGN_WAIT"
+'''
+NEW_SIGN_CALL_R30 = '''            capture_contract_details(page, worker)
+            _sign_prepare_1591r30(page, worker)  # SIGN_ROBUST_1591R31: overlays away first
+            _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25
+            try:
+                fill_signature_and_submit(page, worker.get("diagnostic"))
+            finally:
+                _sign_trace_end_1591r25(page, worker)
+            worker["sign_clicked_at"] = time.time()
+            try:
+                _sign_retry_if_unsent_1591r30(page, worker)  # nothing sent + button still there → one retry
+            except Exception as exc:
+                print(f"[Вкладка {worker['id']}] Проверка отправки подписи: {type(exc).__name__}: {exc}", flush=True)
+            worker["phase"] = "SIGN_WAIT"
+'''
+OLD_OBSERVER_PRINT = '''        print(
+            f"[AI {lane.upper()}] Обрабатываю update {update_id}: {latest[:120]}",
+            flush=True,
+        )
+'''
+NEW_OBSERVER_PRINT = '''        print(
+            f"[AI {lane.upper()}] Обрабатываю update {update_id}: {latest[:120]}",
+            flush=True,
+        )
+        _ai_mark_busy_1591r30(status_map, latest, update_id)  # SIGN_ROBUST_1591R31
+'''
+OLD_OBSERVER_COMPLETE = '''            # Mark complete and queue the response in one local durable store.
+            _ai_db_complete(
+'''
+NEW_OBSERVER_COMPLETE = '''            _ai_success_verdict_1591r30(status_map, latest, response_text)  # SIGN_ROBUST_1591R31
+            # Mark complete and queue the response in one local durable store.
+            _ai_db_complete(
+'''
+OLD_OBSERVER_FAIL = '''            _ai_db_fail(update_id, err, job.get("attempts", 1))
+'''
+NEW_OBSERVER_FAIL = '''            _ai_db_fail(update_id, err, job.get("attempts", 1))
+            _ai_success_verdict_1591r30(status_map, latest, "")  # SIGN_ROBUST_1591R31: busy flag off
+'''
+OLD_SETTLE_PAYMENT_R26 = '''    if payment_text:
+        _finish_payment_required_1591r26(base_dir, worker, payment_text)
+        return False
+    evidence = _signed_evidence_1591r24(page) if page is not None else ""
+    if evidence:
+'''
+NEW_SETTLE_PAYMENT_R30 = '''    if payment_text:
+        _finish_payment_required_1591r26(base_dir, worker, payment_text)
+        return False
+    verdict = _ai_verdict_1591r30(worker)  # SIGN_ROBUST_1591R31
+    if verdict == "PAYMENT":
+        _finish_payment_required_1591r26(base_dir, worker, "по вердикту DeepSeek: сайт требует оплату eSIM")
+        return False
+    evidence = _signed_evidence_1591r24(page) if page is not None else ""
+    if not evidence and verdict == "SIGNED":
+        evidence = "ai:verdict_signed"
+    if evidence:
+'''
+OLD_ASSIST_TAIL = '''        "Подписание прошло успешно. Вкладка осталась на …». "
+        f"Причина вызова: {reason}. Текущий URL: {url}"
+    )
+'''
+NEW_ASSIST_TAIL_R30 = '''        "Подписание прошло успешно. Вкладка осталась на …». "
+        "ЕСЛИ RUNTIME УЖЕ НАЖАЛ «Подписать договор», а страница не изменилась или кнопка осталась: "  # AI_VERDICT_1591R30
+        "сними всплывающие окна, перерисуй подпись, нажми кнопку ОДИН раз и проверь в network ответ "
+        "/checksignature/. Пока статус вкладки ✍️ (runtime сам рисует и нажимает) — не кликай. "
+        "ПОСЛЕДНЯЯ СТРОКА ОТЧЁТА СТРОГО одна из: «VERDICT: SIGNED» (checksignature 200 или экран после "
+        "подписи), «VERDICT: PAYMENT» (экран «пора оплатить eSIM»), «VERDICT: NOT_SIGNED — причина». "
+        f"Причина вызова: {reason}. Текущий URL: {url}"
+    )
+'''
+OLD_MISSION_BULLET = "- После нажатия снова наблюдай страницу/console/network и проверь фактический результат.\n"
+NEW_MISSION_BULLET_R30 = '''- После нажатия снова наблюдай страницу/console/network и проверь фактический результат.
+- Если runtime уже нажал «Подписать договор», а страница не изменилась или кнопка осталась:
+  сними всплывающие окна, перерисуй подпись, нажми кнопку ОДИН раз, проверь ответ
+  /checksignature/ в network. Пока статус вкладки ✍️ — runtime сам рисует и нажимает, не кликай.
+- Последняя строка каждого отчёта SUCCESS SUPERVISOR СТРОГО одна из: «VERDICT: SIGNED»,
+  «VERDICT: PAYMENT» (экран «пора оплатить eSIM»), «VERDICT: NOT_SIGNED — причина».
+  Runtime читает эту строку: SIGNED фиксирует успех, PAYMENT — шаг оплаты, NOT_SIGNED —
+  вкладка удерживается и уходит на проверку пользователю.
+'''
+OLD_TEST_OBSERVER_NS = "            '_ai_db_fail':lambda *a:(_ for _ in ()).throw(AssertionError(a))}\n"
+NEW_TEST_OBSERVER_NS = ("            '_ai_db_fail':lambda *a:(_ for _ in ()).throw(AssertionError(a)),\n"
+                        "            '_ai_mark_busy_1591r30':lambda *a:None,'_ai_success_verdict_1591r30':lambda *a:None}  # SIGN_ROBUST_1591R31\n")
+README_NOTE_R30 = '''
+
+РЕВИЗИЯ 30 (fix_package_1591.py)
+Только промпт DeepSeek (код сценария не менялся). Мандат SUCCESS SUPERVISOR: если runtime уже нажал
+«Подписать договор», а страница не изменилась или кнопка осталась — снять всплывающие окна,
+перерисовать подпись, нажать кнопку ОДИН раз, проверить ответ /checksignature/ в network; пока
+статус вкладки ✍️ — не кликать. Последняя строка каждого отчёта строго «VERDICT: SIGNED |
+PAYMENT | NOT_SIGNED». Маркер: AI_VERDICT_1591R30.
+'''
+README_NOTE_R31 = '''
+
+РЕВИЗИЯ 31 (fix_package_1591.py)
+Код подписи. (а) Перед локальной подписью снимаются оверлеи сайта (помощник ревизии 6, раньше
+только для тарифа и eSIM); после клика по следу ревизии 25 проверяется, ушёл ли запрос подписи
+(checksignature / POST), и если нет, а кнопка на месте — подпись перерисовывается и кнопка
+нажимается ещё ОДИН раз (_sign_retry_if_unsent_1591r30, холст _signature_canvas_filled_1591r30).
+(б) Пока сессия DeepSeek SUCCESS_ASSIST работает с вкладкой (ai_busy:<tab> в status_map, ставит
+наблюдатель), локальный код не подписывает, не дольше AI_YIELD_MAX_SECONDS (120 с). (в) Наблюдатель
+пишет вердикт DeepSeek в status_map (verdict:<tab>); settle_success считает SIGNED признаком успеха,
+PAYMENT — шагом оплаты. Собирается по умолчанию; FIX_1591_MAX_REVISION=30 собирает пакет без этой
+части. Маркер: SIGN_ROBUST_1591R31.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3484,6 +3778,9 @@ def only_function(source: str, name: str):
     return nodes[0]
 
 
+MAX_REVISION = int(os.environ.get("FIX_1591_MAX_REVISION") or 99)  # build an older revision on purpose
+
+
 def replace_once(text: str, old: str, new: str, what: str) -> str:
     if text.count(old) != 1:
         raise SystemExit(f"{what}: expected exactly one occurrence, found {text.count(old)}; nothing changed")
@@ -3568,8 +3865,9 @@ def main(argv: list[str]) -> int:
                                                 RESTART_RELAUNCH_MARKER, ROW_SKIP_MARKER,
                                                 FINAL_PAGE_MARKER, SIGNED_MARKER, SIGN_TRACE_MARKER,
                                                 PAYMENT_MARKER, TG_RATE_MARKER, TWO_BROWSERS_MARKER,
-                                                STALE_DRAIN_MARKER)):
-        print("Already revision 29; nothing changed.")
+                                                STALE_DRAIN_MARKER, AI_VERDICT_MARKER))\
+            and (MAX_REVISION < 31 or SIGN_ROBUST_MARKER in source):
+        print(f"Already revision {31 if SIGN_ROBUST_MARKER in source else 30}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -4009,6 +4307,45 @@ def main(argv: list[str]) -> int:
         else:
             raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 31 (r30). DeepSeek's mandate and VERDICT line (prompt only; the code part is r31).
+    if AI_VERDICT_MARKER not in source:
+        for old, new, what in ((OLD_ASSIST_TAIL, NEW_ASSIST_TAIL_R30, "assist mandate"),
+                               (OLD_MISSION_BULLET, NEW_MISSION_BULLET_R30, "mission verdict")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
+    # 32 (r31). Deterministic signing, DeepSeek/runtime coordination, the verdict read by the code.
+    if SIGN_ROBUST_MARKER not in source and MAX_REVISION >= 31:
+        for old, new, what in ((OLD_POST_AUTH_DEF, NEW_POST_AUTH_DEF, "sign robust helpers"),
+                               (OLD_BUTTON_BLOCK, NEW_BUTTON_BLOCK_R30, "yield to deepseek"),
+                               (OLD_SIGN_CALL_R25, NEW_SIGN_CALL_R30, "sign prepare + retry"),
+                               (OLD_OBSERVER_PRINT, NEW_OBSERVER_PRINT, "observer busy flag"),
+                               (OLD_OBSERVER_COMPLETE, NEW_OBSERVER_COMPLETE, "observer verdict"),
+                               (OLD_OBSERVER_FAIL, NEW_OBSERVER_FAIL, "observer busy off"),
+                               (OLD_SETTLE_PAYMENT_R26, NEW_SETTLE_PAYMENT_R30, "settle verdict")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        test_src = replace_once(test_src, OLD_TEST_OBSERVER_NS, NEW_TEST_OBSERVER_NS, "test_update.py observer fixture")
+
+    built_revision = 31 if SIGN_ROBUST_MARKER in new_source else 30
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -4034,7 +4371,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | CONTROLLER_ACCEPTED_SHAS
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 29
+    manifest["revision"] = built_revision
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -4061,7 +4398,9 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 26", README_NOTE_R26),
                           ("РЕВИЗИЯ 27", README_NOTE_R27),
                           ("РЕВИЗИЯ 28", README_NOTE_R28),
-                          ("РЕВИЗИЯ 29", README_NOTE_R29)):
+                          ("РЕВИЗИЯ 29", README_NOTE_R29),
+                          ("РЕВИЗИЯ 30", README_NOTE_R30),
+                          *((("РЕВИЗИЯ 31", README_NOTE_R31),) if built_revision >= 31 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -4074,7 +4413,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 29, "result": "OK",
+    verification.update({"python": sys.version, "revision": built_revision, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -4090,7 +4429,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 29 applied to", package)
+    print(f"Revision {built_revision} applied to", package)
     return 0
 
 

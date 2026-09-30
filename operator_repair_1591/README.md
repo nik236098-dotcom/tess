@@ -1,6 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 29 лежит в `beeline_integrated_io_15_91_r29/`. В нём нет
+Готовый пакет ревизии 31 лежит в `beeline_integrated_io_15_91_r31/`; рядом `beeline_integrated_io_15_91_r30/` —
+только промпт DeepSeek без изменений кода подписи (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -66,7 +67,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r29
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r31
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -257,7 +258,15 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 30. **Сброс незавершённого drain (ревизия 29).** Файл `restart_drain.json`, оставшийся от процесса,
    убитого посреди планового перезапуска, заставлял следующий запуск сразу «дорабатывать и ждать».
    Теперь при старте такой файл сбрасывается. Маркер `STALE_DRAIN_RESET_1591R29`.
-31. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+31. **Промпт DeepSeek (ревизия 30).** Мандат: если клик runtime по «Подписать договор» не прошёл,
+   снять оверлеи, перерисовать подпись, нажать один раз, проверить network; каждый отчёт заканчивать
+   строкой `VERDICT: SIGNED | PAYMENT | NOT_SIGNED`. Код не менялся. Маркер `AI_VERDICT_1591R30`.
+32. **Подпись договора (ревизия 31).** Перед подписью снимаются оверлеи сайта; после клика по следу
+   ревизии 25 проверяется, ушёл ли запрос подписи, и если нет, а кнопка на месте, подпись
+   перерисовывается и кнопка нажимается ещё один раз. Пока DeepSeek работает с вкладкой, локальный код
+   не подписывает (не дольше 120 с). Вердикт DeepSeek читается кодом как признак успеха или шага
+   оплаты. Маркер `SIGN_ROBUST_1591R31`.
+33. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

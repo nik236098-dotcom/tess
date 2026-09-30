@@ -1,5 +1,6 @@
 """Offline tests for fix_package_1591.py. Set PACKAGE_1591_DIR to an extracted package for the full run."""
 import ast
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -60,7 +61,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -141,6 +142,117 @@ class PackageTests(unittest.TestCase):
             self.assertIn("sendMessage", [m for m, _ in sent])
             self.assertEqual(json.loads((Path(d) / "telegram_status_messages.json").read_text("utf-8"))["mids"]["1"], 777)
 
+
+    def test_signing_is_coordinated_with_deepseek_and_retried_once(self):
+        src = self.source
+        for needle in ("VERDICT: SIGNED", "VERDICT: PAYMENT", "VERDICT: NOT_SIGNED"):
+            self.assertIn(needle, src[src.index("def queue_success_assist"):src.index("def queue_success_assist") + 4000])
+            self.assertIn(needle, src[src.index("SUCCESS SUPERVISOR:"):src.index("ERROR SUPERVISOR:")])
+        review = src[src.index("def tick_post_auth_review"):src.index("def tick_success_assist")]
+        self.assertLess(review.index("_ai_busy_1591r30(worker)"), review.index("enabled = button.is_enabled()"))
+        self.assertLess(review.index("_sign_prepare_1591r30(page, worker)"), review.index("_sign_trace_begin_1591r25(page, worker)"))
+        self.assertIn("_sign_retry_if_unsent_1591r30(page, worker)", review)
+        observer = src[src.index("def ai_observer_process"):src.index("def ai_observer_process") + 9000]
+        self.assertIn("_ai_mark_busy_1591r30(status_map, latest, update_id)", observer)
+        self.assertLess(observer.index("_ai_success_verdict_1591r30(status_map, latest, response_text)"), observer.index("_ai_db_complete("))
+        clock = [1000.0]
+        ns = {"re": __import__("re"), "time": types.SimpleNamespace(time=lambda: clock[0]), "print": lambda *a, **k: None,
+              "AI_BUSY_MAX_SECONDS": 150, "AI_YIELD_MAX_SECONDS": 120, "AI_VERDICT_MAX_AGE": 900}
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id in ("SIGN_SENT_RE_1591R30", "_SIGNATURE_CANVAS_FILLED_JS_1591R30") for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(src, ["_ai_busy_1591r30", "_ai_verdict_1591r30", "_ai_mark_busy_1591r30", "_ai_success_verdict_1591r30",
+                             "_sign_request_sent_1591r30", "_sign_retry_if_unsent_1591r30", "_sign_prepare_1591r30",
+                             "_signature_canvas_filled_1591r30"], ns)
+        sm = {}
+        req = "[AUTO_SUCCESS_ASSIST TAB 3] Это твоя главная обязанность …"
+        self.assertEqual(ns["_ai_mark_busy_1591r30"](sm, req, 77), 3); self.assertIn("ai_busy:3", sm)
+        worker = {"id": 3, "status_map": sm}
+        self.assertTrue(ns["_ai_busy_1591r30"](worker), "the local code yields while DeepSeek works on the tab")
+        clock[0] += 130
+        self.assertFalse(ns["_ai_busy_1591r30"](worker), "but never longer than AI_YIELD_MAX_SECONDS")
+        clock[0] = 1000.0; sm.clear(); ns["_ai_mark_busy_1591r30"](sm, req, 78); worker.pop("ai_yield_since", None)
+        self.assertTrue(ns["_ai_busy_1591r30"](worker))
+        self.assertEqual(ns["_ai_success_verdict_1591r30"](sm, req, "…отчёт…\nVERDICT: SIGNED"), "SIGNED")
+        self.assertNotIn("ai_busy:3", sm); self.assertFalse(ns["_ai_busy_1591r30"](worker))
+        worker["sign_clicked_at"] = 900.0
+        self.assertEqual(ns["_ai_verdict_1591r30"](worker), "SIGNED")
+        worker["sign_clicked_at"] = 2000.0
+        self.assertEqual(ns["_ai_verdict_1591r30"](worker), "", "a verdict given before the click does not count")
+        self.assertIsNone(ns["_ai_success_verdict_1591r30"](sm, req, "нет вердикта"))
+        self.assertIsNone(ns["_ai_success_verdict_1591r30"](sm, "[AUTO_ERROR_ASSIST TAB 3] x", "VERDICT: SIGNED"))
+        self.assertEqual(ns["_ai_success_verdict_1591r30"](sm, req, "VERDICT: NOT_SIGNED — кнопка серая"), "NOT_SIGNED")
+        # the retry: only when nothing was sent and the button is still there, and only once
+        sent = ns["_sign_request_sent_1591r30"]
+        self.assertTrue(sent({"responses": [{"url": "https://x/v1/esim-selfreg/checksignature/", "method": "POST", "status": 200}]}))
+        self.assertTrue(sent({"responses": [{"url": "https://x/v1/esim-selfreg/v2/sendpassportdata/", "method": "POST", "status": 202}]}))
+        self.assertFalse(sent({"responses": [{"url": "https://x/api/ping", "method": "GET", "status": 200}]})); self.assertFalse(sent(None))
+        calls = []
+        ns.update({"_signature_button_locator": lambda page: "btn", "dismiss_blocking_overlays": lambda page, **k: calls.append("overlays"),
+                   "_sign_trace_begin_1591r25": lambda page, w: calls.append("trace_begin"),
+                   "_sign_trace_end_1591r25": lambda page, w, note="": calls.append(("trace_end", note)),
+                   "fill_signature_and_submit": lambda page, diag: calls.append("sign")})
+        page = types.SimpleNamespace(evaluate=lambda js: False)
+        w = {"id": 2, "sign_trace": {"responses": []}}
+        self.assertTrue(ns["_sign_retry_if_unsent_1591r30"](page, w))
+        self.assertEqual(calls, ["overlays", "trace_begin", "sign", ("trace_end", "retry")]); self.assertEqual(w["sign_retries"], 1)
+        calls.clear()
+        self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, w), "never a second retry"); self.assertEqual(calls, [])
+        w2 = {"id": 2, "sign_trace": {"responses": [{"url": "https://x/checksignature/", "method": "POST", "status": 200}]}}
+        self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, w2), "the request went out: no retry")
+        ns["_signature_button_locator"] = lambda page: None
+        self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
+
+    def test_prompt_only_revision_30_builds_and_upgrades_to_31(self):
+        with tempfile.TemporaryDirectory() as d:
+            r30 = Path(d) / "r30"
+            shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
+            env = dict(os.environ, FIX_1591_MAX_REVISION="30")
+            run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
+            src = (r30 / "test_beeline.py").read_text("utf-8")
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
+            self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
+            self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
+            run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
+            self.assertIn("Already revision 30", run.stdout)
+            # a server on the prompt-only build is accepted by the full (r31) installer
+            self.assertIn(hashlib.sha256((r30 / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
+            app = Path(d) / "app"; app.mkdir()
+            for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "install.py", "test_update.py"):
+                shutil.copy(r30 / name, app / name)
+            (app / "telegram_config.json").write_text(json.dumps({"proxy": "socks5h://u:p@h:1"}))
+            run = subprocess.run([sys.executable, str(self.pkg / "install.py"), "--app", str(app)], capture_output=True, text=True, timeout=300)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("CHECK OK", run.stdout)
+
+    def test_signature_canvas_check_in_a_browser(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("playwright not installed")
+        ns = {}
+        for node in ast.parse(self.source).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "_SIGNATURE_CANVAS_FILLED_JS_1591R30" for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(self.source, ["_signature_canvas_filled_1591r30"], ns)
+        try:
+            with sync_playwright() as p:
+                try:
+                    browser = p.chromium.launch(headless=True)
+                except Exception:
+                    browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+                page = browser.new_page()
+                page.set_content("<canvas id='c' width='400' height='200' style='width:400px;height:200px'></canvas>")
+                blank = ns["_signature_canvas_filled_1591r30"](page)
+                page.evaluate("() => { const x = document.getElementById('c').getContext('2d'); x.lineWidth = 3; x.beginPath(); x.moveTo(10, 10); x.lineTo(300, 150); x.stroke(); }")
+                drawn = ns["_signature_canvas_filled_1591r30"](page)
+                page.set_content("<p>no canvas</p>")
+                none = ns["_signature_canvas_filled_1591r30"](page)
+                browser.close()
+        except Exception as exc:
+            self.skipTest(f"chromium not available: {type(exc).__name__}")
+        self.assertIs(blank, False); self.assertIs(drawn, True); self.assertIsNone(none)
+
     def test_stale_drain_file_is_discarded_at_start(self):
         src = self.source
         head = src[src.index("restart_started_at = monotonic()"):src.index("def _restart_tick():")]
@@ -215,7 +327,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-29", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-31", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -393,7 +505,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 29", run.stdout)
+            self.assertIn("Already revision 31", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -427,7 +539,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 29)
+        self.assertEqual(manifest["revision"], 31)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -867,6 +979,7 @@ class PackageTests(unittest.TestCase):
               "queue_success_assist": lambda w, note, force=False: events.append(("assist", force)),
               "_sign_trace_summary_1591r25": lambda trace: None, "_sign_trace_lines_1591r25": lambda summary: [],
               "remember_processed_number": lambda base, row: events.append(("processed", row)),
+              "_ai_verdict_1591r30": lambda w: w.get("_verdict", ""),
               "finalize_success": lambda base, w: events.append("finalize")}
         for node in ast.parse(src).body:
             if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id.endswith("_1591R24") or (isinstance(x, ast.Name) and x.id == "UNVERIFIED_HOLD_SECONDS") for x in node.targets):
@@ -919,6 +1032,15 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(pushed[-1].split("\n")[0], "#оплата"); self.assertIn("ТРЕБУЕТСЯ ОПЛАТА eSIM — Вкладка 4", pushed[-1])
             self.assertIn("оплатите картой", pushed[-1]); self.assertIn("Номер помечен обработанным", pushed[-1])
             self.assertEqual(ns["_payment_page_1591r26"](Page("https://x", "Договор подписан. Спасибо!")), "")
+            # AI_VERDICT_1591R30: DeepSeek's verdict counts as evidence (SIGNED) or as the payment step.
+            events.clear()
+            by_ai = {"id": 5, "row": (10, "79990000003", "4"), "page": Page("https://saratov.beeline.ru/", "Главная"), "success_queue": Q(), "_verdict": "SIGNED"}
+            self.assertTrue(ns["settle_success_1591r24"](base, by_ai)); self.assertIn("finalize", events); self.assertEqual(by_ai["success_evidence"], "ai:verdict_signed")
+            events.clear(); pushed.clear()
+            pay_ai = {"id": 6, "row": (11, "79990000004", "5"), "total_rows": 10, "page": Page("https://saratov.beeline.ru/", "Главная"), "success_queue": Q(),
+                      "reserved_sim_number": "91", "reserved_sim_url": "u3", "success_profile": {}, "_verdict": "PAYMENT"}
+            self.assertFalse(ns["settle_success_1591r24"](base, pay_ai)); self.assertEqual(pay_ai["phase"], "SUCCESS_STOP")
+            self.assertEqual(pushed[-1].split("\n")[0], "#оплата"); self.assertIn("по вердикту DeepSeek", pushed[-1])
 
     def test_sign_click_trace_records_server_answers_and_reaches_the_unverified_push(self):
         src = self.source
