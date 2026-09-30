@@ -8,7 +8,8 @@
 #     curl -fsSL <тот же адрес> | sudo MIGRATE_FROM=root@СТАРЫЙ_IP:/opt/beeline bash
 #
 #   Без переезда конфиги создаются из переменных (или запрашиваются, если терминал интерактивный):
-#     DEEPSEEK_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_PROXY (socks5h://логин:пароль@хост:порт)
+#     DEEPSEEK_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_PROXY (socks5h://логин:пароль@хост:порт,
+#     или direct — без прокси для сервера вне России; пустое значение тоже означает direct)
 #
 # Что делает: системные пакеты и Xvfb, venv с Playwright/Chromium/numpy/OpenCV, код последней папки
 # beeline_integrated_io_15_91_r*/ (test_beeline.py, server_controller.py, operator_runtime_io.py,
@@ -153,7 +154,10 @@ fi
 if [[ ! -f "$APP_DIR/telegram_config.json" ]]; then
   ask TELEGRAM_BOT_TOKEN "Telegram bot token" secret
   ask TELEGRAM_CHAT_ID "Telegram chat_id"
-  ask TELEGRAM_PROXY "Прокси для Telegram (socks5h://логин:пароль@хост:порт)"
+  if [[ -z "${TELEGRAM_PROXY:-}" && -t 0 ]]; then
+    read -r -p "Прокси для Telegram (socks5h://логин:пароль@хост:порт; Enter или direct — без прокси, сервер вне России): " TELEGRAM_PROXY
+  fi
+  TELEGRAM_PROXY="${TELEGRAM_PROXY:-direct}"   # PROXY_DIRECT_1591R20
   python3 - "$APP_DIR/telegram_config.json" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" "$TELEGRAM_PROXY" <<'PY'
 import json,sys
 with open(sys.argv[1],"w",encoding="utf-8") as f: json.dump({"token":sys.argv[2],"chat_id":sys.argv[3],"proxy":sys.argv[4]},f,ensure_ascii=False,indent=2)

@@ -67,7 +67,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "1cc1769f3ec9bd04b325be73fed182a4a05f082339820682601c3bd4be7483f6",
                          "3bee3697775d818df6c1fe82c3096574f00a1c289aaf26c7a7e96d2f614b7597",
                          "1ba0e4f3af9dcc2fa8d78e5eee0033ec48489c402f4c49be9d4e799eb1a786ec",  # r17 output
-                         "e8f5e036c2f33ab9d8f27a98deceb25356511cd253fc871f929c16d619f45d75"}  # r18 output
+                         "e8f5e036c2f33ab9d8f27a98deceb25356511cd253fc871f929c16d619f45d75",  # r18 output
+                         "341513d5df545f6711f9c5f1e0de7d464d586b6c0afe4ac2fc019a27308457ec"}  # r19 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -1539,6 +1540,32 @@ final_profile_capture_v1583 узнавал поля только по этим �
 диагностику событием form_fields_1591r19. Сохранённый handler capture_all_form_fields_v1583
 не менялся. Маркер: PROFILE_LABELS_1591R19.
 '''
+# Revision 20: a server outside Russia reaches Telegram directly. "proxy": "direct" (or none/off)
+# in telegram_config.json means "no proxy on purpose": the code goes direct and the installer's
+# r3 guard (which refuses an EMPTY proxy so the RU server never loses it by accident) accepts it.
+PROXY_DIRECT_MARKER = "PROXY_DIRECT_1591R20"
+TELEGRAM_DIRECT_PROXY_VALUES_SOURCE = "TELEGRAM_DIRECT_PROXY_VALUES = {\"direct\", \"none\", \"off\", \"no\", \"-\"}  # PROXY_DIRECT_1591R20: server outside RU\n"
+OLD_PROXY_FN_DEF = "def telegram_http_proxies(cfg):\n"
+NEW_PROXY_FN_DEF = TELEGRAM_DIRECT_PROXY_VALUES_SOURCE + "\n\n" + OLD_PROXY_FN_DEF
+OLD_PROXY_EMPTY_CHECK = '''    ).strip()
+    if not proxy:
+        return None
+    if "://" not in proxy:
+'''
+NEW_PROXY_EMPTY_CHECK = '''    ).strip()
+    if not proxy or proxy.lower() in TELEGRAM_DIRECT_PROXY_VALUES:  # PROXY_DIRECT_1591R20
+        return None
+    if "://" not in proxy:
+'''
+README_NOTE_R20 = '''
+
+РЕВИЗИЯ 20 (fix_package_1591.py)
+Сервер вне России: Telegram доступен напрямую, прокси не нужен. В telegram_config.json
+значение "proxy": "direct" (также none/off) означает «без прокси намеренно»: код идёт напрямую,
+а защита установщика из ревизии 3 (пустой прокси по-прежнему отклоняется, чтобы российский
+сервер не потерял его случайно) такое значение принимает. fresh_install.sh: на вопрос о прокси
+можно ответить direct или просто Enter. Маркер: PROXY_DIRECT_1591R20.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -2146,9 +2173,13 @@ def ensure_proxy_configured(app):
         cfg = json.loads((app/'telegram_config.json').read_text('utf-8'))
     except (OSError, ValueError):
         cfg = {}
-    if not str((cfg or {}).get('proxy') or '').strip():
+    proxy = str((cfg or {}).get('proxy') or '').strip()
+    if proxy.lower() in ('direct', 'none', 'off', 'no', '-'):  # PROXY_DIRECT_1591R20: server outside RU, no proxy on purpose
+        return
+    if not proxy:
         raise RuntimeError('telegram_config.json has no "proxy". Add "proxy": "socks5h://user:password@host:port" '
-                           '(the value that was TELEGRAM_DEFAULT_PROXY in the old code) before installing; '
+                           '(the value that was TELEGRAM_DEFAULT_PROXY in the old code) before installing, '
+                           'or "proxy": "direct" for a server outside Russia that reaches Telegram directly; '
                            'this build does not embed it and would otherwise reach Telegram without the proxy.')
 '''
 
@@ -2367,8 +2398,8 @@ def main(argv: list[str]) -> int:
                                                 TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER,
                                                 PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER, PERSDATA_MARKER,
                                                 ERRORSKIP_MARKER, SUCCESSTAG_MARKER, BROWSER_MARKER,
-                                                PROFILE_LABELS_MARKER)):
-        print("Already revision 19; nothing changed.")
+                                                PROFILE_LABELS_MARKER, PROXY_DIRECT_MARKER)):
+        print("Already revision 20; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -2659,6 +2690,13 @@ def main(argv: list[str]) -> int:
             add_edit(edits["test_beeline.py"], source, old, new, reflected)
         test_src = replace_once(test_src, OLD_TEST_PROFILE_NS, NEW_TEST_PROFILE_NS, "test_update.py profile fixture")
 
+    # 21 (r20). "proxy": "direct" — a server outside Russia talks to Telegram without a proxy.
+    if PROXY_DIRECT_MARKER not in source:
+        for old, new, what in ((OLD_PROXY_FN_DEF, NEW_PROXY_FN_DEF, "direct proxy values"),
+                               (OLD_PROXY_EMPTY_CHECK, NEW_PROXY_EMPTY_CHECK, "direct proxy check")):
+            new_source = replace_once(new_source, old, new, what)
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -2684,7 +2722,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | {CONTROLLER_OUTPUT_SHA_R12}
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 19
+    manifest["revision"] = 20
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -2701,7 +2739,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 13", README_NOTE_R13), ("РЕВИЗИЯ 14", README_NOTE_R14),
                           ("РЕВИЗИЯ 15", README_NOTE_R15), ("РЕВИЗИЯ 16", README_NOTE_R16),
                           ("РЕВИЗИЯ 17", README_NOTE_R17), ("РЕВИЗИЯ 18", README_NOTE_R18),
-                          ("РЕВИЗИЯ 19", README_NOTE_R19)):
+                          ("РЕВИЗИЯ 19", README_NOTE_R19),
+                          ("РЕВИЗИЯ 20", README_NOTE_R20)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -2714,7 +2753,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 19, "result": "OK",
+    verification.update({"python": sys.version, "revision": 20, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -2730,7 +2769,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 19 applied to", package)
+    print("Revision 20 applied to", package)
     return 0
 
 

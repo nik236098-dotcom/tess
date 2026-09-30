@@ -26,6 +26,26 @@
       ]
     },
     {
+      "start": 451,
+      "end": 452,
+      "replacement": [
+        "TELEGRAM_DIRECT_PROXY_VALUES = {\"direct\", \"none\", \"off\", \"no\", \"-\"}  # PROXY_DIRECT_1591R20: server outside RU\n",
+        "\n",
+        "\n",
+        "def telegram_http_proxies(cfg):\n"
+      ]
+    },
+    {
+      "start": 458,
+      "end": 462,
+      "replacement": [
+        "    ).strip()\n",
+        "    if not proxy or proxy.lower() in TELEGRAM_DIRECT_PROXY_VALUES:  # PROXY_DIRECT_1591R20\n",
+        "        return None\n",
+        "    if \"://\" not in proxy:\n"
+      ]
+    },
+    {
       "start": 496,
       "end": 497,
       "replacement": [

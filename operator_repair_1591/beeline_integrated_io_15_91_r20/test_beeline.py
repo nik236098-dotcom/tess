@@ -453,6 +453,9 @@ def load_telegram_config():
 TELEGRAM_DEFAULT_PROXY = ""  # PROXY_FROM_CONFIG_1591R3: set "proxy" in telegram_config.json (or TELEGRAM_PROXY)
 
 
+TELEGRAM_DIRECT_PROXY_VALUES = {"direct", "none", "off", "no", "-"}  # PROXY_DIRECT_1591R20: server outside RU
+
+
 def telegram_http_proxies(cfg):
     # Config/env override wins. This keeps all Telegram consumers on one transport.
     proxy = str(
@@ -461,7 +464,7 @@ def telegram_http_proxies(cfg):
         or TELEGRAM_DEFAULT_PROXY
         or ""
     ).strip()
-    if not proxy:
+    if not proxy or proxy.lower() in TELEGRAM_DIRECT_PROXY_VALUES:  # PROXY_DIRECT_1591R20
         return None
     if "://" not in proxy:
         proxy = "socks5h://" + proxy

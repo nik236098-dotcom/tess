@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-19", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-20", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -134,6 +134,22 @@ class PackageTests(unittest.TestCase):
         run = self._check(Path(PACKAGE), proxy=False)
         self.assertNotEqual(run.returncode, 0)
         self.assertIn('telegram_config.json has no "proxy"', run.stdout + run.stderr)
+
+    def test_direct_proxy_means_no_proxy_for_code_and_installer(self):
+        ns = {"os": os, "TELEGRAM_DEFAULT_PROXY": ""}
+        for node in ast.parse(self.source).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "TELEGRAM_DIRECT_PROXY_VALUES" for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(self.source, ["telegram_http_proxies"], ns)
+        fn = ns["telegram_http_proxies"]
+        self.assertIsNone(fn({"proxy": "direct"})); self.assertIsNone(fn({"proxy": "NONE"})); self.assertIsNone(fn({"proxy": ""}))
+        self.assertEqual(fn({"proxy": "socks5://u:p@h:1"}), {"http": "socks5h://u:p@h:1", "https": "socks5h://u:p@h:1"})
+        with tempfile.TemporaryDirectory() as d:
+            app = Path(d) / "app"; shutil.copytree(self.pkg, app, ignore=shutil.ignore_patterns("__pycache__"))
+            (app / "telegram_config.json").write_text(json.dumps({"proxy": "direct"}))
+            run = subprocess.run([sys.executable, str(self.pkg / "install.py"), "--app", str(app)],
+                                 capture_output=True, text=True, timeout=300)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("CHECK OK", run.stdout)
     def test_package_source_has_no_embedded_login(self):
         import re
         for name in ("test_beeline.py", "server_controller.py", "operator_runtime_io.py"):
@@ -283,7 +299,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 19", run.stdout)
+            self.assertIn("Already revision 20", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -317,7 +333,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 19)
+        self.assertEqual(manifest["revision"], 20)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -897,6 +913,16 @@ class FreshInstallTests(unittest.TestCase):
                             TELEGRAM_PROXY="socks5h://u:p@h:1")
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout)
+        with tempfile.TemporaryDirectory() as d:  # PROXY_DIRECT_1591R20: no proxy outside Russia
+            app = Path(d) / "app"
+            run = self._run(app, DEEPSEEK_API_KEY="k", TELEGRAM_BOT_TOKEN="t", TELEGRAM_CHAT_ID="1", TELEGRAM_PROXY="")
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("CHECK OK", run.stdout)
+            self.assertEqual(json.loads((app / "telegram_config.json").read_text())["proxy"], "direct")
+        with tempfile.TemporaryDirectory() as d:
+            app = Path(d) / "app"
+            run = self._run(app, DEEPSEEK_API_KEY="k", TELEGRAM_BOT_TOKEN="t", TELEGRAM_CHAT_ID="1",
+                            TELEGRAM_PROXY="socks5h://u:p@h:1")
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             for name in self.CODE:
                 self.assertTrue((app / name).is_file(), name)
             package = max(Path(__file__).resolve().parent.glob("beeline_integrated_io_15_91_r*"),

@@ -186,9 +186,13 @@ def ensure_proxy_configured(app):
         cfg = json.loads((app/'telegram_config.json').read_text('utf-8'))
     except (OSError, ValueError):
         cfg = {}
-    if not str((cfg or {}).get('proxy') or '').strip():
+    proxy = str((cfg or {}).get('proxy') or '').strip()
+    if proxy.lower() in ('direct', 'none', 'off', 'no', '-'):  # PROXY_DIRECT_1591R20: server outside RU, no proxy on purpose
+        return
+    if not proxy:
         raise RuntimeError('telegram_config.json has no "proxy". Add "proxy": "socks5h://user:password@host:port" '
-                           '(the value that was TELEGRAM_DEFAULT_PROXY in the old code) before installing; '
+                           '(the value that was TELEGRAM_DEFAULT_PROXY in the old code) before installing, '
+                           'or "proxy": "direct" for a server outside Russia that reaches Telegram directly; '
                            'this build does not embed it and would otherwise reach Telegram without the proxy.')
 
 

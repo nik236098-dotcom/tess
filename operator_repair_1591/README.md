@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 19 лежит в `beeline_integrated_io_15_91_r19/`. В нём нет
+Готовый пакет ревизии 20 лежит в `beeline_integrated_io_15_91_r20/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -21,6 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/nik236098-dotcom/tess/codex/operato
 ```
 
 Совсем новый сервер без переезда (скрипт спросит ключ DeepSeek, токен и chat_id Telegram и прокси;
+для сервера вне России на вопрос о прокси ответьте `direct` или просто Enter;
 в неинтерактивном запуске их задают переменные `DEEPSEEK_API_KEY`, `TELEGRAM_BOT_TOKEN`,
 `TELEGRAM_CHAT_ID`, `TELEGRAM_PROXY`):
 
@@ -52,7 +53,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r19
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r20
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -193,7 +194,11 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    подписи распознаются по форме значения (ФИО, дата рождения) и по положению (четыре адресных
    поля). Список полей пишется в диагностику событием `form_fields_1591r19`. Маркер
    `PROFILE_LABELS_1591R19`.
-21. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+21. **Сервер без прокси (ревизия 20).** `"proxy": "direct"` (или none/off) в `telegram_config.json`
+   означает «без прокси намеренно»: код идёт к Telegram напрямую, защита установщика из ревизии 3
+   такое значение принимает (пустой прокси по-прежнему отклоняется). `fresh_install.sh` на вопрос о
+   прокси принимает `direct` или Enter. Маркер `PROXY_DIRECT_1591R20`.
+22. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
