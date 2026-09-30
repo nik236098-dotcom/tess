@@ -4717,7 +4717,7 @@ def _success_message(worker, rec):
 _FINAL_LINKS_JS_1591R23 = r"""() => {
   const out = [];
   const seen = new Set();
-  const want = /договор|pdf|скачать|qr|esim|e-sim|загруз|документ|contract|download|профил/i;
+  const want = /договор|pdf|скачать|qr|esim|e-sim|загруз|документ|contract|download|профил|оплат|pay/i;
   const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
   for (const el of document.querySelectorAll('a[href], [data-href], button[formaction]')) {
     const href = el.href || el.getAttribute('data-href') || el.getAttribute('formaction') || '';
@@ -7487,6 +7487,89 @@ def _finish_unverified_1591r24(base_dir, worker, reason):
     return rec
 
 
+# PAYMENT_STEP_1591R26
+PAYMENT_NEEDLES_1591R26 = (
+    "пора оплатить", "оплатить картой", "оплатите картой", "дождитесь регистрации договора",
+    "оплата esim", "оплатить esim", "к оплате",
+)
+
+
+def _payment_page_1591r26(page):
+    """Text of the payment step when the site asks to pay for the eSIM after the signature."""
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "")
+    except Exception:
+        return ""
+    low = body.lower()
+    for needle in PAYMENT_NEEDLES_1591R26:
+        if needle in low:
+            start = max(0, low.index(needle) - 120)
+            return re.sub(r"\s+", " ", body[start:start + 360]).strip()
+    return ""
+
+
+def _payment_message_1591r26(worker, rec):
+    row_no, active_value, second_value = row_parts(worker.get("row"))
+    return "\n".join([
+        "#оплата",
+        f"💳 ТРЕБУЕТСЯ ОПЛАТА eSIM — Вкладка {worker['id']}",
+        f"Строка: {row_no}/{worker.get('total_rows') or '?'}",
+        f"Исходные данные: {active_value} | {second_value}",
+        "Подпись принята сайтом; договор регистрируется только после оплаты картой.",
+        f"Текст шага: {rec.get('payment_text') or '—'}",
+        f"Страница: {rec.get('final_url') or '—'}",
+        *_final_links_lines_1591r23(rec.get("final_links")),
+        *_sign_trace_lines_1591r25(rec.get("sign_trace")),
+        "",
+        *_success_profile_lines(rec.get("profile")),
+        "",
+        f"eSIM: {rec.get('sim_number') or '—'}",
+        f"Ссылка eSIM: {rec.get('sim_url') or '—'}",
+        "Номер помечен обработанным (повтор создал бы второй заказ); вкладка оставлена открытой.",
+    ])
+
+
+def _finish_payment_required_1591r26(base_dir, worker, payment_text):
+    """The site wants the eSIM paid: record it apart from the successes and stop the tab."""
+    n, a, b = row_parts(worker.get("row"))
+    final = capture_final_page_1591r23(worker.get("page"), worker)
+    rec = {
+        "tab": worker["id"], "row": n, "active_digits": a, "second_value": b,
+        "sim_number": worker.get("reserved_sim_number"), "sim_url": worker.get("reserved_sim_url"),
+        "profile": dict(worker.get("success_profile") or {}),
+        "final_url": final.get("url") or "", "final_title": final.get("title") or "",
+        "final_links": list(final.get("links") or []), "payment_text": str(payment_text or ""),
+        "sign_trace": _sign_trace_summary_1591r25(worker.get("sign_trace")),
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    try:
+        with (Path(base_dir) / "payment_required.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        print(f"[Вкладка {worker['id']}] payment_required.jsonl не записан: {type(exc).__name__}: {exc}", flush=True)
+    remember_processed_number(base_dir, worker.get("row"))
+    worker["phase"] = "SUCCESS_STOP"
+    success_queue = worker.get("success_queue")
+    if success_queue is not None:
+        try:
+            success_queue.put(_payment_message_1591r26(worker, rec))
+        except Exception as exc:
+            print(f"[Telegram] Не удалось поставить PAYMENT в очередь: {type(exc).__name__}: {exc}", flush=True)
+    set_tab_status(
+        worker, "💳",
+        f"ТРЕБУЕТСЯ ОПЛАТА eSIM\n{rec['payment_text'][:160]}\nСтраница: {rec['final_url'] or '—'}\n"
+        "Вкладка оставлена открытой. Для очереди будет создана новая.",
+    )
+    external_heartbeat(worker, "payment_required_stop")
+    print(
+        f"\n[Вкладка {worker['id']}] 💳 ТРЕБУЕТСЯ ОПЛАТА. Строка {n}: подпись принята, договор регистрируется "
+        "после оплаты картой. Номер помечен обработанным; вкладка оставлена открытой.\n",
+        flush=True,
+    )
+    worker["stopped"] = True
+    return rec
+
+
 def settle_success_1591r24(base_dir, worker):
     """Called where the code used to declare success because no contract controls remained.
 
@@ -7495,6 +7578,10 @@ def settle_success_1591r24(base_dir, worker):
     reappear and be signed again), then the row is recorded as UNVERIFIED.
     """
     page = worker.get("page")
+    payment_text = _payment_page_1591r26(page) if page is not None else ""  # PAYMENT_STEP_1591R26
+    if payment_text:
+        _finish_payment_required_1591r26(base_dir, worker, payment_text)
+        return False
     evidence = _signed_evidence_1591r24(page) if page is not None else ""
     if evidence:
         worker["success_evidence"] = evidence

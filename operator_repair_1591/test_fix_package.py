@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-25", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-26", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -303,7 +303,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 25", run.stdout)
+            self.assertIn("Already revision 26", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -337,7 +337,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 25)
+        self.assertEqual(manifest["revision"], 26)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -725,6 +725,7 @@ class PackageTests(unittest.TestCase):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
         exec_functions(self.source, ["capture_final_page_1591r23"], ns)
         html = ("<title>Билайн — договор</title><h1>Договор подписан</h1><a href='/docs/contract-42.pdf'>Скачать договор</a>"
+                "<a href='/pay/order/42'>Оплатить картой</a>"
                 "<a href='/'>На главную</a><a href='/help'>Помощь</a>"
                 "<a href='/esim/qr?order=42' aria-label='QR-код eSIM'></a>"
                 "<img alt='QR код' src='data:image/png;base64,iVBORw0KGgo='>"
@@ -744,6 +745,7 @@ class PackageTests(unittest.TestCase):
         hrefs = [x["href"] for x in result["links"]]
         self.assertTrue(any(h.endswith("/docs/contract-42.pdf") for h in hrefs)); self.assertTrue(any("/esim/qr?order=42" in h for h in hrefs))
         self.assertFalse(any(h.endswith("/help") for h in hrefs)); self.assertFalse(any(h.startswith("javascript:") for h in hrefs))
+        self.assertTrue(any(h.endswith("/pay/order/42") for h in hrefs), "payment links are kept for the #оплата push")
         self.assertIn({"text": "QR-код на странице (встроенное изображение)", "href": ""}, result["links"])
         self.assertEqual(worker["final_links"], result["links"]); self.assertTrue(worker["final_url"].startswith("about:"))
         self.assertEqual(result["title"], "Билайн — договор"); self.assertEqual(worker["final_title"], "Билайн — договор")
@@ -767,19 +769,24 @@ class PackageTests(unittest.TestCase):
                     def count(self): return page.pdf if "pdf" in sel else 0
                 return L()
         ns = {"monotonic": lambda: clock[0], "time": __import__("time"), "json": json, "Path": Path, "print": lambda *a, **k: None,
-              "row_parts": lambda row: (row[0], row[1], row[2]), "_success_profile_lines": lambda p: ["ФИО: X"],
+              "re": __import__("re"), "row_parts": lambda row: (row[0], row[1], row[2]), "_success_profile_lines": lambda p: ["ФИО: X"],
               "capture_final_page_1591r23": lambda page, worker=None: {"url": page.url, "title": "Билайн", "links": []},
               "_final_links_lines_1591r23": lambda links: [], "set_tab_status": lambda *a: None,
               "external_heartbeat": lambda w, label: events.append(("hb", label)),
               "capture_blackbox": lambda w, r, exc=None: events.append(("blackbox", r)),
               "queue_success_assist": lambda w, note, force=False: events.append(("assist", force)),
               "_sign_trace_summary_1591r25": lambda trace: None, "_sign_trace_lines_1591r25": lambda summary: [],
+              "remember_processed_number": lambda base, row: events.append(("processed", row)),
               "finalize_success": lambda base, w: events.append("finalize")}
         for node in ast.parse(src).body:
             if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id.endswith("_1591R24") or (isinstance(x, ast.Name) and x.id == "UNVERIFIED_HOLD_SECONDS") for x in node.targets):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "PAYMENT_NEEDLES_1591R26" for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
         exec_functions(src, ["_signed_evidence_1591r24", "_unverified_message_1591r24", "_finish_unverified_1591r24",
-                             "settle_success_1591r24"], ns)
+                             "settle_success_1591r24", "_payment_page_1591r26", "_payment_message_1591r26",
+                             "_finish_payment_required_1591r26"], ns)
         ev = ns["_signed_evidence_1591r24"]
         self.assertEqual(ev(Page("https://saratov.beeline.ru/registration/esim/personal-data-form", "договор подписан")), "", "still the form")
         self.assertEqual(ev(Page("https://saratov.beeline.ru/registration/esim?hash_order=1", "Оформите eSIM")), "", "start page is not a success")
@@ -806,6 +813,22 @@ class PackageTests(unittest.TestCase):
             self.assertFalse((base / "successful_sims.jsonl").exists()); self.assertFalse((base / "processed_numbers.txt").exists())
             self.assertEqual(pushed[-1].split("\n")[0], "#неподтверждено"); self.assertIn("ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА — Вкладка 3", pushed[-1])
             self.assertIn("Номер НЕ помечен обработанным", pushed[-1]); self.assertIn("ФИО: X", pushed[-1])
+            self.assertNotIn(("processed", (8, "79990000001", "2")), events)
+            # PAYMENT_STEP_1591R26: the site's payment step is its own outcome, recorded at once.
+            events.clear(); pushed.clear()
+            pay = {"id": 4, "row": (9, "79990000002", "3"), "total_rows": 10, "success_queue": Q(),
+                   "page": Page("https://saratov.beeline.ru/registration/esim",
+                                "порядок, идём дальше\nтеперь пора оплатить eSIM\nподтвердите данные → оплатите картой → дождитесь регистрации договора\nоплатить картой"),
+                   "reserved_sim_number": "90", "reserved_sim_url": "u2", "success_profile": {"full_name": "C D"}}
+            self.assertFalse(ns["settle_success_1591r24"](base, pay))
+            self.assertEqual(pay["phase"], "SUCCESS_STOP"); self.assertTrue(pay["stopped"]); self.assertNotIn("finalize", events)
+            self.assertIn(("processed", (9, "79990000002", "3")), events)
+            saved = json.loads((base / "payment_required.jsonl").read_text("utf-8").splitlines()[-1])
+            self.assertEqual(saved["row"], 9); self.assertIn("пора оплатить", saved["payment_text"].lower())
+            self.assertFalse((base / "successful_sims.jsonl").exists())
+            self.assertEqual(pushed[-1].split("\n")[0], "#оплата"); self.assertIn("ТРЕБУЕТСЯ ОПЛАТА eSIM — Вкладка 4", pushed[-1])
+            self.assertIn("оплатите картой", pushed[-1]); self.assertIn("Номер помечен обработанным", pushed[-1])
+            self.assertEqual(ns["_payment_page_1591r26"](Page("https://x", "Договор подписан. Спасибо!")), "")
 
     def test_sign_click_trace_records_server_answers_and_reaches_the_unverified_push(self):
         src = self.source

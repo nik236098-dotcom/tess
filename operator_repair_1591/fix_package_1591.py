@@ -73,7 +73,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "90ddb7d43cfbb2d944a1fb23c62aed15cb3a9d3090810864402aa31b5410a1b0",  # r21 output
                          "fd1ed72b18db63993d0c288fa7ad8449e3e7827fa2b2697569dd79a9053ec3dc",  # r22 output
                          "10af519a75ce7a6813dae1b9b7bd95192cb81587e19361325f1e69e5a231269e",  # r23 output
-                         "2e81b5bf57f5da86abec14e2b9bcd7961f44d3c87c54689819a2038a43533057"}  # r24 output
+                         "2e81b5bf57f5da86abec14e2b9bcd7961f44d3c87c54689819a2038a43533057",  # r24 output
+                         "aac470f2ecd3e0d4d34b399860cda4393a0fa1896b24d206ea2c794558e853a2"}  # r25 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -1829,7 +1830,7 @@ FINAL_PAGE_HELPERS_R23 = r'''# FINAL_PAGE_1591R23
 _FINAL_LINKS_JS_1591R23 = r"""() => {
   const out = [];
   const seen = new Set();
-  const want = /договор|pdf|скачать|qr|esim|e-sim|загруз|документ|contract|download|профил/i;
+  const want = /договор|pdf|скачать|qr|esim|e-sim|загруз|документ|contract|download|профил|оплат|pay/i;
   const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
   for (const el of document.querySelectorAll('a[href], [data-href], button[formaction]')) {
     const href = el.href || el.getAttribute('data-href') || el.getAttribute('formaction') || '';
@@ -2313,6 +2314,125 @@ successful_sims.jsonl / unverified_signatures.jsonl (поле sign_trace) и в 
 #неподтверждено строками «Подпись: адрес → адрес» и ответами сервера. Строка
 «[Вкладка N] SIGN TRACE: …» в журнале читается tools/sign_timeline.py. Значения профиля без
 буквы или цифры (одиночная точка) больше не принимаются. Маркер: SIGN_TRACE_1591R25.
+'''
+# Revision 26: the "false successes" were the site's PAYMENT step. After «Подписать договор»
+# the signature is accepted (checksignature 200, sendpassportdata… 202) and the page becomes
+# «порядок, идём дальше → теперь пора оплатить eSIM … оплатите картой → дождитесь регистрации
+# договора». The contract is registered only after payment; the runtime never knew the step
+# and recorded a success. The payment page is now its own outcome: payment_required.jsonl,
+# a #оплата push, the tab left open, the number marked as processed (no second order).
+PAYMENT_MARKER = "PAYMENT_STEP_1591R26"
+OLD_SETTLE_DEF_R24 = '''def settle_success_1591r24(base_dir, worker):
+    """Called where the code used to declare success because no contract controls remained.
+'''
+PAYMENT_HELPERS_R26 = '''# PAYMENT_STEP_1591R26
+PAYMENT_NEEDLES_1591R26 = (
+    "пора оплатить", "оплатить картой", "оплатите картой", "дождитесь регистрации договора",
+    "оплата esim", "оплатить esim", "к оплате",
+)
+
+
+def _payment_page_1591r26(page):
+    """Text of the payment step when the site asks to pay for the eSIM after the signature."""
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "")
+    except Exception:
+        return ""
+    low = body.lower()
+    for needle in PAYMENT_NEEDLES_1591R26:
+        if needle in low:
+            start = max(0, low.index(needle) - 120)
+            return re.sub(r"\\s+", " ", body[start:start + 360]).strip()
+    return ""
+
+
+def _payment_message_1591r26(worker, rec):
+    row_no, active_value, second_value = row_parts(worker.get("row"))
+    return "\\n".join([
+        "#оплата",
+        f"💳 ТРЕБУЕТСЯ ОПЛАТА eSIM — Вкладка {worker['id']}",
+        f"Строка: {row_no}/{worker.get('total_rows') or '?'}",
+        f"Исходные данные: {active_value} | {second_value}",
+        "Подпись принята сайтом; договор регистрируется только после оплаты картой.",
+        f"Текст шага: {rec.get('payment_text') or '—'}",
+        f"Страница: {rec.get('final_url') or '—'}",
+        *_final_links_lines_1591r23(rec.get("final_links")),
+        *_sign_trace_lines_1591r25(rec.get("sign_trace")),
+        "",
+        *_success_profile_lines(rec.get("profile")),
+        "",
+        f"eSIM: {rec.get('sim_number') or '—'}",
+        f"Ссылка eSIM: {rec.get('sim_url') or '—'}",
+        "Номер помечен обработанным (повтор создал бы второй заказ); вкладка оставлена открытой.",
+    ])
+
+
+def _finish_payment_required_1591r26(base_dir, worker, payment_text):
+    """The site wants the eSIM paid: record it apart from the successes and stop the tab."""
+    n, a, b = row_parts(worker.get("row"))
+    final = capture_final_page_1591r23(worker.get("page"), worker)
+    rec = {
+        "tab": worker["id"], "row": n, "active_digits": a, "second_value": b,
+        "sim_number": worker.get("reserved_sim_number"), "sim_url": worker.get("reserved_sim_url"),
+        "profile": dict(worker.get("success_profile") or {}),
+        "final_url": final.get("url") or "", "final_title": final.get("title") or "",
+        "final_links": list(final.get("links") or []), "payment_text": str(payment_text or ""),
+        "sign_trace": _sign_trace_summary_1591r25(worker.get("sign_trace")),
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    try:
+        with (Path(base_dir) / "payment_required.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\\n")
+    except Exception as exc:
+        print(f"[Вкладка {worker['id']}] payment_required.jsonl не записан: {type(exc).__name__}: {exc}", flush=True)
+    remember_processed_number(base_dir, worker.get("row"))
+    worker["phase"] = "SUCCESS_STOP"
+    success_queue = worker.get("success_queue")
+    if success_queue is not None:
+        try:
+            success_queue.put(_payment_message_1591r26(worker, rec))
+        except Exception as exc:
+            print(f"[Telegram] Не удалось поставить PAYMENT в очередь: {type(exc).__name__}: {exc}", flush=True)
+    set_tab_status(
+        worker, "💳",
+        f"ТРЕБУЕТСЯ ОПЛАТА eSIM\\n{rec['payment_text'][:160]}\\nСтраница: {rec['final_url'] or '—'}\\n"
+        "Вкладка оставлена открытой. Для очереди будет создана новая.",
+    )
+    external_heartbeat(worker, "payment_required_stop")
+    print(
+        f"\\n[Вкладка {worker['id']}] 💳 ТРЕБУЕТСЯ ОПЛАТА. Строка {n}: подпись принята, договор регистрируется "
+        "после оплаты картой. Номер помечен обработанным; вкладка оставлена открытой.\\n",
+        flush=True,
+    )
+    worker["stopped"] = True
+    return rec
+
+
+'''
+NEW_SETTLE_DEF_R26 = PAYMENT_HELPERS_R26 + OLD_SETTLE_DEF_R24
+OLD_SETTLE_HEAD_R24 = '''    page = worker.get("page")
+    evidence = _signed_evidence_1591r24(page) if page is not None else ""
+    if evidence:
+'''
+NEW_SETTLE_HEAD_R26 = '''    page = worker.get("page")
+    payment_text = _payment_page_1591r26(page) if page is not None else ""  # PAYMENT_STEP_1591R26
+    if payment_text:
+        _finish_payment_required_1591r26(base_dir, worker, payment_text)
+        return False
+    evidence = _signed_evidence_1591r24(page) if page is not None else ""
+    if evidence:
+'''
+README_NOTE_R26 = '''
+
+РЕВИЗИЯ 26 (fix_package_1591.py)
+«Ложные успехи» оказались шагом оплаты сайта. После «Подписать договор» подпись принимается
+(checksignature 200, sendpassportdata… 202), а страница становится «порядок, идём дальше → теперь
+пора оплатить eSIM … оплатите картой → дождитесь регистрации договора»: договор регистрируется
+только после оплаты, код этого шага не знал и записывал успех. Теперь страница оплаты — отдельный
+исход (_payment_page_1591r26 / _finish_payment_required_1591r26): запись в payment_required.jsonl,
+сообщение #оплата с текстом шага, адресом, ссылками, ответами сервера и профилем, вкладка остаётся
+открытой, номер помечается обработанным (повтор создал бы второй заказ). Проверяется до признаков
+успеха в settle_success_1591r24. Маркер: PAYMENT_STEP_1591R26.
 '''
 README_NOTE_R10 = '''
 
@@ -3148,8 +3268,9 @@ def main(argv: list[str]) -> int:
                                                 ERRORSKIP_MARKER, SUCCESSTAG_MARKER, BROWSER_MARKER,
                                                 PROFILE_LABELS_MARKER, PROXY_DIRECT_MARKER,
                                                 RESTART_RELAUNCH_MARKER, ROW_SKIP_MARKER,
-                                                FINAL_PAGE_MARKER, SIGNED_MARKER, SIGN_TRACE_MARKER)):
-        print("Already revision 25; nothing changed.")
+                                                FINAL_PAGE_MARKER, SIGNED_MARKER, SIGN_TRACE_MARKER,
+                                                PAYMENT_MARKER)):
+        print("Already revision 26; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -3542,6 +3663,22 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 27 (r26). The payment step after the signature is its own outcome, not a success.
+    if PAYMENT_MARKER not in source:
+        for old, new, what in ((OLD_SETTLE_DEF_R24, NEW_SETTLE_DEF_R26, "payment helpers"),
+                               (OLD_SETTLE_HEAD_R24, NEW_SETTLE_HEAD_R26, "settle payment check")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -3567,7 +3704,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | CONTROLLER_ACCEPTED_SHAS
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 25
+    manifest["revision"] = 26
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -3590,7 +3727,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 22", README_NOTE_R22),
                           ("РЕВИЗИЯ 23", README_NOTE_R23),
                           ("РЕВИЗИЯ 24", README_NOTE_R24),
-                          ("РЕВИЗИЯ 25", README_NOTE_R25)):
+                          ("РЕВИЗИЯ 25", README_NOTE_R25),
+                          ("РЕВИЗИЯ 26", README_NOTE_R26)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -3603,7 +3741,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 25, "result": "OK",
+    verification.update({"python": sys.version, "revision": 26, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -3619,7 +3757,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 25 applied to", package)
+    print("Revision 26 applied to", package)
     return 0
 
 
