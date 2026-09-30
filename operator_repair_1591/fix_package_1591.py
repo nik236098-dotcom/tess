@@ -72,7 +72,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "bb57f0437e52c61d801e94020c3d72f9bbca2b2bbef09b63e0d746e5de9a59f2",  # r20 output
                          "90ddb7d43cfbb2d944a1fb23c62aed15cb3a9d3090810864402aa31b5410a1b0",  # r21 output
                          "fd1ed72b18db63993d0c288fa7ad8449e3e7827fa2b2697569dd79a9053ec3dc",  # r22 output
-                         "10af519a75ce7a6813dae1b9b7bd95192cb81587e19361325f1e69e5a231269e"}  # r23 output
+                         "10af519a75ce7a6813dae1b9b7bd95192cb81587e19361325f1e69e5a231269e",  # r23 output
+                         "2e81b5bf57f5da86abec14e2b9bcd7961f44d3c87c54689819a2038a43533057"}  # r24 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -2115,6 +2116,204 @@ UNVERIFIED_HOLD_SECONDS (3 мин) в SUCCESS_ASSIST со снимком и за
 Заменены оба места фиксации успеха: tick_sign_wait и tick_post_auth_review. Маркер:
 SIGNED_EVIDENCE_1591R24.
 '''
+# Revision 25: WHY the signing does not happen is not recorded anywhere — the click on
+# «Подписать договор» leaves no trace of the server's answer. Around the click the page's
+# responses (status, JSON/error bodies), failed requests and console errors are now collected
+# for SIGN_TRACE_SECONDS, written to diagnostics (sign_click_trace_1591r25, plus a blackbox
+# snapshot after the click), summarised into the success / unverified records and shown in
+# the #неподтверждено push. Also: profile values without a letter or digit (a lone «.») are
+# no longer accepted by the label matcher (the «Область: .» case).
+SIGN_TRACE_MARKER = "SIGN_TRACE_1591R25"
+OLD_SIGN_CALL_R14 = '''            capture_contract_details(page, worker)
+            fill_signature_and_submit(page, worker.get("diagnostic"))
+            worker["phase"] = "SIGN_WAIT"
+'''
+NEW_SIGN_CALL_R25 = '''            capture_contract_details(page, worker)
+            _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25
+            try:
+                fill_signature_and_submit(page, worker.get("diagnostic"))
+            finally:
+                _sign_trace_end_1591r25(page, worker)
+            worker["phase"] = "SIGN_WAIT"
+'''
+OLD_SIGN_WAIT_DEF_R24 = "# SIGNED_EVIDENCE_1591R24\nSIGNED_URL_HINTS_1591R24 = "
+SIGN_TRACE_HELPERS_R25 = '''# SIGN_TRACE_1591R25
+SIGN_TRACE_SECONDS = 8
+_SIGN_TRACE_SKIP_RE_1591R25 = re.compile(
+    r"\\.(png|jpe?g|gif|svg|webp|css|js|woff2?|ttf|ico)(\\?|$)|metrika|analytics|google|flocktory|yandex|gtm",
+    re.I,
+)
+
+
+def _sign_trace_begin_1591r25(page, worker):
+    """Start collecting what the page does right after «Подписать договор» is clicked."""
+    trace = {"started": time.time(), "url_before": "", "responses": [], "failed": [], "console": [],
+             "_pending": [], "_handlers": {}}
+    try:
+        trace["url_before"] = str(page.url or "")
+    except Exception:
+        pass
+
+    def on_response(resp):
+        try:
+            url = str(resp.url or "")
+            if _SIGN_TRACE_SKIP_RE_1591R25.search(url) or len(trace["responses"]) >= 40:
+                return
+            item = {"t": round(time.time() - trace["started"], 2), "method": str(resp.request.method),
+                    "status": int(resp.status), "url": url[:300]}
+            trace["responses"].append(item)
+            ctype = str(resp.headers.get("content-type", "") or "")
+            if "json" in ctype or item["status"] >= 400 or item["method"] in ("POST", "PUT", "PATCH"):
+                trace["_pending"].append((resp, item))
+        except Exception:
+            pass
+
+    def on_failed(req):
+        try:
+            if len(trace["failed"]) < 20 and not _SIGN_TRACE_SKIP_RE_1591R25.search(str(req.url or "")):
+                trace["failed"].append({"t": round(time.time() - trace["started"], 2), "url": str(req.url)[:300],
+                                        "error": str(req.failure or "")[:200]})
+        except Exception:
+            pass
+
+    def on_console(msg):
+        try:
+            if msg.type in ("error", "warning") and len(trace["console"]) < 30:
+                trace["console"].append({"t": round(time.time() - trace["started"], 2), "type": str(msg.type),
+                                         "text": str(msg.text)[:300]})
+        except Exception:
+            pass
+
+    for event, fn in (("response", on_response), ("requestfailed", on_failed), ("console", on_console)):
+        try:
+            page.on(event, fn)
+            trace["_handlers"][event] = fn
+        except Exception:
+            pass
+    worker["sign_trace"] = trace
+    return trace
+
+
+def _sign_trace_end_1591r25(page, worker, note=""):
+    """Wait SIGN_TRACE_SECONDS after the click, read the bodies, record the trace."""
+    trace = worker.get("sign_trace")
+    if not trace or "_handlers" not in trace:
+        return trace
+    deadline = monotonic() + SIGN_TRACE_SECONDS
+    while monotonic() < deadline:
+        try:
+            page.wait_for_timeout(250)
+        except Exception:
+            break
+    for event, fn in (trace.pop("_handlers", None) or {}).items():
+        try:
+            page.remove_listener(event, fn)
+        except Exception:
+            pass
+    for resp, item in trace.pop("_pending", None) or []:
+        try:
+            item["body"] = re.sub(r"\\s+", " ", str(resp.text() or ""))[:1500]
+        except Exception as exc:
+            item["body_error"] = f"{type(exc).__name__}"
+    try:
+        trace["url_after"] = str(page.url or "")
+    except Exception:
+        trace["url_after"] = ""
+    trace["note"] = str(note or "")
+    try:
+        diagnostic = worker.get("diagnostic")
+        if diagnostic:
+            diagnostic.write("sign_click_trace_1591r25", **{k: v for k, v in trace.items() if not k.startswith("_")})
+    except Exception:
+        pass
+    try:
+        capture_blackbox(worker, "after_sign_click")
+    except Exception:
+        pass
+    print(
+        f"[Вкладка {worker.get('id')}] SIGN TRACE: {trace['url_before']} -> {trace['url_after']}; "
+        f"ответов {len(trace['responses'])}, сбоев сети {len(trace['failed'])}, console {len(trace['console'])}",
+        flush=True,
+    )
+    return trace
+
+
+def _sign_trace_summary_1591r25(trace):
+    if not trace:
+        return None
+    keep = [r for r in trace.get("responses") or []
+            if int(r.get("status") or 0) >= 400 or "body" in r or r.get("method") in ("POST", "PUT", "PATCH")]
+    return {"url_before": trace.get("url_before") or "", "url_after": trace.get("url_after") or "",
+            "responses": keep[:12], "failed": (trace.get("failed") or [])[:10], "console": (trace.get("console") or [])[:10]}
+
+
+def _sign_trace_lines_1591r25(summary):
+    if not summary:
+        return []
+    out = [f"Подпись: {summary.get('url_before') or '—'} → {summary.get('url_after') or '—'}"]
+    for r in (summary.get("responses") or [])[:6]:
+        line = f"  {r.get('method')} {r.get('url')} → {r.get('status')}"
+        if r.get("body"):
+            line += " " + str(r["body"])[:160]
+        out.append(line)
+    for f in (summary.get("failed") or [])[:3]:
+        out.append(f"  сеть: {f.get('url')} — {f.get('error')}")
+    for c in (summary.get("console") or [])[:3]:
+        out.append(f"  console {c.get('type')}: {c.get('text')}")
+    return out
+
+
+'''
+NEW_SIGN_WAIT_DEF_R25 = SIGN_TRACE_HELPERS_R25 + OLD_SIGN_WAIT_DEF_R24
+OLD_UNVERIFIED_REC_R24 = '''        "final_links": list(final.get("links") or []), "reason": str(reason or ""),
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+'''
+NEW_UNVERIFIED_REC_R25 = '''        "final_links": list(final.get("links") or []), "reason": str(reason or ""),
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "sign_trace": _sign_trace_summary_1591r25(worker.get("sign_trace")),  # SIGN_TRACE_1591R25
+    }
+'''
+OLD_UNVERIFIED_MSG_R24 = '''        f"Заголовок страницы: {rec.get('final_title') or '—'}",
+        *_final_links_lines_1591r23(rec.get("final_links")),
+        "",
+        *_success_profile_lines(rec.get("profile")),
+'''
+NEW_UNVERIFIED_MSG_R25 = '''        f"Заголовок страницы: {rec.get('final_title') or '—'}",
+        *_final_links_lines_1591r23(rec.get("final_links")),
+        *_sign_trace_lines_1591r25(rec.get("sign_trace")),  # SIGN_TRACE_1591R25
+        "",
+        *_success_profile_lines(rec.get("profile")),
+'''
+OLD_SUCCESS_REC_R23 = '''        "final_title": final.get("title") or "",
+        "final_links": list(final.get("links") or []),
+    }
+'''
+NEW_SUCCESS_REC_R25 = '''        "final_title": final.get("title") or "",
+        "final_links": list(final.get("links") or []),
+        "sign_trace": _sign_trace_summary_1591r25(worker.get("sign_trace")),  # SIGN_TRACE_1591R25
+    }
+'''
+OLD_MATCH_SKIP_R19 = '''        if not value or str(f.get("type") or "").lower() in _SKIP_FIELD_TYPES_1591R19:
+            continue
+'''
+NEW_MATCH_SKIP_R25 = '''        if not value or str(f.get("type") or "").lower() in _SKIP_FIELD_TYPES_1591R19:
+            continue
+        if not re.search(r"[0-9a-zа-яё]", value.lower()):  # SIGN_TRACE_1591R25: a lone «.» is not a value
+            continue
+'''
+README_NOTE_R25 = '''
+
+РЕВИЗИЯ 25 (fix_package_1591.py)
+Почему подпись не проходит, было нечем установить: нажатие «Подписать договор» не оставляло
+следа ответа сервера. Теперь вокруг нажатия SIGN_TRACE_SECONDS (8 с) собираются ответы страницы
+(метод, статус, тела JSON и ошибок), сбои сети и ошибки console; всё пишется в диагностику
+событием sign_click_trace_1591r25 и снимком after_sign_click, краткая выжимка попадает в записи
+successful_sims.jsonl / unverified_signatures.jsonl (поле sign_trace) и в сообщение
+#неподтверждено строками «Подпись: адрес → адрес» и ответами сервера. Строка
+«[Вкладка N] SIGN TRACE: …» в журнале читается tools/sign_timeline.py. Значения профиля без
+буквы или цифры (одиночная точка) больше не принимаются. Маркер: SIGN_TRACE_1591R25.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -2949,8 +3148,8 @@ def main(argv: list[str]) -> int:
                                                 ERRORSKIP_MARKER, SUCCESSTAG_MARKER, BROWSER_MARKER,
                                                 PROFILE_LABELS_MARKER, PROXY_DIRECT_MARKER,
                                                 RESTART_RELAUNCH_MARKER, ROW_SKIP_MARKER,
-                                                FINAL_PAGE_MARKER, SIGNED_MARKER)):
-        print("Already revision 24; nothing changed.")
+                                                FINAL_PAGE_MARKER, SIGNED_MARKER, SIGN_TRACE_MARKER)):
+        print("Already revision 25; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -3323,6 +3522,26 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 26 (r25). Trace of the server's answers around the «Подписать договор» click.
+    if SIGN_TRACE_MARKER not in source:
+        for old, new, what in ((OLD_SIGN_WAIT_DEF_R24, NEW_SIGN_WAIT_DEF_R25, "sign trace helpers"),
+                               (OLD_SIGN_CALL_R14, NEW_SIGN_CALL_R25, "sign call trace"),
+                               (OLD_UNVERIFIED_REC_R24, NEW_UNVERIFIED_REC_R25, "unverified record trace"),
+                               (OLD_UNVERIFIED_MSG_R24, NEW_UNVERIFIED_MSG_R25, "unverified message trace"),
+                               (OLD_SUCCESS_REC_R23, NEW_SUCCESS_REC_R25, "success record trace"),
+                               (OLD_MATCH_SKIP_R19, NEW_MATCH_SKIP_R25, "profile junk values")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -3348,7 +3567,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | CONTROLLER_ACCEPTED_SHAS
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 24
+    manifest["revision"] = 25
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -3370,7 +3589,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 21", README_NOTE_R21),
                           ("РЕВИЗИЯ 22", README_NOTE_R22),
                           ("РЕВИЗИЯ 23", README_NOTE_R23),
-                          ("РЕВИЗИЯ 24", README_NOTE_R24)):
+                          ("РЕВИЗИЯ 24", README_NOTE_R24),
+                          ("РЕВИЗИЯ 25", README_NOTE_R25)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -3383,7 +3603,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 24, "result": "OK",
+    verification.update({"python": sys.version, "revision": 25, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -3399,7 +3619,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 24 applied to", package)
+    print("Revision 25 applied to", package)
     return 0
 
 

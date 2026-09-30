@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 24 лежит в `beeline_integrated_io_15_91_r24/`. В нём нет
+Готовый пакет ревизии 25 лежит в `beeline_integrated_io_15_91_r25/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -53,7 +53,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r24
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r25
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -222,7 +222,13 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    вкладка удерживается 3 минуты с задачей DeepSeek, затем строка пишется в
    `unverified_signatures.jsonl`, в Telegram уходит `#неподтверждено`, вкладка остаётся открытой,
    номер не помечается обработанным. Маркер `SIGNED_EVIDENCE_1591R24`.
-26. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+26. **След нажатия «Подписать договор» (ревизия 25).** Вокруг нажатия 8 секунд собираются ответы
+   сервера (метод, статус, тела JSON и ошибок), сбои сети и ошибки console; всё пишется в
+   диагностику (`sign_click_trace_1591r25`, снимок `after_sign_click`), выжимка попадает в записи
+   об успехе и о неподтверждённой подписи и в сообщение `#неподтверждено`. Журнал по строкам
+   разбирает `tools/sign_timeline.py`. Значения профиля без буквы или цифры отбрасываются.
+   Маркер `SIGN_TRACE_1591R25`.
+27. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

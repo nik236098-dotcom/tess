@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-24", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-25", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -303,7 +303,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 24", run.stdout)
+            self.assertIn("Already revision 25", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -337,7 +337,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 24)
+        self.assertEqual(manifest["revision"], 25)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -679,6 +679,7 @@ class PackageTests(unittest.TestCase):
         for node in ast.parse(self.source).body:
             if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "_FINAL_LINKS_JS_1591R23" for x in node.targets):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        ns["_sign_trace_summary_1591r25"] = lambda trace: None
         exec_functions(self.source, ["_success_message", "write_success_record", "capture_final_page_1591r23",
                                      "_final_links_lines_1591r23"], ns)
         class Page:
@@ -772,6 +773,7 @@ class PackageTests(unittest.TestCase):
               "external_heartbeat": lambda w, label: events.append(("hb", label)),
               "capture_blackbox": lambda w, r, exc=None: events.append(("blackbox", r)),
               "queue_success_assist": lambda w, note, force=False: events.append(("assist", force)),
+              "_sign_trace_summary_1591r25": lambda trace: None, "_sign_trace_lines_1591r25": lambda summary: [],
               "finalize_success": lambda base, w: events.append("finalize")}
         for node in ast.parse(src).body:
             if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id.endswith("_1591R24") or (isinstance(x, ast.Name) and x.id == "UNVERIFIED_HOLD_SECONDS") for x in node.targets):
@@ -804,6 +806,65 @@ class PackageTests(unittest.TestCase):
             self.assertFalse((base / "successful_sims.jsonl").exists()); self.assertFalse((base / "processed_numbers.txt").exists())
             self.assertEqual(pushed[-1].split("\n")[0], "#неподтверждено"); self.assertIn("ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА — Вкладка 3", pushed[-1])
             self.assertIn("Номер НЕ помечен обработанным", pushed[-1]); self.assertIn("ФИО: X", pushed[-1])
+
+    def test_sign_click_trace_records_server_answers_and_reaches_the_unverified_push(self):
+        src = self.source
+        review = src[src.index("def tick_post_auth_review"):src.index("def tick_success_assist")]
+        self.assertIn("_sign_trace_begin_1591r25(page, worker)", review); self.assertIn("_sign_trace_end_1591r25(page, worker)", review)
+        self.assertLess(review.index("_sign_trace_begin_1591r25"), review.index("fill_signature_and_submit(page"))
+        clock = [0.0]; events = []
+        ns = {"re": __import__("re"), "time": types.SimpleNamespace(time=lambda: clock[0], strftime=__import__("time").strftime),
+              "monotonic": lambda: clock[0], "print": lambda *a, **k: events.append(("print", a[0] if a else "")),
+              "capture_blackbox": lambda w, r, exc=None: events.append(("blackbox", r))}
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and (x.id == "SIGN_TRACE_SECONDS" or x.id == "_SIGN_TRACE_SKIP_RE_1591R25") for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(src, ["_sign_trace_begin_1591r25", "_sign_trace_end_1591r25", "_sign_trace_summary_1591r25",
+                             "_sign_trace_lines_1591r25"], ns)
+        class Resp:
+            def __init__(self, url, status, method, ctype, body):
+                self.url, self.status, self.headers, self._body = url, status, {"content-type": ctype}, body
+                self.request = types.SimpleNamespace(method=method)
+            def text(self): return self._body
+        class Page:
+            def __init__(self):
+                self.url = "https://saratov.beeline.ru/registration/esim/personal-data-form"; self.handlers = {}; self.removed = []
+            def on(self, event, fn): self.handlers[event] = fn
+            def remove_listener(self, event, fn): self.removed.append(event)
+            def wait_for_timeout(self, ms): clock[0] += ms / 1000.0
+        class Diag:
+            def __init__(self): self.events = []
+            def write(self, event, **data): self.events.append((event, data))
+        page, worker = Page(), {"id": 2, "diagnostic": Diag()}
+        ns["_sign_trace_begin_1591r25"](page, worker)
+        self.assertEqual(set(page.handlers), {"response", "requestfailed", "console"})
+        page.handlers["response"](Resp("https://saratov.beeline.ru/api/sign", 400, "POST", "application/json", '{"error":"session expired"}'))
+        page.handlers["response"](Resp("https://saratov.beeline.ru/static/app.js", 200, "GET", "text/javascript", "x"))
+        page.handlers["response"](Resp("https://saratov.beeline.ru/registration/esim", 200, "GET", "text/html", "<html>"))
+        page.handlers["requestfailed"](types.SimpleNamespace(url="https://saratov.beeline.ru/api/ping", failure="net::ERR_ABORTED"))
+        page.handlers["console"](types.SimpleNamespace(type="error", text="Uncaught TypeError"))
+        page.handlers["console"](types.SimpleNamespace(type="log", text="noise"))
+        page.url = "https://saratov.beeline.ru/registration/esim"
+        trace = ns["_sign_trace_end_1591r25"](page, worker)
+        self.assertGreaterEqual(clock[0], ns["SIGN_TRACE_SECONDS"]); self.assertEqual(sorted(page.removed), ["console", "requestfailed", "response"])
+        self.assertEqual(trace["url_after"], "https://saratov.beeline.ru/registration/esim")
+        urls = [r["url"] for r in trace["responses"]]; self.assertNotIn("https://saratov.beeline.ru/static/app.js", urls)
+        sign = next(r for r in trace["responses"] if r["url"].endswith("/api/sign"))
+        self.assertEqual(sign["body"], '{"error":"session expired"}'); self.assertEqual(len(trace["console"]), 1)
+        event = next(e for e in worker["diagnostic"].events if e[0] == "sign_click_trace_1591r25")
+        self.assertNotIn("_handlers", event[1]); self.assertEqual(event[1]["failed"][0]["error"], "net::ERR_ABORTED")
+        self.assertIn(("blackbox", "after_sign_click"), events)
+        summary = ns["_sign_trace_summary_1591r25"](trace)
+        self.assertEqual([r["url"] for r in summary["responses"]], ["https://saratov.beeline.ru/api/sign"])
+        lines = ns["_sign_trace_lines_1591r25"](summary)
+        self.assertTrue(lines[0].startswith("Подпись: https://saratov.beeline.ru/registration/esim/personal-data-form → https://saratov.beeline.ru/registration/esim"))
+        self.assertIn("POST https://saratov.beeline.ru/api/sign → 400", lines[1]); self.assertIn("session expired", lines[1])
+        self.assertTrue(any("net::ERR_ABORTED" in x for x in lines)); self.assertTrue(any("Uncaught TypeError" in x for x in lines))
+        self.assertEqual(ns["_sign_trace_lines_1591r25"](None), []); self.assertIsNone(ns["_sign_trace_summary_1591r25"](None))
+        self.assertIsNone(ns["_sign_trace_end_1591r25"](page, {"id": 1}))
+        # profile matcher: a value without a letter or digit is not a value
+        loop = src[src.index("def final_profile_capture_v1583"):src.index("def finalize_success")]
+        self.assertIn('if not re.search(r"[0-9a-zа-яё]", value.lower()):', loop)
 
     def test_browser_hang_restarts_the_whole_chromium(self):
         src = self.source

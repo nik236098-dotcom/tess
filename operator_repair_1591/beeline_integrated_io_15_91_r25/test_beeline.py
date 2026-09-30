@@ -4797,6 +4797,7 @@ def write_success_record(base_dir, worker):
         "final_url": final.get("url") or "",  # FINAL_PAGE_1591R23
         "final_title": final.get("title") or "",
         "final_links": list(final.get("links") or []),
+        "sign_trace": _sign_trace_summary_1591r25(worker.get("sign_trace")),  # SIGN_TRACE_1591R25
     }
     with (base_dir/"successful_sims.jsonl").open("a",encoding="utf-8") as f:
         f.write(json.dumps(rec,ensure_ascii=False)+"\n")
@@ -6697,6 +6698,8 @@ def final_profile_capture_v1583(page, worker):
         value = str(f.get("value") or "").strip()
         if not value or str(f.get("type") or "").lower() in _SKIP_FIELD_TYPES_1591R19:
             continue
+        if not re.search(r"[0-9a-zа-яё]", value.lower()):  # SIGN_TRACE_1591R25: a lone «.» is not a value
+            continue
         hay = " ".join(str(f.get(k) or "") for k in
                        ("label", "name", "id", "placeholder", "ariaLabel", "near", "attrs")).lower().replace("ё", "е")
         for key, words in aliases.items():
@@ -7211,7 +7214,11 @@ def tick_post_auth_review(base_dir, worker):
                 "Подтверждение успешно. Заполняю подпись и подписываю договор."
             )
             capture_contract_details(page, worker)
-            fill_signature_and_submit(page, worker.get("diagnostic"))
+            _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25
+            try:
+                fill_signature_and_submit(page, worker.get("diagnostic"))
+            finally:
+                _sign_trace_end_1591r25(page, worker)
             worker["phase"] = "SIGN_WAIT"
             worker["sign_submit_url"] = page.url
             worker["sign_button_gone_since"] = None
@@ -7256,6 +7263,132 @@ def tick_post_auth_review(base_dir, worker):
 def tick_success_assist(base_dir, worker):
     # Same guarded logic, but never adds a destructive timeout.
     tick_post_auth_review(base_dir, worker)
+
+
+# SIGN_TRACE_1591R25
+SIGN_TRACE_SECONDS = 8
+_SIGN_TRACE_SKIP_RE_1591R25 = re.compile(
+    r"\.(png|jpe?g|gif|svg|webp|css|js|woff2?|ttf|ico)(\?|$)|metrika|analytics|google|flocktory|yandex|gtm",
+    re.I,
+)
+
+
+def _sign_trace_begin_1591r25(page, worker):
+    """Start collecting what the page does right after «Подписать договор» is clicked."""
+    trace = {"started": time.time(), "url_before": "", "responses": [], "failed": [], "console": [],
+             "_pending": [], "_handlers": {}}
+    try:
+        trace["url_before"] = str(page.url or "")
+    except Exception:
+        pass
+
+    def on_response(resp):
+        try:
+            url = str(resp.url or "")
+            if _SIGN_TRACE_SKIP_RE_1591R25.search(url) or len(trace["responses"]) >= 40:
+                return
+            item = {"t": round(time.time() - trace["started"], 2), "method": str(resp.request.method),
+                    "status": int(resp.status), "url": url[:300]}
+            trace["responses"].append(item)
+            ctype = str(resp.headers.get("content-type", "") or "")
+            if "json" in ctype or item["status"] >= 400 or item["method"] in ("POST", "PUT", "PATCH"):
+                trace["_pending"].append((resp, item))
+        except Exception:
+            pass
+
+    def on_failed(req):
+        try:
+            if len(trace["failed"]) < 20 and not _SIGN_TRACE_SKIP_RE_1591R25.search(str(req.url or "")):
+                trace["failed"].append({"t": round(time.time() - trace["started"], 2), "url": str(req.url)[:300],
+                                        "error": str(req.failure or "")[:200]})
+        except Exception:
+            pass
+
+    def on_console(msg):
+        try:
+            if msg.type in ("error", "warning") and len(trace["console"]) < 30:
+                trace["console"].append({"t": round(time.time() - trace["started"], 2), "type": str(msg.type),
+                                         "text": str(msg.text)[:300]})
+        except Exception:
+            pass
+
+    for event, fn in (("response", on_response), ("requestfailed", on_failed), ("console", on_console)):
+        try:
+            page.on(event, fn)
+            trace["_handlers"][event] = fn
+        except Exception:
+            pass
+    worker["sign_trace"] = trace
+    return trace
+
+
+def _sign_trace_end_1591r25(page, worker, note=""):
+    """Wait SIGN_TRACE_SECONDS after the click, read the bodies, record the trace."""
+    trace = worker.get("sign_trace")
+    if not trace or "_handlers" not in trace:
+        return trace
+    deadline = monotonic() + SIGN_TRACE_SECONDS
+    while monotonic() < deadline:
+        try:
+            page.wait_for_timeout(250)
+        except Exception:
+            break
+    for event, fn in (trace.pop("_handlers", None) or {}).items():
+        try:
+            page.remove_listener(event, fn)
+        except Exception:
+            pass
+    for resp, item in trace.pop("_pending", None) or []:
+        try:
+            item["body"] = re.sub(r"\s+", " ", str(resp.text() or ""))[:1500]
+        except Exception as exc:
+            item["body_error"] = f"{type(exc).__name__}"
+    try:
+        trace["url_after"] = str(page.url or "")
+    except Exception:
+        trace["url_after"] = ""
+    trace["note"] = str(note or "")
+    try:
+        diagnostic = worker.get("diagnostic")
+        if diagnostic:
+            diagnostic.write("sign_click_trace_1591r25", **{k: v for k, v in trace.items() if not k.startswith("_")})
+    except Exception:
+        pass
+    try:
+        capture_blackbox(worker, "after_sign_click")
+    except Exception:
+        pass
+    print(
+        f"[Вкладка {worker.get('id')}] SIGN TRACE: {trace['url_before']} -> {trace['url_after']}; "
+        f"ответов {len(trace['responses'])}, сбоев сети {len(trace['failed'])}, console {len(trace['console'])}",
+        flush=True,
+    )
+    return trace
+
+
+def _sign_trace_summary_1591r25(trace):
+    if not trace:
+        return None
+    keep = [r for r in trace.get("responses") or []
+            if int(r.get("status") or 0) >= 400 or "body" in r or r.get("method") in ("POST", "PUT", "PATCH")]
+    return {"url_before": trace.get("url_before") or "", "url_after": trace.get("url_after") or "",
+            "responses": keep[:12], "failed": (trace.get("failed") or [])[:10], "console": (trace.get("console") or [])[:10]}
+
+
+def _sign_trace_lines_1591r25(summary):
+    if not summary:
+        return []
+    out = [f"Подпись: {summary.get('url_before') or '—'} → {summary.get('url_after') or '—'}"]
+    for r in (summary.get("responses") or [])[:6]:
+        line = f"  {r.get('method')} {r.get('url')} → {r.get('status')}"
+        if r.get("body"):
+            line += " " + str(r["body"])[:160]
+        out.append(line)
+    for f in (summary.get("failed") or [])[:3]:
+        out.append(f"  сеть: {f.get('url')} — {f.get('error')}")
+    for c in (summary.get("console") or [])[:3]:
+        out.append(f"  console {c.get('type')}: {c.get('text')}")
+    return out
 
 
 # SIGNED_EVIDENCE_1591R24
@@ -7304,6 +7437,7 @@ def _unverified_message_1591r24(worker, rec):
         f"Страница: {rec.get('final_url') or '—'}",
         f"Заголовок страницы: {rec.get('final_title') or '—'}",
         *_final_links_lines_1591r23(rec.get("final_links")),
+        *_sign_trace_lines_1591r25(rec.get("sign_trace")),  # SIGN_TRACE_1591R25
         "",
         *_success_profile_lines(rec.get("profile")),
         "",
@@ -7324,6 +7458,7 @@ def _finish_unverified_1591r24(base_dir, worker, reason):
         "final_url": final.get("url") or "", "final_title": final.get("title") or "",
         "final_links": list(final.get("links") or []), "reason": str(reason or ""),
         "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "sign_trace": _sign_trace_summary_1591r25(worker.get("sign_trace")),  # SIGN_TRACE_1591R25
     }
     try:
         with (Path(base_dir) / "unverified_signatures.jsonl").open("a", encoding="utf-8") as f:
