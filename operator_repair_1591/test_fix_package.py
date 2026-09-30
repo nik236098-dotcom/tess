@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -68,9 +68,7 @@ class PackageTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def _logger(self, enqueue):
-        node = next(n for n in ast.parse(self.source).body if isinstance(n, ast.FunctionDef)
-                    and n.name == "telegram_logger_process")
+    def _logger(self, enqueue, telegram_api=None, status_map=None, rounds=1, tmp=None):
         sent, queued = [], []
         class Q:
             def __init__(self, items): self.items = list(items)
@@ -82,18 +80,66 @@ class PackageTests(unittest.TestCase):
             def is_set(self):
                 self.n += 1
                 return self.n > 1
-        def telegram_api(cfg, method, payload):
+        def default_api(cfg, method, payload):
             sent.append((method, payload))
             return {"ok": True, "result": {"message_id": len(sent)}}, None
+        api = telegram_api or default_api
+        def counting_api(cfg, method, payload):
+            r = api(cfg, method, payload)
+            if api is not default_api: sent.append((method, payload))
+            return r
         io = types.SimpleNamespace(
             enqueue_notice=lambda ns, chat, text, markup=None: queued.append((chat, text)) if enqueue else (_ for _ in ()).throw(RuntimeError("no outbox")),
             split_text=lambda text, limit=3500: [text[i:i + limit] for i in range(0, len(text), limit)],
             redact=str)
-        ns = {"load_telegram_config": lambda: {"chat_id": "42"}, "telegram_api": telegram_api, "_io1591": io,
-              "time": __import__("time"), "TAB_COUNT": 1, "print": lambda *a, **k: None}
-        exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
-        ns["telegram_logger_process"]({}, Q(["S" * 9000]), Stop())
+        class StopAfter(Stop):
+            def __init__(self, n): super().__init__(); self.limit = n
+            def is_set(self):
+                self.n += 1
+                return self.n > self.limit
+        ns = {"load_telegram_config": lambda: {"chat_id": "42"}, "telegram_api": counting_api, "_io1591": io,
+              "time": __import__("time"), "json": json, "Path": Path, "TAB_COUNT": 1, "print": lambda *a, **k: None,
+              "TG_MIN_CALL_GAP_1591R27": 0.0, "TG_STATUS_MIN_EDIT_GAP_1591R27": 0.0,
+              "TELEGRAM_CONFIG_FILE": Path(tmp or tempfile.mkdtemp()) / "telegram_config.json"}
+        exec_functions(self.source, ["telegram_logger_process", "_tg_status_file_1591r27", "_tg_call_1591r27",
+                                     "_tg_status_messages_load_1591r27", "_tg_status_messages_save_1591r27",
+                                     "_tg_status_sync_1591r27"], ns)
+        ns["telegram_logger_process"](status_map if status_map is not None else {}, Q(["S" * 9000]), StopAfter(rounds))
         return sent, queued
+
+
+    def test_status_logger_respects_429_and_reuses_messages_across_restarts(self):
+        class Failure(str):
+            def __new__(cls, text, retry_after=None):
+                obj = str.__new__(cls, text); obj.retry_after = retry_after; return obj
+        with tempfile.TemporaryDirectory() as d:
+            # Run 1: Telegram answers 429 on the first send — no further calls in that run.
+            calls = []
+            def banned(cfg, method, payload):
+                calls.append(method)
+                return None, Failure("Telegram API: 429 Too Many Requests: retry after 16000", retry_after=16000)
+            sent, _ = self._logger(enqueue=True, telegram_api=banned, status_map={"1": {"text": "A", "time": 1}}, rounds=3, tmp=d)
+            self.assertEqual(calls, ["getMe"], "after a 429 on getMe nothing else is attempted")
+            # Run 2: messages are created once, edited only when the text changes, ids persisted.
+            texts = {"1": {"text": "A", "time": 1}}
+            sent, _ = self._logger(enqueue=True, telegram_api=None, status_map=texts, rounds=2, tmp=d)
+            methods = [m for m, _ in sent]
+            self.assertEqual(methods.count("sendMessage"), 1); self.assertEqual(methods.count("editMessageText"), 1)
+            saved = json.loads((Path(d) / "telegram_status_messages.json").read_text("utf-8"))
+            self.assertEqual(saved["chat"], "42"); self.assertIn("1", saved["mids"])
+            # Run 3 (a restart): the saved message is reused — an edit, no new sendMessage.
+            sent, _ = self._logger(enqueue=True, telegram_api=None, status_map={"1": {"text": "B", "time": 2}}, rounds=2, tmp=d)
+            methods = [m for m, _ in sent]
+            self.assertEqual(methods.count("sendMessage"), 0); self.assertGreaterEqual(methods.count("editMessageText"), 2)
+            self.assertTrue(any(p.get("text") == "B" for m, p in sent if m == "editMessageText"))
+            # Run 4: Telegram says the saved message is gone — it is recreated and re-saved.
+            def gone(cfg, method, payload):
+                if method == "editMessageText" and payload.get("message_id") == saved["mids"]["1"]:
+                    return None, Failure("Telegram API: 400 Bad Request: message to edit not found")
+                return {"ok": True, "result": {"message_id": 777}}, None
+            sent, _ = self._logger(enqueue=True, telegram_api=gone, status_map={"1": {"text": "C", "time": 3}}, rounds=3, tmp=d)
+            self.assertIn("sendMessage", [m for m, _ in sent])
+            self.assertEqual(json.loads((Path(d) / "telegram_status_messages.json").read_text("utf-8"))["mids"]["1"], 777)
 
     def test_success_push_is_queued_untruncated(self):
         sent, queued = self._logger(enqueue=True)
@@ -125,7 +171,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-26", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-27", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -303,7 +349,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 26", run.stdout)
+            self.assertIn("Already revision 27", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -337,7 +383,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 26)
+        self.assertEqual(manifest["revision"], 27)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)

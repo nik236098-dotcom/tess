@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 26 лежит в `beeline_integrated_io_15_91_r26/`. В нём нет
+Готовый пакет ревизии 27 лежит в `beeline_integrated_io_15_91_r27/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -53,7 +53,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r26
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r27
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -232,7 +232,12 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    но договор регистрируется только после оплаты картой. Страница оплаты теперь отдельный исход:
    запись в `payment_required.jsonl`, сообщение `#оплата` с текстом шага и данными строки, вкладка
    остаётся открытой, номер помечается обработанным. Маркер `PAYMENT_STEP_1591R26`.
-28. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+28. **Лимиты Telegram (ревизия 27).** Бот получал блокировку 429 на часы: статусы вкладок
+   редактировались хоть каждую секунду без учёта `retry_after`, а каждый перезапуск создавал четыре
+   новых сообщения. Теперь общий интервал между вызовами Bot API 1,5 с, не чаще одной правки на
+   вкладку в 6 с, полная пауза на `retry_after`, статусные сообщения переиспользуются между
+   перезапусками (`telegram_status_messages.json`). Маркер `TG_RATE_1591R27`.
+29. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

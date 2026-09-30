@@ -74,7 +74,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "fd1ed72b18db63993d0c288fa7ad8449e3e7827fa2b2697569dd79a9053ec3dc",  # r22 output
                          "10af519a75ce7a6813dae1b9b7bd95192cb81587e19361325f1e69e5a231269e",  # r23 output
                          "2e81b5bf57f5da86abec14e2b9bcd7961f44d3c87c54689819a2038a43533057",  # r24 output
-                         "aac470f2ecd3e0d4d34b399860cda4393a0fa1896b24d206ea2c794558e853a2"}  # r25 output
+                         "aac470f2ecd3e0d4d34b399860cda4393a0fa1896b24d206ea2c794558e853a2",  # r25 output
+                         "72110535925a3167e91c621a29e2d46d090f7e76b03bb250df9f35530bdcaa5d"}  # r26 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -2434,6 +2435,198 @@ README_NOTE_R26 = '''
 открытой, номер помечается обработанным (повтор создал бы второй заказ). Проверяется до признаков
 успеха в settle_success_1591r24. Маркер: PAYMENT_STEP_1591R26.
 '''
+# Revision 27: Telegram banned the bot for hours (429, retry after 16123 s). The status logger
+# edited four tab messages as often as every second, ignored retry_after and kept retrying
+# every second (which is how the ban grew), and every scheduled restart created four new
+# messages. Now: one global gap between Bot API calls, at most one edit per tab per
+# TG_STATUS_MIN_EDIT_GAP, a full stop for retry_after, status messages reused across restarts
+# (telegram_status_messages.json), and the logger keeps running instead of giving up when the
+# messages cannot be created at start.
+TG_RATE_MARKER = "TG_RATE_1591R27"
+OLD_LOGGER_DEF = "def telegram_logger_process(status_map, success_queue, stop_event):\n"
+TG_RATE_HELPERS_R27 = '''# TG_RATE_1591R27
+TG_MIN_CALL_GAP_1591R27 = 1.5
+TG_STATUS_MIN_EDIT_GAP_1591R27 = 6.0
+
+
+def _tg_status_file_1591r27():
+    return TELEGRAM_CONFIG_FILE.with_name("telegram_status_messages.json")
+
+
+def _tg_call_1591r27(cfg, method, payload, state):
+    """One rate-limited Bot API call of the status logger: a global gap between calls and a
+    full stop for retry_after when Telegram answers 429 (retrying every second grew the ban)."""
+    now = time.time()
+    if now < float(state.get("pause_until") or 0):
+        return None, "paused"
+    gap = TG_MIN_CALL_GAP_1591R27 - (now - float(state.get("last_call") or 0))
+    if gap > 0:
+        time.sleep(gap)
+    state["last_call"] = time.time()
+    r, err = telegram_api(cfg, method, payload)
+    retry_after = getattr(err, "retry_after", None)
+    if isinstance(retry_after, (int, float)) and retry_after > 0:
+        state["pause_until"] = time.time() + float(retry_after) + 1
+        print(f"[Telegram] 429: Telegram просит паузу {int(retry_after)} с — статусы не трогаю до её конца.", flush=True)
+    return r, err
+
+
+def _tg_status_messages_load_1591r27(chat):
+    try:
+        data = json.loads(_tg_status_file_1591r27().read_text("utf-8"))
+        if str(data.get("chat")) == str(chat):
+            return {int(k): int(v) for k, v in (data.get("mids") or {}).items()}
+    except Exception:
+        pass
+    return {}
+
+
+def _tg_status_messages_save_1591r27(chat, mids):
+    try:
+        _tg_status_file_1591r27().write_text(
+            json.dumps({"chat": str(chat), "mids": {str(k): v for k, v in mids.items()}}), "utf-8"
+        )
+    except Exception:
+        pass
+
+
+def _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at):
+    """Create the missing status messages and push the changed texts, within the limits."""
+    changed = False
+    for i in range(1, TAB_COUNT + 1):
+        if i in mids:
+            continue
+        r, err = _tg_call_1591r27(
+            cfg, "sendMessage",
+            {"chat_id": chat, "text": f"⏳ Вкладка {i}\\nСтатус: запуск...", "disable_web_page_preview": "true"},
+            state,
+        )
+        if r:
+            mids[i] = r["result"]["message_id"]
+            last[i] = ""
+            changed = True
+            print(f"[Telegram] Сообщение вкладки {i} создано.", flush=True)
+        else:
+            if err != "paused":
+                print(f"[Telegram] ОШИБКА отправки вкладки {i}: {err}", flush=True)
+            break
+    if changed:
+        _tg_status_messages_save_1591r27(chat, mids)
+    now = time.time()
+    for i, mid in list(mids.items()):
+        info = status_map.get(str(i))
+        t = str((info or {}).get("text", ""))
+        if not t or t == last.get(i) or now - float(edited_at.get(i) or 0) < TG_STATUS_MIN_EDIT_GAP_1591R27:
+            continue
+        r, err = _tg_call_1591r27(
+            cfg, "editMessageText",
+            {"chat_id": chat, "message_id": mid, "text": t[:4000], "disable_web_page_preview": "true"},
+            state,
+        )
+        edited_at[i] = time.time()
+        if r:
+            last[i] = t
+            continue
+        if err == "paused":
+            break
+        low = str(err).lower()
+        if "message is not modified" in low:
+            last[i] = t
+        elif "not found" in low or "can't be edited" in low or "message_id_invalid" in low:
+            mids.pop(i, None)
+            _tg_status_messages_save_1591r27(chat, mids)
+            print(f"[Telegram] Сообщение вкладки {i} исчезло — создам новое.", flush=True)
+        else:
+            print(f"[Telegram] ОШИБКА обновления вкладки {i}: {err}", flush=True)
+
+
+'''
+NEW_LOGGER_DEF = TG_RATE_HELPERS_R27 + OLD_LOGGER_DEF
+OLD_LOGGER_STATE = '''    mids, last = {}, {}
+
+    print("[Telegram] Логгер запущен.", flush=True)
+'''
+NEW_LOGGER_STATE = '''    mids, last = {}, {}
+    state, edited_at = {"pause_until": 0.0, "last_call": 0.0}, {}  # TG_RATE_1591R27
+
+    print("[Telegram] Логгер запущен.", flush=True)
+'''
+OLD_LOGGER_CREATE = '''    for i in range(1, TAB_COUNT + 1):
+        t = f"⏳ Вкладка {i}\\nСтатус: запуск..."
+        r, err = telegram_api(
+            cfg, "sendMessage",
+            {"chat_id": chat, "text": t, "disable_web_page_preview": "true"},
+        )
+        if r:
+            mids[i] = r["result"]["message_id"]
+            last[i] = t
+            print(f"[Telegram] Сообщение вкладки {i} создано.", flush=True)
+        else:
+            print(f"[Telegram] ОШИБКА отправки вкладки {i}: {err}", flush=True)
+
+    if not mids:
+        print(
+            "[Telegram] Не удалось создать ни одного сообщения. "
+            "Основной сценарий продолжит работать без Telegram.",
+            flush=True,
+        )
+        return
+
+'''
+NEW_LOGGER_CREATE = '''    # TG_RATE_1591R27: reuse the status messages of the previous run instead of four new ones
+    # per restart; each is verified by an edit and recreated only when Telegram says it is gone.
+    for i, mid in _tg_status_messages_load_1591r27(chat).items():
+        r, err = _tg_call_1591r27(
+            cfg, "editMessageText",
+            {"chat_id": chat, "message_id": mid, "text": f"⏳ Вкладка {i}\\nСтатус: перезапуск...",
+             "disable_web_page_preview": "true"},
+            state,
+        )
+        if r or err == "paused" or "not modified" in str(err or "").lower():
+            mids[i] = mid
+            last[i] = ""
+    _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at)
+    if not mids:
+        print(
+            "[Telegram] Статусные сообщения пока не созданы (лимит Telegram) — попробую позже; "
+            "основной сценарий работает.",
+            flush=True,
+        )
+
+'''
+OLD_LOGGER_EDIT = '''        for i, mid in list(mids.items()):
+            info = status_map.get(str(i))
+            t = str((info or {}).get("text", ""))
+            if t and t != last.get(i):
+                r, err = telegram_api(
+                    cfg, "editMessageText",
+                    {
+                        "chat_id": chat,
+                        "message_id": mid,
+                        "text": t[:4000],
+                        "disable_web_page_preview": "true",
+                    },
+                )
+                if r:
+                    last[i] = t
+                elif err and "message is not modified" not in err.lower():
+                    print(f"[Telegram] ОШИБКА обновления вкладки {i}: {err}", flush=True)
+        time.sleep(1)
+'''
+NEW_LOGGER_EDIT = '''        _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at)  # TG_RATE_1591R27
+        time.sleep(1)
+'''
+README_NOTE_R27 = '''
+
+РЕВИЗИЯ 27 (fix_package_1591.py)
+Telegram заблокировал бота на часы (429 Too Many Requests, retry after 16123 с). Логгер статусов
+редактировал четыре сообщения вкладок хоть каждую секунду, не учитывал retry_after и продолжал
+долбить каждую секунду (так штраф и вырос), а каждый плановый перезапуск создавал четыре новых
+сообщения. Теперь: общий интервал между вызовами Bot API (TG_MIN_CALL_GAP_1591R27 = 1,5 с), не
+чаще одной правки на вкладку в TG_STATUS_MIN_EDIT_GAP_1591R27 (6 с), полная пауза на retry_after,
+статусные сообщения переиспользуются между перезапусками (telegram_status_messages.json), а если
+их не удалось создать на старте, логгер не сдаётся и пробует позже. Маркер: TG_RATE_1591R27.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3269,8 +3462,8 @@ def main(argv: list[str]) -> int:
                                                 PROFILE_LABELS_MARKER, PROXY_DIRECT_MARKER,
                                                 RESTART_RELAUNCH_MARKER, ROW_SKIP_MARKER,
                                                 FINAL_PAGE_MARKER, SIGNED_MARKER, SIGN_TRACE_MARKER,
-                                                PAYMENT_MARKER)):
-        print("Already revision 26; nothing changed.")
+                                                PAYMENT_MARKER, TG_RATE_MARKER)):
+        print("Already revision 27; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -3679,6 +3872,15 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 28 (r27). Telegram status logger within the Bot API limits; messages reused across restarts.
+    if TG_RATE_MARKER not in source:
+        for old, new, what in ((OLD_LOGGER_DEF, NEW_LOGGER_DEF, "tg rate helpers"),
+                               (OLD_LOGGER_STATE, NEW_LOGGER_STATE, "logger state"),
+                               (OLD_LOGGER_CREATE, NEW_LOGGER_CREATE, "logger message reuse"),
+                               (OLD_LOGGER_EDIT, NEW_LOGGER_EDIT, "logger rate-limited edits")):
+            new_source = replace_once(new_source, old, new, what)
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -3704,7 +3906,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | CONTROLLER_ACCEPTED_SHAS
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 26
+    manifest["revision"] = 27
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -3728,7 +3930,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 23", README_NOTE_R23),
                           ("РЕВИЗИЯ 24", README_NOTE_R24),
                           ("РЕВИЗИЯ 25", README_NOTE_R25),
-                          ("РЕВИЗИЯ 26", README_NOTE_R26)):
+                          ("РЕВИЗИЯ 26", README_NOTE_R26),
+                          ("РЕВИЗИЯ 27", README_NOTE_R27)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -3741,7 +3944,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 26, "result": "OK",
+    verification.update({"python": sys.version, "revision": 27, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -3757,7 +3960,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 26 applied to", package)
+    print("Revision 27 applied to", package)
     return 0
 
 

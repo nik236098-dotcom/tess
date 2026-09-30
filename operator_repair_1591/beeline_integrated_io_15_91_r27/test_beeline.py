@@ -509,10 +509,107 @@ def telegram_api(cfg, method, payload):
     except Exception as exc:
         return None, _io1591.TelegramFailure(f"{type(exc).__name__}: {exc}")
 
+# TG_RATE_1591R27
+TG_MIN_CALL_GAP_1591R27 = 1.5
+TG_STATUS_MIN_EDIT_GAP_1591R27 = 6.0
+
+
+def _tg_status_file_1591r27():
+    return TELEGRAM_CONFIG_FILE.with_name("telegram_status_messages.json")
+
+
+def _tg_call_1591r27(cfg, method, payload, state):
+    """One rate-limited Bot API call of the status logger: a global gap between calls and a
+    full stop for retry_after when Telegram answers 429 (retrying every second grew the ban)."""
+    now = time.time()
+    if now < float(state.get("pause_until") or 0):
+        return None, "paused"
+    gap = TG_MIN_CALL_GAP_1591R27 - (now - float(state.get("last_call") or 0))
+    if gap > 0:
+        time.sleep(gap)
+    state["last_call"] = time.time()
+    r, err = telegram_api(cfg, method, payload)
+    retry_after = getattr(err, "retry_after", None)
+    if isinstance(retry_after, (int, float)) and retry_after > 0:
+        state["pause_until"] = time.time() + float(retry_after) + 1
+        print(f"[Telegram] 429: Telegram просит паузу {int(retry_after)} с — статусы не трогаю до её конца.", flush=True)
+    return r, err
+
+
+def _tg_status_messages_load_1591r27(chat):
+    try:
+        data = json.loads(_tg_status_file_1591r27().read_text("utf-8"))
+        if str(data.get("chat")) == str(chat):
+            return {int(k): int(v) for k, v in (data.get("mids") or {}).items()}
+    except Exception:
+        pass
+    return {}
+
+
+def _tg_status_messages_save_1591r27(chat, mids):
+    try:
+        _tg_status_file_1591r27().write_text(
+            json.dumps({"chat": str(chat), "mids": {str(k): v for k, v in mids.items()}}), "utf-8"
+        )
+    except Exception:
+        pass
+
+
+def _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at):
+    """Create the missing status messages and push the changed texts, within the limits."""
+    changed = False
+    for i in range(1, TAB_COUNT + 1):
+        if i in mids:
+            continue
+        r, err = _tg_call_1591r27(
+            cfg, "sendMessage",
+            {"chat_id": chat, "text": f"⏳ Вкладка {i}\nСтатус: запуск...", "disable_web_page_preview": "true"},
+            state,
+        )
+        if r:
+            mids[i] = r["result"]["message_id"]
+            last[i] = ""
+            changed = True
+            print(f"[Telegram] Сообщение вкладки {i} создано.", flush=True)
+        else:
+            if err != "paused":
+                print(f"[Telegram] ОШИБКА отправки вкладки {i}: {err}", flush=True)
+            break
+    if changed:
+        _tg_status_messages_save_1591r27(chat, mids)
+    now = time.time()
+    for i, mid in list(mids.items()):
+        info = status_map.get(str(i))
+        t = str((info or {}).get("text", ""))
+        if not t or t == last.get(i) or now - float(edited_at.get(i) or 0) < TG_STATUS_MIN_EDIT_GAP_1591R27:
+            continue
+        r, err = _tg_call_1591r27(
+            cfg, "editMessageText",
+            {"chat_id": chat, "message_id": mid, "text": t[:4000], "disable_web_page_preview": "true"},
+            state,
+        )
+        edited_at[i] = time.time()
+        if r:
+            last[i] = t
+            continue
+        if err == "paused":
+            break
+        low = str(err).lower()
+        if "message is not modified" in low:
+            last[i] = t
+        elif "not found" in low or "can't be edited" in low or "message_id_invalid" in low:
+            mids.pop(i, None)
+            _tg_status_messages_save_1591r27(chat, mids)
+            print(f"[Telegram] Сообщение вкладки {i} исчезло — создам новое.", flush=True)
+        else:
+            print(f"[Telegram] ОШИБКА обновления вкладки {i}: {err}", flush=True)
+
+
 def telegram_logger_process(status_map, success_queue, stop_event):
     cfg = load_telegram_config()
     chat = str(cfg.get("chat_id", "")).strip()
     mids, last = {}, {}
+    state, edited_at = {"pause_until": 0.0, "last_call": 0.0}, {}  # TG_RATE_1591R27
 
     print("[Telegram] Логгер запущен.", flush=True)
     if not chat:
@@ -527,26 +624,25 @@ def telegram_logger_process(status_map, success_queue, stop_event):
     bot_name = (test.get("result") or {}).get("username", "?")
     print(f"[Telegram] SOCKS5 подключён. Бот: @{bot_name}", flush=True)
 
-    for i in range(1, TAB_COUNT + 1):
-        t = f"⏳ Вкладка {i}\nСтатус: запуск..."
-        r, err = telegram_api(
-            cfg, "sendMessage",
-            {"chat_id": chat, "text": t, "disable_web_page_preview": "true"},
+    # TG_RATE_1591R27: reuse the status messages of the previous run instead of four new ones
+    # per restart; each is verified by an edit and recreated only when Telegram says it is gone.
+    for i, mid in _tg_status_messages_load_1591r27(chat).items():
+        r, err = _tg_call_1591r27(
+            cfg, "editMessageText",
+            {"chat_id": chat, "message_id": mid, "text": f"⏳ Вкладка {i}\nСтатус: перезапуск...",
+             "disable_web_page_preview": "true"},
+            state,
         )
-        if r:
-            mids[i] = r["result"]["message_id"]
-            last[i] = t
-            print(f"[Telegram] Сообщение вкладки {i} создано.", flush=True)
-        else:
-            print(f"[Telegram] ОШИБКА отправки вкладки {i}: {err}", flush=True)
-
+        if r or err == "paused" or "not modified" in str(err or "").lower():
+            mids[i] = mid
+            last[i] = ""
+    _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at)
     if not mids:
         print(
-            "[Telegram] Не удалось создать ни одного сообщения. "
-            "Основной сценарий продолжит работать без Telegram.",
+            "[Telegram] Статусные сообщения пока не созданы (лимит Telegram) — попробую позже; "
+            "основной сценарий работает.",
             flush=True,
         )
-        return
 
     while not stop_event.is_set():
         # Успехи отправляются ОТДЕЛЬНЫМИ сообщениями и никогда не редактируются.
@@ -582,23 +678,7 @@ def telegram_logger_process(status_map, success_queue, stop_event):
                 if not r:
                     print(f"[Telegram] ОШИБКА отдельного SUCCESS push: {err}", flush=True)
 
-        for i, mid in list(mids.items()):
-            info = status_map.get(str(i))
-            t = str((info or {}).get("text", ""))
-            if t and t != last.get(i):
-                r, err = telegram_api(
-                    cfg, "editMessageText",
-                    {
-                        "chat_id": chat,
-                        "message_id": mid,
-                        "text": t[:4000],
-                        "disable_web_page_preview": "true",
-                    },
-                )
-                if r:
-                    last[i] = t
-                elif err and "message is not modified" not in err.lower():
-                    print(f"[Telegram] ОШИБКА обновления вкладки {i}: {err}", flush=True)
+        _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at)  # TG_RATE_1591R27
         time.sleep(1)
 
 
