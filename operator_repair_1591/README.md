@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 28 лежит в `beeline_integrated_io_15_91_r28/`. В нём нет
+Готовый пакет ревизии 29 лежит в `beeline_integrated_io_15_91_r29/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -66,7 +66,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r28
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r29
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -254,7 +254,10 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    всего восемь: пока одни ждут подтверждение, другие работают, а зависание Chromium задевает
    половину вкладок. Одновременно решаются не больше двух капч, остальные вкладки ждут слот и шлют
    `CAPTCHA_WAIT` в heartbeat. Маркер `TWO_BROWSERS_1591R28`.
-30. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+30. **Сброс незавершённого drain (ревизия 29).** Файл `restart_drain.json`, оставшийся от процесса,
+   убитого посреди планового перезапуска, заставлял следующий запуск сразу «дорабатывать и ждать».
+   Теперь при старте такой файл сбрасывается. Маркер `STALE_DRAIN_RESET_1591R29`.
+31. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

@@ -76,7 +76,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "2e81b5bf57f5da86abec14e2b9bcd7961f44d3c87c54689819a2038a43533057",  # r24 output
                          "aac470f2ecd3e0d4d34b399860cda4393a0fa1896b24d206ea2c794558e853a2",  # r25 output
                          "72110535925a3167e91c621a29e2d46d090f7e76b03bb250df9f35530bdcaa5d",  # r26 output
-                         "786a170bbe7f1861e225ec19f150c20ca176f5dbb55beeeb02924522cb29a6f3"}  # r27 output
+                         "786a170bbe7f1861e225ec19f150c20ca176f5dbb55beeeb02924522cb29a6f3",  # r27 output
+                         "6482ff2cfbc544f86587731e6d84a7ba5c9858987ca5700b60032d2ec4a905cf"}  # r28 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -2708,6 +2709,29 @@ README_NOTE_R28 = '''
 в heartbeat, чтобы watchdog не считал это зависанием; после CAPTCHA_GATE_WAIT_SECONDS (180 с)
 вкладка решает без слота. Маркер: TWO_BROWSERS_1591R28.
 '''
+# Revision 29: a drain file left by a run that was killed mid-drain (systemctl restart, crash)
+# made the next run drain from its first second: every tab finished one row and waited for a
+# restart. A drain belongs to the process that requested it, so a leftover file is discarded
+# at start.
+STALE_DRAIN_MARKER = "STALE_DRAIN_RESET_1591R29"
+OLD_RESTART_TIMER_R13 = '''        restart_started_at = monotonic()
+        restart_notified = False
+'''
+NEW_RESTART_TIMER_R29 = '''        restart_started_at = monotonic()
+        restart_notified = False
+        if restart_drain_requested(base_dir):  # STALE_DRAIN_RESET_1591R29
+            clear_restart_drain(base_dir)
+            print("[RESTART] Найден незавершённый drain прошлого запуска — сброшен, работаю как обычно.", flush=True)
+'''
+README_NOTE_R29 = '''
+
+РЕВИЗИЯ 29 (fix_package_1591.py)
+Файл restart_drain.json, оставшийся от процесса, убитого посреди планового перезапуска
+(systemctl restart, падение), заставлял следующий запуск с первой секунды «дорабатывать строки
+и ждать перезапуск»: каждая вкладка делала одну строку и вставала. Drain принадлежит
+запросившему его процессу, поэтому при старте оставшийся файл сбрасывается с записью в журнал.
+Маркер: STALE_DRAIN_RESET_1591R29.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3543,8 +3567,9 @@ def main(argv: list[str]) -> int:
                                                 PROFILE_LABELS_MARKER, PROXY_DIRECT_MARKER,
                                                 RESTART_RELAUNCH_MARKER, ROW_SKIP_MARKER,
                                                 FINAL_PAGE_MARKER, SIGNED_MARKER, SIGN_TRACE_MARKER,
-                                                PAYMENT_MARKER, TG_RATE_MARKER, TWO_BROWSERS_MARKER)):
-        print("Already revision 28; nothing changed.")
+                                                PAYMENT_MARKER, TG_RATE_MARKER, TWO_BROWSERS_MARKER,
+                                                STALE_DRAIN_MARKER)):
+        print("Already revision 29; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -3972,6 +3997,18 @@ def main(argv: list[str]) -> int:
             new_source = replace_once(new_source, old, new, what)
             add_edit(edits["test_beeline.py"], source, old, new, reflected)
 
+    # 30 (r29). A drain file left by a killed run is discarded at start.
+    if STALE_DRAIN_MARKER not in source:
+        old, new, what = OLD_RESTART_TIMER_R13, NEW_RESTART_TIMER_R29, "stale drain reset"
+        new_source = replace_once(new_source, old, new, what)
+        for change in edits["test_beeline.py"]:
+            joined = "".join(change["replacement"])
+            if old in joined:
+                change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                break
+        else:
+            raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -3997,7 +4034,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | CONTROLLER_ACCEPTED_SHAS
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 28
+    manifest["revision"] = 29
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -4023,7 +4060,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 25", README_NOTE_R25),
                           ("РЕВИЗИЯ 26", README_NOTE_R26),
                           ("РЕВИЗИЯ 27", README_NOTE_R27),
-                          ("РЕВИЗИЯ 28", README_NOTE_R28)):
+                          ("РЕВИЗИЯ 28", README_NOTE_R28),
+                          ("РЕВИЗИЯ 29", README_NOTE_R29)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -4036,7 +4074,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 28, "result": "OK",
+    verification.update({"python": sys.version, "revision": 29, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -4052,7 +4090,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 28 applied to", package)
+    print("Revision 29 applied to", package)
     return 0
 
 

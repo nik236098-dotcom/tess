@@ -9574,6 +9574,9 @@ def main():
         # runtime then leaves with RESTART_EXIT_CODE for the controller to relaunch it.
         restart_started_at = monotonic()
         restart_notified = False
+        if restart_drain_requested(base_dir):  # STALE_DRAIN_RESET_1591R29
+            clear_restart_drain(base_dir)
+            print("[RESTART] Найден незавершённый drain прошлого запуска — сброшен, работаю как обычно.", flush=True)
 
         def _restart_tick():
             nonlocal restart_notified
