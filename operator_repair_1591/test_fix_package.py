@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-20", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-21", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -299,7 +299,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 20", run.stdout)
+            self.assertIn("Already revision 21", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -333,7 +333,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 20)
+        self.assertEqual(manifest["revision"], 21)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -494,8 +494,9 @@ class PackageTests(unittest.TestCase):
                 "parse_restart_setting", "restart_policy_minutes", "write_restart_policy",
                 "restart_drain_requested", "request_restart_drain")})
             sent = []
-            ns = {"app": app, "BASE_DIR": Path(d), "_send": sent.append}
-            exec_functions(control, ["_restart_command", "_restart_after_drain"], ns)
+            ns = {"app": app, "BASE_DIR": Path(d), "_send": sent.append, "time": __import__("time"),
+                  "RELAUNCH_MARKER_MAX_AGE": 600}
+            exec_functions(control, ["_restart_command", "_restart_after_drain", "_relaunch_marker_fresh"], ns)
             self.assertIn("выключен", ns["_restart_command"](""))
             self.assertIn("каждые 20 мин", ns["_restart_command"](" 20m"))
             self.assertEqual(helpers["restart_policy_minutes"](d), 20)
@@ -508,11 +509,17 @@ class PackageTests(unittest.TestCase):
                 def __init__(self, code): self.code = code
                 def poll(self): return self.code
             class FakeProc:
-                def __init__(self, code):
-                    self.proc = FakePopen(code); self.started = 0
+                def __init__(self, code, last_code=None):
+                    self.proc = FakePopen(code) if code != "gone" else None
+                    self.started = 0; self.last_code = last_code
+                def running(self): return self.proc is not None and self.proc.poll() is None
+                def reap(self):
+                    if self.proc is not None and self.proc.poll() is not None:
+                        self.last_code = self.proc.poll(); self.proc = None
                 def start(self):
                     self.started += 1
                     return True, "▶️ Запущено. PID 1."
+            marker = Path(d) / "restart_relaunch.json"
             running = FakeProc(None)
             self.assertFalse(ns["_restart_after_drain"](running)); self.assertEqual(running.started, 0)
             crashed = FakeProc(1)
@@ -520,6 +527,33 @@ class PackageTests(unittest.TestCase):
             drained = FakeProc(75)
             self.assertTrue(ns["_restart_after_drain"](drained)); self.assertEqual(drained.started, 1)
             self.assertIn("Плановый перезапуск выполнен", sent[-1])
+            # RESTART_RELAUNCH_1591R21: xvfb-run reported 5 — the fresh marker relaunches and is consumed.
+            marker.write_text("{}")
+            lost = FakeProc(5)
+            self.assertTrue(ns["_restart_after_drain"](lost)); self.assertEqual(lost.started, 1); self.assertFalse(marker.exists())
+            # reap() already consumed the exit code: last_code still triggers exactly one relaunch.
+            reaped = FakeProc("gone", last_code=75)
+            self.assertTrue(ns["_restart_after_drain"](reaped)); self.assertEqual(reaped.started, 1)
+            self.assertFalse(ns["_restart_after_drain"](reaped)); self.assertEqual(reaped.started, 1)
+            # A running process is never touched even with a marker; a stale marker is ignored and removed.
+            marker.write_text("{}"); alive = FakeProc(None)
+            self.assertFalse(ns["_restart_after_drain"](alive)); self.assertTrue(marker.exists())
+            os.utime(marker, (1, 1)); stale = FakeProc(5)
+            self.assertFalse(ns["_restart_after_drain"](stale)); self.assertFalse(marker.exists())
+            self.assertIn("os.killpg(pgid, signal.SIGTERM)", control); self.assertIn("self.last_code = code", control)
+            # Runtime side: the marker is written before the exit, the force-exit timer is a daemon.
+            rns = {"Path": Path, "json": json, "time": __import__("time"), "os": os, "print": lambda *a, **k: None,
+                   "RESTART_RELAUNCH_FILE_NAME": "restart_relaunch.json", "RESTART_EXIT_FORCE_SECONDS": 3600,
+                   "RESTART_EXIT_CODE": 75}
+            exec_functions(self.source, ["request_relaunch"], rns)
+            timer = rns["request_relaunch"](d, "drain complete")
+            try:
+                self.assertTrue(timer.daemon); self.assertEqual(json.loads(marker.read_text())["reason"], "drain complete")
+            finally:
+                timer.cancel()
+            src_tail = self.source[self.source.index("[RESTART] Все worker завершили строки; выхожу для планового перезапуска."):]
+            self.assertIn('request_relaunch(base_dir, "drain complete")', src_tail[:400])
+            self.assertIn('request_relaunch(base_dir, "chromium relaunch failed")', self.source)
 
 
     def test_post_auth_error_page_follows_the_error_policy(self):

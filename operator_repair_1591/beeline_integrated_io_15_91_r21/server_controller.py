@@ -191,11 +191,42 @@ def _restart_command(argument):
             "до конца (подтверждение, подпись, разбор DeepSeek), затем процесс перезапускается.")
 
 
-def _restart_after_drain(proc):
-    """Relaunch the automation that exited on purpose (RESTART_EXIT_CODE) after its drain."""
-    if proc.proc is None or proc.proc.poll() != app.RESTART_EXIT_CODE:
+RELAUNCH_MARKER_MAX_AGE = 600  # RESTART_RELAUNCH_1591R21: a marker older than this is stale
+
+
+def _relaunch_marker_fresh(marker):
+    try:
+        age = time.time() - marker.stat().st_mtime
+    except OSError:
         return False
-    proc.proc = None
+    if age <= RELAUNCH_MARKER_MAX_AGE:
+        return True
+    try:
+        marker.unlink()
+    except OSError:
+        pass
+    return False
+
+
+def _restart_after_drain(proc):
+    """Relaunch the automation that exited on purpose after its drain.
+
+    RESTART_RELAUNCH_1591R21: the trigger is RESTART_EXIT_CODE from the process, the last code
+    reap() recorded, or a fresh restart_relaunch.json written by the runtime before it exited
+    (xvfb-run reported 5 instead of 75 on the server). A running process is never touched.
+    """
+    if proc.running():
+        return False
+    marker = BASE_DIR / getattr(app, "RESTART_RELAUNCH_FILE_NAME", "restart_relaunch.json")
+    code = proc.proc.poll() if proc.proc is not None else getattr(proc, "last_code", None)
+    if code != app.RESTART_EXIT_CODE and not _relaunch_marker_fresh(marker):
+        return False
+    proc.reap()
+    proc.last_code = None
+    try:
+        marker.unlink()
+    except OSError:
+        pass
     ok, answer = proc.start()
     _send(("♻️ Плановый перезапуск выполнен. " if ok else "⚠️ Плановый перезапуск: запуск не удался. ") + answer)
     return True
@@ -204,6 +235,7 @@ def _restart_after_drain(proc):
 class AutomationProcess:
     def __init__(self):
         self.proc = None
+        self.last_code = None  # RESTART_RELAUNCH_1591R21
 
     def running(self):
         return self.proc is not None and self.proc.poll() is None
@@ -277,8 +309,14 @@ class AutomationProcess:
     def reap(self):
         if self.proc is not None and self.proc.poll() is not None:
             code = self.proc.returncode
+            pgid = self.proc.pid
             self.proc = None
+            self.last_code = code  # RESTART_RELAUNCH_1591R21: kept for _restart_after_drain
             print(f"[CTRL] automation завершилась code={code}", flush=True)
+            try:
+                os.killpg(pgid, signal.SIGTERM)  # RESTART_RELAUNCH_1591R21: leftover Xvfb of that session
+            except Exception:
+                pass
 
     def status(self):
         self.reap()

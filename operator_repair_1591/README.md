@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 20 лежит в `beeline_integrated_io_15_91_r20/`. В нём нет
+Готовый пакет ревизии 21 лежит в `beeline_integrated_io_15_91_r21/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -53,7 +53,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r20
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r21
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -198,7 +198,13 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    означает «без прокси намеренно»: код идёт к Telegram напрямую, защита установщика из ревизии 3
    такое значение принимает (пустой прокси по-прежнему отклоняется). `fresh_install.sh` на вопрос о
    прокси принимает `direct` или Enter. Маркер `PROXY_DIRECT_1591R20`.
-22. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+22. **Плановый перезапуск не выполнялся (ревизия 21).** Бот выходил с кодом 75, но `xvfb-run`
+   отдавал контроллеру код 5 и оставлял осиротевший Xvfb, и контроллер считал выход обычным.
+   Теперь бот перед выходом пишет `restart_relaunch.json` и через 90 с принудительно завершается,
+   если обычное завершение зависло; контроллер перезапускает по коду выхода или по свежему маркеру,
+   помнит последний код выхода и убивает остатки группы процессов бота (Xvfb). Маркер
+   `RESTART_RELAUNCH_1591R21`.
+23. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

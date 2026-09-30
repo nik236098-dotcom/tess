@@ -7982,6 +7982,30 @@ def clear_restart_drain(base_dir):
         pass
 
 
+# RESTART_RELAUNCH_1591R21
+RESTART_RELAUNCH_FILE_NAME = "restart_relaunch.json"
+RESTART_EXIT_FORCE_SECONDS = 90
+
+
+def request_relaunch(base_dir, reason=""):
+    """Ask the controller to start the automation again after this process exits.
+
+    xvfb-run does not always pass RESTART_EXIT_CODE through, so the controller also looks at
+    this marker. The timer forces the exit if the normal shutdown hangs on a child process.
+    """
+    try:
+        (Path(base_dir) / RESTART_RELAUNCH_FILE_NAME).write_text(
+            json.dumps({"time": time.time(), "reason": str(reason)}, ensure_ascii=False), "utf-8"
+        )
+    except Exception as exc:
+        print(f"[RESTART] Маркер перезапуска не записан: {type(exc).__name__}: {exc}", flush=True)
+    import threading
+    timer = threading.Timer(RESTART_EXIT_FORCE_SECONDS, lambda: os._exit(RESTART_EXIT_CODE))
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
 def _restart_notify(text):
     """Durable Telegram notice; delivered by the controller's sender even across the restart."""
     try:
@@ -8473,6 +8497,7 @@ def main():
                     f"⚠️ Chromium #{instance['id']} перестал отвечать ({reason}) и не запустился заново. "
                     "Перезапускаю весь процесс."
                 )
+                request_relaunch(base_dir, "chromium relaunch failed")  # RESTART_RELAUNCH_1591R21
                 raise SystemExit(RESTART_EXIT_CODE)
             print(f"[BROWSER RESTART] Chromium #{instance['id']} готов: {instance['cdp_url']}", flush=True)
             _restart_notify(
@@ -9046,6 +9071,7 @@ def main():
             clear_restart_drain(base_dir)
             print("[RESTART] Все worker завершили строки; выхожу для планового перезапуска.", flush=True)
             _restart_notify("♻️ Все worker завершили строки. Перезапускаю процесс.")
+            request_relaunch(base_dir, "drain complete")  # RESTART_RELAUNCH_1591R21
             raise SystemExit(RESTART_EXIT_CODE)
 
         print(f"Все {TAB_COUNT} worker-слота завершили обработку очереди.")

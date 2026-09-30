@@ -68,7 +68,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "3bee3697775d818df6c1fe82c3096574f00a1c289aaf26c7a7e96d2f614b7597",
                          "1ba0e4f3af9dcc2fa8d78e5eee0033ec48489c402f4c49be9d4e799eb1a786ec",  # r17 output
                          "e8f5e036c2f33ab9d8f27a98deceb25356511cd253fc871f929c16d619f45d75",  # r18 output
-                         "341513d5df545f6711f9c5f1e0de7d464d586b6c0afe4ac2fc019a27308457ec"}  # r19 output
+                         "341513d5df545f6711f9c5f1e0de7d464d586b6c0afe4ac2fc019a27308457ec",  # r19 output
+                         "bb57f0437e52c61d801e94020c3d72f9bbca2b2bbef09b63e0d746e5de9a59f2"}  # r20 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -1566,6 +1567,144 @@ README_NOTE_R20 = '''
 сервер не потерял его случайно) такое значение принимает. fresh_install.sh: на вопрос о прокси
 можно ответить direct или просто Enter. Маркер: PROXY_DIRECT_1591R20.
 '''
+# Revision 21: the scheduled restart never relaunched. The automation exits with
+# RESTART_EXIT_CODE (75) but xvfb-run (set -e, EXIT trap) reported 5 to the controller and left
+# its Xvfb behind, so _restart_after_drain saw an "ordinary exit" and did nothing. Now the
+# runtime writes restart_relaunch.json before exiting (and force-exits after 90 s if the normal
+# shutdown hangs on child processes); the controller relaunches on the exit code OR on a fresh
+# marker, remembers the last exit code even if reap() ran first, and kills the leftover
+# process group (Xvfb) of the finished session.
+RESTART_RELAUNCH_MARKER = "RESTART_RELAUNCH_1591R21"
+OLD_CLEAR_DRAIN_R13 = """def clear_restart_drain(base_dir):
+    try:
+        (Path(base_dir) / RESTART_DRAIN_FILE_NAME).unlink()
+    except FileNotFoundError:
+        pass
+"""
+NEW_CLEAR_DRAIN_R21 = OLD_CLEAR_DRAIN_R13 + """
+
+# RESTART_RELAUNCH_1591R21
+RESTART_RELAUNCH_FILE_NAME = "restart_relaunch.json"
+RESTART_EXIT_FORCE_SECONDS = 90
+
+
+def request_relaunch(base_dir, reason=""):
+    \"\"\"Ask the controller to start the automation again after this process exits.
+
+    xvfb-run does not always pass RESTART_EXIT_CODE through, so the controller also looks at
+    this marker. The timer forces the exit if the normal shutdown hangs on a child process.
+    \"\"\"
+    try:
+        (Path(base_dir) / RESTART_RELAUNCH_FILE_NAME).write_text(
+            json.dumps({"time": time.time(), "reason": str(reason)}, ensure_ascii=False), "utf-8"
+        )
+    except Exception as exc:
+        print(f"[RESTART] Маркер перезапуска не записан: {type(exc).__name__}: {exc}", flush=True)
+    import threading
+    timer = threading.Timer(RESTART_EXIT_FORCE_SECONDS, lambda: os._exit(RESTART_EXIT_CODE))
+    timer.daemon = True
+    timer.start()
+    return timer
+"""
+OLD_DRAIN_EXIT_R13 = """            _restart_notify("♻️ Все worker завершили строки. Перезапускаю процесс.")
+            raise SystemExit(RESTART_EXIT_CODE)
+"""
+NEW_DRAIN_EXIT_R21 = """            _restart_notify("♻️ Все worker завершили строки. Перезапускаю процесс.")
+            request_relaunch(base_dir, "drain complete")  # RESTART_RELAUNCH_1591R21
+            raise SystemExit(RESTART_EXIT_CODE)
+"""
+OLD_BROWSER_EXIT_R18 = """                    "Перезапускаю весь процесс."
+                )
+                raise SystemExit(RESTART_EXIT_CODE)
+"""
+NEW_BROWSER_EXIT_R21 = """                    "Перезапускаю весь процесс."
+                )
+                request_relaunch(base_dir, "chromium relaunch failed")  # RESTART_RELAUNCH_1591R21
+                raise SystemExit(RESTART_EXIT_CODE)
+"""
+OLD_CTRL_RELAUNCH_R13 = """def _restart_after_drain(proc):
+    \"\"\"Relaunch the automation that exited on purpose (RESTART_EXIT_CODE) after its drain.\"\"\"
+    if proc.proc is None or proc.proc.poll() != app.RESTART_EXIT_CODE:
+        return False
+    proc.proc = None
+    ok, answer = proc.start()
+"""
+NEW_CTRL_RELAUNCH_R21 = """RELAUNCH_MARKER_MAX_AGE = 600  # RESTART_RELAUNCH_1591R21: a marker older than this is stale
+
+
+def _relaunch_marker_fresh(marker):
+    try:
+        age = time.time() - marker.stat().st_mtime
+    except OSError:
+        return False
+    if age <= RELAUNCH_MARKER_MAX_AGE:
+        return True
+    try:
+        marker.unlink()
+    except OSError:
+        pass
+    return False
+
+
+def _restart_after_drain(proc):
+    \"\"\"Relaunch the automation that exited on purpose after its drain.
+
+    RESTART_RELAUNCH_1591R21: the trigger is RESTART_EXIT_CODE from the process, the last code
+    reap() recorded, or a fresh restart_relaunch.json written by the runtime before it exited
+    (xvfb-run reported 5 instead of 75 on the server). A running process is never touched.
+    \"\"\"
+    if proc.running():
+        return False
+    marker = BASE_DIR / getattr(app, "RESTART_RELAUNCH_FILE_NAME", "restart_relaunch.json")
+    code = proc.proc.poll() if proc.proc is not None else getattr(proc, "last_code", None)
+    if code != app.RESTART_EXIT_CODE and not _relaunch_marker_fresh(marker):
+        return False
+    proc.reap()
+    proc.last_code = None
+    try:
+        marker.unlink()
+    except OSError:
+        pass
+    ok, answer = proc.start()
+"""
+OLD_CTRL_REAP = """    def reap(self):
+        if self.proc is not None and self.proc.poll() is not None:
+            code = self.proc.returncode
+            self.proc = None
+            print(f"[CTRL] automation завершилась code={code}", flush=True)
+"""
+NEW_CTRL_REAP_R21 = """    def reap(self):
+        if self.proc is not None and self.proc.poll() is not None:
+            code = self.proc.returncode
+            pgid = self.proc.pid
+            self.proc = None
+            self.last_code = code  # RESTART_RELAUNCH_1591R21: kept for _restart_after_drain
+            print(f"[CTRL] automation завершилась code={code}", flush=True)
+            try:
+                os.killpg(pgid, signal.SIGTERM)  # RESTART_RELAUNCH_1591R21: leftover Xvfb of that session
+            except Exception:
+                pass
+"""
+OLD_CTRL_INIT = """class AutomationProcess:
+    def __init__(self):
+        self.proc = None
+"""
+NEW_CTRL_INIT_R21 = """class AutomationProcess:
+    def __init__(self):
+        self.proc = None
+        self.last_code = None  # RESTART_RELAUNCH_1591R21
+"""
+README_NOTE_R21 = """
+
+РЕВИЗИЯ 21 (fix_package_1591.py)
+Плановый перезапуск не выполнялся. Бот завершался с кодом RESTART_EXIT_CODE (75), но обёртка
+xvfb-run (set -e и EXIT-trap) отдавала контроллеру код 5 и оставляла осиротевший Xvfb, поэтому
+_restart_after_drain считал выход обычным и ничего не делал. Теперь перед выходом бот пишет
+restart_relaunch.json (request_relaunch) и через 90 с принудительно завершается, если обычное
+завершение зависло на дочерних процессах; контроллер перезапускает по коду выхода ИЛИ по
+свежему маркеру (не старше 10 мин), помнит последний код даже если reap() сработал раньше, и
+после завершения бота убивает остатки его группы процессов (Xvfb). Маркер: RESTART_RELAUNCH_1591R21.
+"""
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -2398,8 +2537,9 @@ def main(argv: list[str]) -> int:
                                                 TARIFF_MARKER, ROWSTART_MARKER, MATCHER_MARKER, OBSERVER_MARKER,
                                                 PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER, PERSDATA_MARKER,
                                                 ERRORSKIP_MARKER, SUCCESSTAG_MARKER, BROWSER_MARKER,
-                                                PROFILE_LABELS_MARKER, PROXY_DIRECT_MARKER)):
-        print("Already revision 20; nothing changed.")
+                                                PROFILE_LABELS_MARKER, PROXY_DIRECT_MARKER,
+                                                RESTART_RELAUNCH_MARKER)):
+        print("Already revision 21; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -2697,6 +2837,37 @@ def main(argv: list[str]) -> int:
             new_source = replace_once(new_source, old, new, what)
             add_edit(edits["test_beeline.py"], source, old, new, reflected)
 
+    # 22 (r21). Relaunch after the drain by marker, not only by the exit code xvfb-run may lose.
+    if RESTART_RELAUNCH_MARKER not in source:
+        for old, new, what in ((OLD_CLEAR_DRAIN_R13, NEW_CLEAR_DRAIN_R21, "relaunch helper"),
+                               (OLD_DRAIN_EXIT_R13, NEW_DRAIN_EXIT_R21, "drain exit marker"),
+                               (OLD_BROWSER_EXIT_R18, NEW_BROWSER_EXIT_R21, "browser exit marker")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        for old, new, what in ((OLD_CTRL_RELAUNCH_R13, NEW_CTRL_RELAUNCH_R21, "controller relaunch by marker"),
+                               (OLD_CTRL_REAP, NEW_CTRL_REAP_R21, "controller reap"),
+                               (OLD_CTRL_INIT, NEW_CTRL_INIT_R21, "controller last_code")):
+            new_ctrl = replace_once(new_ctrl, old, new, what)
+            if old in ctrl_source:
+                add_edit(edits["server_controller.py"], ctrl_source, old, new, ctrl_reflected)
+            else:
+                for change in edits["server_controller.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -2722,7 +2893,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | {CONTROLLER_OUTPUT_SHA_R12}
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 20
+    manifest["revision"] = 21
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -2740,7 +2911,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 15", README_NOTE_R15), ("РЕВИЗИЯ 16", README_NOTE_R16),
                           ("РЕВИЗИЯ 17", README_NOTE_R17), ("РЕВИЗИЯ 18", README_NOTE_R18),
                           ("РЕВИЗИЯ 19", README_NOTE_R19),
-                          ("РЕВИЗИЯ 20", README_NOTE_R20)):
+                          ("РЕВИЗИЯ 20", README_NOTE_R20),
+                          ("РЕВИЗИЯ 21", README_NOTE_R21)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -2753,7 +2925,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 20, "result": "OK",
+    verification.update({"python": sys.version, "revision": 21, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -2769,7 +2941,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 20 applied to", package)
+    print("Revision 21 applied to", package)
     return 0
 
 
