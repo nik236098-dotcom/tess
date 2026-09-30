@@ -1,7 +1,8 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 31 лежит в `beeline_integrated_io_15_91_r31/`; рядом `beeline_integrated_io_15_91_r30/` —
-только промпт DeepSeek без изменений кода подписи (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
+Готовый пакет ревизии 32 лежит в `beeline_integrated_io_15_91_r32/` (включает ревизии 30 и 31); рядом
+`beeline_integrated_io_15_91_r30/` — только промпт DeepSeek без изменений кода (собирается
+`FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -67,7 +68,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r31
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r32
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -266,7 +267,17 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    перерисовывается и кнопка нажимается ещё один раз. Пока DeepSeek работает с вкладкой, локальный код
    не подписывает (не дольше 120 с). Вердикт DeepSeek читается кодом как признак успеха или шага
    оплаты. Маркер `SIGN_ROBUST_1591R31`.
-33. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+33. **Карточка тарифа, предел повторов строки, срок дренажа (ревизия 32).** Корзина общая для
+   вкладок одного Chromium: когда прошлая строка уже выбрала «подписка bee START», заголовок на
+   странице встречается дважды (в корзине с «изменить» и в окне «выберите тариф»), и прежний поиск
+   падал с `RECOVERABLE_RESTART_ROW` у всех вкладок этого браузера бесконечно, а плановый перезапуск
+   ждал их и не наступал. Теперь тариф ищется в окне «выберите тариф», карточкой считается элемент с
+   одним названием тарифа и видимой «выбрать» без «изменить». После трёх перезапусков одной строки
+   она возвращается в конец очереди (не более двух раз за запуск), номер не помечается обработанным,
+   запись в `deferred_rows.jsonl`. Через 15 минут дренажа вкладки на старте строки останавливаются
+   (подтверждение, подпись, разбор DeepSeek ждутся до 40 минут). Маркеры `TARIFF_SCOPE_1591R32`,
+   `ROW_RESTART_LIMIT_1591R32`, `DRAIN_DEADLINE_1591R32`.
+34. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

@@ -61,7 +61,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER, fix.TARIFF_SCOPE_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -203,7 +203,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_31(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_32(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -211,12 +211,12 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertIn("Already revision 30", run.stdout)
-            # a server on the prompt-only build is accepted by the full (r31) installer
+            # a server on the prompt-only build is accepted by the full (r32) installer
             self.assertIn(hashlib.sha256((r30 / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             app = Path(d) / "app"; app.mkdir()
             for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "install.py", "test_update.py"):
@@ -252,6 +252,114 @@ class PackageTests(unittest.TestCase):
         except Exception as exc:
             self.skipTest(f"chromium not available: {type(exc).__name__}")
         self.assertIs(blank, False); self.assertIs(drawn, True); self.assertIsNone(none)
+
+    def test_tariff_card_is_found_inside_the_picker_next_to_the_basket(self):
+        """The basket already holds bee START (chosen by an earlier row in the same Chromium): the
+        same title appears twice, first with «изменить» and no «выбрать» (the page of tab 8, row 55)."""
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("playwright not installed")
+        import re as _re
+        ns = {"re": _re, "TARIFF_NAME": "подписка bee START", "monotonic": __import__("time").monotonic,
+              "_CHOOSE_BUTTON_RE": _re.compile(r"^\s*выбрать\s*$", _re.I)}
+        for node in ast.parse(self.source).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id in ("_TARIFF_PICKER_HEADER_RE_1591R32", "_TARIFF_TITLE_RE_1591R32", "_TARIFF_BASKET_BUTTON_RE_1591R32") for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(self.source, ["_tariff_choose_button", "_tariff_card_button_1591r32"], ns)
+        card = lambda name, price, metric: (f"<div class='card'><div><p>{name}</p></div><div><p>{price}</p>"
+                                           f"<button data-metric-name='{metric}'><p>выбрать</p></button></div></div>")
+        basket = ("<div id='basket'><div><p>подписка bee START</p></div><div><button>изменить</button>"
+                  "<button aria-label='Удалить тариф'></button></div><p>1 гб, ∞ звонки</p>"
+                  "<div class='option'><p>защита от спама</p><button><span>выбрать</span></button></div></div>")
+        picker = ("<div id='picker'><p>выберите тариф</p><div class='row'>" + card("подписка bee START", "0 ₽/месяц", "start")
+                  + card("подписка bee HIT", "500 ₽/месяц", "hit") + card("подписка bee SUPER START", "300 ₽", "superstart") + "</div></div>")
+        try:
+            with sync_playwright() as p:
+                try:
+                    browser = p.chromium.launch(headless=True)
+                except Exception:
+                    browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+                page = browser.new_page()
+                page.set_content(basket + picker)
+                got_with_basket = ns["_tariff_choose_button"](page, None, timeout=1500).get_attribute("data-metric-name")
+                page.set_content(picker)                              # the usual page: picker only
+                got_plain = ns["_tariff_choose_button"](page, None, timeout=1500).get_attribute("data-metric-name")
+                page.set_content("<div class='row'>" + card("подписка bee HIT", "500", "hit") + card("подписка bee START", "0", "start2") + "</div>")
+                got_no_header = ns["_tariff_choose_button"](page, None, timeout=1500).get_attribute("data-metric-name")
+                page.set_content(basket)                              # basket only: nothing to choose
+                with self.assertRaises(RuntimeError) as ctx:
+                    ns["_tariff_choose_button"](page, None, timeout=800)
+                browser.close()
+        except (RuntimeError, AssertionError):
+            raise
+        except Exception as exc:
+            self.skipTest(f"chromium not available: {type(exc).__name__}")
+        self.assertEqual(got_with_basket, "start"); self.assertEqual(got_plain, "start"); self.assertEqual(got_no_header, "start2")
+        self.assertIn("RECOVERABLE_RESTART_ROW", str(ctx.exception))
+
+    def test_same_row_restarts_are_capped_and_the_row_goes_back(self):
+        import time as _t
+        with tempfile.TemporaryDirectory() as d:
+            statuses, beats = [], []
+            ns = {"json": json, "Path": Path, "time": _t, "ROW_RESTART_MAX": 3, "ROW_DEFER_MAX_PER_RUN": 2,
+                  "DEFERRED_ROWS_FILE_NAME": "deferred_rows.jsonl",
+                  "set_tab_status": lambda w, icon, text: statuses.append(text), "external_heartbeat": lambda w, why: beats.append(why)}
+            exec_functions(self.source, ["_row_restart_exhausted_1591r32", "_row_number_value", "row_parts", "reset_runtime_state"], ns)
+            class Q:
+                def __init__(self): self.items = []
+                def put(self, row): self.items.append(row)
+            rows, q = {"row_no": 55, "active_digits": "9601234567", "second_value": "1234"}, Q()
+            w = {"id": 8, "base_dir": d, "phase": "RESTART_ROW_READY", "row": rows}
+            self.assertEqual([ns["_row_restart_exhausted_1591r32"](w, rows, q) for _ in range(3)], [False, False, False])
+            self.assertTrue(ns["_row_restart_exhausted_1591r32"](w, rows, q), "the 4th restart of the same row gives it up")
+            self.assertEqual(w["phase"], "IDLE"); self.assertIsNone(w["row"]); self.assertIs(w["form_ready"], False)
+            self.assertEqual(q.items, [rows]); self.assertEqual(rows["_deferred_1591r32"], 1); self.assertEqual(beats[-1], "row_deferred")
+            self.assertIn("вернул в конец очереди", statuses[-1])
+            other = {"row_no": 56, "active_digits": "9607654321"}
+            self.assertFalse(ns["_row_restart_exhausted_1591r32"](w, other, q), "a new row starts its own count")
+            self.assertEqual(w["row_restarts_1591r32"], {"9607654321": 1})
+            w.update({"phase": "RESTART_ROW_READY", "row": rows})
+            for _ in range(3): ns["_row_restart_exhausted_1591r32"](w, rows, q)
+            self.assertTrue(ns["_row_restart_exhausted_1591r32"](w, rows, q)); self.assertEqual(len(q.items), 2)
+            for _ in range(3): ns["_row_restart_exhausted_1591r32"](w, rows, q)
+            self.assertTrue(ns["_row_restart_exhausted_1591r32"](w, rows, q))
+            self.assertEqual(len(q.items), 2, "a row goes back at most twice per launch"); self.assertIn("следующего запуска", statuses[-1])
+            lines = [json.loads(x) for x in Path(d, "deferred_rows.jsonl").read_text("utf-8").splitlines()]
+            self.assertEqual([(x["row"], x["restarts"], x["requeued"]) for x in lines], [(55, 3, True), (55, 3, True), (55, 3, False)])
+        loop = self.source[self.source.index("        while not worker[\"stopped\"]:\n            if pending_initial_row is not None:"):]
+        loop = loop[:loop.index("print(f\"[Вкладка {tab_id}] Воркер завершил очередь.\"")]
+        self.assertIn("if _row_restart_exhausted_1591r32(worker, row, rows):  # ROW_RESTART_LIMIT_1591R32\n                        break", loop)
+
+    def test_drain_has_a_deadline_but_waits_for_confirmation(self):
+        import time as _t
+        with tempfile.TemporaryDirectory() as d:
+            ns = {"json": json, "Path": Path, "time": _t, "RESTART_DRAIN_FILE_NAME": "restart_drain.json",
+                  "DRAIN_SOFT_MAX_SECONDS": 900, "DRAIN_HARD_MAX_SECONDS": 2400,
+                  "DRAIN_PROTECTED_PHASES": {"POST_CONTINUE", "AUTH_WAIT", "CONFIRM", "RESEND", "PROTECTED_CHECK", "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST"}}
+            exec_functions(self.source, ["_drain_age_1591r32", "_drain_deadline_1591r32", "row_parts"], ns)
+            class P:
+                def __init__(self, alive=True): self.alive = alive; self.terminated = 0
+                def is_alive(self): return self.alive
+                def terminate(self): self.terminated += 1; self.alive = False
+                def join(self, timeout=None): pass
+            def drain(age):
+                Path(d, "restart_drain.json").write_text(json.dumps({"requested_at": _t.time() - age, "reason": "every 60 min"}))
+            procs = {1: P(), 2: P(), 3: P(), 4: P(False)}
+            hb = {"1": {"phase": "ROW_START", "row": {"row_no": 55}}, "2": {"phase": "CONFIRM", "row": {"row_no": 56}},
+                  "3": {"phase": "SIGN_WAIT", "success_guard": True}, "4": {"phase": "RESTART_WAIT"}}
+            self.assertEqual(ns["_drain_age_1591r32"](d), 0.0, "no drain file: no age")
+            drain(600)
+            self.assertEqual(ns["_drain_deadline_1591r32"](d, procs, hb), [], "10 minutes: everyone keeps working")
+            drain(1000)
+            self.assertEqual(ns["_drain_deadline_1591r32"](d, procs, hb), [1], "16 minutes: only the row-start worker is stopped")
+            self.assertEqual(procs[1].terminated, 1); self.assertEqual(hb["1"]["phase"], "RESTART_WAIT")
+            self.assertEqual(procs[2].terminated, 0); self.assertEqual(procs[3].terminated, 0)
+            self.assertEqual(ns["_drain_deadline_1591r32"](d, procs, hb), [], "a stopped worker is not stopped twice")
+            drain(2500)
+            self.assertEqual(ns["_drain_deadline_1591r32"](d, procs, hb), [2, 3], "40 minutes: the rest as well")
+        final = self.source[self.source.index("        while True:\n            ensure_ai_receiver_alive()"):]
+        self.assertIn("draining = _restart_tick()  # SCHEDULED_RESTART_1591R13\n            if draining:\n                _drain_deadline_1591r32(base_dir, processes, heartbeat)", final[:600])
 
     def test_stale_drain_file_is_discarded_at_start(self):
         src = self.source
@@ -327,7 +435,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-31", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-32", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -505,7 +613,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 31", run.stdout)
+            self.assertIn("Already revision 32", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -539,7 +647,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 31)
+        self.assertEqual(manifest["revision"], 32)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)

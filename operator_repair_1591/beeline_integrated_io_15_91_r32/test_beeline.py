@@ -4977,18 +4977,37 @@ def dismiss_blocking_overlays(page, attempts=3, keep_text=None, keep_selector=No
 
 
 def _tariff_choose_button(page, diagnostic=None, timeout=10000):
-    """«выбрать» inside the card titled TARIFF_NAME; the card order is never assumed."""
-    title = page.get_by_text(TARIFF_NAME, exact=True).first
+    """«выбрать» inside the card titled TARIFF_NAME; the card order is never assumed.
+
+    TARIFF_SCOPE_1591R32: the basket already holding TARIFF_NAME (chosen by an earlier row in the
+    same Chromium: the basket is shared by its tabs) shows the same title with «изменить» and no
+    «выбрать»; the tariff is looked for inside the «выберите тариф» picker first, and a card is only
+    the element around the title that holds exactly one tariff title and a visible «выбрать».
+    """
+    scopes = []
     try:
-        title.wait_for(state="visible", timeout=timeout)
-        card = title.locator(
-            "xpath=ancestor::*[.//button[normalize-space(.)='выбрать' or normalize-space(.)='Выбрать']][1]"
-        )
-        button = card.get_by_role("button", name=_CHOOSE_BUTTON_RE)
-        if button.count() > 0:
-            return button.first
+        header = page.get_by_text(_TARIFF_PICKER_HEADER_RE_1591R32).first
+        if header.count() > 0:
+            picker = header.locator(
+                "xpath=ancestor::*[.//*[normalize-space(.)='" + TARIFF_NAME + "']][1]"
+            )
+            if picker.count() > 0:
+                scopes.append(picker)
     except Exception:
         pass
+    scopes.append(page)
+    deadline = monotonic() + timeout / 1000.0
+    while True:
+        for scope in scopes:
+            try:
+                button = _tariff_card_button_1591r32(scope)
+            except Exception:
+                button = None
+            if button is not None:
+                return button
+        if monotonic() >= deadline:
+            break
+        page.wait_for_timeout(300)
     try:
         titles = page.locator("text=/подписка/i").all_inner_texts()[:10]
         choose_count = page.get_by_role("button", name=_CHOOSE_BUTTON_RE).count()
@@ -5007,6 +5026,37 @@ def _tariff_choose_button(page, diagnostic=None, timeout=10000):
     raise RuntimeError(
         f"RECOVERABLE_RESTART_ROW: карточка тарифа «{TARIFF_NAME}» с кнопкой «выбрать» не найдена."
     )
+
+
+# TARIFF_SCOPE_1591R32
+_TARIFF_PICKER_HEADER_RE_1591R32 = re.compile(r"^\s*выберите тариф\s*$", re.I)
+_TARIFF_TITLE_RE_1591R32 = re.compile(r"^\s*подписка bee\b", re.I)
+_TARIFF_BASKET_BUTTON_RE_1591R32 = re.compile(r"^\s*(изменить|удалить тариф)\s*$", re.I)
+
+
+def _tariff_card_button_1591r32(scope):
+    """The visible «выбрать» of the one card titled TARIFF_NAME inside `scope`, else None."""
+    titles = scope.get_by_text(TARIFF_NAME, exact=True)
+    for index in range(min(titles.count(), 8)):
+        title = titles.nth(index)
+        try:
+            if not title.is_visible():
+                continue
+            card = title.locator(
+                "xpath=ancestor::*[.//button[normalize-space(.)='выбрать' or normalize-space(.)='Выбрать']][1]"
+            )
+            if card.count() == 0:
+                continue
+            if card.get_by_text(_TARIFF_TITLE_RE_1591R32).count() != 1:
+                continue  # a container of several cards (or the basket plus the picker), not a card
+            if card.get_by_role("button", name=_TARIFF_BASKET_BUTTON_RE_1591R32).count() > 0:
+                continue  # the basket card («изменить» / «Удалить тариф»): its «выбрать» belong to options
+            button = card.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+            if button.count() > 0 and button.first.is_visible():
+                return button.first
+        except Exception:
+            continue
+    return None
 
 
 # ROW_START_ACTIVITY_1591R8
@@ -6163,6 +6213,59 @@ def _fresh_tab_for_next_row_1591r22(worker):
     worker["form_ready"] = False
     worker["phase"] = "IDLE"
     external_heartbeat(worker, "invalid_row_skipped")
+    return True
+
+
+# ROW_RESTART_LIMIT_1591R32
+ROW_RESTART_MAX = 3            # same-row restarts (new tab, same row) before the row is put back
+ROW_DEFER_MAX_PER_RUN = 2      # a row is put back at most this many times per process launch
+DEFERRED_ROWS_FILE_NAME = "deferred_rows.jsonl"
+
+
+def _row_restart_exhausted_1591r32(worker, row, rows):
+    """Count same-row restarts; past ROW_RESTART_MAX the row goes to the back of the queue
+    and the slot (already on a fresh page) takes the next one. The number is not marked
+    processed, so the row is tried again later in this run or at the next launch."""
+    key = _row_number_value(row) if row is not None else ""
+    counter = worker.get("row_restarts_1591r32") or {}
+    attempts = int(counter.get(key) or 0) + 1
+    worker["row_restarts_1591r32"] = {key: attempts}
+    if attempts <= ROW_RESTART_MAX:
+        return False
+    tab_id = worker.get("id")
+    line_number, active_digits, _ = row_parts(row)
+    deferred = int(row.get("_deferred_1591r32") or 0) + 1 if isinstance(row, dict) else 1
+    requeued = False
+    if isinstance(row, dict) and deferred <= ROW_DEFER_MAX_PER_RUN and rows is not None:
+        row["_deferred_1591r32"] = deferred
+        try:
+            rows.put(row)
+            requeued = True
+        except Exception as exc:
+            print(f"[Вкладка {tab_id}] Строка {line_number} не вернулась в очередь: {type(exc).__name__}: {exc}", flush=True)
+    note = ("вернул в конец очереди" if requeued
+            else "оставил до следующего запуска (номер не помечен обработанным)")
+    print(
+        f"[Вкладка {tab_id}] Строка {line_number}: {ROW_RESTART_MAX} перезапуска подряд не помогли; "
+        f"{note}, беру следующую.",
+        flush=True,
+    )
+    try:
+        base_dir = worker.get("base_dir")
+        if base_dir:
+            with open(Path(base_dir) / DEFERRED_ROWS_FILE_NAME, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "tab": tab_id,
+                                         "row": line_number, "number": active_digits,
+                                         "restarts": attempts - 1, "requeued": requeued},
+                                        ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    worker["row_restarts_1591r32"] = {}
+    set_tab_status(worker, "⏭", f"Строка {line_number}: перезапуски исчерпаны, {note}")
+    reset_runtime_state(worker)
+    worker["form_ready"] = False
+    worker["phase"] = "IDLE"
+    external_heartbeat(worker, "row_deferred")
     return True
 
 
@@ -8623,6 +8726,8 @@ def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heart
                     break
 
                 if worker["phase"] == "RESTART_ROW_READY":
+                    if _row_restart_exhausted_1591r32(worker, row, rows):  # ROW_RESTART_LIMIT_1591R32
+                        break
                     print(
                         f"[Вкладка {tab_id}] Новая physical-вкладка готова. "
                         "Повторяю ту же строку с начала.",
@@ -8876,6 +8981,62 @@ def _row_number_value(row):
     """Возвращает номер клиента из поддерживаемых форматов строки."""
     _, active, _ = row_parts(row)
     return "".join(c for c in str(active) if c.isdigit())
+
+
+# DRAIN_DEADLINE_1591R32
+DRAIN_SOFT_MAX_SECONDS = 15 * 60   # then workers still at the start of a row are stopped
+DRAIN_HARD_MAX_SECONDS = 40 * 60   # then every remaining worker is stopped
+DRAIN_PROTECTED_PHASES = {
+    "POST_CONTINUE", "AUTH_WAIT", "CONFIRM", "RESEND", "PROTECTED_CHECK",
+    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST",
+}
+
+
+def _drain_age_1591r32(base_dir):
+    try:
+        data = json.loads((Path(base_dir) / RESTART_DRAIN_FILE_NAME).read_text(encoding="utf-8"))
+        return max(0.0, time.time() - float(data.get("requested_at") or 0.0))
+    except Exception:
+        return 0.0
+
+
+def _drain_deadline_1591r32(base_dir, processes, heartbeat):
+    """A drain must end. After DRAIN_SOFT_MAX_SECONDS a worker that is still at the start of
+    a row (tariff, eSIM, form: nothing sent to the subscriber yet) is stopped; its row is not
+    marked processed and is taken again at the next launch. Confirmation, signing and DeepSeek
+    review are waited for until DRAIN_HARD_MAX_SECONDS. Returns the stopped tab ids."""
+    age = _drain_age_1591r32(base_dir)
+    if age < DRAIN_SOFT_MAX_SECONDS:
+        return []
+    stopped = []
+    for tab_id, proc in list(processes.items()):
+        if proc is None or not proc.is_alive():
+            continue
+        info = dict(heartbeat.get(str(tab_id)) or {})
+        phase = str(info.get("phase") or "")
+        protected = (phase in DRAIN_PROTECTED_PHASES or bool(info.get("success_guard"))
+                     or bool(info.get("error_guard")))
+        if protected and age < DRAIN_HARD_MAX_SECONDS:
+            continue
+        line_number = row_parts(info.get("row"))[0] if info.get("row") is not None else "?"
+        print(
+            f"[RESTART] Дренаж идёт {int(age // 60)} мин: вкладка {tab_id} на этапе {phase or 'unknown'} "
+            f"(строка {line_number}) остановлена; номер не помечен обработанным и вернётся в очередь "
+            "при новом запуске.",
+            flush=True,
+        )
+        try:
+            proc.terminate()
+            proc.join(timeout=5)
+        except Exception:
+            pass
+        info["phase"] = "RESTART_WAIT"   # neither DEAD RECOVERY nor the watchdog replaces it
+        try:
+            heartbeat[str(tab_id)] = info
+        except Exception:
+            pass
+        stopped.append(tab_id)
+    return stopped
 
 
 def load_processed_numbers(base_dir):
@@ -9824,6 +9985,8 @@ def main():
             execute_ai_runtime_actions()
             recover_dead_workers()
             draining = _restart_tick()  # SCHEDULED_RESTART_1591R13
+            if draining:
+                _drain_deadline_1591r32(base_dir, processes, heartbeat)  # DRAIN_DEADLINE_1591R32
 
             # Успешная страница принадлежит общему Chromium и остаётся открытой.
             # Завершившийся SUCCESS_STOP-процесс заменяем новым процессом/вкладкой,

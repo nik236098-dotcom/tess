@@ -80,7 +80,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "786a170bbe7f1861e225ec19f150c20ca176f5dbb55beeeb02924522cb29a6f3",  # r27 output
                          "6482ff2cfbc544f86587731e6d84a7ba5c9858987ca5700b60032d2ec4a905cf",  # r28 output
                          "e2c48c93641a62328a976b2197be2b3fba0ff0586819709eacc52afd27042e52",  # r29 output
-                         "0b6cc34c63b6cfb1eb2f38909d41b05966eb1251b77c52cf1012d7cd4e95c3ab"}  # r30 output (prompt only)
+                         "0b6cc34c63b6cfb1eb2f38909d41b05966eb1251b77c52cf1012d7cd4e95c3ab",  # r30 output (prompt only)
+                         "bd07c22559bcd89c0244ed2e67e75c1ee1139274af0e627732b0444f58b546c8"}  # r31 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3026,6 +3027,26 @@ README_NOTE_R31 = '''
 PAYMENT — шагом оплаты. Собирается по умолчанию; FIX_1591_MAX_REVISION=30 собирает пакет без этой
 части. Маркер: SIGN_ROBUST_1591R31.
 '''
+# ---- revision 32 ----
+# Revision 32: (a) the tariff card is looked for inside the «выберите тариф» picker and a card must
+#     hold exactly one tariff title with a visible «выбрать» (the shared basket already showing
+#     TARIFF_NAME made every tab of that Chromium fail with RECOVERABLE_RESTART_ROW forever);
+#     (b) same-row restarts are capped and the row goes to the back of the queue; (c) a drain
+#     has a deadline, so half the tabs can no longer wait forever for a looping worker.
+TARIFF_SCOPE_MARKER = "TARIFF_SCOPE_1591R32"
+ROW_RESTART_LIMIT_MARKER = "ROW_RESTART_LIMIT_1591R32"
+DRAIN_DEADLINE_MARKER = "DRAIN_DEADLINE_1591R32"
+OLD_TARIFF_FINDER_R32 = 'def _tariff_choose_button(page, diagnostic=None, timeout=10000):\n    """«выбрать» inside the card titled TARIFF_NAME; the card order is never assumed."""\n    title = page.get_by_text(TARIFF_NAME, exact=True).first\n    try:\n        title.wait_for(state="visible", timeout=timeout)\n        card = title.locator(\n            "xpath=ancestor::*[.//button[normalize-space(.)=\'выбрать\' or normalize-space(.)=\'Выбрать\']][1]"\n        )\n        button = card.get_by_role("button", name=_CHOOSE_BUTTON_RE)\n        if button.count() > 0:\n            return button.first\n    except Exception:\n        pass\n    try:\n        titles = page.locator("text=/подписка/i").all_inner_texts()[:10]\n        choose_count = page.get_by_role("button", name=_CHOOSE_BUTTON_RE).count()\n    except Exception:\n        titles, choose_count = [], -1\n    if diagnostic is not None:\n        try:\n            diagnostic.write("tariff_card_not_found", tariff=TARIFF_NAME, titles=titles, choose_buttons=choose_count)\n        except Exception:\n            pass\n    print(\n        f"Карточка «{TARIFF_NAME}» с кнопкой «выбрать» не найдена; на экране: {titles}, "\n        f"кнопок «выбрать»: {choose_count}",\n        flush=True,\n    )\n    raise RuntimeError(\n        f"RECOVERABLE_RESTART_ROW: карточка тарифа «{TARIFF_NAME}» с кнопкой «выбрать» не найдена."\n    )\n'
+NEW_TARIFF_FINDER_R32 = 'def _tariff_choose_button(page, diagnostic=None, timeout=10000):\n    """«выбрать» inside the card titled TARIFF_NAME; the card order is never assumed.\n\n    TARIFF_SCOPE_1591R32: the basket already holding TARIFF_NAME (chosen by an earlier row in the\n    same Chromium: the basket is shared by its tabs) shows the same title with «изменить» and no\n    «выбрать»; the tariff is looked for inside the «выберите тариф» picker first, and a card is only\n    the element around the title that holds exactly one tariff title and a visible «выбрать».\n    """\n    scopes = []\n    try:\n        header = page.get_by_text(_TARIFF_PICKER_HEADER_RE_1591R32).first\n        if header.count() > 0:\n            picker = header.locator(\n                "xpath=ancestor::*[.//*[normalize-space(.)=\'" + TARIFF_NAME + "\']][1]"\n            )\n            if picker.count() > 0:\n                scopes.append(picker)\n    except Exception:\n        pass\n    scopes.append(page)\n    deadline = monotonic() + timeout / 1000.0\n    while True:\n        for scope in scopes:\n            try:\n                button = _tariff_card_button_1591r32(scope)\n            except Exception:\n                button = None\n            if button is not None:\n                return button\n        if monotonic() >= deadline:\n            break\n        page.wait_for_timeout(300)\n    try:\n        titles = page.locator("text=/подписка/i").all_inner_texts()[:10]\n        choose_count = page.get_by_role("button", name=_CHOOSE_BUTTON_RE).count()\n    except Exception:\n        titles, choose_count = [], -1\n    if diagnostic is not None:\n        try:\n            diagnostic.write("tariff_card_not_found", tariff=TARIFF_NAME, titles=titles, choose_buttons=choose_count)\n        except Exception:\n            pass\n    print(\n        f"Карточка «{TARIFF_NAME}» с кнопкой «выбрать» не найдена; на экране: {titles}, "\n        f"кнопок «выбрать»: {choose_count}",\n        flush=True,\n    )\n    raise RuntimeError(\n        f"RECOVERABLE_RESTART_ROW: карточка тарифа «{TARIFF_NAME}» с кнопкой «выбрать» не найдена."\n    )\n\n\n# TARIFF_SCOPE_1591R32\n_TARIFF_PICKER_HEADER_RE_1591R32 = re.compile(r"^\\s*выберите тариф\\s*$", re.I)\n_TARIFF_TITLE_RE_1591R32 = re.compile(r"^\\s*подписка bee\\b", re.I)\n_TARIFF_BASKET_BUTTON_RE_1591R32 = re.compile(r"^\\s*(изменить|удалить тариф)\\s*$", re.I)\n\n\ndef _tariff_card_button_1591r32(scope):\n    """The visible «выбрать» of the one card titled TARIFF_NAME inside `scope`, else None."""\n    titles = scope.get_by_text(TARIFF_NAME, exact=True)\n    for index in range(min(titles.count(), 8)):\n        title = titles.nth(index)\n        try:\n            if not title.is_visible():\n                continue\n            card = title.locator(\n                "xpath=ancestor::*[.//button[normalize-space(.)=\'выбрать\' or normalize-space(.)=\'Выбрать\']][1]"\n            )\n            if card.count() == 0:\n                continue\n            if card.get_by_text(_TARIFF_TITLE_RE_1591R32).count() != 1:\n                continue  # a container of several cards (or the basket plus the picker), not a card\n            if card.get_by_role("button", name=_TARIFF_BASKET_BUTTON_RE_1591R32).count() > 0:\n                continue  # the basket card («изменить» / «Удалить тариф»): its «выбрать» belong to options\n            button = card.get_by_role("button", name=_CHOOSE_BUTTON_RE)\n            if button.count() > 0 and button.first.is_visible():\n                return button.first\n        except Exception:\n            continue\n    return None\n'
+OLD_ROW_READY_R32 = '                if worker["phase"] == "RESTART_ROW_READY":\n                    print(\n                        f"[Вкладка {tab_id}] Новая physical-вкладка готова. "\n                        "Повторяю ту же строку с начала.",\n                        flush=True,\n                    )\n                    continue\n'
+NEW_ROW_READY_R32 = '                if worker["phase"] == "RESTART_ROW_READY":\n                    if _row_restart_exhausted_1591r32(worker, row, rows):  # ROW_RESTART_LIMIT_1591R32\n                        break\n                    print(\n                        f"[Вкладка {tab_id}] Новая physical-вкладка готова. "\n                        "Повторяю ту же строку с начала.",\n                        flush=True,\n                    )\n                    continue\n'
+OLD_RESET_DEF_R32 = 'def reset_runtime_state(worker):\n'
+NEW_RESET_DEF_R32 = '# ROW_RESTART_LIMIT_1591R32\nROW_RESTART_MAX = 3            # same-row restarts (new tab, same row) before the row is put back\nROW_DEFER_MAX_PER_RUN = 2      # a row is put back at most this many times per process launch\nDEFERRED_ROWS_FILE_NAME = "deferred_rows.jsonl"\n\n\ndef _row_restart_exhausted_1591r32(worker, row, rows):\n    """Count same-row restarts; past ROW_RESTART_MAX the row goes to the back of the queue\n    and the slot (already on a fresh page) takes the next one. The number is not marked\n    processed, so the row is tried again later in this run or at the next launch."""\n    key = _row_number_value(row) if row is not None else ""\n    counter = worker.get("row_restarts_1591r32") or {}\n    attempts = int(counter.get(key) or 0) + 1\n    worker["row_restarts_1591r32"] = {key: attempts}\n    if attempts <= ROW_RESTART_MAX:\n        return False\n    tab_id = worker.get("id")\n    line_number, active_digits, _ = row_parts(row)\n    deferred = int(row.get("_deferred_1591r32") or 0) + 1 if isinstance(row, dict) else 1\n    requeued = False\n    if isinstance(row, dict) and deferred <= ROW_DEFER_MAX_PER_RUN and rows is not None:\n        row["_deferred_1591r32"] = deferred\n        try:\n            rows.put(row)\n            requeued = True\n        except Exception as exc:\n            print(f"[Вкладка {tab_id}] Строка {line_number} не вернулась в очередь: {type(exc).__name__}: {exc}", flush=True)\n    note = ("вернул в конец очереди" if requeued\n            else "оставил до следующего запуска (номер не помечен обработанным)")\n    print(\n        f"[Вкладка {tab_id}] Строка {line_number}: {ROW_RESTART_MAX} перезапуска подряд не помогли; "\n        f"{note}, беру следующую.",\n        flush=True,\n    )\n    try:\n        base_dir = worker.get("base_dir")\n        if base_dir:\n            with open(Path(base_dir) / DEFERRED_ROWS_FILE_NAME, "a", encoding="utf-8") as handle:\n                handle.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "tab": tab_id,\n                                         "row": line_number, "number": active_digits,\n                                         "restarts": attempts - 1, "requeued": requeued},\n                                        ensure_ascii=False) + "\\n")\n    except Exception:\n        pass\n    worker["row_restarts_1591r32"] = {}\n    set_tab_status(worker, "⏭", f"Строка {line_number}: перезапуски исчерпаны, {note}")\n    reset_runtime_state(worker)\n    worker["form_ready"] = False\n    worker["phase"] = "IDLE"\n    external_heartbeat(worker, "row_deferred")\n    return True\n\n\ndef reset_runtime_state(worker):\n'
+OLD_DRAIN_TICK_R32 = '            draining = _restart_tick()  # SCHEDULED_RESTART_1591R13\n'
+NEW_DRAIN_TICK_R32 = '            draining = _restart_tick()  # SCHEDULED_RESTART_1591R13\n            if draining:\n                _drain_deadline_1591r32(base_dir, processes, heartbeat)  # DRAIN_DEADLINE_1591R32\n'
+OLD_LOAD_PROCESSED_R32 = 'def load_processed_numbers(base_dir):\n'
+NEW_LOAD_PROCESSED_R32 = '# DRAIN_DEADLINE_1591R32\nDRAIN_SOFT_MAX_SECONDS = 15 * 60   # then workers still at the start of a row are stopped\nDRAIN_HARD_MAX_SECONDS = 40 * 60   # then every remaining worker is stopped\nDRAIN_PROTECTED_PHASES = {\n    "POST_CONTINUE", "AUTH_WAIT", "CONFIRM", "RESEND", "PROTECTED_CHECK",\n    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST",\n}\n\n\ndef _drain_age_1591r32(base_dir):\n    try:\n        data = json.loads((Path(base_dir) / RESTART_DRAIN_FILE_NAME).read_text(encoding="utf-8"))\n        return max(0.0, time.time() - float(data.get("requested_at") or 0.0))\n    except Exception:\n        return 0.0\n\n\ndef _drain_deadline_1591r32(base_dir, processes, heartbeat):\n    """A drain must end. After DRAIN_SOFT_MAX_SECONDS a worker that is still at the start of\n    a row (tariff, eSIM, form: nothing sent to the subscriber yet) is stopped; its row is not\n    marked processed and is taken again at the next launch. Confirmation, signing and DeepSeek\n    review are waited for until DRAIN_HARD_MAX_SECONDS. Returns the stopped tab ids."""\n    age = _drain_age_1591r32(base_dir)\n    if age < DRAIN_SOFT_MAX_SECONDS:\n        return []\n    stopped = []\n    for tab_id, proc in list(processes.items()):\n        if proc is None or not proc.is_alive():\n            continue\n        info = dict(heartbeat.get(str(tab_id)) or {})\n        phase = str(info.get("phase") or "")\n        protected = (phase in DRAIN_PROTECTED_PHASES or bool(info.get("success_guard"))\n                     or bool(info.get("error_guard")))\n        if protected and age < DRAIN_HARD_MAX_SECONDS:\n            continue\n        line_number = row_parts(info.get("row"))[0] if info.get("row") is not None else "?"\n        print(\n            f"[RESTART] Дренаж идёт {int(age // 60)} мин: вкладка {tab_id} на этапе {phase or \'unknown\'} "\n            f"(строка {line_number}) остановлена; номер не помечен обработанным и вернётся в очередь "\n            "при новом запуске.",\n            flush=True,\n        )\n        try:\n            proc.terminate()\n            proc.join(timeout=5)\n        except Exception:\n            pass\n        info["phase"] = "RESTART_WAIT"   # neither DEAD RECOVERY nor the watchdog replaces it\n        try:\n            heartbeat[str(tab_id)] = info\n        except Exception:\n            pass\n        stopped.append(tab_id)\n    return stopped\n\n\ndef load_processed_numbers(base_dir):\n'
+README_NOTE_R32 = '\n\nРЕВИЗИЯ 32 (fix_package_1591.py)\n(а) Карточка тарифа. Корзина общая для вкладок одного Chromium: когда прошлая строка уже выбрала\n«подписка bee START», на странице два одинаковых заголовка — в корзине (с «изменить», без\n«выбрать») и в окне «выберите тариф». Прежний поиск брал первый заголовок и падал с\nRECOVERABLE_RESTART_ROW; теперь тариф ищется в окне «выберите тариф», карточкой считается\nэлемент вокруг заголовка ровно с одним названием тарифа и видимой «выбрать»\n(_tariff_card_button_1591r32). (б) Предел перезапусков строки: после ROW_RESTART_MAX (3)\nперезапусков одной строки в новой вкладке строка возвращается в конец очереди (не более двух раз\nза запуск, затем остаётся до следующего запуска), номер не помечается обработанным, слот берёт\nследующую; запись в deferred_rows.jsonl. (в) Срок дренажа: через DRAIN_SOFT_MAX_SECONDS (15 мин)\nпосле начала планового перезапуска вкладки, всё ещё на старте строки, останавливаются (строка\nвернётся при новом запуске); подтверждение, подпись, разбор DeepSeek ждутся до\nDRAIN_HARD_MAX_SECONDS (40 мин). Маркеры: TARIFF_SCOPE_1591R32, ROW_RESTART_LIMIT_1591R32,\nDRAIN_DEADLINE_1591R32.\n'
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3844,6 +3865,13 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
     edits.sort(key=lambda c: c["start"])
 
 
+def revision_of(source: str) -> int:
+    """Revision of a test_beeline.py that carries every marker up to r30."""
+    if TARIFF_SCOPE_MARKER in source:
+        return 32
+    return 31 if SIGN_ROBUST_MARKER in source else 30
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(__doc__)
@@ -3866,8 +3894,9 @@ def main(argv: list[str]) -> int:
                                                 FINAL_PAGE_MARKER, SIGNED_MARKER, SIGN_TRACE_MARKER,
                                                 PAYMENT_MARKER, TG_RATE_MARKER, TWO_BROWSERS_MARKER,
                                                 STALE_DRAIN_MARKER, AI_VERDICT_MARKER))\
-            and (MAX_REVISION < 31 or SIGN_ROBUST_MARKER in source):
-        print(f"Already revision {31 if SIGN_ROBUST_MARKER in source else 30}; nothing changed.")
+            and (MAX_REVISION < 31 or SIGN_ROBUST_MARKER in source)\
+            and (MAX_REVISION < 32 or TARIFF_SCOPE_MARKER in source):
+        print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -4345,7 +4374,26 @@ def main(argv: list[str]) -> int:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
         test_src = replace_once(test_src, OLD_TEST_OBSERVER_NS, NEW_TEST_OBSERVER_NS, "test_update.py observer fixture")
 
-    built_revision = 31 if SIGN_ROBUST_MARKER in new_source else 30
+    # 33 (r32). Tariff card inside the picker, same-row restart cap, drain deadline.
+    if TARIFF_SCOPE_MARKER not in source and MAX_REVISION >= 32:
+        for old, new, what in ((OLD_TARIFF_FINDER_R32, NEW_TARIFF_FINDER_R32, "tariff card in picker"),
+                               (OLD_ROW_READY_R32, NEW_ROW_READY_R32, "same-row restart cap"),
+                               (OLD_RESET_DEF_R32, NEW_RESET_DEF_R32, "row restart helpers"),
+                               (OLD_DRAIN_TICK_R32, NEW_DRAIN_TICK_R32, "drain deadline tick"),
+                               (OLD_LOAD_PROCESSED_R32, NEW_LOAD_PROCESSED_R32, "drain deadline helpers")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
+    built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -4400,7 +4448,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 28", README_NOTE_R28),
                           ("РЕВИЗИЯ 29", README_NOTE_R29),
                           ("РЕВИЗИЯ 30", README_NOTE_R30),
-                          *((("РЕВИЗИЯ 31", README_NOTE_R31),) if built_revision >= 31 else ())):
+                          *((("РЕВИЗИЯ 31", README_NOTE_R31),) if built_revision >= 31 else ()),
+                          *((("РЕВИЗИЯ 32", README_NOTE_R32),) if built_revision >= 32 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
