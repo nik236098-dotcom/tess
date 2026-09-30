@@ -75,7 +75,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "10af519a75ce7a6813dae1b9b7bd95192cb81587e19361325f1e69e5a231269e",  # r23 output
                          "2e81b5bf57f5da86abec14e2b9bcd7961f44d3c87c54689819a2038a43533057",  # r24 output
                          "aac470f2ecd3e0d4d34b399860cda4393a0fa1896b24d206ea2c794558e853a2",  # r25 output
-                         "72110535925a3167e91c621a29e2d46d090f7e76b03bb250df9f35530bdcaa5d"}  # r26 output
+                         "72110535925a3167e91c621a29e2d46d090f7e76b03bb250df9f35530bdcaa5d",  # r26 output
+                         "786a170bbe7f1861e225ec19f150c20ca176f5dbb55beeeb02924522cb29a6f3"}  # r27 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -2627,6 +2628,86 @@ Telegram заблокировал бота на часы (429 Too Many Requests,
 статусные сообщения переиспользуются между перезапусками (telegram_status_messages.json), а если
 их не удалось создать на старте, логгер не сдаётся и пробует позже. Маркер: TG_RATE_1591R27.
 '''
+# Revision 28: two Chromium instances with four tabs each (8 worker tabs). While four tabs
+# wait up to 6.5 minutes for a mobile-id confirmation the other four keep the pipeline busy;
+# a hung Chromium (r18) or a crash now takes down half the tabs, not all. Captchas of
+# different tabs no longer pile up on the CPU: at most CAPTCHA_PARALLEL_MAX are solved at the
+# same time, the other tabs wait for a slot and report CAPTCHA_WAIT so the watchdog does not
+# take the wait for a stall.
+TWO_BROWSERS_MARKER = "TWO_BROWSERS_1591R28"
+OLD_BROWSER_COUNT = "BROWSER_COUNT = 1\n"
+NEW_BROWSER_COUNT = '''# TWO_BROWSERS_1591R28
+CAPTCHA_PARALLEL_MAX = 2            # captchas solved at the same time across all tabs
+CAPTCHA_GATE_WAIT_SECONDS = 180     # longest wait for a slot; then the tab solves anyway
+_CAPTCHA_GATE = None                # multiprocessing semaphore, set in each worker process
+
+_try_local_captcha_unlocked = try_local_captcha
+
+
+def try_local_captcha(page, frame_box=None):
+    """Captchas of different tabs overlap at most CAPTCHA_PARALLEL_MAX at a time: a tab waits
+    for a slot and reports CAPTCHA_WAIT to the watchdog meanwhile."""
+    gate = _CAPTCHA_GATE
+    if gate is None:
+        return _try_local_captcha_unlocked(page, frame_box)
+    from local_matcher import matcher_progress as _matcher_progress
+    acquired = False
+    deadline = monotonic() + CAPTCHA_GATE_WAIT_SECONDS
+    try:
+        while not acquired and monotonic() < deadline:
+            acquired = bool(gate.acquire(timeout=5))
+            if not acquired:
+                try:
+                    _matcher_progress("CAPTCHA_WAIT")
+                except Exception:
+                    pass
+        return _try_local_captcha_unlocked(page, frame_box)
+    finally:
+        if acquired:
+            try:
+                gate.release()
+            except Exception:
+                pass
+
+
+BROWSER_COUNT = 2  # TWO_BROWSERS_1591R28: two Chromium instances, TABS_PER_BROWSER tabs each
+'''
+OLD_TAB_PROCESS_DEF = "def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heartbeat=None, status_map=None, initial_row=None, total_rows=None, diagnostic_session_dir=None, success_queue=None):\n"
+NEW_TAB_PROCESS_DEF = "def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heartbeat=None, status_map=None, initial_row=None, total_rows=None, diagnostic_session_dir=None, success_queue=None, captcha_gate=None):  # TWO_BROWSERS_1591R28\n"
+OLD_CONFIGURE_MATCHER = "        configure_matcher_runtime(tab_id=tab_id, heartbeat=heartbeat)\n"
+NEW_CONFIGURE_MATCHER = '''        configure_matcher_runtime(tab_id=tab_id, heartbeat=heartbeat)
+        global _CAPTCHA_GATE
+        _CAPTCHA_GATE = captcha_gate  # TWO_BROWSERS_1591R28
+'''
+OLD_PROCESSES_INIT = '''        processes = {}
+        launch_events = [ctx.Event() for _ in range(TAB_COUNT)]
+'''
+NEW_PROCESSES_INIT = '''        processes = {}
+        launch_events = [ctx.Event() for _ in range(TAB_COUNT)]
+        captcha_gate = ctx.Semaphore(CAPTCHA_PARALLEL_MAX)  # TWO_BROWSERS_1591R28
+'''
+OLD_SPAWN_KWARGS = '''                    "diagnostic_session_dir": str(diagnostic_session_dir),
+                    "success_queue": success_queue,
+                },
+                name=f"esim-tab-{tab_id}",
+'''
+NEW_SPAWN_KWARGS = '''                    "diagnostic_session_dir": str(diagnostic_session_dir),
+                    "success_queue": success_queue,
+                    "captcha_gate": captcha_gate,  # TWO_BROWSERS_1591R28
+                },
+                name=f"esim-tab-{tab_id}",
+'''
+README_NOTE_R28 = '''
+
+РЕВИЗИЯ 28 (fix_package_1591.py)
+Два Chromium по четыре вкладки (BROWSER_COUNT = 2, всего 8 рабочих вкладок): пока четыре вкладки
+до 6,5 минуты ждут подтверждение mobile-id, другие четыре занимают конвейер; зависание или падение
+браузера (ревизия 18) теперь задевает половину вкладок, а не все. Капчи разных вкладок больше не
+накладываются: одновременно решаются не больше CAPTCHA_PARALLEL_MAX (2), остальные ждут слот
+(семафор передаётся worker'ам, обёртка try_local_captcha) и на время ожидания шлют CAPTCHA_WAIT
+в heartbeat, чтобы watchdog не считал это зависанием; после CAPTCHA_GATE_WAIT_SECONDS (180 с)
+вкладка решает без слота. Маркер: TWO_BROWSERS_1591R28.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3462,8 +3543,8 @@ def main(argv: list[str]) -> int:
                                                 PROFILE_LABELS_MARKER, PROXY_DIRECT_MARKER,
                                                 RESTART_RELAUNCH_MARKER, ROW_SKIP_MARKER,
                                                 FINAL_PAGE_MARKER, SIGNED_MARKER, SIGN_TRACE_MARKER,
-                                                PAYMENT_MARKER, TG_RATE_MARKER)):
-        print("Already revision 27; nothing changed.")
+                                                PAYMENT_MARKER, TG_RATE_MARKER, TWO_BROWSERS_MARKER)):
+        print("Already revision 28; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -3881,6 +3962,16 @@ def main(argv: list[str]) -> int:
             new_source = replace_once(new_source, old, new, what)
             add_edit(edits["test_beeline.py"], source, old, new, reflected)
 
+    # 29 (r28). Two Chromium instances; captchas of different tabs do not pile up.
+    if TWO_BROWSERS_MARKER not in source:
+        for old, new, what in ((OLD_BROWSER_COUNT, NEW_BROWSER_COUNT, "two browsers + captcha gate"),
+                               (OLD_TAB_PROCESS_DEF, NEW_TAB_PROCESS_DEF, "tab process captcha gate arg"),
+                               (OLD_CONFIGURE_MATCHER, NEW_CONFIGURE_MATCHER, "tab process captcha gate set"),
+                               (OLD_PROCESSES_INIT, NEW_PROCESSES_INIT, "captcha gate semaphore"),
+                               (OLD_SPAWN_KWARGS, NEW_SPAWN_KWARGS, "spawn captcha gate")):
+            new_source = replace_once(new_source, old, new, what)
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -3906,7 +3997,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | CONTROLLER_ACCEPTED_SHAS
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 27
+    manifest["revision"] = 28
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -3931,7 +4022,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 24", README_NOTE_R24),
                           ("РЕВИЗИЯ 25", README_NOTE_R25),
                           ("РЕВИЗИЯ 26", README_NOTE_R26),
-                          ("РЕВИЗИЯ 27", README_NOTE_R27)):
+                          ("РЕВИЗИЯ 27", README_NOTE_R27),
+                          ("РЕВИЗИЯ 28", README_NOTE_R28)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -3944,7 +4036,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 27, "result": "OK",
+    verification.update({"python": sys.version, "revision": 28, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -3960,7 +4052,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 27 applied to", package)
+    print("Revision 28 applied to", package)
     return 0
 
 

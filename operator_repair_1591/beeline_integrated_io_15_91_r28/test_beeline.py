@@ -5936,7 +5936,41 @@ def return_to_clean_registration_form(page, diagnostic, timeout=20):
     return False
 
 
-BROWSER_COUNT = 1
+# TWO_BROWSERS_1591R28
+CAPTCHA_PARALLEL_MAX = 2            # captchas solved at the same time across all tabs
+CAPTCHA_GATE_WAIT_SECONDS = 180     # longest wait for a slot; then the tab solves anyway
+_CAPTCHA_GATE = None                # multiprocessing semaphore, set in each worker process
+
+_try_local_captcha_unlocked = try_local_captcha
+
+
+def try_local_captcha(page, frame_box=None):
+    """Captchas of different tabs overlap at most CAPTCHA_PARALLEL_MAX at a time: a tab waits
+    for a slot and reports CAPTCHA_WAIT to the watchdog meanwhile."""
+    gate = _CAPTCHA_GATE
+    if gate is None:
+        return _try_local_captcha_unlocked(page, frame_box)
+    from local_matcher import matcher_progress as _matcher_progress
+    acquired = False
+    deadline = monotonic() + CAPTCHA_GATE_WAIT_SECONDS
+    try:
+        while not acquired and monotonic() < deadline:
+            acquired = bool(gate.acquire(timeout=5))
+            if not acquired:
+                try:
+                    _matcher_progress("CAPTCHA_WAIT")
+                except Exception:
+                    pass
+        return _try_local_captcha_unlocked(page, frame_box)
+    finally:
+        if acquired:
+            try:
+                gate.release()
+            except Exception:
+                pass
+
+
+BROWSER_COUNT = 2  # TWO_BROWSERS_1591R28: two Chromium instances, TABS_PER_BROWSER tabs each
 TABS_PER_BROWSER = 4  # SUCCESS_TAG_1591R17: four worker tabs
 TAB_COUNT = BROWSER_COUNT * TABS_PER_BROWSER
 
@@ -8317,7 +8351,7 @@ def _worker_page_exists(cdp_url, info, timeout=5):
 
 
 
-def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heartbeat=None, status_map=None, initial_row=None, total_rows=None, diagnostic_session_dir=None, success_queue=None):
+def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heartbeat=None, status_map=None, initial_row=None, total_rows=None, diagnostic_session_dir=None, success_queue=None, captcha_gate=None):  # TWO_BROWSERS_1591R28
     """One independent worker process for one managed browser slot."""
     base_dir = Path(base_dir_text)
     with sync_playwright() as p:
@@ -8351,6 +8385,8 @@ def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heart
 
         install_page_activity_tracker(page, worker)
         configure_matcher_runtime(tab_id=tab_id, heartbeat=heartbeat)
+        global _CAPTCHA_GATE
+        _CAPTCHA_GATE = captcha_gate  # TWO_BROWSERS_1591R28
 
         tickable_phases = {
             "POST_CONTINUE",
@@ -8979,6 +9015,7 @@ def main():
 
         processes = {}
         launch_events = [ctx.Event() for _ in range(TAB_COUNT)]
+        captcha_gate = ctx.Semaphore(CAPTCHA_PARALLEL_MAX)  # TWO_BROWSERS_1591R28
 
         def spawn_worker(tab_id, initial_row=None):
             ready_event = launch_events[tab_id - 1]
@@ -8999,6 +9036,7 @@ def main():
                     "total_rows": total_source_rows,
                     "diagnostic_session_dir": str(diagnostic_session_dir),
                     "success_queue": success_queue,
+                    "captcha_gate": captcha_gate,  # TWO_BROWSERS_1591R28
                 },
                 name=f"esim-tab-{tab_id}",
             )

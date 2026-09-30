@@ -1150,6 +1150,47 @@
       ]
     },
     {
+      "start": 5413,
+      "end": 5414,
+      "replacement": [
+        "# TWO_BROWSERS_1591R28\n",
+        "CAPTCHA_PARALLEL_MAX = 2            # captchas solved at the same time across all tabs\n",
+        "CAPTCHA_GATE_WAIT_SECONDS = 180     # longest wait for a slot; then the tab solves anyway\n",
+        "_CAPTCHA_GATE = None                # multiprocessing semaphore, set in each worker process\n",
+        "\n",
+        "_try_local_captcha_unlocked = try_local_captcha\n",
+        "\n",
+        "\n",
+        "def try_local_captcha(page, frame_box=None):\n",
+        "    \"\"\"Captchas of different tabs overlap at most CAPTCHA_PARALLEL_MAX at a time: a tab waits\n",
+        "    for a slot and reports CAPTCHA_WAIT to the watchdog meanwhile.\"\"\"\n",
+        "    gate = _CAPTCHA_GATE\n",
+        "    if gate is None:\n",
+        "        return _try_local_captcha_unlocked(page, frame_box)\n",
+        "    from local_matcher import matcher_progress as _matcher_progress\n",
+        "    acquired = False\n",
+        "    deadline = monotonic() + CAPTCHA_GATE_WAIT_SECONDS\n",
+        "    try:\n",
+        "        while not acquired and monotonic() < deadline:\n",
+        "            acquired = bool(gate.acquire(timeout=5))\n",
+        "            if not acquired:\n",
+        "                try:\n",
+        "                    _matcher_progress(\"CAPTCHA_WAIT\")\n",
+        "                except Exception:\n",
+        "                    pass\n",
+        "        return _try_local_captcha_unlocked(page, frame_box)\n",
+        "    finally:\n",
+        "        if acquired:\n",
+        "            try:\n",
+        "                gate.release()\n",
+        "            except Exception:\n",
+        "                pass\n",
+        "\n",
+        "\n",
+        "BROWSER_COUNT = 2  # TWO_BROWSERS_1591R28: two Chromium instances, TABS_PER_BROWSER tabs each\n"
+      ]
+    },
+    {
       "start": 5414,
       "end": 5415,
       "replacement": [
@@ -2252,6 +2293,22 @@
       ]
     },
     {
+      "start": 6979,
+      "end": 6980,
+      "replacement": [
+        "def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heartbeat=None, status_map=None, initial_row=None, total_rows=None, diagnostic_session_dir=None, success_queue=None, captcha_gate=None):  # TWO_BROWSERS_1591R28\n"
+      ]
+    },
+    {
+      "start": 7012,
+      "end": 7013,
+      "replacement": [
+        "        configure_matcher_runtime(tab_id=tab_id, heartbeat=heartbeat)\n",
+        "        global _CAPTCHA_GATE\n",
+        "        _CAPTCHA_GATE = captcha_gate  # TWO_BROWSERS_1591R28\n"
+      ]
+    },
+    {
       "start": 7021,
       "end": 7021,
       "replacement": [
@@ -2480,6 +2537,26 @@
         "                (not state.startswith(\"busy_\") and (now - last) > idle_limit)\n",
         "                or (state.startswith(\"busy_\") and (now - last) > AI_LANE_BUSY_CEILING_SECONDS)\n",
         "            )\n"
+      ]
+    },
+    {
+      "start": 7482,
+      "end": 7484,
+      "replacement": [
+        "        processes = {}\n",
+        "        launch_events = [ctx.Event() for _ in range(TAB_COUNT)]\n",
+        "        captcha_gate = ctx.Semaphore(CAPTCHA_PARALLEL_MAX)  # TWO_BROWSERS_1591R28\n"
+      ]
+    },
+    {
+      "start": 7502,
+      "end": 7506,
+      "replacement": [
+        "                    \"diagnostic_session_dir\": str(diagnostic_session_dir),\n",
+        "                    \"success_queue\": success_queue,\n",
+        "                    \"captcha_gate\": captcha_gate,  # TWO_BROWSERS_1591R28\n",
+        "                },\n",
+        "                name=f\"esim-tab-{tab_id}\",\n"
       ]
     },
     {

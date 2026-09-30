@@ -7,7 +7,7 @@
   "exact_input_sha256": {
     "test_beeline.py": {
       "input_sha256": "bf315d3070199410132a7b3d690d6f7a2cc8260715877b9833eab2f3648397b0",
-      "output_sha256": "786a170bbe7f1861e225ec19f150c20ca176f5dbb55beeeb02924522cb29a6f3",
+      "output_sha256": "6482ff2cfbc544f86587731e6d84a7ba5c9858987ca5700b60032d2ec4a905cf",
       "previous_output_sha256": [
         "04e07acd1a019a943c72237a6c6c61b34134f7b753ce3f3b484c832ce742ae9d",
         "10af519a75ce7a6813dae1b9b7bd95192cb81587e19361325f1e69e5a231269e",
@@ -24,6 +24,7 @@
         "6852517bf0eadb15f70359ac93b9c49632926cb3aef9f817c712ea099330248b",
         "72110535925a3167e91c621a29e2d46d090f7e76b03bb250df9f35530bdcaa5d",
         "747c7f08c994baa104d82ebb5d3302215bc4f1147e238b66629bd5037710c47d",
+        "786a170bbe7f1861e225ec19f150c20ca176f5dbb55beeeb02924522cb29a6f3",
         "8f5fc960fc6cc44faebc19eae0709057f3c8c627d623d9219a0c85cff81d3012",
         "90ddb7d43cfbb2d944a1fb23c62aed15cb3a9d3090810864402aa31b5410a1b0",
         "9e216a70bb1e931c2e9568687c26564a0132bccd6b748dd42fef4eff9335fa50",
@@ -53,5 +54,5 @@
       "previous_output_sha256": []
     }
   },
-  "revision": 27
+  "revision": 28
 }

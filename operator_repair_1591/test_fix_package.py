@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -141,6 +141,43 @@ class PackageTests(unittest.TestCase):
             self.assertIn("sendMessage", [m for m, _ in sent])
             self.assertEqual(json.loads((Path(d) / "telegram_status_messages.json").read_text("utf-8"))["mids"]["1"], 777)
 
+    def test_two_browsers_and_captchas_do_not_pile_up(self):
+        src = self.source
+        self.assertIn("BROWSER_COUNT = 2", src); self.assertIn("TABS_PER_BROWSER = 4", src)
+        self.assertIn('"captcha_gate": captcha_gate,', src); self.assertIn("captcha_gate = ctx.Semaphore(CAPTCHA_PARALLEL_MAX)", src)
+        self.assertIn("success_queue=None, captcha_gate=None)", src[src.index("def _tab_process"):src.index("def _tab_process") + 400])
+        calls = []
+        class Gate:
+            def __init__(self, fail_first): self.fail = fail_first; self.held = 0
+            def acquire(self, timeout=None):
+                calls.append(("acquire", timeout))
+                if self.fail > 0:
+                    self.fail -= 1; return False
+                self.held += 1; return True
+            def release(self): self.held -= 1; calls.append(("release", None))
+        import types as _t, sys as _sys
+        fake_matcher = _t.ModuleType("local_matcher"); fake_matcher.matcher_progress = lambda stage: calls.append(("progress", stage))
+        clock = [0.0]
+        ns = {"monotonic": lambda: clock[0], "_try_local_captcha_unlocked": lambda page, frame=None: calls.append(("solve", page)) or "OK",
+              "CAPTCHA_GATE_WAIT_SECONDS": 180, "_CAPTCHA_GATE": None}
+        exec_functions(src, ["try_local_captcha"], ns)
+        old = _sys.modules.get("local_matcher"); _sys.modules["local_matcher"] = fake_matcher
+        try:
+            self.assertEqual(ns["try_local_captcha"]("p0"), "OK"); self.assertEqual(calls, [("solve", "p0")], "no gate: solve at once")
+            calls.clear(); gate = Gate(fail_first=2); ns["_CAPTCHA_GATE"] = gate
+            self.assertEqual(ns["try_local_captcha"]("p1"), "OK")
+            self.assertEqual([c for c in calls if c[0] == "progress"], [("progress", "CAPTCHA_WAIT")] * 2, "the wait is reported to the watchdog")
+            self.assertEqual(calls[-2:], [("solve", "p1"), ("release", None)]); self.assertEqual(gate.held, 0)
+            calls.clear(); gate = Gate(fail_first=10 ** 6); ns["_CAPTCHA_GATE"] = gate
+            def tick(timeout=None):
+                clock[0] += 5; return Gate.acquire(gate, timeout)
+            gate.acquire = tick
+            self.assertEqual(ns["try_local_captcha"]("p2"), "OK", "after CAPTCHA_GATE_WAIT_SECONDS the tab solves without a slot")
+            self.assertNotIn(("release", None), calls); self.assertIn(("solve", "p2"), calls)
+        finally:
+            if old is not None: _sys.modules["local_matcher"] = old
+            else: _sys.modules.pop("local_matcher", None)
+
     def test_success_push_is_queued_untruncated(self):
         sent, queued = self._logger(enqueue=True)
         self.assertEqual(queued, [("42", "S" * 9000)])
@@ -171,7 +208,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-27", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-28", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -349,7 +386,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 27", run.stdout)
+            self.assertIn("Already revision 28", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -383,7 +420,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 27)
+        self.assertEqual(manifest["revision"], 28)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
