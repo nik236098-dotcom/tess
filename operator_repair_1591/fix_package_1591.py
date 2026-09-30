@@ -1845,29 +1845,42 @@ _FINAL_LINKS_JS_1591R23 = r"""() => {
                                      : {text: 'QR-код: ' + (alt || 'изображение'), href: src.slice(0, 500)});
     if (out.length >= 10) break;
   }
-  return out;
+  let text = '';
+  try { text = String((document.body && document.body.innerText) || ''); } catch (_) {}
+  return {links: out, title: String(document.title || ''), text: text.slice(0, 20000)};
 }"""
 
 
 def capture_final_page_1591r23(page, worker=None):
     """URL of the page the worker is on when the success is recorded (the signed contract)
     plus its document-like links: contract, PDF, QR, download. Read-only."""
-    result = {"url": "", "links": []}
+    result = {"url": "", "title": "", "links": []}
     if page is None:
         return result
     try:
         result["url"] = str(page.url or "")
     except Exception:
         pass
+    text = ""
     try:
-        links = page.evaluate(_FINAL_LINKS_JS_1591R23)
-        if isinstance(links, list):
-            result["links"] = [x for x in links if isinstance(x, dict)][:10]
+        data = page.evaluate(_FINAL_LINKS_JS_1591R23)
+        if isinstance(data, dict):
+            result["links"] = [x for x in (data.get("links") or []) if isinstance(x, dict)][:10]
+            result["title"] = str(data.get("title") or "")[:200]
+            text = str(data.get("text") or "")
     except Exception:
         pass
     if worker is not None:
         worker["final_url"] = result["url"]
+        worker["final_title"] = result["title"]
         worker["final_links"] = result["links"]
+        try:
+            diagnostic = worker.get("diagnostic")
+            if diagnostic:
+                diagnostic.write("final_page_1591r23", url=result["url"], title=result["title"],
+                                 links=result["links"], text=text[:20000])
+        except Exception:
+            pass
     return result
 
 
@@ -1891,6 +1904,7 @@ OLD_REC_PROFILE = '''        "profile":dict(worker.get("success_profile") or {})
 '''
 NEW_REC_PROFILE = '''        "profile":dict(worker.get("success_profile") or {}),
         "final_url": final.get("url") or "",  # FINAL_PAGE_1591R23
+        "final_title": final.get("title") or "",
         "final_links": list(final.get("links") or []),
     }
 '''
@@ -1899,6 +1913,7 @@ OLD_SUCCESS_TAIL = '''        f"Ссылка eSIM: {rec.get('sim_url') or '—'}
 '''
 NEW_SUCCESS_TAIL = '''        f"Ссылка eSIM: {rec.get('sim_url') or '—'}",
         f"Страница договора: {rec.get('final_url') or '—'}",  # FINAL_PAGE_1591R23
+        f"Заголовок страницы: {rec.get('final_title') or '—'}",
         *_final_links_lines_1591r23(rec.get("final_links")),
     ])
 '''
@@ -1910,7 +1925,9 @@ README_NOTE_R23 = '''
 сохраняется и страница, на которой стоит worker (подписанный договор): её адрес и ссылки на
 документы (договор, PDF, QR, скачивание) — поля final_url/final_links в successful_sims.jsonl и
 строки «Страница договора: …» и список документов в сообщении #успешно
-(capture_final_page_1591r23). Число хранимых сессий диагностики увеличено с 5 до 40: при
+(capture_final_page_1591r23); заголовок и текст финальной страницы пишутся в диагностику событием
+final_page_1591r23, чтобы отличить подписанный договор от начальной страницы сайта.
+Число хранимых сессий диагностики увеличено с 5 до 40: при
 перезапуске каждые 20 минут 5 сессий покрывали лишь несколько часов. Маркер: FINAL_PAGE_1591R23.
 '''
 README_NOTE_R10 = '''

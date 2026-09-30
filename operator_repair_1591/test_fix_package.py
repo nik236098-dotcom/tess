@@ -683,26 +683,34 @@ class PackageTests(unittest.TestCase):
                                      "_final_links_lines_1591r23"], ns)
         class Page:
             url = "https://saratov.beeline.ru/registration/esim/contract?id=42"
-            def evaluate(self, js): return [{"text": "Скачать договор", "href": "https://x/contract.pdf"},
-                                            {"text": "QR-код на странице (встроенное изображение)", "href": ""}]
+            def evaluate(self, js): return {"links": [{"text": "Скачать договор", "href": "https://x/contract.pdf"},
+                                                      {"text": "QR-код на странице (встроенное изображение)", "href": ""}],
+                                            "title": "Договор подписан", "text": "Договор подписан. Спасибо!"}
+        class Diag:
+            def __init__(self): self.events = []
+            def write(self, event, **data): self.events.append((event, data))
         with tempfile.TemporaryDirectory() as d:
-            worker = {"id": 3, "row": (5, "79990000000", "1234"), "total_rows": 10, "page": Page(),
+            worker = {"id": 3, "row": (5, "79990000000", "1234"), "total_rows": 10, "page": Page(), "diagnostic": Diag(),
                       "reserved_sim_number": "89", "reserved_sim_url": "u", "success_profile": {"full_name": "A B"}}
             rec = ns["write_success_record"](Path(d), worker)
             saved = json.loads((Path(d) / "successful_sims.jsonl").read_text("utf-8").splitlines()[-1])
         self.assertEqual(rec["final_url"], Page.url); self.assertEqual(saved["final_url"], Page.url)
+        self.assertEqual(saved["final_title"], "Договор подписан")
+        event = next(e for e in worker["diagnostic"].events if e[0] == "final_page_1591r23")
+        self.assertEqual(event[1]["text"], "Договор подписан. Спасибо!"); self.assertEqual(event[1]["url"], Page.url)
         self.assertEqual(saved["final_links"][0]["href"], "https://x/contract.pdf"); self.assertEqual(saved["sim_url"], "u")
         text = ns["_success_message"](worker, rec)
         self.assertIn("Страница договора: https://saratov.beeline.ru/registration/esim/contract?id=42", text)
         self.assertIn("Скачать договор: https://x/contract.pdf", text); self.assertIn("QR-код на странице (встроенное изображение)", text)
+        self.assertIn("Заголовок страницы: Договор подписан", text)
         self.assertTrue(text.index("Ссылка eSIM: u") < text.index("Страница договора"))
         # No page (or a page that fails): the record is still written, fields stay empty.
         class Broken:
             @property
             def url(self): raise RuntimeError("closed")
             def evaluate(self, js): raise RuntimeError("closed")
-        self.assertEqual(ns["capture_final_page_1591r23"](Broken()), {"url": "", "links": []})
-        self.assertEqual(ns["capture_final_page_1591r23"](None), {"url": "", "links": []})
+        self.assertEqual(ns["capture_final_page_1591r23"](Broken()), {"url": "", "title": "", "links": []})
+        self.assertEqual(ns["capture_final_page_1591r23"](None), {"url": "", "title": "", "links": []})
         self.assertEqual(ns["_final_links_lines_1591r23"](None), [])
 
     def test_final_page_links_are_collected_in_a_browser(self):
@@ -715,7 +723,7 @@ class PackageTests(unittest.TestCase):
             if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "_FINAL_LINKS_JS_1591R23" for x in node.targets):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
         exec_functions(self.source, ["capture_final_page_1591r23"], ns)
-        html = ("<h1>Договор подписан</h1><a href='/docs/contract-42.pdf'>Скачать договор</a>"
+        html = ("<title>Билайн — договор</title><h1>Договор подписан</h1><a href='/docs/contract-42.pdf'>Скачать договор</a>"
                 "<a href='/'>На главную</a><a href='/help'>Помощь</a>"
                 "<a href='/esim/qr?order=42' aria-label='QR-код eSIM'></a>"
                 "<img alt='QR код' src='data:image/png;base64,iVBORw0KGgo='>"
@@ -737,6 +745,7 @@ class PackageTests(unittest.TestCase):
         self.assertFalse(any(h.endswith("/help") for h in hrefs)); self.assertFalse(any(h.startswith("javascript:") for h in hrefs))
         self.assertIn({"text": "QR-код на странице (встроенное изображение)", "href": ""}, result["links"])
         self.assertEqual(worker["final_links"], result["links"]); self.assertTrue(worker["final_url"].startswith("about:"))
+        self.assertEqual(result["title"], "Билайн — договор"); self.assertEqual(worker["final_title"], "Билайн — договор")
 
     def test_browser_hang_restarts_the_whole_chromium(self):
         src = self.source
