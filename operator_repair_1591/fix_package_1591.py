@@ -71,7 +71,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "341513d5df545f6711f9c5f1e0de7d464d586b6c0afe4ac2fc019a27308457ec",  # r19 output
                          "bb57f0437e52c61d801e94020c3d72f9bbca2b2bbef09b63e0d746e5de9a59f2",  # r20 output
                          "90ddb7d43cfbb2d944a1fb23c62aed15cb3a9d3090810864402aa31b5410a1b0",  # r21 output
-                         "fd1ed72b18db63993d0c288fa7ad8449e3e7827fa2b2697569dd79a9053ec3dc"}  # r22 output
+                         "fd1ed72b18db63993d0c288fa7ad8449e3e7827fa2b2697569dd79a9053ec3dc",  # r22 output
+                         "10af519a75ce7a6813dae1b9b7bd95192cb81587e19361325f1e69e5a231269e"}  # r23 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -1930,6 +1931,190 @@ final_page_1591r23, чтобы отличить подписанный дого�
 Число хранимых сессий диагностики увеличено с 5 до 40: при
 перезапуске каждые 20 минут 5 сессий покрывали лишь несколько часов. Маркер: FINAL_PAGE_1591R23.
 '''
+# Revision 24: a vanished «Подписать договор» button was the only success criterion, so a
+# failed second signing attempt (button gone, TimeoutError) was recorded as a success within
+# the same second (rows 5 and 134 on the second server; the eSIM links led to the start page).
+# Success now needs positive evidence on the page (URL, text or a document link); without it
+# the tab is held for UNVERIFIED_HOLD_SECONDS with DeepSeek asked to inspect, then recorded
+# as UNVERIFIED: unverified_signatures.jsonl, a #неподтверждено push, the tab left open, the
+# number NOT marked as processed.
+SIGNED_MARKER = "SIGNED_EVIDENCE_1591R24"
+OLD_SIGN_WAIT_DEF = "def tick_sign_wait(base_dir, worker):\n"
+SIGNED_HELPERS_R24 = '''# SIGNED_EVIDENCE_1591R24
+SIGNED_URL_HINTS_1591R24 = ("success", "complete", "done", "thank", "activation", "signed", "esim/ready")
+SIGNED_TEXT_NEEDLES_1591R24 = (
+    "договор подписан", "успешно подписан", "подписание завершено", "договор успешно",
+    "договор отправлен", "спасибо за", "esim готова", "esim активирована", "qr-код", "скачать договор",
+)
+UNVERIFIED_HOLD_SECONDS = 180
+
+
+def _signed_evidence_1591r24(page):
+    """A positive sign of a signed contract on the page; a vanished button is not one."""
+    try:
+        url = str(page.url or "").lower()
+    except Exception:
+        url = ""
+    if "personal-data" in url or "mobile-id" in url:
+        return ""
+    for hint in SIGNED_URL_HINTS_1591R24:
+        if hint in url:
+            return f"url:{hint}"
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "").lower()
+    except Exception:
+        body = ""
+    for needle in SIGNED_TEXT_NEEDLES_1591R24:
+        if needle in body:
+            return f"text:{needle}"
+    try:
+        if page.locator("a[href$='.pdf'], a[download]").count():
+            return "link:document"
+    except Exception:
+        pass
+    return ""
+
+
+def _unverified_message_1591r24(worker, rec):
+    row_no, active_value, second_value = row_parts(worker.get("row"))
+    return "\\n".join([
+        "#неподтверждено",
+        f"⚠️ ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА — Вкладка {worker['id']}",
+        f"Строка: {row_no}/{worker.get('total_rows') or '?'}",
+        f"Исходные данные: {active_value} | {second_value}",
+        f"Причина: {rec.get('reason') or '—'}",
+        f"Страница: {rec.get('final_url') or '—'}",
+        f"Заголовок страницы: {rec.get('final_title') or '—'}",
+        *_final_links_lines_1591r23(rec.get("final_links")),
+        "",
+        *_success_profile_lines(rec.get("profile")),
+        "",
+        f"eSIM: {rec.get('sim_number') or '—'}",
+        f"Ссылка eSIM: {rec.get('sim_url') or '—'}",
+        "Номер НЕ помечен обработанным; вкладка оставлена открытой для проверки.",
+    ])
+
+
+def _finish_unverified_1591r24(base_dir, worker, reason):
+    """The signing could not be confirmed: record it apart from the successes and stop the tab."""
+    n, a, b = row_parts(worker.get("row"))
+    final = capture_final_page_1591r23(worker.get("page"), worker)
+    rec = {
+        "tab": worker["id"], "row": n, "active_digits": a, "second_value": b,
+        "sim_number": worker.get("reserved_sim_number"), "sim_url": worker.get("reserved_sim_url"),
+        "profile": dict(worker.get("success_profile") or {}),
+        "final_url": final.get("url") or "", "final_title": final.get("title") or "",
+        "final_links": list(final.get("links") or []), "reason": str(reason or ""),
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    try:
+        with (Path(base_dir) / "unverified_signatures.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\\n")
+    except Exception as exc:
+        print(f"[Вкладка {worker['id']}] unverified_signatures.jsonl не записан: {type(exc).__name__}: {exc}", flush=True)
+    worker["phase"] = "SUCCESS_STOP"
+    success_queue = worker.get("success_queue")
+    if success_queue is not None:
+        try:
+            success_queue.put(_unverified_message_1591r24(worker, rec))
+        except Exception as exc:
+            print(f"[Telegram] Не удалось поставить UNVERIFIED в очередь: {type(exc).__name__}: {exc}", flush=True)
+    set_tab_status(
+        worker, "⚠️",
+        f"ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА\\n{reason}\\nСтраница: {rec['final_url'] or '—'}\\n"
+        "Вкладка оставлена открытой. Для очереди будет создана новая.",
+    )
+    external_heartbeat(worker, "success_unverified_stop")
+    print(
+        f"\\n[Вкладка {worker['id']}] ⚠️ ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА. Строка {n}: {reason}. "
+        "Номер не помечен обработанным; вкладка оставлена открытой.\\n",
+        flush=True,
+    )
+    worker["stopped"] = True
+    return rec
+
+
+def settle_success_1591r24(base_dir, worker):
+    """Called where the code used to declare success because no contract controls remained.
+
+    With positive evidence the success is final (finalize_success). Without it the tab is
+    held in SUCCESS_ASSIST for UNVERIFIED_HOLD_SECONDS (DeepSeek inspects, the button may
+    reappear and be signed again), then the row is recorded as UNVERIFIED.
+    """
+    page = worker.get("page")
+    evidence = _signed_evidence_1591r24(page) if page is not None else ""
+    if evidence:
+        worker["success_evidence"] = evidence
+        finalize_success(base_dir, worker)
+        return True
+    now = monotonic()
+    since = worker.get("success_unverified_since")
+    url = ""
+    try:
+        url = str(page.url or "") if page is not None else ""
+    except Exception:
+        pass
+    if since is None:
+        worker["success_unverified_since"] = now
+        try:
+            capture_blackbox(worker, "success_unverified")
+        except Exception:
+            pass
+        worker["phase"] = "SUCCESS_ASSIST"
+        set_tab_status(
+            worker, "⚠️",
+            "Кнопка «Подписать договор» пропала, но признаков подписанного договора нет. "
+            f"Держу вкладку {UNVERIFIED_HOLD_SECONDS // 60} мин, DeepSeek проверяет.",
+        )
+        external_heartbeat(worker, "success_unverified_hold")
+        queue_success_assist(
+            worker,
+            "кнопка «Подписать договор» исчезла, но страница не похожа на подписанный договор: "
+            f"проверь, подписан ли он, и что показано вместо кнопки (URL: {url})",
+            force=True,
+        )
+        return False
+    if now - since < UNVERIFIED_HOLD_SECONDS:
+        worker["phase"] = "SUCCESS_ASSIST"
+        return False
+    _finish_unverified_1591r24(
+        base_dir, worker,
+        f"после «Подписать договор» страница {UNVERIFIED_HOLD_SECONDS // 60} мин не показала признаков подписания (URL: {url or '—'})",
+    )
+    return False
+
+
+'''
+NEW_SIGN_WAIT_DEF = SIGNED_HELPERS_R24 + OLD_SIGN_WAIT_DEF
+OLD_SIGN_WAIT_FINAL = '''        if now - gone_since >= 1.2:
+            finalize_success(base_dir, worker)
+        return
+'''
+NEW_SIGN_WAIT_FINAL = '''        if now - gone_since >= 1.2:
+            settle_success_1591r24(base_dir, worker)  # SIGNED_EVIDENCE_1591R24
+        return
+'''
+OLD_REVIEW_FINAL = '''    # If we are post-auth and no contract controls remain, settle as success.
+    finalize_success(base_dir, worker)
+'''
+NEW_REVIEW_FINAL = '''    # If we are post-auth and no contract controls remain, settle as success — only with
+    # positive evidence of the signed contract (SIGNED_EVIDENCE_1591R24).
+    settle_success_1591r24(base_dir, worker)
+'''
+README_NOTE_R24 = '''
+
+РЕВИЗИЯ 24 (fix_package_1591.py)
+Ложный успех подписи. Единственным признаком успеха было исчезновение кнопки «Подписать
+договор»: на втором сервере строки 5 и 134 после неудачной второй попытки подписи (кнопка
+пропала, TimeoutError) в ту же секунду записывались как успех, а ссылки eSIM вели на начальную
+страницу. Теперь успех требует положительного признака на странице (_signed_evidence_1591r24:
+адрес, текст или ссылка на документ). Без него settle_success_1591r24 держит вкладку
+UNVERIFIED_HOLD_SECONDS (3 мин) в SUCCESS_ASSIST со снимком и задачей DeepSeek, затем пишет
+строку в unverified_signatures.jsonl, шлёт в Telegram #неподтверждено с адресом, заголовком и
+ссылками финальной страницы, оставляет вкладку открытой и НЕ помечает номер обработанным.
+Заменены оба места фиксации успеха: tick_sign_wait и tick_post_auth_review. Маркер:
+SIGNED_EVIDENCE_1591R24.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -2425,7 +2610,7 @@ SUPERVISOR) и в текст задания AUTO_ERROR_ASSIST. Запрет clos
 # while the page did not change, and each run posted an identical report.
 ASSIST_MARKER = "AUTO_ASSIST_BUDGET_1591R4"
 RESIGNED_HANDLERS = {"queue_success_assist", "queue_error_assist", "tick_error_assist", "run_registration", "main",
-                     "tick_post_auth_review"}
+                     "tick_post_auth_review", "tick_sign_wait"}
 OLD_SUCCESS_THROTTLE = '''    now = monotonic()
     last = float(worker.get("success_ai_last_at") or 0)
     if not force and now - last < 45:
@@ -2764,8 +2949,8 @@ def main(argv: list[str]) -> int:
                                                 ERRORSKIP_MARKER, SUCCESSTAG_MARKER, BROWSER_MARKER,
                                                 PROFILE_LABELS_MARKER, PROXY_DIRECT_MARKER,
                                                 RESTART_RELAUNCH_MARKER, ROW_SKIP_MARKER,
-                                                FINAL_PAGE_MARKER)):
-        print("Already revision 23; nothing changed.")
+                                                FINAL_PAGE_MARKER, SIGNED_MARKER)):
+        print("Already revision 24; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -3121,6 +3306,23 @@ def main(argv: list[str]) -> int:
             new_source = replace_once(new_source, old, new, what)
             add_edit(edits["test_beeline.py"], source, old, new, reflected)
 
+    # 25 (r24). Success needs positive evidence of the signed contract; otherwise UNVERIFIED.
+    if SIGNED_MARKER not in source:
+        for old, new, what in ((OLD_SIGN_WAIT_DEF, NEW_SIGN_WAIT_DEF, "signed evidence helpers"),
+                               (OLD_SIGN_WAIT_FINAL, NEW_SIGN_WAIT_FINAL, "sign wait settle"),
+                               (OLD_REVIEW_FINAL, NEW_REVIEW_FINAL, "post-auth review settle")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -3146,7 +3348,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | CONTROLLER_ACCEPTED_SHAS
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 23
+    manifest["revision"] = 24
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -3167,7 +3369,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 20", README_NOTE_R20),
                           ("РЕВИЗИЯ 21", README_NOTE_R21),
                           ("РЕВИЗИЯ 22", README_NOTE_R22),
-                          ("РЕВИЗИЯ 23", README_NOTE_R23)):
+                          ("РЕВИЗИЯ 23", README_NOTE_R23),
+                          ("РЕВИЗИЯ 24", README_NOTE_R24)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -3180,7 +3383,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 23, "result": "OK",
+    verification.update({"python": sys.version, "revision": 24, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -3196,7 +3399,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 23 applied to", package)
+    print("Revision 24 applied to", package)
     return 0
 
 

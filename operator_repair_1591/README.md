@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 23 лежит в `beeline_integrated_io_15_91_r23/`. В нём нет
+Готовый пакет ревизии 24 лежит в `beeline_integrated_io_15_91_r24/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -53,7 +53,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r23
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r24
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -216,7 +216,13 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    сообщении `#успешно`; заголовок и текст финальной страницы пишутся в диагностику событием
    `final_page_1591r23`, чтобы отличить подписанный договор от начальной страницы. Сессий
    диагностики хранится 40 вместо 5. Маркер `FINAL_PAGE_1591R23`.
-25. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+25. **Ложный успех подписи (ревизия 24).** Единственным признаком успеха было исчезновение кнопки
+   «Подписать договор», поэтому неудачная вторая попытка подписи записывалась как успех. Теперь
+   успех требует положительного признака на странице (адрес, текст, ссылка на документ); без него
+   вкладка удерживается 3 минуты с задачей DeepSeek, затем строка пишется в
+   `unverified_signatures.jsonl`, в Telegram уходит `#неподтверждено`, вкладка остаётся открытой,
+   номер не помечается обработанным. Маркер `SIGNED_EVIDENCE_1591R24`.
+26. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

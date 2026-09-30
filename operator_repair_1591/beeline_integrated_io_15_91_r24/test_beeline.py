@@ -7248,13 +7248,158 @@ def tick_post_auth_review(base_dir, worker):
         queue_success_assist(worker, "интерфейс договора требует наблюдения")
         return
 
-    # If we are post-auth and no contract controls remain, settle as success.
-    finalize_success(base_dir, worker)
+    # If we are post-auth and no contract controls remain, settle as success — only with
+    # positive evidence of the signed contract (SIGNED_EVIDENCE_1591R24).
+    settle_success_1591r24(base_dir, worker)
 
 
 def tick_success_assist(base_dir, worker):
     # Same guarded logic, but never adds a destructive timeout.
     tick_post_auth_review(base_dir, worker)
+
+
+# SIGNED_EVIDENCE_1591R24
+SIGNED_URL_HINTS_1591R24 = ("success", "complete", "done", "thank", "activation", "signed", "esim/ready")
+SIGNED_TEXT_NEEDLES_1591R24 = (
+    "договор подписан", "успешно подписан", "подписание завершено", "договор успешно",
+    "договор отправлен", "спасибо за", "esim готова", "esim активирована", "qr-код", "скачать договор",
+)
+UNVERIFIED_HOLD_SECONDS = 180
+
+
+def _signed_evidence_1591r24(page):
+    """A positive sign of a signed contract on the page; a vanished button is not one."""
+    try:
+        url = str(page.url or "").lower()
+    except Exception:
+        url = ""
+    if "personal-data" in url or "mobile-id" in url:
+        return ""
+    for hint in SIGNED_URL_HINTS_1591R24:
+        if hint in url:
+            return f"url:{hint}"
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "").lower()
+    except Exception:
+        body = ""
+    for needle in SIGNED_TEXT_NEEDLES_1591R24:
+        if needle in body:
+            return f"text:{needle}"
+    try:
+        if page.locator("a[href$='.pdf'], a[download]").count():
+            return "link:document"
+    except Exception:
+        pass
+    return ""
+
+
+def _unverified_message_1591r24(worker, rec):
+    row_no, active_value, second_value = row_parts(worker.get("row"))
+    return "\n".join([
+        "#неподтверждено",
+        f"⚠️ ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА — Вкладка {worker['id']}",
+        f"Строка: {row_no}/{worker.get('total_rows') or '?'}",
+        f"Исходные данные: {active_value} | {second_value}",
+        f"Причина: {rec.get('reason') or '—'}",
+        f"Страница: {rec.get('final_url') or '—'}",
+        f"Заголовок страницы: {rec.get('final_title') or '—'}",
+        *_final_links_lines_1591r23(rec.get("final_links")),
+        "",
+        *_success_profile_lines(rec.get("profile")),
+        "",
+        f"eSIM: {rec.get('sim_number') or '—'}",
+        f"Ссылка eSIM: {rec.get('sim_url') or '—'}",
+        "Номер НЕ помечен обработанным; вкладка оставлена открытой для проверки.",
+    ])
+
+
+def _finish_unverified_1591r24(base_dir, worker, reason):
+    """The signing could not be confirmed: record it apart from the successes and stop the tab."""
+    n, a, b = row_parts(worker.get("row"))
+    final = capture_final_page_1591r23(worker.get("page"), worker)
+    rec = {
+        "tab": worker["id"], "row": n, "active_digits": a, "second_value": b,
+        "sim_number": worker.get("reserved_sim_number"), "sim_url": worker.get("reserved_sim_url"),
+        "profile": dict(worker.get("success_profile") or {}),
+        "final_url": final.get("url") or "", "final_title": final.get("title") or "",
+        "final_links": list(final.get("links") or []), "reason": str(reason or ""),
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    try:
+        with (Path(base_dir) / "unverified_signatures.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        print(f"[Вкладка {worker['id']}] unverified_signatures.jsonl не записан: {type(exc).__name__}: {exc}", flush=True)
+    worker["phase"] = "SUCCESS_STOP"
+    success_queue = worker.get("success_queue")
+    if success_queue is not None:
+        try:
+            success_queue.put(_unverified_message_1591r24(worker, rec))
+        except Exception as exc:
+            print(f"[Telegram] Не удалось поставить UNVERIFIED в очередь: {type(exc).__name__}: {exc}", flush=True)
+    set_tab_status(
+        worker, "⚠️",
+        f"ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА\n{reason}\nСтраница: {rec['final_url'] or '—'}\n"
+        "Вкладка оставлена открытой. Для очереди будет создана новая.",
+    )
+    external_heartbeat(worker, "success_unverified_stop")
+    print(
+        f"\n[Вкладка {worker['id']}] ⚠️ ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА. Строка {n}: {reason}. "
+        "Номер не помечен обработанным; вкладка оставлена открытой.\n",
+        flush=True,
+    )
+    worker["stopped"] = True
+    return rec
+
+
+def settle_success_1591r24(base_dir, worker):
+    """Called where the code used to declare success because no contract controls remained.
+
+    With positive evidence the success is final (finalize_success). Without it the tab is
+    held in SUCCESS_ASSIST for UNVERIFIED_HOLD_SECONDS (DeepSeek inspects, the button may
+    reappear and be signed again), then the row is recorded as UNVERIFIED.
+    """
+    page = worker.get("page")
+    evidence = _signed_evidence_1591r24(page) if page is not None else ""
+    if evidence:
+        worker["success_evidence"] = evidence
+        finalize_success(base_dir, worker)
+        return True
+    now = monotonic()
+    since = worker.get("success_unverified_since")
+    url = ""
+    try:
+        url = str(page.url or "") if page is not None else ""
+    except Exception:
+        pass
+    if since is None:
+        worker["success_unverified_since"] = now
+        try:
+            capture_blackbox(worker, "success_unverified")
+        except Exception:
+            pass
+        worker["phase"] = "SUCCESS_ASSIST"
+        set_tab_status(
+            worker, "⚠️",
+            "Кнопка «Подписать договор» пропала, но признаков подписанного договора нет. "
+            f"Держу вкладку {UNVERIFIED_HOLD_SECONDS // 60} мин, DeepSeek проверяет.",
+        )
+        external_heartbeat(worker, "success_unverified_hold")
+        queue_success_assist(
+            worker,
+            "кнопка «Подписать договор» исчезла, но страница не похожа на подписанный договор: "
+            f"проверь, подписан ли он, и что показано вместо кнопки (URL: {url})",
+            force=True,
+        )
+        return False
+    if now - since < UNVERIFIED_HOLD_SECONDS:
+        worker["phase"] = "SUCCESS_ASSIST"
+        return False
+    _finish_unverified_1591r24(
+        base_dir, worker,
+        f"после «Подписать договор» страница {UNVERIFIED_HOLD_SECONDS // 60} мин не показала признаков подписания (URL: {url or '—'})",
+    )
+    return False
 
 
 def tick_sign_wait(base_dir, worker):
@@ -7301,7 +7446,7 @@ def tick_sign_wait(base_dir, worker):
             worker["sign_button_gone_since"] = now
             return
         if now - gone_since >= 1.2:
-            finalize_success(base_dir, worker)
+            settle_success_1591r24(base_dir, worker)  # SIGNED_EVIDENCE_1591R24
         return
 
     worker["sign_button_gone_since"] = None

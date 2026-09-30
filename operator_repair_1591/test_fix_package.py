@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-23", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-24", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -303,7 +303,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 23", run.stdout)
+            self.assertIn("Already revision 24", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -337,7 +337,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 23)
+        self.assertEqual(manifest["revision"], 24)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -746,6 +746,64 @@ class PackageTests(unittest.TestCase):
         self.assertIn({"text": "QR-код на странице (встроенное изображение)", "href": ""}, result["links"])
         self.assertEqual(worker["final_links"], result["links"]); self.assertTrue(worker["final_url"].startswith("about:"))
         self.assertEqual(result["title"], "Билайн — договор"); self.assertEqual(worker["final_title"], "Билайн — договор")
+
+    def test_success_needs_evidence_otherwise_the_row_is_unverified(self):
+        src = self.source
+        self.assertEqual(src.count("finalize_success(base_dir, worker)"), 2, "only settle_success_1591r24 and the failed-restart path")
+        wait_fn = src[src.index("def tick_sign_wait"):src.index("def tick_sign_wait") + 3000]
+        self.assertIn("settle_success_1591r24(base_dir, worker)", wait_fn); self.assertNotIn("finalize_success(", wait_fn)
+        review_fn = src[src.index("def tick_post_auth_review"):src.index("def tick_success_assist")]
+        self.assertIn("settle_success_1591r24(base_dir, worker)", review_fn); self.assertNotIn("finalize_success(base_dir, worker)", review_fn)
+        clock = [1000.0]; events = []; pushed = []
+        class Q:
+            def put(self, text): pushed.append(text)
+        class Page:
+            def __init__(self, url, body="", pdf=0): self.url, self.body, self.pdf = url, body, pdf
+            def locator(self, sel):
+                page = self
+                class L:
+                    def inner_text(self, timeout=None): return page.body
+                    def count(self): return page.pdf if "pdf" in sel else 0
+                return L()
+        ns = {"monotonic": lambda: clock[0], "time": __import__("time"), "json": json, "Path": Path, "print": lambda *a, **k: None,
+              "row_parts": lambda row: (row[0], row[1], row[2]), "_success_profile_lines": lambda p: ["ФИО: X"],
+              "capture_final_page_1591r23": lambda page, worker=None: {"url": page.url, "title": "Билайн", "links": []},
+              "_final_links_lines_1591r23": lambda links: [], "set_tab_status": lambda *a: None,
+              "external_heartbeat": lambda w, label: events.append(("hb", label)),
+              "capture_blackbox": lambda w, r, exc=None: events.append(("blackbox", r)),
+              "queue_success_assist": lambda w, note, force=False: events.append(("assist", force)),
+              "finalize_success": lambda base, w: events.append("finalize")}
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id.endswith("_1591R24") or (isinstance(x, ast.Name) and x.id == "UNVERIFIED_HOLD_SECONDS") for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(src, ["_signed_evidence_1591r24", "_unverified_message_1591r24", "_finish_unverified_1591r24",
+                             "settle_success_1591r24"], ns)
+        ev = ns["_signed_evidence_1591r24"]
+        self.assertEqual(ev(Page("https://saratov.beeline.ru/registration/esim/personal-data-form", "договор подписан")), "", "still the form")
+        self.assertEqual(ev(Page("https://saratov.beeline.ru/registration/esim?hash_order=1", "Оформите eSIM")), "", "start page is not a success")
+        self.assertTrue(ev(Page("https://saratov.beeline.ru/registration/esim/success")).startswith("url:"))
+        self.assertTrue(ev(Page("https://saratov.beeline.ru/x", "Ваш договор подписан. Спасибо!")).startswith("text:"))
+        self.assertEqual(ev(Page("https://saratov.beeline.ru/x", "", pdf=1)), "link:document")
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            ok = {"id": 2, "row": (7, "79990000000", "1"), "page": Page("https://saratov.beeline.ru/registration/esim/complete"), "success_queue": Q()}
+            self.assertTrue(ns["settle_success_1591r24"](base, ok)); self.assertIn("finalize", events); self.assertTrue(ok["success_evidence"].startswith("url:"))
+            events.clear()
+            bad = {"id": 3, "row": (8, "79990000001", "2"), "total_rows": 10, "page": Page("https://saratov.beeline.ru/", "Главная"),
+                   "success_queue": Q(), "reserved_sim_number": "89", "reserved_sim_url": "u", "success_profile": {"full_name": "A B"}}
+            self.assertFalse(ns["settle_success_1591r24"](base, bad))
+            self.assertEqual(bad["phase"], "SUCCESS_ASSIST"); self.assertIn(("blackbox", "success_unverified"), events); self.assertIn(("assist", True), events)
+            self.assertNotIn("finalize", events)
+            clock[0] += 100
+            self.assertFalse(ns["settle_success_1591r24"](base, bad)); self.assertEqual(bad["phase"], "SUCCESS_ASSIST"); self.assertFalse(pushed)
+            clock[0] += 100
+            self.assertFalse(ns["settle_success_1591r24"](base, bad))
+            self.assertEqual(bad["phase"], "SUCCESS_STOP"); self.assertTrue(bad["stopped"]); self.assertNotIn("finalize", events)
+            saved = json.loads((base / "unverified_signatures.jsonl").read_text("utf-8").splitlines()[-1])
+            self.assertEqual(saved["row"], 8); self.assertEqual(saved["final_url"], "https://saratov.beeline.ru/"); self.assertIn("признаков подписания", saved["reason"])
+            self.assertFalse((base / "successful_sims.jsonl").exists()); self.assertFalse((base / "processed_numbers.txt").exists())
+            self.assertEqual(pushed[-1].split("\n")[0], "#неподтверждено"); self.assertIn("ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА — Вкладка 3", pushed[-1])
+            self.assertIn("Номер НЕ помечен обработанным", pushed[-1]); self.assertIn("ФИО: X", pushed[-1])
 
     def test_browser_hang_restarts_the_whole_chromium(self):
         src = self.source
