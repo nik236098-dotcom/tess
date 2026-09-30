@@ -608,6 +608,10 @@ final_profile_capture_v1583) читают только value у input/select/tex
 # no worker is left the runtime exits with RESTART_EXIT_CODE and the controller relaunches it.
 RESTART_MARKER = "SCHEDULED_RESTART_1591R13"
 CONTROLLER_OUTPUT_SHA_R12 = "506a84c41558332c75cbf55abc8e940520a589b3bc754a6845ca1dd7515740e8"
+# server_controller.py as produced by revisions 13..20 (unchanged between them); a server on any
+# of those must be accepted by the installer now that r21 changed the controller again.
+CONTROLLER_OUTPUT_SHA_R13_R20 = "5104af2bf68452b1dcd3b814b35e696699232087b92db87ee7e1e9a6ee1a8bd9"
+CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13_R20}
 RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
 RESTART_POLICY_FILE_NAME = "restart_policy.json"
 RESTART_DRAIN_FILE_NAME = "restart_drain.json"
@@ -3008,7 +3012,7 @@ def main(argv: list[str]) -> int:
     manifest["files"]["test_beeline.py"]["previous_output_sha256"] = sorted(ACCEPTED_PACKAGE_SHAS)
     manifest["files"]["test_beeline.py"]["output_sha256"] = hashlib.sha256(new_source.encode("utf-8")).hexdigest()
     ctrl_meta = manifest["files"]["server_controller.py"]
-    previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | {CONTROLLER_OUTPUT_SHA_R12}
+    previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | CONTROLLER_ACCEPTED_SHAS
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
     manifest["revision"] = 22

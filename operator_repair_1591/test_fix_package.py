@@ -130,6 +130,9 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
         self.assertIn(fix.EXPECTED_INPUT_OUTPUT_SHA, manifest["files"]["test_beeline.py"]["previous_output_sha256"])
+        # A server on any of revisions 13..20 (controller unchanged between them) must still upgrade.
+        ctrl_prev = manifest["files"]["server_controller.py"]["previous_output_sha256"]
+        self.assertIn(fix.CONTROLLER_OUTPUT_SHA_R12, ctrl_prev); self.assertIn(fix.CONTROLLER_OUTPUT_SHA_R13_R20, ctrl_prev)
     def test_installer_refuses_without_configured_proxy(self):
         run = self._check(Path(PACKAGE), proxy=False)
         self.assertNotEqual(run.returncode, 0)

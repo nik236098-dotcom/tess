@@ -31,7 +31,8 @@
       "input_sha256": "708efce19cb404b19c1d74300f87d7658494a22591214e9b74c65d2a3b737673",
       "output_sha256": "384e2c06274159c01dae2b9dc8698dff2a93912e5a6bf3de9eb57efce6d256c4",
       "previous_output_sha256": [
-        "506a84c41558332c75cbf55abc8e940520a589b3bc754a6845ca1dd7515740e8"
+        "506a84c41558332c75cbf55abc8e940520a589b3bc754a6845ca1dd7515740e8",
+        "5104af2bf68452b1dcd3b814b35e696699232087b92db87ee7e1e9a6ee1a8bd9"
       ]
     },
     "operator_runtime_io.py": {
