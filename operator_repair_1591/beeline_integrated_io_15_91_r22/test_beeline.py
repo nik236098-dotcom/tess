@@ -5923,6 +5923,42 @@ def save_worker_result(base_dir, worker, status):
     print(f"[Вкладка {worker['id']}] Результат строки {line_number}: {status}", flush=True)
 
 
+# ROW_SKIP_PERSIST_1591R22
+INVALID_ROW_MAX_ATTEMPTS = 2
+
+
+def _invalid_row_retry_1591r22(worker):
+    """A grey «Продолжить» can be the form's stale state rather than the row's data (the same
+    aggregateId was seen across many rows). Retry the row once in a fresh tab."""
+    key = _error_row_key(worker)
+    counts = worker.setdefault("invalid_row_counts", {})
+    counts[key] = int(counts.get(key) or 0) + 1
+    if counts[key] >= INVALID_ROW_MAX_ATTEMPTS:
+        return False
+    print(
+        f"[Вкладка {worker['id']}] Строка {key}: «Продолжить» серая — повторяю её один раз в новой вкладке.",
+        flush=True,
+    )
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        return False
+    set_tab_status(worker, "♻️", f"Строка {key}: форма не приняла данные; повтор в новой вкладке.")
+    external_heartbeat(worker, "invalid_row_retry")
+    return True
+
+
+def _fresh_tab_for_next_row_1591r22(worker):
+    """Skip the row; the next one starts in a fresh tab, never in the used form."""
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        return False
+    reset_runtime_state(worker)
+    worker["form_ready"] = False
+    worker["phase"] = "IDLE"
+    external_heartbeat(worker, "invalid_row_skipped")
+    return True
+
+
 def reset_runtime_state(worker):
     worker["row"] = None
     worker["diagnostic"] = None
@@ -5943,10 +5979,14 @@ def reset_runtime_state(worker):
 
 def finish_worker_row(base_dir, worker, status):
     """Фиксирует результат и решает, можно ли этой вкладке брать следующую строку."""
+    if status == "INVALID_ROW" and _invalid_row_retry_1591r22(worker):  # ROW_SKIP_PERSIST_1591R22
+        return
     save_worker_result(base_dir, worker, status)
 
     if status == "INVALID_ROW":
         remember_processed_number(base_dir, worker.get("row"))
+        if _fresh_tab_for_next_row_1591r22(worker):
+            return
         worker["form_ready"] = True
         reset_runtime_state(worker)
         worker["phase"] = "IDLE"
@@ -6730,6 +6770,7 @@ def _error_skip_final(worker, reason):
             )
     except Exception:
         pass
+    remember_processed_number(base_dir, worker.get("row"))  # ROW_SKIP_PERSIST_1591R22: not back after a restart
     worker["row"] = None
     worker["phase"] = "IDLE"
     set_tab_status(worker, "⏭", f"Строка {key} пропущена: {reason}. Беру следующую.")
@@ -6827,6 +6868,7 @@ def _error_recover(base_dir, worker, reason):
             )
     except Exception:
         pass
+    remember_processed_number(base_dir, worker.get("row"))  # ROW_SKIP_PERSIST_1591R22: not back after a restart
     worker["row"] = None
     worker["phase"] = "IDLE"
     set_tab_status(worker, "⏭", f"Строка {key} пропущена после повторной registration/error. Беру следующую.")

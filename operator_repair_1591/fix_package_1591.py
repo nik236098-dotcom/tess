@@ -69,7 +69,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "1ba0e4f3af9dcc2fa8d78e5eee0033ec48489c402f4c49be9d4e799eb1a786ec",  # r17 output
                          "e8f5e036c2f33ab9d8f27a98deceb25356511cd253fc871f929c16d619f45d75",  # r18 output
                          "341513d5df545f6711f9c5f1e0de7d464d586b6c0afe4ac2fc019a27308457ec",  # r19 output
-                         "bb57f0437e52c61d801e94020c3d72f9bbca2b2bbef09b63e0d746e5de9a59f2"}  # r20 output
+                         "bb57f0437e52c61d801e94020c3d72f9bbca2b2bbef09b63e0d746e5de9a59f2",  # r20 output
+                         "90ddb7d43cfbb2d944a1fb23c62aed15cb3a9d3090810864402aa31b5410a1b0"}  # r21 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -1705,6 +1706,105 @@ restart_relaunch.json (request_relaunch) и через 90 с принудите�
 свежему маркеру (не старше 10 мин), помнит последний код даже если reap() сработал раньше, и
 после завершения бота убивает остатки его группы процессов (Xvfb). Маркер: RESTART_RELAUNCH_1591R21.
 """
+# Revision 22 (DeepSeek error report): (a) INVALID_ROW — the grey «Продолжить» was taken as the
+# row's fault and the NEXT row was typed into the same used form (the same aggregateId across
+# rows 257/258/259/265): now the row is retried once in a fresh tab, and after a second
+# INVALID_ROW the next row also starts in a fresh tab; (b) rows skipped after registration/error
+# were written to error_skipped_rows.txt but not to the progress file, so every scheduled
+# restart put them back into the queue: both skip paths now record the row as processed.
+ROW_SKIP_MARKER = "ROW_SKIP_PERSIST_1591R22"
+OLD_RESET_STATE_DEF = "def reset_runtime_state(worker):\n"
+INVALID_ROW_HELPERS_R22 = '''# ROW_SKIP_PERSIST_1591R22
+INVALID_ROW_MAX_ATTEMPTS = 2
+
+
+def _invalid_row_retry_1591r22(worker):
+    """A grey «Продолжить» can be the form's stale state rather than the row's data (the same
+    aggregateId was seen across many rows). Retry the row once in a fresh tab."""
+    key = _error_row_key(worker)
+    counts = worker.setdefault("invalid_row_counts", {})
+    counts[key] = int(counts.get(key) or 0) + 1
+    if counts[key] >= INVALID_ROW_MAX_ATTEMPTS:
+        return False
+    print(
+        f"[Вкладка {worker['id']}] Строка {key}: «Продолжить» серая — повторяю её один раз в новой вкладке.",
+        flush=True,
+    )
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        return False
+    set_tab_status(worker, "♻️", f"Строка {key}: форма не приняла данные; повтор в новой вкладке.")
+    external_heartbeat(worker, "invalid_row_retry")
+    return True
+
+
+def _fresh_tab_for_next_row_1591r22(worker):
+    """Skip the row; the next one starts in a fresh tab, never in the used form."""
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        return False
+    reset_runtime_state(worker)
+    worker["form_ready"] = False
+    worker["phase"] = "IDLE"
+    external_heartbeat(worker, "invalid_row_skipped")
+    return True
+
+
+'''
+NEW_RESET_STATE_DEF = INVALID_ROW_HELPERS_R22 + OLD_RESET_STATE_DEF
+OLD_FINISH_HEAD = '''    """Фиксирует результат и решает, можно ли этой вкладке брать следующую строку."""
+    save_worker_result(base_dir, worker, status)
+
+    if status == "INVALID_ROW":
+        remember_processed_number(base_dir, worker.get("row"))
+        worker["form_ready"] = True
+        reset_runtime_state(worker)
+        worker["phase"] = "IDLE"
+        return
+'''
+NEW_FINISH_HEAD_R22 = '''    """Фиксирует результат и решает, можно ли этой вкладке брать следующую строку."""
+    if status == "INVALID_ROW" and _invalid_row_retry_1591r22(worker):  # ROW_SKIP_PERSIST_1591R22
+        return
+    save_worker_result(base_dir, worker, status)
+
+    if status == "INVALID_ROW":
+        remember_processed_number(base_dir, worker.get("row"))
+        if _fresh_tab_for_next_row_1591r22(worker):
+            return
+        worker["form_ready"] = True
+        reset_runtime_state(worker)
+        worker["phase"] = "IDLE"
+        return
+'''
+OLD_R5_SKIP_TAIL = '''    worker["row"] = None
+    worker["phase"] = "IDLE"
+    set_tab_status(worker, "⏭", f"Строка {key} пропущена после повторной registration/error. Беру следующую.")
+'''
+NEW_R5_SKIP_TAIL_R22 = '''    remember_processed_number(base_dir, worker.get("row"))  # ROW_SKIP_PERSIST_1591R22: not back after a restart
+    worker["row"] = None
+    worker["phase"] = "IDLE"
+    set_tab_status(worker, "⏭", f"Строка {key} пропущена после повторной registration/error. Беру следующую.")
+'''
+OLD_R15_SKIP_TAIL = '''    worker["row"] = None
+    worker["phase"] = "IDLE"
+    set_tab_status(worker, "⏭", f"Строка {key} пропущена: {reason}. Беру следующую.")
+'''
+NEW_R15_SKIP_TAIL_R22 = '''    remember_processed_number(base_dir, worker.get("row"))  # ROW_SKIP_PERSIST_1591R22: not back after a restart
+    worker["row"] = None
+    worker["phase"] = "IDLE"
+    set_tab_status(worker, "⏭", f"Строка {key} пропущена: {reason}. Беру следующую.")
+'''
+README_NOTE_R22 = '''
+
+РЕВИЗИЯ 22 (fix_package_1591.py)
+По отчёту DeepSeek об ошибках. (а) INVALID_ROW: серая кнопка «Продолжить» считалась виной
+строки, а следующая строка вводилась в ту же использованную форму (один aggregateId у строк
+257/258/259/265). Теперь строка один раз повторяется в новой вкладке (_invalid_row_retry_1591r22);
+после второго INVALID_ROW она пропускается, и следующая строка тоже начинается в новой вкладке
+(_fresh_tab_for_next_row_1591r22). (б) Строки, пропущенные после registration/error, писались в
+error_skipped_rows.txt, но не в файл прогресса, и каждый плановый перезапуск возвращал их в
+очередь: оба пути пропуска теперь вызывают remember_processed_number. Маркер: ROW_SKIP_PERSIST_1591R22.
+'''
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -2538,8 +2638,8 @@ def main(argv: list[str]) -> int:
                                                 PROFILE_MARKER, RESTART_MARKER, POSTAUTH_MARKER, PERSDATA_MARKER,
                                                 ERRORSKIP_MARKER, SUCCESSTAG_MARKER, BROWSER_MARKER,
                                                 PROFILE_LABELS_MARKER, PROXY_DIRECT_MARKER,
-                                                RESTART_RELAUNCH_MARKER)):
-        print("Already revision 21; nothing changed.")
+                                                RESTART_RELAUNCH_MARKER, ROW_SKIP_MARKER)):
+        print("Already revision 22; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
         raise SystemExit(f"test_beeline.py SHA256 {sha(app)} is not a reviewed 15.91-io build; nothing changed")
@@ -2868,6 +2968,24 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 23 (r22). INVALID_ROW retried once in a fresh tab; skipped rows recorded as processed.
+    if ROW_SKIP_MARKER not in source:
+        for old, new, what in ((OLD_RESET_STATE_DEF, NEW_RESET_STATE_DEF, "invalid row helpers"),
+                               (OLD_FINISH_HEAD, NEW_FINISH_HEAD_R22, "finish_worker_row invalid row"),
+                               (OLD_R5_SKIP_TAIL, NEW_R5_SKIP_TAIL_R22, "r5 skip remembers the row"),
+                               (OLD_R15_SKIP_TAIL, NEW_R15_SKIP_TAIL_R22, "r15 skip remembers the row")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
     compile(test_src, "test_update.py", "exec")
@@ -2893,7 +3011,7 @@ def main(argv: list[str]) -> int:
     previous_ctrl = set(ctrl_meta.get("previous_output_sha256", [])) | {CONTROLLER_OUTPUT_SHA_R12}
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
-    manifest["revision"] = 21
+    manifest["revision"] = 22
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -2912,7 +3030,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 17", README_NOTE_R17), ("РЕВИЗИЯ 18", README_NOTE_R18),
                           ("РЕВИЗИЯ 19", README_NOTE_R19),
                           ("РЕВИЗИЯ 20", README_NOTE_R20),
-                          ("РЕВИЗИЯ 21", README_NOTE_R21)):
+                          ("РЕВИЗИЯ 21", README_NOTE_R21),
+                          ("РЕВИЗИЯ 22", README_NOTE_R22)):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -2925,7 +3044,7 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Package tests failed after the fix; review test_results.txt")
     ran = next((line for line in run.stdout.splitlines() if line.startswith("Ran ")), "")
     verification = json.loads((package / "verification.json").read_text("utf-8"))
-    verification.update({"python": sys.version, "revision": 21, "result": "OK",
+    verification.update({"python": sys.version, "revision": 22, "result": "OK",
                          "tests": int(ran.split()[1]) if ran else None,
                          "exact_input_sha256": manifest["files"]})
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
@@ -2941,7 +3060,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print("Revision 21 applied to", package)
+    print("Revision 22 applied to", package)
     return 0
 
 

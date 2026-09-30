@@ -60,7 +60,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -125,7 +125,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-21", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-22", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -227,7 +227,8 @@ class PackageTests(unittest.TestCase):
               "capture_blackbox": lambda *a, **k: events.append("blackbox"),
               "_row_number_value": lambda row: str(row[1]),
               "load_telegram_config": lambda: {"chat_id": "1"}, "_io1591": io,
-              "ERROR_ASSIST_MAX_SECONDS": 300, "ERROR_SKIP_DWELL_SECONDS": 15, "ERROR_ROW_MAX_ATTEMPTS": 2}
+              "ERROR_ASSIST_MAX_SECONDS": 300, "ERROR_SKIP_DWELL_SECONDS": 15, "ERROR_ROW_MAX_ATTEMPTS": 2,
+              "remember_processed_number": lambda base, row: events.append(("processed", row))}
         exec_functions(self.source, ["tick_error_assist", "_error_recover", "_error_row_key", "_error_analysis_delivered"], ns)
         return ns["tick_error_assist"], worker, events, notices, clock, pending
 
@@ -299,7 +300,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 21", run.stdout)
+            self.assertIn("Already revision 22", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -333,7 +334,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 21)
+        self.assertEqual(manifest["revision"], 22)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -555,6 +556,32 @@ class PackageTests(unittest.TestCase):
             self.assertIn('request_relaunch(base_dir, "drain complete")', src_tail[:400])
             self.assertIn('request_relaunch(base_dir, "chromium relaunch failed")', self.source)
 
+    def test_invalid_row_is_retried_once_in_a_fresh_tab_and_skips_are_remembered(self):
+        events = []
+        def restart(worker):
+            events.append("new_tab"); worker["phase"] = "RESTART_ROW_READY"; worker["form_ready"] = False
+        ns = {"print": lambda *a, **k: None, "INVALID_ROW_MAX_ATTEMPTS": 2, "_row_number_value": lambda row: str(row[1]),
+              "restart_same_row_in_new_page": restart, "set_tab_status": lambda *a: None,
+              "external_heartbeat": lambda w, label: events.append(("hb", label)),
+              "save_worker_result": lambda base, w, status: events.append(("saved", status)),
+              "remember_processed_number": lambda base, row: events.append(("processed", row))}
+        exec_functions(self.source, ["finish_worker_row", "reset_runtime_state", "_error_row_key",
+                                     "_invalid_row_retry_1591r22", "_fresh_tab_for_next_row_1591r22"], ns)
+        worker = {"id": 2, "row": (7, "79990000000", "1"), "phase": "ROW_START", "form_ready": True}
+        ns["finish_worker_row"](Path("/tmp"), worker, "INVALID_ROW")
+        self.assertEqual(worker["phase"], "RESTART_ROW_READY"); self.assertEqual(worker["row"], (7, "79990000000", "1"))
+        self.assertNotIn(("saved", "INVALID_ROW"), events); self.assertEqual(events.count("new_tab"), 1)
+        ns["finish_worker_row"](Path("/tmp"), worker, "INVALID_ROW")
+        self.assertEqual(worker["phase"], "IDLE"); self.assertIsNone(worker["row"]); self.assertFalse(worker["form_ready"])
+        self.assertEqual(events.count(("saved", "INVALID_ROW")), 1); self.assertIn(("processed", (7, "79990000000", "1")), events)
+        self.assertEqual(events.count("new_tab"), 2, "the next row must start in a fresh tab, not in the used form")
+        # r15/r16 final skip and the r5 second-error skip both record the row as processed.
+        src = self.source
+        skip_final = src[src.index("def _error_skip_final"):src.index("def enter_error_guard")]
+        self.assertIn('remember_processed_number(base_dir, worker.get("row"))', skip_final)
+        recover = src[src.index("def _error_recover"):src.index("def tick_error_assist")]
+        self.assertIn('remember_processed_number(base_dir, worker.get("row"))', recover)
+
 
     def test_post_auth_error_page_follows_the_error_policy(self):
         self.assertNotIn('queue_success_assist(worker, "post-auth error page")', self.source)
@@ -595,6 +622,7 @@ class PackageTests(unittest.TestCase):
                 worker["page"] = Page(); worker["phase"] = "RESTART_ROW_READY"
         ns = {"Path": Path, "time": __import__("time"), "print": lambda *a, **k: None, "ERROR_ROW_MAX_ATTEMPTS": 2,
               "_row_number_value": lambda row: row[0], "capture_blackbox": lambda w, r, exc=None: calls.append(("blackbox", r)),
+              "remember_processed_number": lambda base, row: calls.append(("processed", row)),
               "restart_same_row_in_new_page": new_page, "set_tab_status": lambda *a: None,
               "external_heartbeat": lambda w, label: calls.append(("hb", label)),
               "queue_error_assist": lambda w, note, force=False: calls.append(("error_assist", note)),

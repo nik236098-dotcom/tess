@@ -1,6 +1,6 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 21 лежит в `beeline_integrated_io_15_91_r21/`. В нём нет
+Готовый пакет ревизии 22 лежит в `beeline_integrated_io_15_91_r22/`. В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -53,7 +53,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r21
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r22
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -204,7 +204,12 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    если обычное завершение зависло; контроллер перезапускает по коду выхода или по свежему маркеру,
    помнит последний код выхода и убивает остатки группы процессов бота (Xvfb). Маркер
    `RESTART_RELAUNCH_1591R21`.
-23. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+23. **INVALID_ROW и пропущенные строки (ревизия 22).** Серая кнопка «Продолжить» считалась виной
+   строки, а следующая строка вводилась в ту же использованную форму. Теперь строка один раз
+   повторяется в новой вкладке, после второго INVALID_ROW пропускается, и следующая строка тоже
+   начинается в новой вкладке. Строки, пропущенные после registration/error, записываются в файл
+   прогресса и не возвращаются в очередь после планового перезапуска. Маркер `ROW_SKIP_PERSIST_1591R22`.
+24. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
