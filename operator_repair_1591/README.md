@@ -33,6 +33,19 @@ curl -fsSL https://raw.githubusercontent.com/nik236098-dotcom/tess/codex/operato
 Дальнейшие обновления на таком сервере: `git clone` репозитория в домашнюю папку, затем
 `install.py` из последней папки пакета, как описано ниже (`sudo` перед `--apply`).
 
+## Лимит открытых файлов
+
+Chromium с четырьмя вкладками, наблюдатели DeepSeek и проверки watchdog через CDP упираются в
+стандартный лимит 1024 открытых файлов службы: Chromium падает с `Too many open files`, вкладки
+получают `Target closed`, строки перезапускаются по кругу. `fresh_install.sh` ставит
+`LimitNOFILE=65536`; на уже настроенном сервере добавьте drop-in:
+
+```
+sudo mkdir -p /etc/systemd/system/beeline.service.d
+printf '[Service]\nLimitNOFILE=65536\n' | sudo tee /etc/systemd/system/beeline.service.d/limits.conf
+sudo systemctl daemon-reload && sudo systemctl restart beeline
+```
+
 ## Установка с сервера (Ubuntu)
 
 Один раз перед первой установкой добавьте прокси в конфиг (значение — то, что

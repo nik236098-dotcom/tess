@@ -203,6 +203,7 @@ Restart=always
 RestartSec=3
 TimeoutStopSec=25
 KillMode=control-group
+LimitNOFILE=65536
 Environment=PYTHONUNBUFFERED=1
 [Install]
 WantedBy=multi-user.target
