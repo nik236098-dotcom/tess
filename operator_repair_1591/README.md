@@ -1,8 +1,9 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
 Готовый пакет ревизии 32 лежит в `beeline_integrated_io_15_91_r32/` (включает ревизии 30 и 31); рядом
-`beeline_integrated_io_15_91_r30/` — только промпт DeepSeek без изменений кода (собирается
-`FIX_1591_MAX_REVISION=30`). В нём нет
+`beeline_integrated_io_15_91_r32_lite/` — та же ревизия 32 без кода подписи ревизии 31 (собирается
+`FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
+только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
@@ -275,7 +276,9 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    одним названием тарифа и видимой «выбрать» без «изменить». После трёх перезапусков одной строки
    она возвращается в конец очереди (не более двух раз за запуск), номер не помечается обработанным,
    запись в `deferred_rows.jsonl`. Через 15 минут дренажа вкладки на старте строки останавливаются
-   (подтверждение, подпись, разбор DeepSeek ждутся до 40 минут). Маркеры `TARIFF_SCOPE_1591R32`,
+   (подтверждение, подпись, разбор DeepSeek ждутся до 40 минут). Тот же предел (3) на замену worker
+   watchdog'ом или DEAD RECOVERY с той же строкой: зависший в CANCELLING worker иначе заменялся с той же
+   строкой бесконечно. Маркеры `TARIFF_SCOPE_1591R32`,
    `ROW_RESTART_LIMIT_1591R32`, `DRAIN_DEADLINE_1591R32`.
 34. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.

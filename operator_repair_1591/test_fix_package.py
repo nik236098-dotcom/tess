@@ -361,6 +361,45 @@ class PackageTests(unittest.TestCase):
         final = self.source[self.source.index("        while True:\n            ensure_ai_receiver_alive()"):]
         self.assertIn("draining = _restart_tick()  # SCHEDULED_RESTART_1591R13\n            if draining:\n                _drain_deadline_1591r32(base_dir, processes, heartbeat)", final[:600])
 
+    def test_worker_replacement_with_the_same_row_is_capped(self):
+        with tempfile.TemporaryDirectory() as d:
+            import time as _t
+            ns = {"json": json, "Path": Path, "time": _t, "ROW_RESPAWN_MAX": 3, "_ROW_RESPAWNS_1591R32": {},
+                  "DEFERRED_ROWS_FILE_NAME": "deferred_rows.jsonl"}
+            exec_functions(self.source, ["_row_for_respawn_1591r32", "_row_number_value", "row_parts"], ns)
+            row = {"row_no": 55, "active_digits": "9601234567"}
+            got = [ns["_row_for_respawn_1591r32"](row, 6, d, "watchdog") for _ in range(3)]
+            self.assertEqual(got, [row, row, row], "three replacements keep the row")
+            self.assertIsNone(ns["_row_for_respawn_1591r32"](row, 6, d, "dead recovery"), "the fourth gives it up")
+            self.assertIsNone(ns["_row_for_respawn_1591r32"](None, 6, d, "watchdog"))
+            other = {"row_no": 56, "active_digits": "9607654321"}
+            self.assertIs(ns["_row_for_respawn_1591r32"](other, 7, d, "watchdog"), other, "another row has its own count")
+            lines = [json.loads(x) for x in Path(d, "deferred_rows.jsonl").read_text("utf-8").splitlines()]
+            self.assertEqual([(x["row"], x["respawns"], x["requeued"], x["why"]) for x in lines], [(55, 3, False, "dead recovery")])
+        for who in ("dead recovery", "watchdog"):
+            self.assertIn(f'None if completed else _row_for_respawn_1591r32(saved_row, tab_id, base_dir, "{who}"),  # ROW_RESTART_LIMIT_1591R32', self.source)
+        self.assertNotIn("None if completed else saved_row,", self.source)
+
+    def test_lite_build_is_revision_32_without_the_signing_code(self):
+        with tempfile.TemporaryDirectory() as d:
+            lite = Path(d) / "lite"
+            shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
+            env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
+            run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 32 applied", run.stdout)
+            src = (lite / "test_beeline.py").read_text("utf-8")
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32"):
+                self.assertIn(marker, src)
+            self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
+            self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
+            run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
+            self.assertIn("Already revision 32", run.stdout)
+            # the lite build is a reviewed input of the full build and upgrades to exactly it
+            self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
+            run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 32 applied", run.stdout)
+            self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
+
     def test_stale_drain_file_is_discarded_at_start(self):
         src = self.source
         head = src[src.index("restart_started_at = monotonic()"):src.index("def _restart_tick():")]
