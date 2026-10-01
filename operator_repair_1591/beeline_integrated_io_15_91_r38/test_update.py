@@ -84,7 +84,7 @@ class SourceIntegrityTests(unittest.TestCase):
         for name,meta in MANIFEST['files'].items():
             self.assertEqual(hashlib.sha256((BASE/name).read_bytes()).hexdigest(),meta['output_sha256'])
     def test_python310_syntax_and_compile(self):
-        for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py','symbol_matching.py'):
+        for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py','symbol_matching.py','telegram_menu.py'):
             text=(BASE/name).read_text();ast.parse(text,feature_version=(3,10));compile(text,name,'exec')
     def test_browser_contract_captcha_handlers_unchanged(self):
         for name,expected in MANIFEST['preserved_ast_sha256'].items():
@@ -449,6 +449,7 @@ class ControllerTests(unittest.TestCase):
                 '_purge_control_messages_from_ai':lambda:None,'CLIENTS_FILE':Path(d)/'clients.txt',
                 'AutomationProcess':lambda:proc,'_load_offset':lambda:5,'_save_offset':lambda x:saves.append(x),
                 '_send':lambda *a:None,'_typing':lambda:None,'MENU_MARKUP':'{}','_restart_after_drain':lambda p:False,'_row_link_command':lambda a:'',
+                '_menu_mod':types.SimpleNamespace(TelegramMenu=lambda *a,**k:types.SimpleNamespace(show_menu=lambda *a,**k:None,show_status=lambda:None,tick=lambda:None,handle_callback=lambda cb:None,text_is_for_ai=lambda:True,ai_sent=lambda:None,retire_status_messages=lambda *a:0)),'BASE_DIR':Path(d),
                 'BTN_START':'start','BTN_STOP':'stop','BTN_RESTART':'restart','BTN_UPLOAD':'upload',
                 'time':types.SimpleNamespace(sleep=lambda t:None if t==2 else (_ for _ in ()).throw(EndLoop()))}
             extract({'main'},ns,CONTROL)
@@ -473,7 +474,7 @@ class InstallerTests(unittest.TestCase):
         self.capture_err=redirect_stderr(stdio.StringIO());self.capture_err.__enter__()
         self.tmp=tempfile.TemporaryDirectory();self.app=Path(self.tmp.name)
         self.old={'test_beeline.py':b'old app','server_controller.py':b'old controller','symbol_matching.py':b'old matcher'}
-        self.new=dict(self.old,**{'test_beeline.py':b'new app','server_controller.py':b'new controller','operator_runtime_io.py':b'helper','symbol_matching.py':b'new matcher'})
+        self.new=dict(self.old,**{'test_beeline.py':b'new app','server_controller.py':b'new controller','operator_runtime_io.py':b'helper','symbol_matching.py':b'new matcher','telegram_menu.py':b'menu'})
         for name,raw in self.old.items():(self.app/name).write_bytes(raw)
         (self.app/'clients.txt').write_bytes(b'PRIVATE DATA')
         (self.app/'progress.sqlite3').write_bytes(b'UNCHANGED')

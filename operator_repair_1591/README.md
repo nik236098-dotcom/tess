@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 37 лежит в `beeline_integrated_io_15_91_r37/` (включает ревизии 30–36); рядом
-`beeline_integrated_io_15_91_r37_lite/` — та же ревизия 37 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 38 лежит в `beeline_integrated_io_15_91_r38/` (включает ревизии 30–37); рядом
+`beeline_integrated_io_15_91_r38_lite/` — та же ревизия 38 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -69,7 +69,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r37
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r38
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -309,7 +309,17 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    неподтверждённой странице сохранены. `registration/error` после клика записывается как
    `#неподтверждено` сразу, без DeepSeek; принятый сайтом запрос подписи считается доказательством
    подписания. Маркер `AI_ON_SIGN_FAIL_1591R37`.
-39. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+39. **Меню бота (ревизия 38).** Новый модуль `telegram_menu.py`: одно сообщение-панель с inline-кнопками.
+   📊 Статус правится на месте только пока открыт и сам закрывается через час; 📱 Мои eSIM — оформленные
+   eSIM по 10 на страницу, карточка с полными данными, отметки 🆕/✅/❌ (хранятся в `esim_status.json`),
+   ссылка из журнала; 📜 Логи — события журнала за 2 дня постранично; 🤖 Спросить DeepSeek — следующее
+   сообщение уходит DeepSeek, есть отмена; ▶️ ⏹ 🔄 📥 управление. Нижняя клавиатура убрана, любое
+   сообщение кроме команд открывает меню, случайный текст к DeepSeek не попадает. Runtime пишет статус
+   вкладок в `status_snapshot.json` вместо правок восьми сообщений (ревизия 27), старые статусные
+   сообщения один раз переправляются на «статус в меню». Пуши об успехе и оплате короткие: номер eSIM,
+   ФИО, дата рождения, строка и исходные данные, исход и для оплаты ссылка заказа. Код регистрации не
+   менялся. Маркер `TELEGRAM_MENU_1591R38`.
+40. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

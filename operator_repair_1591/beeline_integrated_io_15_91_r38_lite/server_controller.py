@@ -12,6 +12,7 @@ import time
 import requests
 
 import test_beeline as app
+import telegram_menu as _menu_mod  # TELEGRAM_MENU_1591R38
 
 IO_BUILD_VERSION = "15.91-io"
 from batch_support import load_clients
@@ -38,19 +39,9 @@ CONTROL_TEXTS = {
     "/status",
 }
 
-MENU_MARKUP = json.dumps(
-    {
-        "keyboard": [
-            [{"text": BTN_START}, {"text": BTN_STOP}],
-            [{"text": BTN_RESTART}],
-            [{"text": BTN_UPLOAD}],
-        ],
-        "resize_keyboard": True,
-        "is_persistent": True,
-        "input_field_placeholder": "Команда или сообщение DeepSeek",
-    },
-    ensure_ascii=False,
-)
+# TELEGRAM_MENU_1591R38: the bottom keyboard is gone; every notice removes it once, the
+# inline menu (telegram_menu.py) is the control surface.
+MENU_MARKUP = json.dumps({"remove_keyboard": True})
 
 
 def _cfg():
@@ -425,6 +416,13 @@ def main():
 
     proc = AutomationProcess()
     waiting_upload = False
+    # TELEGRAM_MENU_1591R38: one panel message with inline buttons; the eight status messages
+    # of earlier revisions are retired once.
+    menu = _menu_mod.TelegramMenu(app, BASE_DIR, proc, link_resolver=_row_link_command)
+    try:
+        menu.retire_status_messages(BASE_DIR / "telegram_status_messages.json")
+    except Exception as exc:
+        print(f"[CTRL] старые статусные сообщения не обновлены: {exc}", flush=True)
 
     # Controller is the only long-poll consumer.
     app.telegram_api(cfg, "deleteWebhook", {"drop_pending_updates": "false"})
@@ -435,15 +433,18 @@ def main():
         ok, msg = proc.start()
         print(f"[CTRL] auto-start: {msg}", flush=True)
 
-    _send(
-        "🎛 Управление софтом\n\n"
-        f"Состояние: {proc.status()}\n"
-        "Кнопки управления обрабатываются локально и НЕ отправляются DeepSeek."
-    )
+    try:
+        menu.show_menu(fresh=True)  # TELEGRAM_MENU_1591R38
+    except Exception as exc:
+        print(f"[CTRL] меню не показано: {exc}", flush=True)
 
     while True:
         _restart_after_drain(proc)  # SCHEDULED_RESTART_1591R13
         proc.reap()
+        try:
+            menu.tick()  # TELEGRAM_MENU_1591R38: live status only while its view is open
+        except Exception as exc:
+            print(f"[CTRL] меню: {exc}", flush=True)
 
         r, err = app.telegram_api(
             cfg,
@@ -451,7 +452,7 @@ def main():
             {
                 "timeout": 2,
                 "offset": offset,
-                "allowed_updates": json.dumps(["message"]),
+                "allowed_updates": json.dumps(["message", "callback_query"]),  # TELEGRAM_MENU_1591R38
             },
         )
         if err:
@@ -463,6 +464,12 @@ def main():
                 update_failed = False
 
                 try:
+                    callback = upd.get("callback_query")  # TELEGRAM_MENU_1591R38: inline buttons
+                    if callback:
+                        cb_chat = str(((callback.get("message") or {}).get("chat") or {}).get("id") or "")
+                        if cb_chat == chat and menu.handle_callback(callback) == "upload":
+                            waiting_upload = True
+                        continue
                     msg = upd.get("message") or {}
                     msg_chat = str((msg.get("chat") or {}).get("id") or "")
                     if msg_chat != chat:
@@ -474,14 +481,12 @@ def main():
                     # ---- CONTROL PLANE: never goes to AI inbox ----
                     if text in {"/start", "/menu"}:
                         waiting_upload = False
-                        _send(
-                            "🎛 Управление софтом\n\n"
-                            f"Состояние: {proc.status()}"
-                        )
+                        menu.show_menu(fresh=True)  # TELEGRAM_MENU_1591R38
                         continue
 
                     if text == "/status":
-                        _send(f"Состояние: {proc.status()}")
+                        menu.show_menu(fresh=True)
+                        menu.show_status()
                         continue
 
                     if text == BTN_START:
@@ -524,7 +529,7 @@ def main():
                     # Any slash-command belongs to controller namespace and is
                     # deliberately kept away from DeepSeek.
                     if text.startswith("/"):
-                        _send("Неизвестная команда. Используй кнопки меню.")
+                        menu.show_menu(fresh=True, note="Неизвестная команда — вот меню.")  # TELEGRAM_MENU_1591R38
                         continue
 
                     if document:
@@ -593,12 +598,18 @@ def main():
                     # ---- AI PLANE ----
                     # Only ordinary text is persisted into the DeepSeek inbox.
                     if text:
+                        # TELEGRAM_MENU_1591R38: DeepSeek gets a message only after «Спросить
+                        # DeepSeek»; any other text (a word, a letter, a symbol) opens the menu.
+                        if not menu.text_is_for_ai():
+                            menu.show_menu(fresh=True)
+                            continue
                         app._ai_db_store_telegram_update(upd, chat)
                         print(
                             f"[CTRL→AI] update={update_id}: {text[:120]}",
                             flush=True,
                         )
                         _typing()
+                        menu.ai_sent()
 
                 except Exception as exc:
                     update_failed = True

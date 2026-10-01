@@ -61,7 +61,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER, fix.TARIFF_SCOPE_MARKER, fix.TARIFF_CHANGE_MARKER, fix.BROWSER_ENV_MARKER, fix.TRACE_COMPACT_MARKER, fix.SIM_URL_MARKER, fix.AI_SIGN_FAIL_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER, fix.TARIFF_SCOPE_MARKER, fix.TARIFF_CHANGE_MARKER, fix.BROWSER_ENV_MARKER, fix.TRACE_COMPACT_MARKER, fix.SIM_URL_MARKER, fix.AI_SIGN_FAIL_MARKER, fix.TELEGRAM_MENU_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -109,39 +109,31 @@ class PackageTests(unittest.TestCase):
         return sent, queued
 
 
-    def test_status_logger_respects_429_and_reuses_messages_across_restarts(self):
+    def test_status_logger_writes_a_snapshot_and_sends_no_status_messages(self):
+        """TELEGRAM_MENU_1591R38: the tab statuses go to status_snapshot.json for the bot's menu;
+        the eight status messages (and their background edits) of revision 27 are gone."""
         class Failure(str):
             def __new__(cls, text, retry_after=None):
                 obj = str.__new__(cls, text); obj.retry_after = retry_after; return obj
         with tempfile.TemporaryDirectory() as d:
-            # Run 1: Telegram answers 429 on the first send — no further calls in that run.
             calls = []
             def banned(cfg, method, payload):
                 calls.append(method)
                 return None, Failure("Telegram API: 429 Too Many Requests: retry after 16000", retry_after=16000)
-            sent, _ = self._logger(enqueue=True, telegram_api=banned, status_map={"1": {"text": "A", "time": 1}}, rounds=3, tmp=d)
+            self._logger(enqueue=True, telegram_api=banned, status_map={"1": {"text": "A", "time": 1}}, rounds=3, tmp=d)
             self.assertEqual(calls, ["getMe"], "after a 429 on getMe nothing else is attempted")
-            # Run 2: messages are created once, edited only when the text changes, ids persisted.
-            texts = {"1": {"text": "A", "time": 1}}
-            sent, _ = self._logger(enqueue=True, telegram_api=None, status_map=texts, rounds=2, tmp=d)
+            sent, queued = self._logger(enqueue=True, telegram_api=None, status_map={"1": {"text": "A\nСтрока: 1/9", "time": 1}}, rounds=2, tmp=d)
             methods = [m for m, _ in sent]
-            self.assertEqual(methods.count("sendMessage"), 1); self.assertEqual(methods.count("editMessageText"), 1)
-            saved = json.loads((Path(d) / "telegram_status_messages.json").read_text("utf-8"))
-            self.assertEqual(saved["chat"], "42"); self.assertIn("1", saved["mids"])
-            # Run 3 (a restart): the saved message is reused — an edit, no new sendMessage.
-            sent, _ = self._logger(enqueue=True, telegram_api=None, status_map={"1": {"text": "B", "time": 2}}, rounds=2, tmp=d)
-            methods = [m for m, _ in sent]
-            self.assertEqual(methods.count("sendMessage"), 0); self.assertGreaterEqual(methods.count("editMessageText"), 2)
-            self.assertTrue(any(p.get("text") == "B" for m, p in sent if m == "editMessageText"))
-            # Run 4: Telegram says the saved message is gone — it is recreated and re-saved.
-            def gone(cfg, method, payload):
-                if method == "editMessageText" and payload.get("message_id") == saved["mids"]["1"]:
-                    return None, Failure("Telegram API: 400 Bad Request: message to edit not found")
-                return {"ok": True, "result": {"message_id": 777}}, None
-            sent, _ = self._logger(enqueue=True, telegram_api=gone, status_map={"1": {"text": "C", "time": 3}}, rounds=3, tmp=d)
-            self.assertIn("sendMessage", [m for m, _ in sent])
-            self.assertEqual(json.loads((Path(d) / "telegram_status_messages.json").read_text("utf-8"))["mids"]["1"], 777)
-
+            self.assertNotIn("sendMessage", methods); self.assertNotIn("editMessageText", methods)
+            self.assertFalse((Path(d) / "telegram_status_messages.json").exists())
+            snap = json.loads((Path(d) / "status_snapshot.json").read_text("utf-8"))
+            self.assertEqual(snap["tabs"]["1"]["text"], "A\nСтрока: 1/9"); self.assertGreater(snap["updated"], 0)
+            self.assertTrue(queued, "the success push still goes through the durable outbox")
+            # an unchanged status map does not rewrite the file; a changed one does
+            before = (Path(d) / "status_snapshot.json").stat().st_mtime_ns
+            self._logger(enqueue=True, telegram_api=None, status_map={"1": {"text": "A\nСтрока: 1/9", "time": 1}}, rounds=1, tmp=d)
+            self._logger(enqueue=True, telegram_api=None, status_map={"1": {"text": "B", "time": 2}}, rounds=1, tmp=d)
+            self.assertEqual(json.loads((Path(d) / "status_snapshot.json").read_text("utf-8"))["tabs"]["1"]["text"], "B")
 
     def test_signing_is_coordinated_with_deepseek_and_retried_once(self):
         src = self.source
@@ -203,7 +195,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_37(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_38(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -211,12 +203,12 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertIn("Already revision 30", run.stdout)
-            # a server on the prompt-only build is accepted by the full (r37) installer
+            # a server on the prompt-only build is accepted by the full (r38) installer
             self.assertIn(hashlib.sha256((r30 / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             app = Path(d) / "app"; app.mkdir()
             for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "install.py", "test_update.py"):
@@ -380,24 +372,24 @@ class PackageTests(unittest.TestCase):
             self.assertIn(f'None if completed else _row_for_respawn_1591r32(saved_row, tab_id, base_dir, "{who}"),  # ROW_RESTART_LIMIT_1591R32', self.source)
         self.assertNotIn("None if completed else saved_row,", self.source)
 
-    def test_lite_build_is_revision_37_without_the_signing_code(self):
+    def test_lite_build_is_revision_38_without_the_signing_code(self):
         with tempfile.TemporaryDirectory() as d:
             lite = Path(d) / "lite"
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 37 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 38 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 37", run.stdout)
+            self.assertIn("Already revision 38", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 37 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 38 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -534,6 +526,99 @@ class PackageTests(unittest.TestCase):
         settle = self.source[self.source.index("def settle_success_1591r24(base_dir, worker):"):][:1500]
         self.assertIn('evidence = "network:signature_accepted"', settle)
 
+    def test_telegram_menu_module_drives_the_panel(self):
+        """The inline menu of revision 38: every view, paging, marks, the DeepSeek gate."""
+        import importlib.util, types as _types, time as _t
+        spec = importlib.util.spec_from_file_location("telegram_menu_pkg", self.pkg / "telegram_menu.py")
+        tm = importlib.util.module_from_spec(spec); spec.loader.exec_module(tm)
+        self.assertEqual(tm.MENU_VERSION, "1591r38")
+        calls = []; counter = {"mid": 100}
+        def api(cfg, method, payload):
+            calls.append((method, dict(payload)))
+            if method == "sendMessage":
+                counter["mid"] += 1; return {"ok": True, "result": {"message_id": counter["mid"]}}, None
+            if method == "editMessageText" and payload.get("message_id") == 999:
+                return None, "Bad Request: message to edit not found"
+            return {"ok": True, "result": {}}, None
+        app = _types.SimpleNamespace(telegram_api=api, load_telegram_config=lambda: {"chat_id": "42"},
+                                     SUCCESS_PROFILE_FIELDS=[("full_name", "ФИО")], _sign_trace_lines_1591r25=lambda s: ["Подпись (сеть): подпись → 200"])
+        class Proc:
+            on = True
+            def running(self): return self.on
+            def status(self): return "🟢 Запущен" if self.on else "🔴 Остановлен"
+            def start(self): self.on = True; return True, "▶️ Запущено."
+            def stop(self): self.on = False; return True, "⏹ Процесс остановлен."
+            def restart(self): return True, "перезапущен"
+        last = lambda: [c for c in calls if c[0] == "editMessageText"][-1][1]
+        cb = lambda data: {"id": "cb", "data": data}
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            (base / "clients.txt").write_text("1\n2\n3\n"); (base / "processed_numbers.txt").write_text("1\n")
+            (base / "status_snapshot.json").write_text(json.dumps({"updated": _t.time(), "tabs": {"1": {"text": "✍️ Вкладка 1\nЭтап: SIGN_WAIT", "time": _t.time()}}}))
+            recs = [{"tab": 2, "row": 500 + i, "active_digits": f"790537{i:05d}", "second_value": "9", "sim_number": f"+7962615{i:04d}",
+                     "sim_url": f"https://x/?hash_order={i}", "profile": {"full_name": "Тест <Имя>"}, "payment_text": "оплатить", "time": f"2026-10-01 0{i % 9}:00:00",
+                     "sign_trace": {"responses": [{"url": "https://x/checksignature/", "status": 200}]}} for i in range(11)]
+            (base / "payment_required.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in recs) + "\n")
+            (base / "successful_sims.jsonl").write_text(json.dumps({"row": 7, "active_digits": "79050000001", "sim_number": "+79620000001", "profile": {}}) + "\n")
+            (base / "telegram_status_messages.json").write_text(json.dumps({"chat": "42", "mids": {"1": 11, "2": 12}}))
+            tm.time.sleep = lambda s: None
+            menu = tm.TelegramMenu(app, base, Proc(), link_resolver=lambda row: f"Строка {row}: ссылка X")
+            self.assertEqual(menu.retire_status_messages(base / "telegram_status_messages.json"), 2)
+            self.assertFalse((base / "telegram_status_messages.json").exists())
+            menu.show_menu(fresh=True)
+            sent = [c for c in calls if c[0] == "sendMessage"][-1][1]
+            self.assertIn("remove_keyboard", sent["reply_markup"]); self.assertEqual(sent["parse_mode"], "HTML")
+            self.assertIn("База: 3 строк · обработано 1", sent["text"]); self.assertIn("📊 Статус", calls[-1][1]["reply_markup"])
+            menu.handle_callback(cb("m|status")); self.assertIn("Этап: SIGN_WAIT", last()["text"])
+            n = len(calls); self.assertFalse(menu.tick()); self.assertEqual(len(calls), n, "no edit before the refresh gap")
+            (base / "status_snapshot.json").write_text(json.dumps({"updated": _t.time(), "tabs": {"1": {"text": "💳 Вкладка 1", "time": _t.time()}}}))
+            menu._status_last_edit -= 20; self.assertTrue(menu.tick()); self.assertIn("💳 Вкладка 1", last()["text"])
+            menu.state["view"] = "menu"; n = len(calls); self.assertFalse(menu.tick()); self.assertEqual(len(calls), n, "a closed status view is never edited")
+            menu.handle_callback(cb("m|esims|0")); e = last(); kb = json.loads(e["reply_markup"])["inline_keyboard"]
+            self.assertIn("12 шт.", e["text"]); self.assertEqual(len(kb), 12); self.assertEqual(kb[-2][0]["text"], "1/2")
+            self.assertTrue(kb[0][0]["text"].startswith("🆕 +7 962 615-")); key = kb[0][0]["callback_data"].split("|")[2]
+            menu.handle_callback(cb("m|esims|1")); kb = json.loads(last()["reply_markup"])["inline_keyboard"]
+            self.assertEqual(kb[-2][0]["text"], "◀️"); self.assertIn("📄 стр. 7", kb[-3][0]["text"])
+            menu.handle_callback(cb(f"m|esim|{key}|0")); e = last()
+            self.assertIn("Требуется оплата", e["text"]); self.assertIn("ФИО: Тест &lt;Имя&gt;", e["text"]); self.assertIn("Подпись (сеть)", e["text"])
+            menu.handle_callback(cb(f"m|set|{key}|ok|0")); self.assertIn("Отметка: ✅ оформлена", last()["text"])
+            self.assertEqual(list(json.loads((base / "esim_status.json").read_text()).values()), ["ok"])
+            menu.handle_callback(cb(f"m|link|{key}|0")); self.assertIn("🔎 Строка", last()["text"])
+            menu.handle_callback(cb("m|ask")); self.assertTrue(menu.state["awaiting_ai"]); self.assertIn("Отмена", last()["reply_markup"])
+            self.assertTrue(menu.text_is_for_ai()); self.assertFalse(menu.text_is_for_ai(), "one text per button press")
+            menu.handle_callback(cb("m|ask")); menu.handle_callback(cb("m|ask_cancel")); self.assertFalse(menu.state["awaiting_ai"])
+            self.assertEqual(menu.handle_callback(cb("m|upload")), "upload")
+            menu.handle_callback(cb("m|stop")); self.assertIn("Остановлен", last()["text"])
+            menu.handle_callback(cb("m|status")); self.assertIn("🔴 Процесс остановлен", last()["text"])
+            menu.handle_callback(cb("m|logs|0")); self.assertIn("Логи", last()["text"])
+            menu.state["message_id"] = 999; menu.show_menu(); self.assertEqual(calls[-1][0], "sendMessage")
+            menu.state["sent_at"] -= 50 * 3600; menu.show_menu(); self.assertEqual([c[0] for c in calls[-2:]], ["deleteMessage", "sendMessage"])
+            self.assertEqual(len([c for c in calls if c[0] == "answerCallbackQuery"]), len([c for c in calls if c[0] == "answerCallbackQuery"]))
+
+    def test_controller_routes_buttons_and_gates_deepseek(self):
+        ctrl = (self.pkg / "server_controller.py").read_text("utf-8")
+        self.assertIn("import telegram_menu as _menu_mod", ctrl)
+        self.assertIn('MENU_MARKUP = json.dumps({"remove_keyboard": True})', ctrl); self.assertNotIn('"keyboard": [', ctrl)
+        self.assertIn('json.dumps(["message", "callback_query"])', ctrl)
+        main = ctrl[ctrl.index("def main():"):]
+        self.assertIn("menu = _menu_mod.TelegramMenu(app, BASE_DIR, proc, link_resolver=_row_link_command)", main)
+        self.assertIn('callback = upd.get("callback_query")', main); self.assertIn('menu.handle_callback(callback) == "upload"', main)
+        self.assertIn("menu.tick()", main); self.assertIn("menu.show_menu(fresh=True)", main)
+        gate = main[main.index("# ---- AI PLANE ----"):]
+        self.assertIn("if not menu.text_is_for_ai():", gate); self.assertLess(gate.index("menu.show_menu(fresh=True)"), gate.index("app._ai_db_store_telegram_update"))
+        self.assertIn("menu.ai_sent()", gate)
+        self.assertNotIn('_send("Неизвестная команда. Используй кнопки меню.")', ctrl)
+        inst = (self.pkg / "install.py").read_text("utf-8")
+        self.assertIn("'telegram_menu.py')", inst); self.assertIn("manifest['files']['telegram_menu.py']['output_sha256']", inst)
+        self.assertIn('assert m.MENU_VERSION == "1591r38"', inst)
+        manifest = json.loads((self.pkg / "manifest.json").read_text("utf-8"))
+        self.assertEqual(manifest["files"]["telegram_menu.py"]["output_sha256"], hashlib.sha256((self.pkg / "telegram_menu.py").read_bytes()).hexdigest())
+        self.assertIn("telegram_menu.py", (self.pkg / "SHA256SUMS.txt").read_text("utf-8"))
+        self.assertIn(fix.CONTROLLER_OUTPUT_SHA_R36_R37, manifest["files"]["server_controller.py"]["previous_output_sha256"])
+        src = self.source
+        self.assertIn('path = _tg_status_file_1591r27().with_name("status_snapshot.json")', src)
+        self.assertNotIn('"text": f"⏳ Вкладка {i}\\nСтатус: запуск..."', src)
+
     def test_stale_drain_file_is_discarded_at_start(self):
         src = self.source
         head = src[src.index("restart_started_at = monotonic()"):src.index("def _restart_tick():")]
@@ -614,7 +699,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-37", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-38", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -792,7 +877,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 37", run.stdout)
+            self.assertIn("Already revision 38", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -826,7 +911,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 37)
+        self.assertEqual(manifest["revision"], 38)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1153,13 +1238,17 @@ class PackageTests(unittest.TestCase):
         self.assertIn("TABS_PER_BROWSER = 4", self.source)
         self.assertNotIn("TABS_PER_BROWSER = 3", self.source)
         ns = {"row_parts": lambda row: (row[0], row[1], row[2]), "_success_profile_lines": lambda profile: ["ФИО: X"]}
-        exec_functions(self.source, ["_success_message", "_final_links_lines_1591r23"], ns)
+        exec_functions(self.source, ["_success_message", "_short_push_1591r38", "_pretty_phone_1591r38", "_final_links_lines_1591r23"], ns)
+        ns["re"] = __import__("re")
         text = ns["_success_message"]({"id": 2, "row": (5, "79990000000", "1234"), "total_rows": 10},
                                       {"profile": {}, "sim_number": "89", "sim_url": "u"})
         lines = text.split("\n")
-        self.assertEqual(lines[0], "#успешно"); self.assertTrue(lines[1].startswith("✅ УСПЕХ — Вкладка 2"))
-        self.assertIn("Строка: 5/10", text); self.assertIn("eSIM: 89", text)
-        self.assertIn("Страница договора: —", text)  # FINAL_PAGE_1591R23
+        # TELEGRAM_MENU_1591R38: a short card; the full fields live in the menu («Мои eSIM»)
+        self.assertEqual(lines[0], "🆕 Новая eSIM · #успешно"); self.assertEqual(lines[1], "📱 89")
+        self.assertIn("📄 Строка 5/10 · 79990000000 | 1234", text); self.assertIn("✅ Договор оформлен", text)
+        self.assertNotIn("Страница договора", text); self.assertLessEqual(len(lines), 7)
+        pretty = ns["_short_push_1591r38"]({"id": 1, "row": (1, "a", "b")}, {"sim_number": "+79626158923", "profile": {"full_name": "A B", "birth_date": "1.2.1990"}, "sim_url": "https://x/?hash_order=1"}, "#оплата", "💳 pay")
+        self.assertIn("📱 +7 962 615-89-23", pretty); self.assertIn("👤 A B · 🎂 1.2.1990", pretty); self.assertIn("🔗 https://x/?hash_order=1", pretty)
 
     def test_success_record_and_push_carry_the_contract_page(self):
         self.assertIn("DIAGNOSTIC_SESSIONS_TO_KEEP = 40", self.source)
@@ -1169,8 +1258,9 @@ class PackageTests(unittest.TestCase):
             if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "_FINAL_LINKS_JS_1591R23" for x in node.targets):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
         ns["_sign_trace_summary_1591r25"] = lambda trace: None
-        exec_functions(self.source, ["_success_message", "write_success_record", "capture_final_page_1591r23",
-                                     "_final_links_lines_1591r23"], ns)
+        exec_functions(self.source, ["_success_message", "_short_push_1591r38", "_pretty_phone_1591r38", "write_success_record",
+                                     "capture_final_page_1591r23", "_final_links_lines_1591r23"], ns)
+        ns["re"] = __import__("re"); ns["time"] = __import__("time")
         class Page:
             url = "https://saratov.beeline.ru/registration/esim/contract?id=42"
             def evaluate(self, js): return {"links": [{"text": "Скачать договор", "href": "https://x/contract.pdf"},
@@ -1190,10 +1280,9 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(event[1]["text"], "Договор подписан. Спасибо!"); self.assertEqual(event[1]["url"], Page.url)
         self.assertEqual(saved["final_links"][0]["href"], "https://x/contract.pdf"); self.assertEqual(saved["sim_url"], "u")
         text = ns["_success_message"](worker, rec)
-        self.assertIn("Страница договора: https://saratov.beeline.ru/registration/esim/contract?id=42", text)
-        self.assertIn("Скачать договор: https://x/contract.pdf", text); self.assertIn("QR-код на странице (встроенное изображение)", text)
-        self.assertIn("Заголовок страницы: Договор подписан", text)
-        self.assertTrue(text.index("Ссылка eSIM: u") < text.index("Страница договора"))
+        # TELEGRAM_MENU_1591R38: the push is short; the contract page stays in the record for the menu card
+        self.assertIn("🆕 Новая eSIM · #успешно", text); self.assertIn("📄 Строка 5/10", text); self.assertNotIn("Страница договора", text)
+        self.assertEqual(saved["final_links"][0]["text"], "Скачать договор"); self.assertTrue(saved.get("time"))
         # No page (or a page that fails): the record is still written, fields stay empty.
         class Broken:
             @property
@@ -1277,7 +1366,8 @@ class PackageTests(unittest.TestCase):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
         exec_functions(src, ["_signed_evidence_1591r24", "_unverified_message_1591r24", "_finish_unverified_1591r24",
                              "settle_success_1591r24", "_payment_page_1591r26", "_payment_message_1591r26",
-                             "_finish_payment_required_1591r26"], ns)
+                             "_finish_payment_required_1591r26", "_short_push_1591r38", "_pretty_phone_1591r38"], ns)
+        ns["re"] = __import__("re")  # TELEGRAM_MENU_1591R38: the short push formats the number
         ev = ns["_signed_evidence_1591r24"]
         self.assertEqual(ev(Page("https://saratov.beeline.ru/registration/esim/personal-data-form", "договор подписан")), "", "still the form")
         self.assertEqual(ev(Page("https://saratov.beeline.ru/registration/esim?hash_order=1", "Оформите eSIM")), "", "start page is not a success")
@@ -1317,8 +1407,8 @@ class PackageTests(unittest.TestCase):
             saved = json.loads((base / "payment_required.jsonl").read_text("utf-8").splitlines()[-1])
             self.assertEqual(saved["row"], 9); self.assertIn("пора оплатить", saved["payment_text"].lower())
             self.assertFalse((base / "successful_sims.jsonl").exists())
-            self.assertEqual(pushed[-1].split("\n")[0], "#оплата"); self.assertIn("ТРЕБУЕТСЯ ОПЛАТА eSIM — Вкладка 4", pushed[-1])
-            self.assertIn("оплатите картой", pushed[-1]); self.assertIn("Номер помечен обработанным", pushed[-1])
+            self.assertEqual(pushed[-1].split("\n")[0], "🆕 Новая eSIM · #оплата")  # TELEGRAM_MENU_1591R38: short card
+            self.assertIn("💳 Подпись принята, нужна оплата картой", pushed[-1]); self.assertIn("🔗 u2", pushed[-1]); self.assertIn("📄 Строка 9/10", pushed[-1])
             self.assertEqual(ns["_payment_page_1591r26"](Page("https://x", "Договор подписан. Спасибо!")), "")
             # AI_VERDICT_1591R30: DeepSeek's verdict counts as evidence (SIGNED) or as the payment step.
             events.clear()
@@ -1328,7 +1418,8 @@ class PackageTests(unittest.TestCase):
             pay_ai = {"id": 6, "row": (11, "79990000004", "5"), "total_rows": 10, "page": Page("https://saratov.beeline.ru/", "Главная"), "success_queue": Q(),
                       "reserved_sim_number": "91", "reserved_sim_url": "u3", "success_profile": {}, "_verdict": "PAYMENT"}
             self.assertFalse(ns["settle_success_1591r24"](base, pay_ai)); self.assertEqual(pay_ai["phase"], "SUCCESS_STOP")
-            self.assertEqual(pushed[-1].split("\n")[0], "#оплата"); self.assertIn("по вердикту DeepSeek", pushed[-1])
+            self.assertEqual(pushed[-1].split("\n")[0], "🆕 Новая eSIM · #оплата")  # TELEGRAM_MENU_1591R38
+            saved = json.loads((base / "payment_required.jsonl").read_text("utf-8").splitlines()[-1]); self.assertIn("по вердикту DeepSeek", saved["payment_text"])
 
     def test_sign_click_trace_records_server_answers_and_reaches_the_unverified_push(self):
         src = self.source
@@ -1689,7 +1780,7 @@ class MatcherEquivalenceTests(unittest.TestCase):
 class FreshInstallTests(unittest.TestCase):
     """fresh_install.sh builds a server from the repository alone (offline mode: no apt, venv, systemd)."""
     SCRIPT = Path(__file__).resolve().parent / "fresh_install.sh"
-    CODE = ("test_beeline.py", "server_controller.py", "operator_runtime_io.py", "symbol_matching.py",
+    CODE = ("test_beeline.py", "server_controller.py", "operator_runtime_io.py", "symbol_matching.py", "telegram_menu.py",
             "local_matcher.py", "batch_support.py", "console_wait.py", "PROJECT_RULES.md")
 
     def _run(self, app, **env):
@@ -1718,7 +1809,7 @@ class FreshInstallTests(unittest.TestCase):
             package = max((x for x in Path(__file__).resolve().parent.glob("beeline_integrated_io_15_91_r*")
                            if x.name.rsplit("r", 1)[1].isdigit()),          # the full package, not *_lite
                           key=lambda x: int(x.name.rsplit("r", 1)[1]))
-            for name in ("test_beeline.py", "server_controller.py", "operator_runtime_io.py", "symbol_matching.py"):
+            for name in ("test_beeline.py", "server_controller.py", "operator_runtime_io.py", "symbol_matching.py", "telegram_menu.py"):
                 self.assertEqual((app / name).read_bytes(), (package / name).read_bytes(), name)
             self.assertEqual((app / "local_matcher.py").read_bytes(),
                              (Path(__file__).resolve().parent.parent / "local_matcher.py").read_bytes())

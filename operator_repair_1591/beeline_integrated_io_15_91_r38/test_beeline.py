@@ -556,53 +556,25 @@ def _tg_status_messages_save_1591r27(chat, mids):
 
 
 def _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at):
-    """Create the missing status messages and push the changed texts, within the limits."""
-    changed = False
+    """TELEGRAM_MENU_1591R38: the tab statuses go to status_snapshot.json for the bot's menu
+    (its «Статус» view edits one panel while it is open). The eight status messages and their
+    background edits of revision 27 are gone, so nothing is sent to Telegram here."""
+    tabs = {}
     for i in range(1, TAB_COUNT + 1):
-        if i in mids:
-            continue
-        r, err = _tg_call_1591r27(
-            cfg, "sendMessage",
-            {"chat_id": chat, "text": f"⏳ Вкладка {i}\nСтатус: запуск...", "disable_web_page_preview": "true"},
-            state,
-        )
-        if r:
-            mids[i] = r["result"]["message_id"]
-            last[i] = ""
-            changed = True
-            print(f"[Telegram] Сообщение вкладки {i} создано.", flush=True)
-        else:
-            if err != "paused":
-                print(f"[Telegram] ОШИБКА отправки вкладки {i}: {err}", flush=True)
-            break
-    if changed:
-        _tg_status_messages_save_1591r27(chat, mids)
-    now = time.time()
-    for i, mid in list(mids.items()):
         info = status_map.get(str(i))
-        t = str((info or {}).get("text", ""))
-        if not t or t == last.get(i) or now - float(edited_at.get(i) or 0) < TG_STATUS_MIN_EDIT_GAP_1591R27:
-            continue
-        r, err = _tg_call_1591r27(
-            cfg, "editMessageText",
-            {"chat_id": chat, "message_id": mid, "text": t[:4000], "disable_web_page_preview": "true"},
-            state,
-        )
-        edited_at[i] = time.time()
-        if r:
-            last[i] = t
-            continue
-        if err == "paused":
-            break
-        low = str(err).lower()
-        if "message is not modified" in low:
-            last[i] = t
-        elif "not found" in low or "can't be edited" in low or "message_id_invalid" in low:
-            mids.pop(i, None)
-            _tg_status_messages_save_1591r27(chat, mids)
-            print(f"[Telegram] Сообщение вкладки {i} исчезло — создам новое.", flush=True)
-        else:
-            print(f"[Telegram] ОШИБКА обновления вкладки {i}: {err}", flush=True)
+        if info:
+            tabs[str(i)] = {"text": str(info.get("text", ""))[:1500], "time": float(info.get("time") or 0)}
+    key = json.dumps(tabs, ensure_ascii=False, sort_keys=True)
+    if key == last.get("_snapshot"):
+        return
+    last["_snapshot"] = key
+    path = _tg_status_file_1591r27().with_name("status_snapshot.json")
+    try:
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"updated": time.time(), "tabs": tabs}, ensure_ascii=False), "utf-8")
+        tmp.replace(path)
+    except Exception as exc:
+        print(f"[Telegram] status_snapshot.json не записан: {type(exc).__name__}: {exc}", flush=True)
 
 
 def telegram_logger_process(status_map, success_queue, stop_event):
@@ -624,25 +596,10 @@ def telegram_logger_process(status_map, success_queue, stop_event):
     bot_name = (test.get("result") or {}).get("username", "?")
     print(f"[Telegram] SOCKS5 подключён. Бот: @{bot_name}", flush=True)
 
-    # TG_RATE_1591R27: reuse the status messages of the previous run instead of four new ones
-    # per restart; each is verified by an edit and recreated only when Telegram says it is gone.
-    for i, mid in _tg_status_messages_load_1591r27(chat).items():
-        r, err = _tg_call_1591r27(
-            cfg, "editMessageText",
-            {"chat_id": chat, "message_id": mid, "text": f"⏳ Вкладка {i}\nСтатус: перезапуск...",
-             "disable_web_page_preview": "true"},
-            state,
-        )
-        if r or err == "paused" or "not modified" in str(err or "").lower():
-            mids[i] = mid
-            last[i] = ""
+    # TELEGRAM_MENU_1591R38: statuses are written to status_snapshot.json and shown by the
+    # bot's menu on request; no status messages are created or edited here any more.
+    print("[Telegram] Статус вкладок пишется в status_snapshot.json; показ — через меню бота.", flush=True)
     _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at)
-    if not mids:
-        print(
-            "[Telegram] Статусные сообщения пока не созданы (лимит Telegram) — попробую позже; "
-            "основной сценарий работает.",
-            flush=True,
-        )
 
     while not stop_event.is_set():
         # Успехи отправляются ОТДЕЛЬНЫМИ сообщениями и никогда не редактируются.
@@ -3949,6 +3906,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             f"[AI {lane.upper()}] Обрабатываю update {update_id}: {latest[:120]}",
             flush=True,
         )
+        _ai_mark_busy_1591r30(status_map, latest, update_id)  # SIGN_ROBUST_1591R31
 
         try:
             _ai_health_touch(ai_health, "busy_browser", f"update={update_id}")
@@ -4038,6 +3996,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
                             + str(plan.get("summary") or "Готово.")
                         )
 
+            _ai_success_verdict_1591r30(status_map, latest, response_text)  # SIGN_ROBUST_1591R31
             # Mark complete and queue the response in one local durable store.
             _ai_db_complete(
                 update_id,
@@ -4051,6 +4010,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             err = f"{type(exc).__name__}: {exc}"
             print(f"[AI {lane.upper()}] Operator error update {update_id}: {err}", flush=True)
             _ai_db_fail(update_id, err, job.get("attempts", 1))
+            _ai_success_verdict_1591r30(status_map, latest, "")  # SIGN_ROBUST_1591R31: busy flag off
             _ai_health_touch(ai_health, "job_error", err)
 
         time.sleep(0.2)
@@ -4786,7 +4746,37 @@ def _success_profile_lines(profile):
     profile=profile or {}
     return [f"{label}: {profile.get(key) or '—'}" for key,label in SUCCESS_PROFILE_FIELDS]
 
+def _pretty_phone_1591r38(value):
+    d = re.sub(r"\D", "", str(value or ""))
+    if len(d) == 11 and d[0] in "78":
+        return f"+7 {d[1:4]} {d[4:7]}-{d[7:9]}-{d[9:]}"
+    return str(value or "—")
+
+
+def _short_push_1591r38(worker, rec, tag, outcome):
+    """TELEGRAM_MENU_1591R38: the push is a short card; the full record (profile, links,
+    network trace) is in the bot's menu, «Мои eSIM», and in the jsonl files."""
+    row_no, active_value, second_value = row_parts(worker.get("row"))
+    profile = rec.get("profile") or {}
+    lines = [
+        f"🆕 Новая eSIM · {tag}",
+        f"📱 {_pretty_phone_1591r38(rec.get('sim_number'))}",
+        f"👤 {profile.get('full_name') or '—'} · 🎂 {profile.get('birth_date') or '—'}",
+        f"📄 Строка {row_no}/{worker.get('total_rows') or '?'} · {active_value} | {second_value}",
+        outcome,
+    ]
+    if tag == "#оплата" and rec.get("sim_url"):
+        lines.append(f"🔗 {rec['sim_url']}")
+    lines.append("🗂 Карточка и отметки: меню бота → 📱 Мои eSIM")
+    return "\n".join(lines)
+
+
 def _success_message(worker, rec):
+    return _short_push_1591r38(worker, rec, "#успешно", "✅ Договор оформлен")  # TELEGRAM_MENU_1591R38
+
+
+def _success_message_full_1591r17(worker, rec):
+    """The former long push; kept for reference, the menu card renders the same fields."""
     row_no, active_value, second_value = row_parts(worker.get("row"))
     profile = rec.get("profile") or {}
     return "\n".join([
@@ -4885,6 +4875,7 @@ def write_success_record(base_dir, worker):
         "second_value":b,
         "sim_number":worker.get("reserved_sim_number"),
         "sim_url":worker.get("reserved_sim_url"),
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),  # TELEGRAM_MENU_1591R38: order in «Мои eSIM»
         "profile":dict(worker.get("success_profile") or {}),
         "final_url": final.get("url") or "",  # FINAL_PAGE_1591R23
         "final_title": final.get("title") or "",
@@ -7450,6 +7441,156 @@ def enter_success_guard(worker, note):
     )
 
 
+# SIGN_ROBUST_1591R31
+AI_BUSY_MAX_SECONDS = 150      # a DeepSeek session older than this no longer blocks the local signing
+AI_YIELD_MAX_SECONDS = 120     # the local code yields to DeepSeek at most this long per row
+AI_VERDICT_MAX_AGE = 900
+SIGN_SENT_RE_1591R30 = re.compile(r"checksignature|/sign", re.I)
+
+
+def _ai_busy_1591r30(worker):
+    """True while a DeepSeek SUCCESS_ASSIST session is working on this tab (bounded)."""
+    sm = worker.get("status_map")
+    if sm is None:
+        return False
+    try:
+        info = sm.get(f"ai_busy:{worker.get('id')}") or {}
+    except Exception:
+        return False
+    now = time.time()
+    if not info or now - float(info.get("time") or 0) > AI_BUSY_MAX_SECONDS:
+        worker["ai_yield_since"] = None
+        return False
+    since = worker.get("ai_yield_since")
+    if since is None:
+        worker["ai_yield_since"] = now
+        return True
+    return now - float(since) < AI_YIELD_MAX_SECONDS
+
+
+def _ai_verdict_1591r30(worker):
+    """DeepSeek's VERDICT for this tab, if given after the local click and still fresh."""
+    sm = worker.get("status_map")
+    if sm is None:
+        return ""
+    try:
+        info = sm.get(f"verdict:{worker.get('id')}") or {}
+    except Exception:
+        return ""
+    when = float(info.get("time") or 0)
+    if not info or time.time() - when > AI_VERDICT_MAX_AGE:
+        return ""
+    if when < float(worker.get("sign_clicked_at") or 0):
+        return ""
+    return str(info.get("verdict") or "").upper()
+
+
+def _ai_mark_busy_1591r30(status_map, request_text, update_id):
+    """Observer side: this SUCCESS_ASSIST request is being worked on — the tab's local code yields."""
+    m = re.search(r"\[AUTO_SUCCESS_ASSIST TAB (\d+)\]", str(request_text or ""))
+    if not m or status_map is None:
+        return None
+    tab = int(m.group(1))
+    try:
+        status_map[f"ai_busy:{tab}"] = {"time": time.time(), "update": update_id}
+    except Exception:
+        pass
+    return tab
+
+
+def _ai_success_verdict_1591r30(status_map, request_text, response_text):
+    """Observer side: record DeepSeek's VERDICT for the tab named in the request; clear busy."""
+    m = re.search(r"\[AUTO_SUCCESS_ASSIST TAB (\d+)\]", str(request_text or ""))
+    if not m or status_map is None:
+        return None
+    tab = int(m.group(1))
+    try:
+        status_map.pop(f"ai_busy:{tab}", None)
+    except Exception:
+        pass
+    v = re.search(r"VERDICT:\s*(SIGNED|PAYMENT|NOT_SIGNED)", str(response_text or ""), re.I)
+    if not v:
+        return None
+    verdict = v.group(1).upper()
+    try:
+        status_map[f"verdict:{tab}"] = {"verdict": verdict, "time": time.time(),
+                                        "text": str(response_text or "")[-300:]}
+    except Exception:
+        pass
+    print(f"[AI VERDICT] TAB {tab}: {verdict}", flush=True)
+    return verdict
+
+
+_SIGNATURE_CANVAS_FILLED_JS_1591R30 = r"""() => {
+  const list = [...document.querySelectorAll('canvas')].filter(c => {
+    const r = c.getBoundingClientRect(); return r.width >= 250 && r.height >= 120;
+  });
+  if (!list.length) return null;
+  const c = list[0];
+  try {
+    const blank = document.createElement('canvas'); blank.width = c.width; blank.height = c.height;
+    return c.toDataURL() !== blank.toDataURL();
+  } catch (e) { return null; }
+}"""
+
+
+def _signature_canvas_filled_1591r30(page):
+    """True/False when the signature pad is/is not drawn on; None when unknown."""
+    try:
+        return page.evaluate(_SIGNATURE_CANVAS_FILLED_JS_1591R30)
+    except Exception:
+        return None
+
+
+def _sign_prepare_1591r30(page, worker):
+    """Before the local signing: no portal modal may intercept the click."""
+    try:
+        dismiss_blocking_overlays(page, keep_text="подписать")
+    except Exception:
+        pass
+
+
+def _sign_request_sent_1591r30(trace):
+    for r in (trace or {}).get("responses") or []:
+        url = str(r.get("url") or "")
+        if SIGN_SENT_RE_1591R30.search(url):
+            return True
+        if str(r.get("method")) in ("POST", "PUT", "PATCH") and int(r.get("status") or 0) < 400 and "esim" in url.lower():
+            return True
+    return False
+
+
+def _sign_retry_if_unsent_1591r30(page, worker):
+    """The click sent nothing and the button is still there: overlays away, redraw, ONE more click."""
+    trace = worker.get("sign_trace") or {}
+    if _sign_request_sent_1591r30(trace) or int(worker.get("sign_retries") or 0) >= 1:
+        return False
+    try:
+        if _signature_button_locator(page) is None:
+            return False
+    except Exception:
+        return False
+    worker["sign_retries"] = int(worker.get("sign_retries") or 0) + 1
+    filled = _signature_canvas_filled_1591r30(page)
+    canvas = "пуст" if filled is False else ("не пуст" if filled else "?")
+    print(
+        f"[Вкладка {worker.get('id')}] Подпись: запрос на сервер не ушёл (холст {canvas}) — "
+        "снимаю оверлеи и повторяю один раз.",
+        flush=True,
+    )
+    _sign_prepare_1591r30(page, worker)
+    _sign_trace_begin_1591r25(page, worker)
+    try:
+        fill_signature_and_submit(page, worker.get("diagnostic"))
+        worker["sign_clicked_at"] = time.time()
+        return True
+    except Exception as exc:
+        print(f"[Вкладка {worker.get('id')}] Повтор подписи не удался: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
+        return False
+    finally:
+        _sign_trace_end_1591r25(page, worker, note="retry")
+
+
 def tick_post_auth_review(base_dir, worker):
     page = worker["page"]
 
@@ -7497,6 +7638,10 @@ def tick_post_auth_review(base_dir, worker):
             queue_success_assist(worker, "область отсутствует или не принялась")
 
     button = _signature_button_locator(page)
+    if button is not None and _ai_busy_1591r30(worker):  # SIGN_ROBUST_1591R31: DeepSeek is on this tab
+        set_tab_status(worker, "🧠", "Подтверждение успешно. DeepSeek работает с вкладкой — подпись отложена.")
+        external_heartbeat(worker, "sign_yield_to_ai")
+        return
     if button is not None:
         try:
             enabled = button.is_enabled()
@@ -7519,11 +7664,17 @@ def tick_post_auth_review(base_dir, worker):
                 "Подтверждение успешно. Заполняю подпись и подписываю договор."
             )
             capture_contract_details(page, worker)
+            _sign_prepare_1591r30(page, worker)  # SIGN_ROBUST_1591R31: overlays away first
             _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25
             try:
                 fill_signature_and_submit(page, worker.get("diagnostic"))
             finally:
                 _sign_trace_end_1591r25(page, worker)
+            worker["sign_clicked_at"] = time.time()
+            try:
+                _sign_retry_if_unsent_1591r30(page, worker)  # nothing sent + button still there → one retry
+            except Exception as exc:
+                print(f"[Вкладка {worker['id']}] Проверка отправки подписи: {type(exc).__name__}: {exc}", flush=True)
             worker["phase"] = "SIGN_WAIT"
             worker["sign_submit_url"] = page.url
             worker["sign_button_gone_since"] = None
@@ -7844,6 +7995,10 @@ def _payment_page_1591r26(page):
 
 
 def _payment_message_1591r26(worker, rec):
+    return _short_push_1591r38(worker, rec, "#оплата", "💳 Подпись принята, нужна оплата картой; номер помечен обработанным")  # TELEGRAM_MENU_1591R38
+
+
+def _payment_message_full_1591r26(worker, rec):
     row_no, active_value, second_value = row_parts(worker.get("row"))
     return "\n".join([
         "#оплата",
@@ -7917,9 +8072,15 @@ def settle_success_1591r24(base_dir, worker):
     if payment_text:
         _finish_payment_required_1591r26(base_dir, worker, payment_text)
         return False
+    verdict = _ai_verdict_1591r30(worker)  # SIGN_ROBUST_1591R31
+    if verdict == "PAYMENT":
+        _finish_payment_required_1591r26(base_dir, worker, "по вердикту DeepSeek: сайт требует оплату eSIM")
+        return False
     evidence = _signed_evidence_1591r24(page) if page is not None else ""
     if not evidence and _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37
         evidence = "network:signature_accepted"  # the site answered the signing request with 2xx
+    if not evidence and verdict == "SIGNED":
+        evidence = "ai:verdict_signed"
     if evidence:
         worker["success_evidence"] = evidence
         finalize_success(base_dir, worker)

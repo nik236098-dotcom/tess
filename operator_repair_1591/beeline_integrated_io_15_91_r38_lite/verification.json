@@ -7,7 +7,7 @@
   "exact_input_sha256": {
     "test_beeline.py": {
       "input_sha256": "bf315d3070199410132a7b3d690d6f7a2cc8260715877b9833eab2f3648397b0",
-      "output_sha256": "a31f394aa9d9b708bb9c85c182a871dd0d63b96de78de58429c5746a07babd44",
+      "output_sha256": "ef28ef77fbb8cb8afac35e6daaaeffee983e759322ebafb76c06e2d5fcdce6c1",
       "previous_output_sha256": [
         "04e07acd1a019a943c72237a6c6c61b34134f7b753ce3f3b484c832ce742ae9d",
         "0544d1e2190d7ac7a2d091fe2370a558f038dbef17dbb775ce973d7a86642643",
@@ -31,6 +31,7 @@
         "72110535925a3167e91c621a29e2d46d090f7e76b03bb250df9f35530bdcaa5d",
         "725adc5426e06707060bd25daa5af8fd4d66e83bfe064869f323177db3d8a12e",
         "747c7f08c994baa104d82ebb5d3302215bc4f1147e238b66629bd5037710c47d",
+        "74a466855054bb9f8cf05ae05c66224a519f0c1322ad695316006ae4aad40348",
         "786a170bbe7f1861e225ec19f150c20ca176f5dbb55beeeb02924522cb29a6f3",
         "8561fef2069ee3c6df376c6060084aca717405e63f009d96bb0b98aa4aa7c1bc",
         "8f5fc960fc6cc44faebc19eae0709057f3c8c627d623d9219a0c85cff81d3012",
@@ -49,17 +50,19 @@
         "e2c48c93641a62328a976b2197be2b3fba0ff0586819709eacc52afd27042e52",
         "e8f5e036c2f33ab9d8f27a98deceb25356511cd253fc871f929c16d619f45d75",
         "ec65b2fa802131dbd7f2e679f422c40ddae10cc842bff784869925e14b16c105",
+        "ef28ef77fbb8cb8afac35e6daaaeffee983e759322ebafb76c06e2d5fcdce6c1",
         "f64ef74d8f4b6b3875c77253e23ede004065f6afcfc342e971c249138f570541",
         "fd1ed72b18db63993d0c288fa7ad8449e3e7827fa2b2697569dd79a9053ec3dc"
       ]
     },
     "server_controller.py": {
       "input_sha256": "708efce19cb404b19c1d74300f87d7658494a22591214e9b74c65d2a3b737673",
-      "output_sha256": "f3b36badf1e9d77a1dda6fe287b5210372d42a1846f993a28cf9c1f6aa7abacd",
+      "output_sha256": "d561621ddacaa0c4e602a5da75842207a9b76f563f2d26202e75e9e7eeb6012b",
       "previous_output_sha256": [
         "384e2c06274159c01dae2b9dc8698dff2a93912e5a6bf3de9eb57efce6d256c4",
         "506a84c41558332c75cbf55abc8e940520a589b3bc754a6845ca1dd7515740e8",
-        "5104af2bf68452b1dcd3b814b35e696699232087b92db87ee7e1e9a6ee1a8bd9"
+        "5104af2bf68452b1dcd3b814b35e696699232087b92db87ee7e1e9a6ee1a8bd9",
+        "f3b36badf1e9d77a1dda6fe287b5210372d42a1846f993a28cf9c1f6aa7abacd"
       ]
     },
     "operator_runtime_io.py": {
@@ -69,7 +72,10 @@
       "input_sha256": "915368d66804f64d4d7d7de42d2e474f1ea29ffe5b14c352b67d054ee40c8c35",
       "output_sha256": "5a386af1f064ba193bc388cab5260e713877435f7fb994239fc2fdae41772a0e",
       "previous_output_sha256": []
+    },
+    "telegram_menu.py": {
+      "output_sha256": "23b31353e4212cb5dc0a7faa98fd9fbee9618b0d648f1521b0a75cc404554147"
     }
   },
-  "revision": 37
+  "revision": 38
 }

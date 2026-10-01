@@ -14,7 +14,7 @@ import tempfile
 import time
 import uuid
 
-FILES = ('operator_runtime_io.py', 'test_beeline.py', 'server_controller.py', 'symbol_matching.py')
+FILES = ('operator_runtime_io.py', 'test_beeline.py', 'server_controller.py', 'symbol_matching.py', 'telegram_menu.py')
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
@@ -47,6 +47,11 @@ def reconstruct(app, package):
     if digest(raw) != manifest['files']['operator_runtime_io.py']['output_sha256']:
         raise RuntimeError('Support module checksum failed')
     result['operator_runtime_io.py'] = raw
+    # TELEGRAM_MENU_1591R38: a support module like operator_runtime_io.py (no original on the server).
+    raw = (package/'telegram_menu.py').read_bytes()
+    if digest(raw) != manifest['files']['telegram_menu.py']['output_sha256']:
+        raise RuntimeError('Menu module checksum failed')
+    result['telegram_menu.py'] = raw
     for name, raw in result.items():
         compile(raw.decode('utf-8'), name, 'exec')
     return originals, result
@@ -91,9 +96,9 @@ def check_imports(app):
     if not python.is_file():
         raise RuntimeError('venv/bin/python is missing')
     subprocess.run([str(python), '-B', '-c',
-        'import test_beeline as a; import server_controller as c; import symbol_matching as s; '
+        'import test_beeline as a; import server_controller as c; import symbol_matching as s; import telegram_menu as m; '
         'assert a.IO_BUILD_VERSION == c.IO_BUILD_VERSION == "15.91-io"; '
-        'assert a._io1591.VERSION == "15.91-io"; assert s.MATCHER_VERSION == "14.1"; print("IMPORT OK")'],
+        'assert a._io1591.VERSION == "15.91-io"; assert s.MATCHER_VERSION == "14.1"; assert m.MENU_VERSION == "1591r38"; print("IMPORT OK")'],
         cwd=app, check=True, timeout=45)
 
 

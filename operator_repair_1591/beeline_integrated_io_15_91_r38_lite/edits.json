@@ -121,53 +121,25 @@
         "\n",
         "\n",
         "def _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at):\n",
-        "    \"\"\"Create the missing status messages and push the changed texts, within the limits.\"\"\"\n",
-        "    changed = False\n",
+        "    \"\"\"TELEGRAM_MENU_1591R38: the tab statuses go to status_snapshot.json for the bot's menu\n",
+        "    (its «Статус» view edits one panel while it is open). The eight status messages and their\n",
+        "    background edits of revision 27 are gone, so nothing is sent to Telegram here.\"\"\"\n",
+        "    tabs = {}\n",
         "    for i in range(1, TAB_COUNT + 1):\n",
-        "        if i in mids:\n",
-        "            continue\n",
-        "        r, err = _tg_call_1591r27(\n",
-        "            cfg, \"sendMessage\",\n",
-        "            {\"chat_id\": chat, \"text\": f\"⏳ Вкладка {i}\\nСтатус: запуск...\", \"disable_web_page_preview\": \"true\"},\n",
-        "            state,\n",
-        "        )\n",
-        "        if r:\n",
-        "            mids[i] = r[\"result\"][\"message_id\"]\n",
-        "            last[i] = \"\"\n",
-        "            changed = True\n",
-        "            print(f\"[Telegram] Сообщение вкладки {i} создано.\", flush=True)\n",
-        "        else:\n",
-        "            if err != \"paused\":\n",
-        "                print(f\"[Telegram] ОШИБКА отправки вкладки {i}: {err}\", flush=True)\n",
-        "            break\n",
-        "    if changed:\n",
-        "        _tg_status_messages_save_1591r27(chat, mids)\n",
-        "    now = time.time()\n",
-        "    for i, mid in list(mids.items()):\n",
         "        info = status_map.get(str(i))\n",
-        "        t = str((info or {}).get(\"text\", \"\"))\n",
-        "        if not t or t == last.get(i) or now - float(edited_at.get(i) or 0) < TG_STATUS_MIN_EDIT_GAP_1591R27:\n",
-        "            continue\n",
-        "        r, err = _tg_call_1591r27(\n",
-        "            cfg, \"editMessageText\",\n",
-        "            {\"chat_id\": chat, \"message_id\": mid, \"text\": t[:4000], \"disable_web_page_preview\": \"true\"},\n",
-        "            state,\n",
-        "        )\n",
-        "        edited_at[i] = time.time()\n",
-        "        if r:\n",
-        "            last[i] = t\n",
-        "            continue\n",
-        "        if err == \"paused\":\n",
-        "            break\n",
-        "        low = str(err).lower()\n",
-        "        if \"message is not modified\" in low:\n",
-        "            last[i] = t\n",
-        "        elif \"not found\" in low or \"can't be edited\" in low or \"message_id_invalid\" in low:\n",
-        "            mids.pop(i, None)\n",
-        "            _tg_status_messages_save_1591r27(chat, mids)\n",
-        "            print(f\"[Telegram] Сообщение вкладки {i} исчезло — создам новое.\", flush=True)\n",
-        "        else:\n",
-        "            print(f\"[Telegram] ОШИБКА обновления вкладки {i}: {err}\", flush=True)\n",
+        "        if info:\n",
+        "            tabs[str(i)] = {\"text\": str(info.get(\"text\", \"\"))[:1500], \"time\": float(info.get(\"time\") or 0)}\n",
+        "    key = json.dumps(tabs, ensure_ascii=False, sort_keys=True)\n",
+        "    if key == last.get(\"_snapshot\"):\n",
+        "        return\n",
+        "    last[\"_snapshot\"] = key\n",
+        "    path = _tg_status_file_1591r27().with_name(\"status_snapshot.json\")\n",
+        "    try:\n",
+        "        tmp = path.with_suffix(\".tmp\")\n",
+        "        tmp.write_text(json.dumps({\"updated\": time.time(), \"tabs\": tabs}, ensure_ascii=False), \"utf-8\")\n",
+        "        tmp.replace(path)\n",
+        "    except Exception as exc:\n",
+        "        print(f\"[Telegram] status_snapshot.json не записан: {type(exc).__name__}: {exc}\", flush=True)\n",
         "\n",
         "\n",
         "def telegram_logger_process(status_map, success_queue, stop_event):\n"
@@ -187,25 +159,10 @@
       "start": 518,
       "end": 539,
       "replacement": [
-        "    # TG_RATE_1591R27: reuse the status messages of the previous run instead of four new ones\n",
-        "    # per restart; each is verified by an edit and recreated only when Telegram says it is gone.\n",
-        "    for i, mid in _tg_status_messages_load_1591r27(chat).items():\n",
-        "        r, err = _tg_call_1591r27(\n",
-        "            cfg, \"editMessageText\",\n",
-        "            {\"chat_id\": chat, \"message_id\": mid, \"text\": f\"⏳ Вкладка {i}\\nСтатус: перезапуск...\",\n",
-        "             \"disable_web_page_preview\": \"true\"},\n",
-        "            state,\n",
-        "        )\n",
-        "        if r or err == \"paused\" or \"not modified\" in str(err or \"\").lower():\n",
-        "            mids[i] = mid\n",
-        "            last[i] = \"\"\n",
+        "    # TELEGRAM_MENU_1591R38: statuses are written to status_snapshot.json and shown by the\n",
+        "    # bot's menu on request; no status messages are created or edited here any more.\n",
+        "    print(\"[Telegram] Статус вкладок пишется в status_snapshot.json; показ — через меню бота.\", flush=True)\n",
         "    _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at)\n",
-        "    if not mids:\n",
-        "        print(\n",
-        "            \"[Telegram] Статусные сообщения пока не созданы (лимит Telegram) — попробую позже; \"\n",
-        "            \"основной сценарий работает.\",\n",
-        "            flush=True,\n",
-        "        )\n",
         "\n"
       ]
     },
@@ -595,17 +552,6 @@
       ]
     },
     {
-      "start": 3832,
-      "end": 3836,
-      "replacement": [
-        "        print(\n",
-        "            f\"[AI {lane.upper()}] Обрабатываю update {update_id}: {latest[:120]}\",\n",
-        "            flush=True,\n",
-        "        )\n",
-        "        _ai_mark_busy_1591r30(status_map, latest, update_id)  # SIGN_ROBUST_1591R31\n"
-      ]
-    },
-    {
       "start": 3839,
       "end": 3840,
       "replacement": [
@@ -627,27 +573,10 @@
       ]
     },
     {
-      "start": 3924,
-      "end": 3926,
-      "replacement": [
-        "            _ai_success_verdict_1591r30(status_map, latest, response_text)  # SIGN_ROBUST_1591R31\n",
-        "            # Mark complete and queue the response in one local durable store.\n",
-        "            _ai_db_complete(\n"
-      ]
-    },
-    {
       "start": 3928,
       "end": 3929,
       "replacement": [
         "                (response_text or \"🤖 DeepSeek Operator\\n\\nПустой результат; выполнение не подтверждено.\"),\n"
-      ]
-    },
-    {
-      "start": 3936,
-      "end": 3937,
-      "replacement": [
-        "            _ai_db_fail(update_id, err, job.get(\"attempts\", 1))\n",
-        "            _ai_success_verdict_1591r30(status_map, latest, \"\")  # SIGN_ROBUST_1591R31: busy flag off\n"
       ]
     },
     {
@@ -850,6 +779,44 @@
       ]
     },
     {
+      "start": 4487,
+      "end": 4489,
+      "replacement": [
+        "def _pretty_phone_1591r38(value):\n",
+        "    d = re.sub(r\"\\D\", \"\", str(value or \"\"))\n",
+        "    if len(d) == 11 and d[0] in \"78\":\n",
+        "        return f\"+7 {d[1:4]} {d[4:7]}-{d[7:9]}-{d[9:]}\"\n",
+        "    return str(value or \"—\")\n",
+        "\n",
+        "\n",
+        "def _short_push_1591r38(worker, rec, tag, outcome):\n",
+        "    \"\"\"TELEGRAM_MENU_1591R38: the push is a short card; the full record (profile, links,\n",
+        "    network trace) is in the bot's menu, «Мои eSIM», and in the jsonl files.\"\"\"\n",
+        "    row_no, active_value, second_value = row_parts(worker.get(\"row\"))\n",
+        "    profile = rec.get(\"profile\") or {}\n",
+        "    lines = [\n",
+        "        f\"🆕 Новая eSIM · {tag}\",\n",
+        "        f\"📱 {_pretty_phone_1591r38(rec.get('sim_number'))}\",\n",
+        "        f\"👤 {profile.get('full_name') or '—'} · 🎂 {profile.get('birth_date') or '—'}\",\n",
+        "        f\"📄 Строка {row_no}/{worker.get('total_rows') or '?'} · {active_value} | {second_value}\",\n",
+        "        outcome,\n",
+        "    ]\n",
+        "    if tag == \"#оплата\" and rec.get(\"sim_url\"):\n",
+        "        lines.append(f\"🔗 {rec['sim_url']}\")\n",
+        "    lines.append(\"🗂 Карточка и отметки: меню бота → 📱 Мои eSIM\")\n",
+        "    return \"\\n\".join(lines)\n",
+        "\n",
+        "\n",
+        "def _success_message(worker, rec):\n",
+        "    return _short_push_1591r38(worker, rec, \"#успешно\", \"✅ Договор оформлен\")  # TELEGRAM_MENU_1591R38\n",
+        "\n",
+        "\n",
+        "def _success_message_full_1591r17(worker, rec):\n",
+        "    \"\"\"The former long push; kept for reference, the menu card renders the same fields.\"\"\"\n",
+        "    row_no, active_value, second_value = row_parts(worker.get(\"row\"))\n"
+      ]
+    },
+    {
       "start": 4490,
       "end": 4492,
       "replacement": [
@@ -959,6 +926,14 @@
         "        \"final_links\": list(final.get(\"links\") or []),\n",
         "        \"sign_trace\": _sign_trace_summary_1591r25(worker.get(\"sign_trace\")),  # SIGN_TRACE_1591R25\n",
         "    }\n"
+      ]
+    },
+    {
+      "start": 4511,
+      "end": 4512,
+      "replacement": [
+        "        \"time\": time.strftime(\"%Y-%m-%d %H:%M:%S\"),  # TELEGRAM_MENU_1591R38: order in «Мои eSIM»\n",
+        "        \"profile\":dict(worker.get(\"success_profile\") or {}),\n"
       ]
     },
     {
@@ -1959,163 +1934,6 @@
       ]
     },
     {
-      "start": 6366,
-      "end": 6367,
-      "replacement": [
-        "# SIGN_ROBUST_1591R31\n",
-        "AI_BUSY_MAX_SECONDS = 150      # a DeepSeek session older than this no longer blocks the local signing\n",
-        "AI_YIELD_MAX_SECONDS = 120     # the local code yields to DeepSeek at most this long per row\n",
-        "AI_VERDICT_MAX_AGE = 900\n",
-        "SIGN_SENT_RE_1591R30 = re.compile(r\"checksignature|/sign\", re.I)\n",
-        "\n",
-        "\n",
-        "def _ai_busy_1591r30(worker):\n",
-        "    \"\"\"True while a DeepSeek SUCCESS_ASSIST session is working on this tab (bounded).\"\"\"\n",
-        "    sm = worker.get(\"status_map\")\n",
-        "    if sm is None:\n",
-        "        return False\n",
-        "    try:\n",
-        "        info = sm.get(f\"ai_busy:{worker.get('id')}\") or {}\n",
-        "    except Exception:\n",
-        "        return False\n",
-        "    now = time.time()\n",
-        "    if not info or now - float(info.get(\"time\") or 0) > AI_BUSY_MAX_SECONDS:\n",
-        "        worker[\"ai_yield_since\"] = None\n",
-        "        return False\n",
-        "    since = worker.get(\"ai_yield_since\")\n",
-        "    if since is None:\n",
-        "        worker[\"ai_yield_since\"] = now\n",
-        "        return True\n",
-        "    return now - float(since) < AI_YIELD_MAX_SECONDS\n",
-        "\n",
-        "\n",
-        "def _ai_verdict_1591r30(worker):\n",
-        "    \"\"\"DeepSeek's VERDICT for this tab, if given after the local click and still fresh.\"\"\"\n",
-        "    sm = worker.get(\"status_map\")\n",
-        "    if sm is None:\n",
-        "        return \"\"\n",
-        "    try:\n",
-        "        info = sm.get(f\"verdict:{worker.get('id')}\") or {}\n",
-        "    except Exception:\n",
-        "        return \"\"\n",
-        "    when = float(info.get(\"time\") or 0)\n",
-        "    if not info or time.time() - when > AI_VERDICT_MAX_AGE:\n",
-        "        return \"\"\n",
-        "    if when < float(worker.get(\"sign_clicked_at\") or 0):\n",
-        "        return \"\"\n",
-        "    return str(info.get(\"verdict\") or \"\").upper()\n",
-        "\n",
-        "\n",
-        "def _ai_mark_busy_1591r30(status_map, request_text, update_id):\n",
-        "    \"\"\"Observer side: this SUCCESS_ASSIST request is being worked on — the tab's local code yields.\"\"\"\n",
-        "    m = re.search(r\"\\[AUTO_SUCCESS_ASSIST TAB (\\d+)\\]\", str(request_text or \"\"))\n",
-        "    if not m or status_map is None:\n",
-        "        return None\n",
-        "    tab = int(m.group(1))\n",
-        "    try:\n",
-        "        status_map[f\"ai_busy:{tab}\"] = {\"time\": time.time(), \"update\": update_id}\n",
-        "    except Exception:\n",
-        "        pass\n",
-        "    return tab\n",
-        "\n",
-        "\n",
-        "def _ai_success_verdict_1591r30(status_map, request_text, response_text):\n",
-        "    \"\"\"Observer side: record DeepSeek's VERDICT for the tab named in the request; clear busy.\"\"\"\n",
-        "    m = re.search(r\"\\[AUTO_SUCCESS_ASSIST TAB (\\d+)\\]\", str(request_text or \"\"))\n",
-        "    if not m or status_map is None:\n",
-        "        return None\n",
-        "    tab = int(m.group(1))\n",
-        "    try:\n",
-        "        status_map.pop(f\"ai_busy:{tab}\", None)\n",
-        "    except Exception:\n",
-        "        pass\n",
-        "    v = re.search(r\"VERDICT:\\s*(SIGNED|PAYMENT|NOT_SIGNED)\", str(response_text or \"\"), re.I)\n",
-        "    if not v:\n",
-        "        return None\n",
-        "    verdict = v.group(1).upper()\n",
-        "    try:\n",
-        "        status_map[f\"verdict:{tab}\"] = {\"verdict\": verdict, \"time\": time.time(),\n",
-        "                                        \"text\": str(response_text or \"\")[-300:]}\n",
-        "    except Exception:\n",
-        "        pass\n",
-        "    print(f\"[AI VERDICT] TAB {tab}: {verdict}\", flush=True)\n",
-        "    return verdict\n",
-        "\n",
-        "\n",
-        "_SIGNATURE_CANVAS_FILLED_JS_1591R30 = r\"\"\"() => {\n",
-        "  const list = [...document.querySelectorAll('canvas')].filter(c => {\n",
-        "    const r = c.getBoundingClientRect(); return r.width >= 250 && r.height >= 120;\n",
-        "  });\n",
-        "  if (!list.length) return null;\n",
-        "  const c = list[0];\n",
-        "  try {\n",
-        "    const blank = document.createElement('canvas'); blank.width = c.width; blank.height = c.height;\n",
-        "    return c.toDataURL() !== blank.toDataURL();\n",
-        "  } catch (e) { return null; }\n",
-        "}\"\"\"\n",
-        "\n",
-        "\n",
-        "def _signature_canvas_filled_1591r30(page):\n",
-        "    \"\"\"True/False when the signature pad is/is not drawn on; None when unknown.\"\"\"\n",
-        "    try:\n",
-        "        return page.evaluate(_SIGNATURE_CANVAS_FILLED_JS_1591R30)\n",
-        "    except Exception:\n",
-        "        return None\n",
-        "\n",
-        "\n",
-        "def _sign_prepare_1591r30(page, worker):\n",
-        "    \"\"\"Before the local signing: no portal modal may intercept the click.\"\"\"\n",
-        "    try:\n",
-        "        dismiss_blocking_overlays(page, keep_text=\"подписать\")\n",
-        "    except Exception:\n",
-        "        pass\n",
-        "\n",
-        "\n",
-        "def _sign_request_sent_1591r30(trace):\n",
-        "    for r in (trace or {}).get(\"responses\") or []:\n",
-        "        url = str(r.get(\"url\") or \"\")\n",
-        "        if SIGN_SENT_RE_1591R30.search(url):\n",
-        "            return True\n",
-        "        if str(r.get(\"method\")) in (\"POST\", \"PUT\", \"PATCH\") and int(r.get(\"status\") or 0) < 400 and \"esim\" in url.lower():\n",
-        "            return True\n",
-        "    return False\n",
-        "\n",
-        "\n",
-        "def _sign_retry_if_unsent_1591r30(page, worker):\n",
-        "    \"\"\"The click sent nothing and the button is still there: overlays away, redraw, ONE more click.\"\"\"\n",
-        "    trace = worker.get(\"sign_trace\") or {}\n",
-        "    if _sign_request_sent_1591r30(trace) or int(worker.get(\"sign_retries\") or 0) >= 1:\n",
-        "        return False\n",
-        "    try:\n",
-        "        if _signature_button_locator(page) is None:\n",
-        "            return False\n",
-        "    except Exception:\n",
-        "        return False\n",
-        "    worker[\"sign_retries\"] = int(worker.get(\"sign_retries\") or 0) + 1\n",
-        "    filled = _signature_canvas_filled_1591r30(page)\n",
-        "    canvas = \"пуст\" if filled is False else (\"не пуст\" if filled else \"?\")\n",
-        "    print(\n",
-        "        f\"[Вкладка {worker.get('id')}] Подпись: запрос на сервер не ушёл (холст {canvas}) — \"\n",
-        "        \"снимаю оверлеи и повторяю один раз.\",\n",
-        "        flush=True,\n",
-        "    )\n",
-        "    _sign_prepare_1591r30(page, worker)\n",
-        "    _sign_trace_begin_1591r25(page, worker)\n",
-        "    try:\n",
-        "        fill_signature_and_submit(page, worker.get(\"diagnostic\"))\n",
-        "        worker[\"sign_clicked_at\"] = time.time()\n",
-        "        return True\n",
-        "    except Exception as exc:\n",
-        "        print(f\"[Вкладка {worker.get('id')}] Повтор подписи не удался: {type(exc).__name__}: {str(exc)[:200]}\", flush=True)\n",
-        "        return False\n",
-        "    finally:\n",
-        "        _sign_trace_end_1591r25(page, worker, note=\"retry\")\n",
-        "\n",
-        "\n",
-        "def tick_post_auth_review(base_dir, worker):\n"
-      ]
-    },
-    {
       "start": 6386,
       "end": 6397,
       "replacement": [
@@ -2139,35 +1957,15 @@
       ]
     },
     {
-      "start": 6406,
-      "end": 6410,
-      "replacement": [
-        "    button = _signature_button_locator(page)\n",
-        "    if button is not None and _ai_busy_1591r30(worker):  # SIGN_ROBUST_1591R31: DeepSeek is on this tab\n",
-        "        set_tab_status(worker, \"🧠\", \"Подтверждение успешно. DeepSeek работает с вкладкой — подпись отложена.\")\n",
-        "        external_heartbeat(worker, \"sign_yield_to_ai\")\n",
-        "        return\n",
-        "    if button is not None:\n",
-        "        try:\n",
-        "            enabled = button.is_enabled()\n"
-      ]
-    },
-    {
       "start": 6428,
       "end": 6431,
       "replacement": [
         "            capture_contract_details(page, worker)\n",
-        "            _sign_prepare_1591r30(page, worker)  # SIGN_ROBUST_1591R31: overlays away first\n",
         "            _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25\n",
         "            try:\n",
         "                fill_signature_and_submit(page, worker.get(\"diagnostic\"))\n",
         "            finally:\n",
         "                _sign_trace_end_1591r25(page, worker)\n",
-        "            worker[\"sign_clicked_at\"] = time.time()\n",
-        "            try:\n",
-        "                _sign_retry_if_unsent_1591r30(page, worker)  # nothing sent + button still there → one retry\n",
-        "            except Exception as exc:\n",
-        "                print(f\"[Вкладка {worker['id']}] Проверка отправки подписи: {type(exc).__name__}: {exc}\", flush=True)\n",
         "            worker[\"phase\"] = \"SIGN_WAIT\"\n"
       ]
     },
@@ -2467,6 +2265,10 @@
         "\n",
         "\n",
         "def _payment_message_1591r26(worker, rec):\n",
+        "    return _short_push_1591r38(worker, rec, \"#оплата\", \"💳 Подпись принята, нужна оплата картой; номер помечен обработанным\")  # TELEGRAM_MENU_1591R38\n",
+        "\n",
+        "\n",
+        "def _payment_message_full_1591r26(worker, rec):\n",
         "    row_no, active_value, second_value = row_parts(worker.get(\"row\"))\n",
         "    return \"\\n\".join([\n",
         "        \"#оплата\",\n",
@@ -2540,15 +2342,9 @@
         "    if payment_text:\n",
         "        _finish_payment_required_1591r26(base_dir, worker, payment_text)\n",
         "        return False\n",
-        "    verdict = _ai_verdict_1591r30(worker)  # SIGN_ROBUST_1591R31\n",
-        "    if verdict == \"PAYMENT\":\n",
-        "        _finish_payment_required_1591r26(base_dir, worker, \"по вердикту DeepSeek: сайт требует оплату eSIM\")\n",
-        "        return False\n",
         "    evidence = _signed_evidence_1591r24(page) if page is not None else \"\"\n",
         "    if not evidence and _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37\n",
         "        evidence = \"network:signature_accepted\"  # the site answered the signing request with 2xx\n",
-        "    if not evidence and verdict == \"SIGNED\":\n",
-        "        evidence = \"ai:verdict_signed\"\n",
         "    if evidence:\n",
         "        worker[\"success_evidence\"] = evidence\n",
         "        finalize_success(base_dir, worker)\n",
@@ -3448,11 +3244,20 @@
       ]
     },
     {
-      "start": 13,
+      "start": 12,
       "end": 13,
       "replacement": [
-        "\n",
-        "IO_BUILD_VERSION = \"15.91-io\"\n"
+        "import test_beeline as app\n",
+        "import telegram_menu as _menu_mod  # TELEGRAM_MENU_1591R38\n"
+      ]
+    },
+    {
+      "start": 37,
+      "end": 50,
+      "replacement": [
+        "# TELEGRAM_MENU_1591R38: the bottom keyboard is gone; every notice removes it once, the\n",
+        "# inline menu (telegram_menu.py) is the control surface.\n",
+        "MENU_MARKUP = json.dumps({\"remove_keyboard\": True})\n"
       ]
     },
     {
@@ -3669,12 +3474,48 @@
       ]
     },
     {
+      "start": 274,
+      "end": 276,
+      "replacement": [
+        "    proc = AutomationProcess()\n",
+        "    waiting_upload = False\n",
+        "    # TELEGRAM_MENU_1591R38: one panel message with inline buttons; the eight status messages\n",
+        "    # of earlier revisions are retired once.\n",
+        "    menu = _menu_mod.TelegramMenu(app, BASE_DIR, proc, link_resolver=_row_link_command)\n",
+        "    try:\n",
+        "        menu.retire_status_messages(BASE_DIR / \"telegram_status_messages.json\")\n",
+        "    except Exception as exc:\n",
+        "        print(f\"[CTRL] старые статусные сообщения не обновлены: {exc}\", flush=True)\n"
+      ]
+    },
+    {
+      "start": 286,
+      "end": 291,
+      "replacement": [
+        "    try:\n",
+        "        menu.show_menu(fresh=True)  # TELEGRAM_MENU_1591R38\n",
+        "    except Exception as exc:\n",
+        "        print(f\"[CTRL] меню не показано: {exc}\", flush=True)\n"
+      ]
+    },
+    {
       "start": 292,
       "end": 294,
       "replacement": [
         "    while True:\n",
         "        _restart_after_drain(proc)  # SCHEDULED_RESTART_1591R13\n",
-        "        proc.reap()\n"
+        "        proc.reap()\n",
+        "        try:\n",
+        "            menu.tick()  # TELEGRAM_MENU_1591R38: live status only while its view is open\n",
+        "        except Exception as exc:\n",
+        "            print(f\"[CTRL] меню: {exc}\", flush=True)\n"
+      ]
+    },
+    {
+      "start": 301,
+      "end": 302,
+      "replacement": [
+        "                \"allowed_updates\": json.dumps([\"message\", \"callback_query\"]),  # TELEGRAM_MENU_1591R38\n"
       ]
     },
     {
@@ -3682,6 +3523,36 @@
       "end": 311,
       "replacement": [
         "                update_failed = False\n"
+      ]
+    },
+    {
+      "start": 312,
+      "end": 315,
+      "replacement": [
+        "                try:\n",
+        "                    callback = upd.get(\"callback_query\")  # TELEGRAM_MENU_1591R38: inline buttons\n",
+        "                    if callback:\n",
+        "                        cb_chat = str(((callback.get(\"message\") or {}).get(\"chat\") or {}).get(\"id\") or \"\")\n",
+        "                        if cb_chat == chat and menu.handle_callback(callback) == \"upload\":\n",
+        "                            waiting_upload = True\n",
+        "                        continue\n",
+        "                    msg = upd.get(\"message\") or {}\n",
+        "                    msg_chat = str((msg.get(\"chat\") or {}).get(\"id\") or \"\")\n"
+      ]
+    },
+    {
+      "start": 322,
+      "end": 333,
+      "replacement": [
+        "                    if text in {\"/start\", \"/menu\"}:\n",
+        "                        waiting_upload = False\n",
+        "                        menu.show_menu(fresh=True)  # TELEGRAM_MENU_1591R38\n",
+        "                        continue\n",
+        "\n",
+        "                    if text == \"/status\":\n",
+        "                        menu.show_menu(fresh=True)\n",
+        "                        menu.show_status()\n",
+        "                        continue\n"
       ]
     },
     {
@@ -3701,6 +3572,32 @@
         "                    # Any slash-command belongs to controller namespace and is\n",
         "                    # deliberately kept away from DeepSeek.\n",
         "                    if text.startswith(\"/\"):\n"
+      ]
+    },
+    {
+      "start": 364,
+      "end": 365,
+      "replacement": [
+        "                        menu.show_menu(fresh=True, note=\"Неизвестная команда — вот меню.\")  # TELEGRAM_MENU_1591R38\n"
+      ]
+    },
+    {
+      "start": 432,
+      "end": 439,
+      "replacement": [
+        "                    if text:\n",
+        "                        # TELEGRAM_MENU_1591R38: DeepSeek gets a message only after «Спросить\n",
+        "                        # DeepSeek»; any other text (a word, a letter, a symbol) opens the menu.\n",
+        "                        if not menu.text_is_for_ai():\n",
+        "                            menu.show_menu(fresh=True)\n",
+        "                            continue\n",
+        "                        app._ai_db_store_telegram_update(upd, chat)\n",
+        "                        print(\n",
+        "                            f\"[CTRL→AI] update={update_id}: {text[:120]}\",\n",
+        "                            flush=True,\n",
+        "                        )\n",
+        "                        _typing()\n",
+        "                        menu.ai_sent()\n"
       ]
     },
     {

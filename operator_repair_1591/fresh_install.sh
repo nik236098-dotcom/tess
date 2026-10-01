@@ -73,7 +73,7 @@ fi
 
 # 4. Код последней ревизии.
 say "Код"
-for name in test_beeline.py server_controller.py operator_runtime_io.py symbol_matching.py; do
+for name in test_beeline.py server_controller.py operator_runtime_io.py symbol_matching.py telegram_menu.py; do
   install -m 0644 "$PACKAGE/$name" "$APP_DIR/$name"
 done
 install -m 0644 "$REPO/local_matcher.py" "$APP_DIR/local_matcher.py"
@@ -181,7 +181,7 @@ fi
 # 7. Проверка: компиляция, маркеры, штатный preflight установщика пакета.
 say "Проверка"
 "$PY" -m py_compile "$APP_DIR"/test_beeline.py "$APP_DIR"/server_controller.py "$APP_DIR"/local_matcher.py \
-  "$APP_DIR"/symbol_matching.py "$APP_DIR"/operator_runtime_io.py "$APP_DIR"/batch_support.py "$APP_DIR"/console_wait.py
+  "$APP_DIR"/symbol_matching.py "$APP_DIR"/operator_runtime_io.py "$APP_DIR"/telegram_menu.py "$APP_DIR"/batch_support.py "$APP_DIR"/console_wait.py
 grep -q MATCHER_SPEED_1591R10 "$APP_DIR/symbol_matching.py" || die "symbol_matching.py без маркера ревизии 10"
 grep -q MATCHER_HEARTBEAT_1591R9 "$APP_DIR/test_beeline.py" || die "test_beeline.py без маркера ревизии 9"
 find "$APP_DIR" -name __pycache__ -type d -prune -exec rm -rf {} +

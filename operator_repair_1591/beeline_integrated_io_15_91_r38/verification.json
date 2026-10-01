@@ -1,9 +1,13 @@
 {
-  "version": "15.91-io",
-  "files": {
+  "python": "3.11.15 (main, Mar  3 2026, 09:26:23) [GCC 13.3.0]",
+  "tests": 58,
+  "result": "OK",
+  "live_site_test": false,
+  "server_modified_by_assistant": false,
+  "exact_input_sha256": {
     "test_beeline.py": {
       "input_sha256": "bf315d3070199410132a7b3d690d6f7a2cc8260715877b9833eab2f3648397b0",
-      "output_sha256": "cce2c689b26dd7ea0aa865576071d7b8372768efb7d67ec8dbb1ae23bf0c5738",
+      "output_sha256": "74a466855054bb9f8cf05ae05c66224a519f0c1322ad695316006ae4aad40348",
       "previous_output_sha256": [
         "04e07acd1a019a943c72237a6c6c61b34134f7b753ce3f3b484c832ce742ae9d",
         "0544d1e2190d7ac7a2d091fe2370a558f038dbef17dbb775ce973d7a86642643",
@@ -27,6 +31,7 @@
         "72110535925a3167e91c621a29e2d46d090f7e76b03bb250df9f35530bdcaa5d",
         "725adc5426e06707060bd25daa5af8fd4d66e83bfe064869f323177db3d8a12e",
         "747c7f08c994baa104d82ebb5d3302215bc4f1147e238b66629bd5037710c47d",
+        "74a466855054bb9f8cf05ae05c66224a519f0c1322ad695316006ae4aad40348",
         "786a170bbe7f1861e225ec19f150c20ca176f5dbb55beeeb02924522cb29a6f3",
         "8561fef2069ee3c6df376c6060084aca717405e63f009d96bb0b98aa4aa7c1bc",
         "8f5fc960fc6cc44faebc19eae0709057f3c8c627d623d9219a0c85cff81d3012",
@@ -45,17 +50,19 @@
         "e2c48c93641a62328a976b2197be2b3fba0ff0586819709eacc52afd27042e52",
         "e8f5e036c2f33ab9d8f27a98deceb25356511cd253fc871f929c16d619f45d75",
         "ec65b2fa802131dbd7f2e679f422c40ddae10cc842bff784869925e14b16c105",
+        "ef28ef77fbb8cb8afac35e6daaaeffee983e759322ebafb76c06e2d5fcdce6c1",
         "f64ef74d8f4b6b3875c77253e23ede004065f6afcfc342e971c249138f570541",
         "fd1ed72b18db63993d0c288fa7ad8449e3e7827fa2b2697569dd79a9053ec3dc"
       ]
     },
     "server_controller.py": {
       "input_sha256": "708efce19cb404b19c1d74300f87d7658494a22591214e9b74c65d2a3b737673",
-      "output_sha256": "f3b36badf1e9d77a1dda6fe287b5210372d42a1846f993a28cf9c1f6aa7abacd",
+      "output_sha256": "d561621ddacaa0c4e602a5da75842207a9b76f563f2d26202e75e9e7eeb6012b",
       "previous_output_sha256": [
         "384e2c06274159c01dae2b9dc8698dff2a93912e5a6bf3de9eb57efce6d256c4",
         "506a84c41558332c75cbf55abc8e940520a589b3bc754a6845ca1dd7515740e8",
-        "5104af2bf68452b1dcd3b814b35e696699232087b92db87ee7e1e9a6ee1a8bd9"
+        "5104af2bf68452b1dcd3b814b35e696699232087b92db87ee7e1e9a6ee1a8bd9",
+        "f3b36badf1e9d77a1dda6fe287b5210372d42a1846f993a28cf9c1f6aa7abacd"
       ]
     },
     "operator_runtime_io.py": {
@@ -65,49 +72,10 @@
       "input_sha256": "915368d66804f64d4d7d7de42d2e474f1ea29ffe5b14c352b67d054ee40c8c35",
       "output_sha256": "5a386af1f064ba193bc388cab5260e713877435f7fb994239fc2fdae41772a0e",
       "previous_output_sha256": []
+    },
+    "telegram_menu.py": {
+      "output_sha256": "23b31353e4212cb5dc0a7faa98fd9fbee9618b0d648f1521b0a75cc404554147"
     }
   },
-  "preserved_handlers": [
-    "fill_test_signature",
-    "fill_signature_and_submit",
-    "run_registration",
-    "process_registration_row",
-    "try_click_resend_once",
-    "queue_success_assist",
-    "queue_error_assist",
-    "_agent_tools",
-    "_agent_execute_tool",
-    "tick_post_auth_review",
-    "tick_sign_wait",
-    "tick_error_assist",
-    "tick_success_assist",
-    "tick_confirmation",
-    "tick_resend",
-    "finalize_success",
-    "main",
-    "capture_all_form_fields_v1583",
-    "ensure_region_if_missing"
-  ],
-  "preserved_ast_sha256": {
-    "fill_test_signature": "ee74f9e371250fba824a8c6070050d88e1b48cfeb4e03dca04451d0914f81ec5",
-    "fill_signature_and_submit": "e79933df907a67a8b4082f3eee5bdc18d0d53cdc74354ed2af5e8a619fb79f36",
-    "run_registration": "ded29ca7dd102c5388301c1f13445e381cbff7015de12427c3f40b0b2e6173d2",
-    "process_registration_row": "5429a0ef4a75464989e2d2c0b0a6544ecaa8caff3c8f37bbe6b1c26a1a1b8bba",
-    "try_click_resend_once": "ead8fb4a507eb30c475bc00e7632f0a4aa5b3515215af9d3e2c5367d17572542",
-    "queue_success_assist": "06a4556948f71d3d1dab78782b5cc6bde3e0e507d5a5ae29983f1790be6b1868",
-    "queue_error_assist": "ee37bbe0b246b5eafaffb5e057b92396ac4367728e4788d251e7008c20c2ef69",
-    "_agent_tools": "c5a100365dcaca4d6cd4629542365837d0d029d240255e5162cc3e3685418544",
-    "_agent_execute_tool": "b33b554e2e2efb0faba24b73364733fad133c7628108a37f1446bcd7c7a7ca1c",
-    "tick_post_auth_review": "2816b4b8d99bfd7ae43f5ded5ca40a2bec949988c4a644384925c550f2d93400",
-    "tick_sign_wait": "194aa014fb900828f1edebceb4e32e43381efa17cb61a5ead598bb6057dfd4a1",
-    "tick_error_assist": "7b7450725142498f444e2f35e5b8ea09e661b0e0039dea157269d8703ea41a1c",
-    "tick_success_assist": "5e845b2e8fc1c0b3739ee3d2f5bcf5a7a6c8adfcfea490ce44f6791320630932",
-    "tick_confirmation": "e1cb5d26dc1c4d0641c2f8ea64929e4870caf495c29824b74976f70b518f4497",
-    "tick_resend": "2fb0d4b0a55416d6c95c934323ae533d2428a261a1ed9fb64618232290d783dd",
-    "finalize_success": "b5c7bed13f9c0d2158efa9242cca35fcdd1521a1729657a4bea37f5961e74155",
-    "main": "aa40bfc81b5f2d206ecb92fd8c37cfe89acb00eed8577213ef939966ae350201",
-    "capture_all_form_fields_v1583": "b0b320a53b939a66b94b6e3e2f3378abe0289cc852d015153ce25acc750a9f81",
-    "ensure_region_if_missing": "19d979e202cc5c5d6cc5430a624e9724ebb342f9feeb8ff9fe2d1172417e1e97"
-  },
-  "revision": 37
+  "revision": 38
 }

@@ -93,7 +93,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "725adc5426e06707060bd25daa5af8fd4d66e83bfe064869f323177db3d8a12e",  # r36 lite output
                          "655faf868b4a4ace53dc7845617b4b765890d833822eb7c1d5b2d8b61fcbcb2f",  # r36 output
                          "cce2c689b26dd7ea0aa865576071d7b8372768efb7d67ec8dbb1ae23bf0c5738",  # r37 lite output
-                         "a31f394aa9d9b708bb9c85c182a871dd0d63b96de78de58429c5746a07babd44"}  # r37 output
+                         "a31f394aa9d9b708bb9c85c182a871dd0d63b96de78de58429c5746a07babd44",  # r37 output
+                         "ef28ef77fbb8cb8afac35e6daaaeffee983e759322ebafb76c06e2d5fcdce6c1",  # r38 lite output
+                         "74a466855054bb9f8cf05ae05c66224a519f0c1322ad695316006ae4aad40348"}  # r38 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -635,7 +637,9 @@ CONTROLLER_OUTPUT_SHA_R12 = "506a84c41558332c75cbf55abc8e940520a589b3bc754a6845c
 # of those must be accepted by the installer now that r21 changed the controller again.
 CONTROLLER_OUTPUT_SHA_R13_R20 = "5104af2bf68452b1dcd3b814b35e696699232087b92db87ee7e1e9a6ee1a8bd9"
 CONTROLLER_OUTPUT_SHA_R27_R35 = "384e2c06274159c01dae2b9dc8698dff2a93912e5a6bf3de9eb57efce6d256c4"  # controller of r27..r35
-CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13_R20, CONTROLLER_OUTPUT_SHA_R27_R35}
+CONTROLLER_OUTPUT_SHA_R36_R37 = "f3b36badf1e9d77a1dda6fe287b5210372d42a1846f993a28cf9c1f6aa7abacd"  # controller of r36..r37 (/res)
+CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13_R20, CONTROLLER_OUTPUT_SHA_R27_R35,
+                            CONTROLLER_OUTPUT_SHA_R36_R37}
 RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
 RESTART_POLICY_FILE_NAME = "restart_policy.json"
 RESTART_DRAIN_FILE_NAME = "restart_drain.json"
@@ -3113,6 +3117,55 @@ NEW_EVIDENCE_R37 = '    evidence = _signed_evidence_1591r24(page) if page is not
 # that the r31 step rewrites; both application orders give the same text.
 OLD_SETTLE_PAYMENT_R26_WITH_R37 = OLD_SETTLE_PAYMENT_R26.replace(OLD_EVIDENCE_R37, NEW_EVIDENCE_R37)
 NEW_SETTLE_PAYMENT_R30_WITH_R37 = NEW_SETTLE_PAYMENT_R30.replace(OLD_EVIDENCE_R37, NEW_EVIDENCE_R37)
+# Revision 38: the inline menu of the bot (telegram_menu.py) replaces the bottom keyboard and the
+# eight edited status messages; short success/payment pushes; DeepSeek only via its button.
+TELEGRAM_MENU_SOURCE = Path(__file__).resolve().parent / "telegram_menu.py"
+TELEGRAM_MENU_MARKER = 'TELEGRAM_MENU_1591R38'
+OLD_STATUS_SYNC_R38 = 'def _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at):\n    """Create the missing status messages and push the changed texts, within the limits."""\n    changed = False\n    for i in range(1, TAB_COUNT + 1):\n        if i in mids:\n            continue\n        r, err = _tg_call_1591r27(\n            cfg, "sendMessage",\n            {"chat_id": chat, "text": f"⏳ Вкладка {i}\\nСтатус: запуск...", "disable_web_page_preview": "true"},\n            state,\n        )\n        if r:\n            mids[i] = r["result"]["message_id"]\n            last[i] = ""\n            changed = True\n            print(f"[Telegram] Сообщение вкладки {i} создано.", flush=True)\n        else:\n            if err != "paused":\n                print(f"[Telegram] ОШИБКА отправки вкладки {i}: {err}", flush=True)\n            break\n    if changed:\n        _tg_status_messages_save_1591r27(chat, mids)\n    now = time.time()\n    for i, mid in list(mids.items()):\n        info = status_map.get(str(i))\n        t = str((info or {}).get("text", ""))\n        if not t or t == last.get(i) or now - float(edited_at.get(i) or 0) < TG_STATUS_MIN_EDIT_GAP_1591R27:\n            continue\n        r, err = _tg_call_1591r27(\n            cfg, "editMessageText",\n            {"chat_id": chat, "message_id": mid, "text": t[:4000], "disable_web_page_preview": "true"},\n            state,\n        )\n        edited_at[i] = time.time()\n        if r:\n            last[i] = t\n            continue\n        if err == "paused":\n            break\n        low = str(err).lower()\n        if "message is not modified" in low:\n            last[i] = t\n        elif "not found" in low or "can\'t be edited" in low or "message_id_invalid" in low:\n            mids.pop(i, None)\n            _tg_status_messages_save_1591r27(chat, mids)\n            print(f"[Telegram] Сообщение вкладки {i} исчезло — создам новое.", flush=True)\n        else:\n            print(f"[Telegram] ОШИБКА обновления вкладки {i}: {err}", flush=True)\n'
+NEW_STATUS_SYNC_R38 = 'def _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at):\n    """TELEGRAM_MENU_1591R38: the tab statuses go to status_snapshot.json for the bot\'s menu\n    (its «Статус» view edits one panel while it is open). The eight status messages and their\n    background edits of revision 27 are gone, so nothing is sent to Telegram here."""\n    tabs = {}\n    for i in range(1, TAB_COUNT + 1):\n        info = status_map.get(str(i))\n        if info:\n            tabs[str(i)] = {"text": str(info.get("text", ""))[:1500], "time": float(info.get("time") or 0)}\n    key = json.dumps(tabs, ensure_ascii=False, sort_keys=True)\n    if key == last.get("_snapshot"):\n        return\n    last["_snapshot"] = key\n    path = _tg_status_file_1591r27().with_name("status_snapshot.json")\n    try:\n        tmp = path.with_suffix(".tmp")\n        tmp.write_text(json.dumps({"updated": time.time(), "tabs": tabs}, ensure_ascii=False), "utf-8")\n        tmp.replace(path)\n    except Exception as exc:\n        print(f"[Telegram] status_snapshot.json не записан: {type(exc).__name__}: {exc}", flush=True)\n'
+OLD_LOGGER_START_R38 = '    # TG_RATE_1591R27: reuse the status messages of the previous run instead of four new ones\n    # per restart; each is verified by an edit and recreated only when Telegram says it is gone.\n    for i, mid in _tg_status_messages_load_1591r27(chat).items():\n        r, err = _tg_call_1591r27(\n            cfg, "editMessageText",\n            {"chat_id": chat, "message_id": mid, "text": f"⏳ Вкладка {i}\\nСтатус: перезапуск...",\n             "disable_web_page_preview": "true"},\n            state,\n        )\n        if r or err == "paused" or "not modified" in str(err or "").lower():\n            mids[i] = mid\n            last[i] = ""\n    _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at)\n    if not mids:\n        print(\n            "[Telegram] Статусные сообщения пока не созданы (лимит Telegram) — попробую позже; "\n            "основной сценарий работает.",\n            flush=True,\n        )\n\n'
+NEW_LOGGER_START_R38 = '    # TELEGRAM_MENU_1591R38: statuses are written to status_snapshot.json and shown by the\n    # bot\'s menu on request; no status messages are created or edited here any more.\n    print("[Telegram] Статус вкладок пишется в status_snapshot.json; показ — через меню бота.", flush=True)\n    _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at)\n\n'
+OLD_SUCCESS_MSG_R38 = 'def _success_message(worker, rec):\n    row_no, active_value, second_value = row_parts(worker.get("row"))\n'
+NEW_SUCCESS_MSG_R38 = 'def _pretty_phone_1591r38(value):\n    d = re.sub(r"\\D", "", str(value or ""))\n    if len(d) == 11 and d[0] in "78":\n        return f"+7 {d[1:4]} {d[4:7]}-{d[7:9]}-{d[9:]}"\n    return str(value or "—")\n\n\ndef _short_push_1591r38(worker, rec, tag, outcome):\n    """TELEGRAM_MENU_1591R38: the push is a short card; the full record (profile, links,\n    network trace) is in the bot\'s menu, «Мои eSIM», and in the jsonl files."""\n    row_no, active_value, second_value = row_parts(worker.get("row"))\n    profile = rec.get("profile") or {}\n    lines = [\n        f"🆕 Новая eSIM · {tag}",\n        f"📱 {_pretty_phone_1591r38(rec.get(\'sim_number\'))}",\n        f"👤 {profile.get(\'full_name\') or \'—\'} · 🎂 {profile.get(\'birth_date\') or \'—\'}",\n        f"📄 Строка {row_no}/{worker.get(\'total_rows\') or \'?\'} · {active_value} | {second_value}",\n        outcome,\n    ]\n    if tag == "#оплата" and rec.get("sim_url"):\n        lines.append(f"🔗 {rec[\'sim_url\']}")\n    lines.append("🗂 Карточка и отметки: меню бота → 📱 Мои eSIM")\n    return "\\n".join(lines)\n\n\ndef _success_message(worker, rec):\n    return _short_push_1591r38(worker, rec, "#успешно", "✅ Договор оформлен")  # TELEGRAM_MENU_1591R38\n\n\ndef _success_message_full_1591r17(worker, rec):\n    """The former long push; kept for reference, the menu card renders the same fields."""\n    row_no, active_value, second_value = row_parts(worker.get("row"))\n'
+OLD_PAYMENT_MSG_R38 = 'def _payment_message_1591r26(worker, rec):\n    row_no, active_value, second_value = row_parts(worker.get("row"))\n'
+NEW_PAYMENT_MSG_R38 = 'def _payment_message_1591r26(worker, rec):\n    return _short_push_1591r38(worker, rec, "#оплата", "💳 Подпись принята, нужна оплата картой; номер помечен обработанным")  # TELEGRAM_MENU_1591R38\n\n\ndef _payment_message_full_1591r26(worker, rec):\n    row_no, active_value, second_value = row_parts(worker.get("row"))\n'
+OLD_REC_TIME_R38 = '        "profile":dict(worker.get("success_profile") or {}),\n'
+NEW_REC_TIME_R38 = '        "time": time.strftime("%Y-%m-%d %H:%M:%S"),  # TELEGRAM_MENU_1591R38: order in «Мои eSIM»\n        "profile":dict(worker.get("success_profile") or {}),\n'
+OLD_C_IMPORT_R38 = 'import test_beeline as app\n'
+NEW_C_IMPORT_R38 = 'import test_beeline as app\nimport telegram_menu as _menu_mod  # TELEGRAM_MENU_1591R38\n'
+OLD_C_MARKUP_R38 = 'MENU_MARKUP = json.dumps(\n    {\n        "keyboard": [\n            [{"text": BTN_START}, {"text": BTN_STOP}],\n            [{"text": BTN_RESTART}],\n            [{"text": BTN_UPLOAD}],\n        ],\n        "resize_keyboard": True,\n        "is_persistent": True,\n        "input_field_placeholder": "Команда или сообщение DeepSeek",\n    },\n    ensure_ascii=False,\n)\n'
+NEW_C_MARKUP_R38 = '# TELEGRAM_MENU_1591R38: the bottom keyboard is gone; every notice removes it once, the\n# inline menu (telegram_menu.py) is the control surface.\nMENU_MARKUP = json.dumps({"remove_keyboard": True})\n'
+OLD_C_PROC_R38 = '    proc = AutomationProcess()\n    waiting_upload = False\n'
+NEW_C_PROC_R38 = '    proc = AutomationProcess()\n    waiting_upload = False\n    # TELEGRAM_MENU_1591R38: one panel message with inline buttons; the eight status messages\n    # of earlier revisions are retired once.\n    menu = _menu_mod.TelegramMenu(app, BASE_DIR, proc, link_resolver=_row_link_command)\n    try:\n        menu.retire_status_messages(BASE_DIR / "telegram_status_messages.json")\n    except Exception as exc:\n        print(f"[CTRL] старые статусные сообщения не обновлены: {exc}", flush=True)\n'
+OLD_C_HELLO_R38 = '    _send(\n        "🎛 Управление софтом\\n\\n"\n        f"Состояние: {proc.status()}\\n"\n        "Кнопки управления обрабатываются локально и НЕ отправляются DeepSeek."\n    )\n'
+NEW_C_HELLO_R38 = '    try:\n        menu.show_menu(fresh=True)  # TELEGRAM_MENU_1591R38\n    except Exception as exc:\n        print(f"[CTRL] меню не показано: {exc}", flush=True)\n'
+OLD_C_LOOP_R38 = '        _restart_after_drain(proc)  # SCHEDULED_RESTART_1591R13\n        proc.reap()\n'
+NEW_C_LOOP_R38 = '        _restart_after_drain(proc)  # SCHEDULED_RESTART_1591R13\n        proc.reap()\n        try:\n            menu.tick()  # TELEGRAM_MENU_1591R38: live status only while its view is open\n        except Exception as exc:\n            print(f"[CTRL] меню: {exc}", flush=True)\n'
+OLD_C_ALLOWED_R38 = '                "allowed_updates": json.dumps(["message"]),\n'
+NEW_C_ALLOWED_R38 = '                "allowed_updates": json.dumps(["message", "callback_query"]),  # TELEGRAM_MENU_1591R38\n'
+OLD_C_MSG_R38 = '                try:\n                    msg = upd.get("message") or {}\n                    msg_chat = str((msg.get("chat") or {}).get("id") or "")\n'
+NEW_C_MSG_R38 = '                try:\n                    callback = upd.get("callback_query")  # TELEGRAM_MENU_1591R38: inline buttons\n                    if callback:\n                        cb_chat = str(((callback.get("message") or {}).get("chat") or {}).get("id") or "")\n                        if cb_chat == chat and menu.handle_callback(callback) == "upload":\n                            waiting_upload = True\n                        continue\n                    msg = upd.get("message") or {}\n                    msg_chat = str((msg.get("chat") or {}).get("id") or "")\n'
+OLD_C_START_R38 = '                    if text in {"/start", "/menu"}:\n                        waiting_upload = False\n                        _send(\n                            "🎛 Управление софтом\\n\\n"\n                            f"Состояние: {proc.status()}"\n                        )\n                        continue\n\n                    if text == "/status":\n                        _send(f"Состояние: {proc.status()}")\n                        continue\n'
+NEW_C_START_R38 = '                    if text in {"/start", "/menu"}:\n                        waiting_upload = False\n                        menu.show_menu(fresh=True)  # TELEGRAM_MENU_1591R38\n                        continue\n\n                    if text == "/status":\n                        menu.show_menu(fresh=True)\n                        menu.show_status()\n                        continue\n'
+OLD_C_UNKNOWN_R38 = '                        _send("Неизвестная команда. Используй кнопки меню.")\n'
+NEW_C_UNKNOWN_R38 = '                        menu.show_menu(fresh=True, note="Неизвестная команда — вот меню.")  # TELEGRAM_MENU_1591R38\n'
+OLD_C_AI_R38 = '                    if text:\n                        app._ai_db_store_telegram_update(upd, chat)\n                        print(\n                            f"[CTRL→AI] update={update_id}: {text[:120]}",\n                            flush=True,\n                        )\n                        _typing()\n'
+NEW_C_AI_R38 = '                    if text:\n                        # TELEGRAM_MENU_1591R38: DeepSeek gets a message only after «Спросить\n                        # DeepSeek»; any other text (a word, a letter, a symbol) opens the menu.\n                        if not menu.text_is_for_ai():\n                            menu.show_menu(fresh=True)\n                            continue\n                        app._ai_db_store_telegram_update(upd, chat)\n                        print(\n                            f"[CTRL→AI] update={update_id}: {text[:120]}",\n                            flush=True,\n                        )\n                        _typing()\n                        menu.ai_sent()\n'
+OLD_I_FILES_R38 = "FILES = ('operator_runtime_io.py', 'test_beeline.py', 'server_controller.py', 'symbol_matching.py')\n"
+NEW_I_FILES_R38 = "FILES = ('operator_runtime_io.py', 'test_beeline.py', 'server_controller.py', 'symbol_matching.py', 'telegram_menu.py')\n"
+OLD_I_SUPPORT_R38 = "    raw = (package/'operator_runtime_io.py').read_bytes()\n    if digest(raw) != manifest['files']['operator_runtime_io.py']['output_sha256']:\n        raise RuntimeError('Support module checksum failed')\n    result['operator_runtime_io.py'] = raw\n"
+NEW_I_SUPPORT_R38 = "    raw = (package/'operator_runtime_io.py').read_bytes()\n    if digest(raw) != manifest['files']['operator_runtime_io.py']['output_sha256']:\n        raise RuntimeError('Support module checksum failed')\n    result['operator_runtime_io.py'] = raw\n    # TELEGRAM_MENU_1591R38: a support module like operator_runtime_io.py (no original on the server).\n    raw = (package/'telegram_menu.py').read_bytes()\n    if digest(raw) != manifest['files']['telegram_menu.py']['output_sha256']:\n        raise RuntimeError('Menu module checksum failed')\n    result['telegram_menu.py'] = raw\n"
+OLD_I_IMPORT_R38 = "'import test_beeline as a; import server_controller as c; import symbol_matching as s; '\n"
+NEW_I_IMPORT_R38 = "'import test_beeline as a; import server_controller as c; import symbol_matching as s; import telegram_menu as m; '\n"
+OLD_I_ASSERT_R38 = '\'assert a._io1591.VERSION == "15.91-io"; assert s.MATCHER_VERSION == "14.1"; print("IMPORT OK")\''
+NEW_I_ASSERT_R38 = '\'assert a._io1591.VERSION == "15.91-io"; assert s.MATCHER_VERSION == "14.1"; assert m.MENU_VERSION == "1591r38"; print("IMPORT OK")\''
+OLD_T_FIX_R38 = "'operator_runtime_io.py':b'helper','symbol_matching.py':b'new matcher'})\n"
+NEW_T_FIX_R38 = "'operator_runtime_io.py':b'helper','symbol_matching.py':b'new matcher','telegram_menu.py':b'menu'})\n"
+OLD_T_CTRL_R38 = "'_restart_after_drain':lambda p:False,'_row_link_command':lambda a:'',\n"
+NEW_T_CTRL_R38 = "'_restart_after_drain':lambda p:False,'_row_link_command':lambda a:'',\n                '_menu_mod':types.SimpleNamespace(TelegramMenu=lambda *a,**k:types.SimpleNamespace(show_menu=lambda *a,**k:None,show_status=lambda:None,tick=lambda:None,handle_callback=lambda cb:None,text_is_for_ai=lambda:True,ai_sent=lambda:None,retire_status_messages=lambda *a:0)),'BASE_DIR':Path(d),\n"
+OLD_T_COMPILE_R38 = "for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py','symbol_matching.py'):"
+NEW_T_COMPILE_R38 = "for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py','symbol_matching.py','telegram_menu.py'):"
+README_NOTE_R38 = '\n\nРЕВИЗИЯ 38 (fix_package_1591.py)\nМеню бота (telegram_menu.py). Одно сообщение-панель с inline-кнопками: 📊 Статус (правится на месте\nтолько пока открыт, сам закрывается через час), 📱 Мои eSIM (последние оформленные eSIM по 10 на\nстраницу, карточка как прежний полный пуш, отметки 🆕/✅/❌, ссылка из журнала), 📜 Логи (события из\nжурнала за 2 дня постранично), 🤖 Спросить DeepSeek (следующее сообщение уходит DeepSeek, кнопка\nотмены), ▶️ ⏹ 🔄 📥 управление. Нижняя клавиатура убрана. Любое сообщение, кроме команд\n(/restart, /res), открывает меню; к DeepSeek попадает только текст после кнопки «Спросить».\nСтатус вкладок пишется runtime в status_snapshot.json, восемь редактируемых статусных сообщений\nревизии 27 отменены (при первом запуске они один раз переправляются на «статус в меню»).\nПуши об успехе и оплате стали короткими: номер eSIM, ФИО, дата рождения, строка и исходные данные,\nисход (для оплаты — ссылка заказа); полная карточка — в «Мои eSIM». Маркер: TELEGRAM_MENU_1591R38.\n'
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3934,8 +3987,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if TELEGRAM_MENU_MARKER in source:
+        return 38   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if AI_SIGN_FAIL_MARKER in source:
-        return 37   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 37
     if SIM_URL_MARKER in source:
         return 36
     if TRACE_COMPACT_MARKER in source:
@@ -3977,7 +4032,8 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 34 or BROWSER_ENV_MARKER in source)\
             and (MAX_REVISION < 35 or TRACE_COMPACT_MARKER in source)\
             and (MAX_REVISION < 36 or SIM_URL_MARKER in source)\
-            and (MAX_REVISION < 37 or AI_SIGN_FAIL_MARKER in source):
+            and (MAX_REVISION < 37 or AI_SIGN_FAIL_MARKER in source)\
+            and (MAX_REVISION < 38 or TELEGRAM_MENU_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4576,6 +4632,65 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 39 (r38). The inline menu: module, controller routing, installer, status snapshot, short pushes.
+    if TELEGRAM_MENU_MARKER not in source and MAX_REVISION >= 38:
+        if not TELEGRAM_MENU_SOURCE.is_file():
+            raise SystemExit(f"{TELEGRAM_MENU_SOURCE}: missing; nothing changed")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 38 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+        for old, new, what in ((OLD_STATUS_SYNC_R38, NEW_STATUS_SYNC_R38, "status snapshot"),
+                               (OLD_LOGGER_START_R38, NEW_LOGGER_START_R38, "logger without status messages"),
+                               (OLD_SUCCESS_MSG_R38, NEW_SUCCESS_MSG_R38, "short success push"),
+                               (OLD_PAYMENT_MSG_R38, NEW_PAYMENT_MSG_R38, "short payment push"),
+                               (OLD_REC_TIME_R38, NEW_REC_TIME_R38, "success record time")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        for old, new, what in ((OLD_C_IMPORT_R38, NEW_C_IMPORT_R38, "controller menu import"),
+                               (OLD_C_MARKUP_R38, NEW_C_MARKUP_R38, "controller keyboard removed"),
+                               (OLD_C_PROC_R38, NEW_C_PROC_R38, "controller menu object"),
+                               (OLD_C_HELLO_R38, NEW_C_HELLO_R38, "controller greeting"),
+                               (OLD_C_LOOP_R38, NEW_C_LOOP_R38, "controller menu tick"),
+                               (OLD_C_ALLOWED_R38, NEW_C_ALLOWED_R38, "controller callback updates"),
+                               (OLD_C_MSG_R38, NEW_C_MSG_R38, "controller callback routing"),
+                               (OLD_C_START_R38, NEW_C_START_R38, "controller /start"),
+                               (OLD_C_UNKNOWN_R38, NEW_C_UNKNOWN_R38, "controller unknown command"),
+                               (OLD_C_AI_R38, NEW_C_AI_R38, "controller ai gate")):
+            new_ctrl = replace_once(new_ctrl, old, new, what)
+            if old in ctrl_source:
+                add_edit(edits["server_controller.py"], ctrl_source, old, new, ctrl_reflected)
+            else:
+                for change in edits["server_controller.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier controller entry for {what} not found")
+        for old, new, what in ((OLD_I_FILES_R38, NEW_I_FILES_R38, "install.py FILES (menu)"),
+                               (OLD_I_SUPPORT_R38, NEW_I_SUPPORT_R38, "install.py menu module"),
+                               (OLD_I_IMPORT_R38, NEW_I_IMPORT_R38, "install.py import (menu)"),
+                               (OLD_I_ASSERT_R38, NEW_I_ASSERT_R38, "install.py version assert (menu)")):
+            install_src = replace_once(install_src, old, new, what)
+        for old, new, what in ((OLD_T_FIX_R38, NEW_T_FIX_R38, "test_update.py installer fixture (menu)"),
+                               (OLD_T_CTRL_R38, NEW_T_CTRL_R38, "test_update.py controller fixture (menu)"),
+                               (OLD_T_COMPILE_R38, NEW_T_COMPILE_R38, "test_update.py compile list (menu)")):
+            test_src = replace_once(test_src, old, new, what)
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4637,7 +4752,8 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 34", README_NOTE_R34),) if built_revision >= 34 else ()),
                           *((("РЕВИЗИЯ 35", README_NOTE_R35),) if built_revision >= 35 else ()),
                           *((("РЕВИЗИЯ 36", README_NOTE_R36),) if built_revision >= 36 else ()),
-                          *((("РЕВИЗИЯ 37", README_NOTE_R37),) if built_revision >= 37 else ())):
+                          *((("РЕВИЗИЯ 37", README_NOTE_R37),) if built_revision >= 37 else ()),
+                          *((("РЕВИЗИЯ 38", README_NOTE_R38),) if built_revision >= 38 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -4656,9 +4772,9 @@ def main(argv: list[str]) -> int:
     (package / "verification.json").write_text(json.dumps(verification, ensure_ascii=False, indent=2), "utf-8")
 
     sums = [f"{sha(package / name)}  {name}" for name in
-            ("test_beeline.py", "server_controller.py", "operator_runtime_io.py", "symbol_matching.py", "install.py",
-             "test_update.py", "manifest.json", "edits.json", "README.txt", "verification.json", "test_results.txt",
-             "install_preflight_results.txt") if (package / name).is_file()]
+            ("test_beeline.py", "server_controller.py", "operator_runtime_io.py", "symbol_matching.py", "telegram_menu.py",
+             "install.py", "test_update.py", "manifest.json", "edits.json", "README.txt", "verification.json",
+             "test_results.txt", "install_preflight_results.txt") if (package / name).is_file()]
     (package / "SHA256SUMS.txt").write_text("\n".join(sums) + "\n", "utf-8")
     for line in ("__pycache__",):
         for cache in package.glob(line):
