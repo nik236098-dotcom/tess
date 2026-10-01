@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 41 лежит в `beeline_integrated_io_15_91_r41/` (включает ревизии 30–40); рядом
-`beeline_integrated_io_15_91_r41_lite/` — та же ревизия 41 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 41 лежит в `beeline_integrated_io_15_91_r42/` (включает ревизии 30–40); рядом
+`beeline_integrated_io_15_91_r42_lite/` — та же ревизия 41 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -69,13 +69,14 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r41
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r42
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
 
-Следующие обновления: `cd /root/tess && git pull`, снова `install.py --app /opt/beeline`,
-затем `--apply --restart`. `install.py` отказывается работать, пока в конфиге нет `"proxy"`.
+Следующие обновления одной командой: `sudo bash /root/tess/operator_repair_1591/update.sh`
+(pull, проверка, установка, перезапуск; подробнее в пункте 43). Вручную: `cd /root/tess && git pull`,
+снова `install.py --app /opt/beeline`, затем `--apply --restart`. `install.py` отказывается работать, пока в конфиге нет `"proxy"`.
 
 ## Что делает `fix_package_1591.py`
 
@@ -343,6 +344,17 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
+
+43. **Журнал называет настоящий тариф и обновление одной командой (ревизия 42).** Строки «На странице
+   найдено название bee START» и «Точный текст bee START пока не появился» были зашиты в код как есть,
+   хотя проверка шла по `TARIFF_NAME`: при `BEELINE_TARIFF=для смарт часов` журнал всё равно писал про
+   bee START. Теперь в них подставляется настроенный тариф, а при старте печатается строка
+   «Тариф: «…» (BEELINE_TARIFF из окружения службы | по умолчанию)». Маркер: `TARIFF_LOG_1591R42`.
+   Новый `update.sh`: `sudo bash /root/tess/operator_repair_1591/update.sh` делает `git pull`, выбирает
+   последний пакет той сборки, что стоит на сервере (lite без маркера `SIGN_ROBUST_1591R31`, иначе полная;
+   `BUILD=lite|full` переопределяет), запускает проверку `install.py`, затем `--apply --restart` и
+   печатает ревизию и состояние службы. `CHECK=1` — только проверка, `NO_PULL=1` — без git.
+   Без клона на сервере: `curl -fsSL https://raw.githubusercontent.com/nik236098-dotcom/tess/codex/operator-observer-15.87/operator_repair_1591/update.sh | sudo bash`.
 
 ## Использование
 

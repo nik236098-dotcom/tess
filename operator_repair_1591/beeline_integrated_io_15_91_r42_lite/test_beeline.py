@@ -5706,7 +5706,7 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
                 note="continue_by_actual_controls",
             )
             print(
-                "Точный текст bee START пока не появился; "
+                f"Точный текст «{TARIFF_NAME}» пока не появился; "  # TARIFF_LOG_1591R42
                 "проверяю фактические элементы оформления.",
                 flush=True,
             )
@@ -5721,7 +5721,7 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
             ) from exc
 
         if tariff_title_seen:
-            print("На странице найдено название bee START. Выбираю eSIM...")
+            print(f"На странице найдено название «{TARIFF_NAME}». Выбираю eSIM...")  # TARIFF_LOG_1591R42
         else:
             print("Форма eSIM уже доступна. Продолжаю без ожидания заголовка тарифа...")
         _row_progress(page, "выбор eSIM")  # ROW_START_ACTIVITY_1591R8
@@ -9250,6 +9250,7 @@ def main():
         )
     print(f"Загружено новых записей: {len(clients)} (в исходном файле: {total_source_rows})")
     print(f"Запускаю {BROWSER_COUNT} Chromium и {TAB_COUNT} рабочие вкладки. Общая очередь строк.")  # BROWSER_HANG_1591R18
+    print(f"Тариф: «{TARIFF_NAME}»" + (" (BEELINE_TARIFF из окружения службы)" if (os.environ.get("BEELINE_TARIFF") or "").strip() else " (по умолчанию)"), flush=True)  # TARIFF_LOG_1591R42
 
     # Два полностью независимых Chromium: отдельный процесс, CDP-порт и профиль.
     # Общими остаются только очередь строк, Telegram status_map и persistent progress.

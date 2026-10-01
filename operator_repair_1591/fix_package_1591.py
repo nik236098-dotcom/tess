@@ -101,7 +101,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "df25464f90f9f73d006d821da6a918b94386631e30990f42524db157159b6e81",  # r40 lite output
                          "a2dd94165ec5926ad1512956706843987b7ca60efc4a91ec25e95a7de83eb604",  # r40 output
                          "500488cc68d96a1cebda5d421ca4ca653329494d798bd2225ce0ef4b330421ef",  # r41 lite output
-                         "f05c32d36010b729259267d3f376cd44ae3a7feb12c653f36efee830e10ee8a6"}  # r41 output
+                         "f05c32d36010b729259267d3f376cd44ae3a7feb12c653f36efee830e10ee8a6",  # r41 output
+                         "596d521c36270a13b733832a75c694531910035ba624503e4e0cfd2533305fd9",  # r42 lite output
+                         "a20d4ff24cf13165a2d75737a4caddea5a690057b42c9236d7ca242894ae2fc1"}  # r42 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3207,6 +3209,19 @@ NEW_CARD_RULE_R41 = '            if card.get_by_role("button", name=_CHOOSE_BUTT
 OLD_CHANGE_TITLES_R41 = '        titles = page.get_by_text(_TARIFF_TITLE_RE_1591R32)\n        for index in range(min(titles.count(), 4)):\n'
 NEW_CHANGE_TITLES_R41 = '        titles = page.get_by_text(TARIFF_NAME, exact=True)  # TARIFF_CONFIG_1591R41: any tariff name\n        if titles.count() == 0:\n            titles = page.get_by_text(_TARIFF_TITLE_RE_1591R32)\n        for index in range(min(titles.count(), 4)):\n'
 README_NOTE_R41 = '\n\nРЕВИЗИЯ 41 (fix_package_1591.py)\nТариф по настройке. BEELINE_TARIFF в окружении службы задаёт карточку окна «выберите тариф» (точно\nкак на сайте: «для смарт часов», «подписка bee HIT»…), по умолчанию «подписка bee START». У части\nтарифов после «выбрать» на карточке открывается окно параметров (гигабайты, минуты, опции) с одной\nкнопкой «выбрать» и ценой: бот подтверждает его с настройками по умолчанию и дальше идёт как обычно.\nПоиск карточки и кнопки «изменить» больше не требует названия вида «подписка bee …».\nМаркер: TARIFF_CONFIG_1591R41.\n'
+
+# Revision 42: the journal names the tariff it really waits for. «На странице найдено название
+# bee START» and «Точный текст bee START пока не появился» were literal strings since 15.91 while the
+# check itself used TARIFF_NAME; with BEELINE_TARIFF=для смарт часов the journal still said bee START.
+# The startup line now prints the tariff and where it came from.
+TARIFF_LOG_MARKER = "TARIFF_LOG_1591R42"
+OLD_TARIFF_SEEN_R42 = '            print("На странице найдено название bee START. Выбираю eSIM...")\n'
+NEW_TARIFF_SEEN_R42 = '            print(f"На странице найдено название «{TARIFF_NAME}». Выбираю eSIM...")  # TARIFF_LOG_1591R42\n'
+OLD_TARIFF_WAIT_R42 = '                "Точный текст bee START пока не появился; "\n                "проверяю фактические элементы оформления.",\n'
+NEW_TARIFF_WAIT_R42 = '                f"Точный текст «{TARIFF_NAME}» пока не появился; "  # TARIFF_LOG_1591R42\n                "проверяю фактические элементы оформления.",\n'
+OLD_TARIFF_START_R42 = '    print(f"Запускаю {BROWSER_COUNT} Chromium и {TAB_COUNT} рабочие вкладки. Общая очередь строк.")  # BROWSER_HANG_1591R18\n'
+NEW_TARIFF_START_R42 = OLD_TARIFF_START_R42 + '    print(f"Тариф: «{TARIFF_NAME}»" + (" (BEELINE_TARIFF из окружения службы)" if (os.environ.get("BEELINE_TARIFF") or "").strip() else " (по умолчанию)"), flush=True)  # TARIFF_LOG_1591R42\n'
+README_NOTE_R42 = '\n\nРЕВИЗИЯ 42 (fix_package_1591.py)\nЖурнал называет настоящий тариф. Строки «На странице найдено название bee START» и «Точный текст\nbee START пока не появился» были зашиты в код как есть, хотя проверка шла по TARIFF_NAME: при\nBEELINE_TARIFF=для смарт часов журнал всё равно писал про bee START. Теперь в них подставляется\nTARIFF_NAME, а при старте печатается «Тариф: «…» (BEELINE_TARIFF из окружения службы | по умолчанию)».\nМаркер: TARIFF_LOG_1591R42.\n'
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -4028,8 +4043,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if TARIFF_LOG_MARKER in source:
+        return 42   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if TARIFF_CONFIG_MARKER in source:
-        return 41   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 41
     if ISOLATED_CONTEXT_MARKER in source:
         return 40
     if SIGN_REJECTED_MARKER in source:
@@ -4083,7 +4100,8 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 38 or TELEGRAM_MENU_MARKER in source)\
             and (MAX_REVISION < 39 or SIGN_REJECTED_MARKER in source)\
             and (MAX_REVISION < 40 or ISOLATED_CONTEXT_MARKER in source)\
-            and (MAX_REVISION < 41 or TARIFF_CONFIG_MARKER in source):
+            and (MAX_REVISION < 41 or TARIFF_CONFIG_MARKER in source)\
+            and (MAX_REVISION < 42 or TARIFF_LOG_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4796,6 +4814,23 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 43 (r42). The journal names the configured tariff instead of the literal bee START.
+    if TARIFF_LOG_MARKER not in source and MAX_REVISION >= 42:
+        for old, new, what in ((OLD_TARIFF_SEEN_R42, NEW_TARIFF_SEEN_R42, "tariff seen message"),
+                               (OLD_TARIFF_WAIT_R42, NEW_TARIFF_WAIT_R42, "tariff wait message"),
+                               (OLD_TARIFF_START_R42, NEW_TARIFF_START_R42, "tariff at startup")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4861,7 +4896,8 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 38", README_NOTE_R38),) if built_revision >= 38 else ()),
                           *((("РЕВИЗИЯ 39", README_NOTE_R39),) if built_revision >= 39 else ()),
                           *((("РЕВИЗИЯ 40", README_NOTE_R40),) if built_revision >= 40 else ()),
-                          *((("РЕВИЗИЯ 41", README_NOTE_R41),) if built_revision >= 41 else ())):
+                          *((("РЕВИЗИЯ 41", README_NOTE_R41),) if built_revision >= 41 else ()),
+                          *((("РЕВИЗИЯ 42", README_NOTE_R42),) if built_revision >= 42 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
