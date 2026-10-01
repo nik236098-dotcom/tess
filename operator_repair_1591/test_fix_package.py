@@ -576,9 +576,9 @@ class PackageTests(unittest.TestCase):
             menu.state["view"] = "menu"; n = len(calls); self.assertFalse(menu.tick()); self.assertEqual(len(calls), n, "a closed status view is never edited")
             menu.handle_callback(cb("m|esims|0")); e = last(); kb = json.loads(e["reply_markup"])["inline_keyboard"]
             self.assertIn("12 шт.", e["text"]); self.assertEqual(len(kb), 12); self.assertEqual(kb[-2][0]["text"], "1/2")
-            self.assertTrue(kb[0][0]["text"].startswith("🆕 +7 962 615-")); key = kb[0][0]["callback_data"].split("|")[2]
+            self.assertTrue(kb[0][0]["text"].startswith("🆕 💳 +7 962 615-")); self.assertNotIn("стр.", kb[0][0]["text"]); key = kb[0][0]["callback_data"].split("|")[2]
             menu.handle_callback(cb("m|esims|1")); kb = json.loads(last()["reply_markup"])["inline_keyboard"]
-            self.assertEqual(kb[-2][0]["text"], "◀️"); self.assertIn("📄 стр. 7", kb[-3][0]["text"])
+            self.assertEqual(kb[-2][0]["text"], "◀️"); self.assertEqual(kb[-3][0]["text"], "🆕 📄 +7 962 000-00-01")
             menu.handle_callback(cb(f"m|esim|{key}|0")); e = last()
             self.assertIn("Требуется оплата", e["text"]); self.assertIn("ФИО: Тест &lt;Имя&gt;", e["text"]); self.assertIn("Подпись (сеть)", e["text"])
             menu.handle_callback(cb(f"m|set|{key}|ok|0")); self.assertIn("Отметка: ✅ оформлена", last()["text"])

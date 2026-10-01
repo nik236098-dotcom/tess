@@ -351,7 +351,8 @@ class TelegramMenu:
         for rec in recs:
             counts[self._mark_of(rec)] = counts.get(self._mark_of(rec), 0) + 1
         text = (f"📱 <b>Мои eSIM</b> — {len(recs)} шт.\n"
-                f"🆕 {counts['new']} · ✅ {counts['ok']} · ❌ {counts['bad']}\n\n"
+                f"🆕 {counts['new']} · ✅ {counts['ok']} · ❌ {counts['bad']}\n"
+                "💳 ждёт оплаты · 📄 договор оформлен\n\n"
                 "Нажми на номер, чтобы открыть карточку и поставить отметку.")
         if not recs:
             text = "📱 <b>Мои eSIM</b>\n\nПока ни одной оформленной eSIM."
@@ -359,7 +360,7 @@ class TelegramMenu:
         for rec in chunk:
             icon = MARKS[self._mark_of(rec)]
             kind = "💳" if rec["_kind"] == "payment" else "📄"
-            label = f"{icon} {pretty_phone(rec.get('sim_number') or rec.get('active_digits'))} · {kind} стр. {rec.get('row', '?')}"
+            label = f"{icon} {kind} {pretty_phone(rec.get('sim_number') or rec.get('active_digits'))}"
             rows.append([_btn(label, f"m|esim|{rec['_key']}|{page}")])
         nav = []
         if page > 0:
