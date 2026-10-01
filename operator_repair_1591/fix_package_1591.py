@@ -85,7 +85,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "f64ef74d8f4b6b3875c77253e23ede004065f6afcfc342e971c249138f570541",  # r32 lite output (FIX_1591_WITHOUT_R31=1)
                          "5a4c11e2d64d6d32bed1544d8f83ad44bfdb0c64b33f2df9eeda780d1db8b3dd",  # r32 output
                          "92c9cc68e5cfd3a0f8717d4bb53fb247e43f3564dc55dac75f2bd1b6924112f0",  # r33 lite output
-                         "8561fef2069ee3c6df376c6060084aca717405e63f009d96bb0b98aa4aa7c1bc"}  # r33 output
+                         "8561fef2069ee3c6df376c6060084aca717405e63f009d96bb0b98aa4aa7c1bc",  # r33 output
+                         "abd23f11da908dd2e3bf17e7b5321a95505eb7fcf8eb7d41c8b9cb622c51322f",  # r34 lite output
+                         "941b2964bf5f0b549047d4776ad830996951d8f6d35619e20dfed6763f4bc7e2"}  # r34 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3062,6 +3064,11 @@ NEW_TARIFF_CHANGE_R33 = '            candidates = [  # TARIFF_CHANGE_BUTTON_1591
 OLD_TARIFF_HELPER_ANCHOR_R33 = '# TARIFF_SCOPE_1591R32\n_TARIFF_PICKER_HEADER_RE_1591R32 = re.compile(r"^\\s*выберите тариф\\s*$", re.I)\n'
 NEW_TARIFF_HELPER_R33 = '# TARIFF_CHANGE_BUTTON_1591R33\n_TARIFF_CHANGE_METRIC_1591R33 = \'button[data-metric-name="basketMetric:handleClickChangeTariffButton"]\'\n\n\ndef _tariff_change_button_1591r33(page):\n    """Locator of the tariff block\'s «изменить». The basket can show several «изменить» (the region\n    block «Саратов • изменить» comes first) and the first one opened the region picker, not the\n    tariff picker. Preference: the site\'s own tariff-change button when it is marked, else the\n    «изменить» nearest to a tariff title («подписка bee …»), else every «изменить» (the caller\n    clicks the first). Any «изменить» is waited for first, so a late render does not fall through."""\n    generic = page.get_by_role("button", name="изменить", exact=True)\n    try:\n        expect(generic.first).to_be_visible(timeout=20000)\n    except Exception:\n        return generic\n    try:\n        marked = page.locator(_TARIFF_CHANGE_METRIC_1591R33)\n        if marked.count() > 0:\n            return marked\n    except Exception:\n        pass\n    try:\n        titles = page.get_by_text(_TARIFF_TITLE_RE_1591R32)\n        for index in range(min(titles.count(), 4)):\n            near = titles.nth(index).locator(\n                "xpath=ancestor::*[.//button[normalize-space(.)=\'изменить\']][1]"\n            ).get_by_role("button", name="изменить", exact=True)\n            if near.count() > 0:\n                return near\n    except Exception:\n        pass\n    return generic\n\n\n# TARIFF_SCOPE_1591R32\n_TARIFF_PICKER_HEADER_RE_1591R32 = re.compile(r"^\\s*выберите тариф\\s*$", re.I)\n'
 README_NOTE_R33 = '\n\nРЕВИЗИЯ 33 (fix_package_1591.py)\nКнопка «изменить» тарифа. В корзине бывает несколько «изменить» (первая — у региона «Саратов»);\nкод нажимал первую, открывался выбор региона, а не тарифов, и карточка тарифа «не находилась»,\nпока строка не отдавалась (ревизия 32, 3 попытки). Теперь берётся кнопка смены тарифа сайта\n(data-metric-name basketMetric:handleClickChangeTariffButton), иначе «изменить» рядом с названием\nтарифа «подписка bee …», иначе первая «изменить». Маркер: TARIFF_CHANGE_BUTTON_1591R33.\n'
+# Revision 34: the number of Chromium instances comes from BEELINE_BROWSERS (default 2).
+BROWSER_ENV_MARKER = "BROWSER_COUNT_ENV_1591R34"
+OLD_BROWSER_COUNT_R34 = 'BROWSER_COUNT = 2  # TWO_BROWSERS_1591R28: two Chromium instances, TABS_PER_BROWSER tabs each\n'
+NEW_BROWSER_COUNT_R34 = '# BROWSER_COUNT_ENV_1591R34: BEELINE_BROWSERS=1 in the systemd unit runs one Chromium on a small\n# server (4 vCPU / 8 GB ran two at load average 20: every click and wait timed out). Default 2 (r28).\ndef _browser_count_1591r34(default=2):\n    try:\n        value = int(str(os.environ.get("BEELINE_BROWSERS") or default).strip())\n    except ValueError:\n        value = default\n    return min(max(value, 1), 4)\n\n\nBROWSER_COUNT = _browser_count_1591r34()  # TWO_BROWSERS_1591R28: Chromium instances, TABS_PER_BROWSER tabs each\n'
+README_NOTE_R34 = '\n\nРЕВИЗИЯ 34 (fix_package_1591.py)\nЧисло Chromium задаётся переменной окружения BEELINE_BROWSERS (по умолчанию 2, как в ревизии 28;\nдопустимо 1–4), вкладок по-прежнему 4 на браузер. На сервере 4 vCPU / 8 ГБ два Chromium дали load\naverage 20 и нехватку памяти: клики и ожидания не укладывались в таймауты, строки падали на тарифе.\nТам ставится 1: drop-in /etc/systemd/system/beeline.service.d/browsers.conf с\n[Service] Environment=BEELINE_BROWSERS=1, затем systemctl daemon-reload и restart.\nМаркер: BROWSER_COUNT_ENV_1591R34.\n'
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3883,8 +3890,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if BROWSER_ENV_MARKER in source:
+        return 34   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if TARIFF_CHANGE_MARKER in source:
-        return 33   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 33
     if TARIFF_SCOPE_MARKER in source:
         return 32
     return 31 if SIGN_ROBUST_MARKER in source else 30
@@ -3914,7 +3923,8 @@ def main(argv: list[str]) -> int:
                                                 STALE_DRAIN_MARKER, AI_VERDICT_MARKER))\
             and (MAX_REVISION < 31 or WITHOUT_R31 or SIGN_ROBUST_MARKER in source)\
             and (MAX_REVISION < 32 or TARIFF_SCOPE_MARKER in source)\
-            and (MAX_REVISION < 33 or TARIFF_CHANGE_MARKER in source):
+            and (MAX_REVISION < 33 or TARIFF_CHANGE_MARKER in source)\
+            and (MAX_REVISION < 34 or BROWSER_ENV_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4430,6 +4440,21 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 35 (r34). BROWSER_COUNT from BEELINE_BROWSERS.
+    if BROWSER_ENV_MARKER not in source and MAX_REVISION >= 34:
+        old, new, what = OLD_BROWSER_COUNT_R34, NEW_BROWSER_COUNT_R34, "browser count from env"
+        new_source = replace_once(new_source, old, new, what)
+        if old in source:
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        else:
+            for change in edits["test_beeline.py"]:
+                joined = "".join(change["replacement"])
+                if old in joined:
+                    change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                    break
+            else:
+                raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4487,7 +4512,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 30", README_NOTE_R30),
                           *((("РЕВИЗИЯ 31", README_NOTE_R31),) if SIGN_ROBUST_MARKER in new_source else ()),
                           *((("РЕВИЗИЯ 32", README_NOTE_R32),) if built_revision >= 32 else ()),
-                          *((("РЕВИЗИЯ 33", README_NOTE_R33),) if built_revision >= 33 else ())):
+                          *((("РЕВИЗИЯ 33", README_NOTE_R33),) if built_revision >= 33 else ()),
+                          *((("РЕВИЗИЯ 34", README_NOTE_R34),) if built_revision >= 34 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 

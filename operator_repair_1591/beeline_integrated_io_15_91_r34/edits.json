@@ -1338,7 +1338,17 @@
         "                pass\n",
         "\n",
         "\n",
-        "BROWSER_COUNT = 2  # TWO_BROWSERS_1591R28: two Chromium instances, TABS_PER_BROWSER tabs each\n"
+        "# BROWSER_COUNT_ENV_1591R34: BEELINE_BROWSERS=1 in the systemd unit runs one Chromium on a small\n",
+        "# server (4 vCPU / 8 GB ran two at load average 20: every click and wait timed out). Default 2 (r28).\n",
+        "def _browser_count_1591r34(default=2):\n",
+        "    try:\n",
+        "        value = int(str(os.environ.get(\"BEELINE_BROWSERS\") or default).strip())\n",
+        "    except ValueError:\n",
+        "        value = default\n",
+        "    return min(max(value, 1), 4)\n",
+        "\n",
+        "\n",
+        "BROWSER_COUNT = _browser_count_1591r34()  # TWO_BROWSERS_1591R28: Chromium instances, TABS_PER_BROWSER tabs each\n"
       ]
     },
     {

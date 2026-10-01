@@ -6070,7 +6070,17 @@ def try_local_captcha(page, frame_box=None):
                 pass
 
 
-BROWSER_COUNT = 2  # TWO_BROWSERS_1591R28: two Chromium instances, TABS_PER_BROWSER tabs each
+# BROWSER_COUNT_ENV_1591R34: BEELINE_BROWSERS=1 in the systemd unit runs one Chromium on a small
+# server (4 vCPU / 8 GB ran two at load average 20: every click and wait timed out). Default 2 (r28).
+def _browser_count_1591r34(default=2):
+    try:
+        value = int(str(os.environ.get("BEELINE_BROWSERS") or default).strip())
+    except ValueError:
+        value = default
+    return min(max(value, 1), 4)
+
+
+BROWSER_COUNT = _browser_count_1591r34()  # TWO_BROWSERS_1591R28: Chromium instances, TABS_PER_BROWSER tabs each
 TABS_PER_BROWSER = 4  # SUCCESS_TAG_1591R17: four worker tabs
 TAB_COUNT = BROWSER_COUNT * TABS_PER_BROWSER
 

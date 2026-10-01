@@ -447,3 +447,11 @@ DRAIN_DEADLINE_1591R32.
 пока строка не отдавалась (ревизия 32, 3 попытки). Теперь берётся кнопка смены тарифа сайта
 (data-metric-name basketMetric:handleClickChangeTariffButton), иначе «изменить» рядом с названием
 тарифа «подписка bee …», иначе первая «изменить». Маркер: TARIFF_CHANGE_BUTTON_1591R33.
+
+РЕВИЗИЯ 34 (fix_package_1591.py)
+Число Chromium задаётся переменной окружения BEELINE_BROWSERS (по умолчанию 2, как в ревизии 28;
+допустимо 1–4), вкладок по-прежнему 4 на браузер. На сервере 4 vCPU / 8 ГБ два Chromium дали load
+average 20 и нехватку памяти: клики и ожидания не укладывались в таймауты, строки падали на тарифе.
+Там ставится 1: drop-in /etc/systemd/system/beeline.service.d/browsers.conf с
+[Service] Environment=BEELINE_BROWSERS=1, затем systemctl daemon-reload и restart.
+Маркер: BROWSER_COUNT_ENV_1591R34.

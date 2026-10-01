@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 33 лежит в `beeline_integrated_io_15_91_r33/` (включает ревизии 30–32); рядом
-`beeline_integrated_io_15_91_r33_lite/` — та же ревизия 33 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 34 лежит в `beeline_integrated_io_15_91_r34/` (включает ревизии 30–33); рядом
+`beeline_integrated_io_15_91_r34_lite/` — та же ревизия 34 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -69,7 +69,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r33
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r34
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -285,7 +285,12 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    строка не отдавалась. Теперь берётся кнопка смены тарифа сайта (`data-metric-name
    basketMetric:handleClickChangeTariffButton`), иначе «изменить» рядом с названием «подписка bee …»,
    иначе первая. Маркер `TARIFF_CHANGE_BUTTON_1591R33`.
-35. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+35. **Число Chromium из окружения (ревизия 34).** `BEELINE_BROWSERS` (по умолчанию 2, допустимо 1–4), по
+   4 вкладки на браузер. На сервере 4 vCPU / 8 ГБ два Chromium дали load average 20 и нехватку памяти,
+   клики не укладывались в таймауты. Там ставится 1 через drop-in
+   `/etc/systemd/system/beeline.service.d/browsers.conf` (`[Service]` / `Environment=BEELINE_BROWSERS=1`),
+   затем `systemctl daemon-reload` и `restart`. Маркер `BROWSER_COUNT_ENV_1591R34`.
+36. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
