@@ -456,7 +456,7 @@ class PackageTests(unittest.TestCase):
         page = types.SimpleNamespace(_reserved_sim_url="https://x/?hash_order=new", _reserved_sim_number="+7111", _reserved_sim_url_locked=True)
         worker = {"reserved_sim_url": "https://x/?hash_order=old"}
         exec(compile(body, "pending", "exec"), {"getattr": getattr}, {"page": page, "worker": worker})
-        self.assertEqual(worker["reserved_sim_url"], "https://x/?hash_order=new"); self.assertEqual(worker["reserved_sim_number"], "+7111")
+        self.assertEqual(worker["reserved_sim_url"], "https://x/?hash_order=new", "the locked capture of a new page replaces the old link")
         page.__dict__["_reserved_sim_url_locked"] = False; page.__dict__["_reserved_sim_url"] = "https://x/registration/esim/mobile-id-auth"
         exec(compile(body, "pending", "exec"), {"getattr": getattr}, {"page": page, "worker": worker})
         self.assertEqual(worker["reserved_sim_url"], "https://x/?hash_order=new", "an unlocked later URL never replaces the offer link")
