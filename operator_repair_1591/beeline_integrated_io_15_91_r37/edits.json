@@ -1918,6 +1918,47 @@
       ]
     },
     {
+      "start": 6354,
+      "end": 6355,
+      "replacement": [
+        "# AI_ON_SIGN_FAIL_1591R37\n",
+        "SIGN_OK_RE_1591R37 = re.compile(r\"checksignature|/sign\\b\", re.I)\n",
+        "\n",
+        "\n",
+        "def _sign_went_through_1591r37(worker):\n",
+        "    \"\"\"True when the trace of the sign click (revision 25) holds a successful answer (status\n",
+        "    2xx/3xx) to the signing request: the site accepted the signature, DeepSeek is not needed.\"\"\"\n",
+        "    trace = (worker or {}).get(\"sign_trace\") or {}\n",
+        "    for response in trace.get(\"responses\") or []:\n",
+        "        try:\n",
+        "            status = int(response.get(\"status\") or 0)\n",
+        "        except (TypeError, ValueError):\n",
+        "            status = 0\n",
+        "        if SIGN_OK_RE_1591R37.search(str(response.get(\"url\") or \"\")) and 200 <= status < 400:\n",
+        "            return True\n",
+        "    return False\n",
+        "\n",
+        "\n",
+        "def enter_success_guard(worker, note):\n"
+      ]
+    },
+    {
+      "start": 6362,
+      "end": 6364,
+      "replacement": [
+        "    publish_worker_phase(worker, \"POST_AUTH_REVIEW\", note)\n",
+        "    # AI_ON_SIGN_FAIL_1591R37: DeepSeek is no longer summoned on every confirmed row. The runtime\n",
+        "    # signs by itself; DeepSeek is asked only when the signature does not go through (disabled\n",
+        "    # button, missing region, signing error, request not seen in the network, error page,\n",
+        "    # unverified page). The push with the network trace is the report for the rest.\n",
+        "    print(\n",
+        "        f\"[Вкладка {worker['id']}] DeepSeek на подпись не вызываю: runtime подписывает сам; \"\n",
+        "        \"вызов только при сбое подписи.\",\n",
+        "        flush=True,\n",
+        "    )\n"
+      ]
+    },
+    {
       "start": 6366,
       "end": 6367,
       "replacement": [
@@ -2128,6 +2169,26 @@
         "            except Exception as exc:\n",
         "                print(f\"[Вкладка {worker['id']}] Проверка отправки подписи: {type(exc).__name__}: {exc}\", flush=True)\n",
         "            worker[\"phase\"] = \"SIGN_WAIT\"\n"
+      ]
+    },
+    {
+      "start": 6433,
+      "end": 6436,
+      "replacement": [
+        "            external_heartbeat(worker, \"signature_submitted_success_guard\")\n",
+        "            if _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37\n",
+        "                print(\n",
+        "                    f\"[Вкладка {worker['id']}] Запрос подписи ушёл и принят сайтом (след сети); \"\n",
+        "                    \"DeepSeek не вызываю.\",\n",
+        "                    flush=True,\n",
+        "                )\n",
+        "            else:\n",
+        "                queue_success_assist(\n",
+        "                    worker,\n",
+        "                    \"подпись нажата, но запроса подписи в сети не видно; проверь ошибки/обязательные поля\",\n",
+        "                    force=True,\n",
+        "                )\n",
+        "            return\n"
       ]
     },
     {
@@ -2484,6 +2545,8 @@
         "        _finish_payment_required_1591r26(base_dir, worker, \"по вердикту DeepSeek: сайт требует оплату eSIM\")\n",
         "        return False\n",
         "    evidence = _signed_evidence_1591r24(page) if page is not None else \"\"\n",
+        "    if not evidence and _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37\n",
+        "        evidence = \"network:signature_accepted\"  # the site answered the signing request with 2xx\n",
         "    if not evidence and verdict == \"SIGNED\":\n",
         "        evidence = \"ai:verdict_signed\"\n",
         "    if evidence:\n",
@@ -2528,6 +2591,23 @@
         "\n",
         "\n",
         "def tick_sign_wait(base_dir, worker):\n"
+      ]
+    },
+    {
+      "start": 6494,
+      "end": 6503,
+      "replacement": [
+        "    if _post_auth_error_page(page):\n",
+        "        # AI_ON_SIGN_FAIL_1591R37: registration/error after the click has no field DeepSeek could\n",
+        "        # fill; the row is recorded as unverified (number not processed, tab kept open) at once.\n",
+        "        external_heartbeat(worker, \"success_sign_error\")\n",
+        "        accepted = _sign_went_through_1591r37(worker)\n",
+        "        _finish_unverified_1591r24(\n",
+        "            base_dir, worker,\n",
+        "            \"после «Подписать договор» сайт показал registration/error\"\n",
+        "            + (\" (запрос подписи при этом был принят сайтом)\" if accepted else \"\"),\n",
+        "        )\n",
+        "        return\n"
       ]
     },
     {

@@ -3949,7 +3949,6 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             f"[AI {lane.upper()}] Обрабатываю update {update_id}: {latest[:120]}",
             flush=True,
         )
-        _ai_mark_busy_1591r30(status_map, latest, update_id)  # SIGN_ROBUST_1591R31
 
         try:
             _ai_health_touch(ai_health, "busy_browser", f"update={update_id}")
@@ -4039,7 +4038,6 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
                             + str(plan.get("summary") or "Готово.")
                         )
 
-            _ai_success_verdict_1591r30(status_map, latest, response_text)  # SIGN_ROBUST_1591R31
             # Mark complete and queue the response in one local durable store.
             _ai_db_complete(
                 update_id,
@@ -4053,7 +4051,6 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             err = f"{type(exc).__name__}: {exc}"
             print(f"[AI {lane.upper()}] Operator error update {update_id}: {err}", flush=True)
             _ai_db_fail(update_id, err, job.get("attempts", 1))
-            _ai_success_verdict_1591r30(status_map, latest, "")  # SIGN_ROBUST_1591R31: busy flag off
             _ai_health_touch(ai_health, "job_error", err)
 
         time.sleep(0.2)
@@ -7415,6 +7412,24 @@ def ensure_region_if_missing(page, diagnostic=None):
         return False
 
 
+# AI_ON_SIGN_FAIL_1591R37
+SIGN_OK_RE_1591R37 = re.compile(r"checksignature|/sign\b", re.I)
+
+
+def _sign_went_through_1591r37(worker):
+    """True when the trace of the sign click (revision 25) holds a successful answer (status
+    2xx/3xx) to the signing request: the site accepted the signature, DeepSeek is not needed."""
+    trace = (worker or {}).get("sign_trace") or {}
+    for response in trace.get("responses") or []:
+        try:
+            status = int(response.get("status") or 0)
+        except (TypeError, ValueError):
+            status = 0
+        if SIGN_OK_RE_1591R37.search(str(response.get("url") or "")) and 200 <= status < 400:
+            return True
+    return False
+
+
 def enter_success_guard(worker, note):
     if not worker.get("success_guard"):
         worker["success_guard"] = True
@@ -7424,157 +7439,15 @@ def enter_success_guard(worker, note):
             flush=True,
         )
     publish_worker_phase(worker, "POST_AUTH_REVIEW", note)
-    queue_success_assist(worker, note, force=True)
-
-
-# SIGN_ROBUST_1591R31
-AI_BUSY_MAX_SECONDS = 150      # a DeepSeek session older than this no longer blocks the local signing
-AI_YIELD_MAX_SECONDS = 120     # the local code yields to DeepSeek at most this long per row
-AI_VERDICT_MAX_AGE = 900
-SIGN_SENT_RE_1591R30 = re.compile(r"checksignature|/sign", re.I)
-
-
-def _ai_busy_1591r30(worker):
-    """True while a DeepSeek SUCCESS_ASSIST session is working on this tab (bounded)."""
-    sm = worker.get("status_map")
-    if sm is None:
-        return False
-    try:
-        info = sm.get(f"ai_busy:{worker.get('id')}") or {}
-    except Exception:
-        return False
-    now = time.time()
-    if not info or now - float(info.get("time") or 0) > AI_BUSY_MAX_SECONDS:
-        worker["ai_yield_since"] = None
-        return False
-    since = worker.get("ai_yield_since")
-    if since is None:
-        worker["ai_yield_since"] = now
-        return True
-    return now - float(since) < AI_YIELD_MAX_SECONDS
-
-
-def _ai_verdict_1591r30(worker):
-    """DeepSeek's VERDICT for this tab, if given after the local click and still fresh."""
-    sm = worker.get("status_map")
-    if sm is None:
-        return ""
-    try:
-        info = sm.get(f"verdict:{worker.get('id')}") or {}
-    except Exception:
-        return ""
-    when = float(info.get("time") or 0)
-    if not info or time.time() - when > AI_VERDICT_MAX_AGE:
-        return ""
-    if when < float(worker.get("sign_clicked_at") or 0):
-        return ""
-    return str(info.get("verdict") or "").upper()
-
-
-def _ai_mark_busy_1591r30(status_map, request_text, update_id):
-    """Observer side: this SUCCESS_ASSIST request is being worked on — the tab's local code yields."""
-    m = re.search(r"\[AUTO_SUCCESS_ASSIST TAB (\d+)\]", str(request_text or ""))
-    if not m or status_map is None:
-        return None
-    tab = int(m.group(1))
-    try:
-        status_map[f"ai_busy:{tab}"] = {"time": time.time(), "update": update_id}
-    except Exception:
-        pass
-    return tab
-
-
-def _ai_success_verdict_1591r30(status_map, request_text, response_text):
-    """Observer side: record DeepSeek's VERDICT for the tab named in the request; clear busy."""
-    m = re.search(r"\[AUTO_SUCCESS_ASSIST TAB (\d+)\]", str(request_text or ""))
-    if not m or status_map is None:
-        return None
-    tab = int(m.group(1))
-    try:
-        status_map.pop(f"ai_busy:{tab}", None)
-    except Exception:
-        pass
-    v = re.search(r"VERDICT:\s*(SIGNED|PAYMENT|NOT_SIGNED)", str(response_text or ""), re.I)
-    if not v:
-        return None
-    verdict = v.group(1).upper()
-    try:
-        status_map[f"verdict:{tab}"] = {"verdict": verdict, "time": time.time(),
-                                        "text": str(response_text or "")[-300:]}
-    except Exception:
-        pass
-    print(f"[AI VERDICT] TAB {tab}: {verdict}", flush=True)
-    return verdict
-
-
-_SIGNATURE_CANVAS_FILLED_JS_1591R30 = r"""() => {
-  const list = [...document.querySelectorAll('canvas')].filter(c => {
-    const r = c.getBoundingClientRect(); return r.width >= 250 && r.height >= 120;
-  });
-  if (!list.length) return null;
-  const c = list[0];
-  try {
-    const blank = document.createElement('canvas'); blank.width = c.width; blank.height = c.height;
-    return c.toDataURL() !== blank.toDataURL();
-  } catch (e) { return null; }
-}"""
-
-
-def _signature_canvas_filled_1591r30(page):
-    """True/False when the signature pad is/is not drawn on; None when unknown."""
-    try:
-        return page.evaluate(_SIGNATURE_CANVAS_FILLED_JS_1591R30)
-    except Exception:
-        return None
-
-
-def _sign_prepare_1591r30(page, worker):
-    """Before the local signing: no portal modal may intercept the click."""
-    try:
-        dismiss_blocking_overlays(page, keep_text="подписать")
-    except Exception:
-        pass
-
-
-def _sign_request_sent_1591r30(trace):
-    for r in (trace or {}).get("responses") or []:
-        url = str(r.get("url") or "")
-        if SIGN_SENT_RE_1591R30.search(url):
-            return True
-        if str(r.get("method")) in ("POST", "PUT", "PATCH") and int(r.get("status") or 0) < 400 and "esim" in url.lower():
-            return True
-    return False
-
-
-def _sign_retry_if_unsent_1591r30(page, worker):
-    """The click sent nothing and the button is still there: overlays away, redraw, ONE more click."""
-    trace = worker.get("sign_trace") or {}
-    if _sign_request_sent_1591r30(trace) or int(worker.get("sign_retries") or 0) >= 1:
-        return False
-    try:
-        if _signature_button_locator(page) is None:
-            return False
-    except Exception:
-        return False
-    worker["sign_retries"] = int(worker.get("sign_retries") or 0) + 1
-    filled = _signature_canvas_filled_1591r30(page)
-    canvas = "пуст" if filled is False else ("не пуст" if filled else "?")
+    # AI_ON_SIGN_FAIL_1591R37: DeepSeek is no longer summoned on every confirmed row. The runtime
+    # signs by itself; DeepSeek is asked only when the signature does not go through (disabled
+    # button, missing region, signing error, request not seen in the network, error page,
+    # unverified page). The push with the network trace is the report for the rest.
     print(
-        f"[Вкладка {worker.get('id')}] Подпись: запрос на сервер не ушёл (холст {canvas}) — "
-        "снимаю оверлеи и повторяю один раз.",
+        f"[Вкладка {worker['id']}] DeepSeek на подпись не вызываю: runtime подписывает сам; "
+        "вызов только при сбое подписи.",
         flush=True,
     )
-    _sign_prepare_1591r30(page, worker)
-    _sign_trace_begin_1591r25(page, worker)
-    try:
-        fill_signature_and_submit(page, worker.get("diagnostic"))
-        worker["sign_clicked_at"] = time.time()
-        return True
-    except Exception as exc:
-        print(f"[Вкладка {worker.get('id')}] Повтор подписи не удался: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
-        return False
-    finally:
-        _sign_trace_end_1591r25(page, worker, note="retry")
 
 
 def tick_post_auth_review(base_dir, worker):
@@ -7624,10 +7497,6 @@ def tick_post_auth_review(base_dir, worker):
             queue_success_assist(worker, "область отсутствует или не принялась")
 
     button = _signature_button_locator(page)
-    if button is not None and _ai_busy_1591r30(worker):  # SIGN_ROBUST_1591R31: DeepSeek is on this tab
-        set_tab_status(worker, "🧠", "Подтверждение успешно. DeepSeek работает с вкладкой — подпись отложена.")
-        external_heartbeat(worker, "sign_yield_to_ai")
-        return
     if button is not None:
         try:
             enabled = button.is_enabled()
@@ -7650,22 +7519,27 @@ def tick_post_auth_review(base_dir, worker):
                 "Подтверждение успешно. Заполняю подпись и подписываю договор."
             )
             capture_contract_details(page, worker)
-            _sign_prepare_1591r30(page, worker)  # SIGN_ROBUST_1591R31: overlays away first
             _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25
             try:
                 fill_signature_and_submit(page, worker.get("diagnostic"))
             finally:
                 _sign_trace_end_1591r25(page, worker)
-            worker["sign_clicked_at"] = time.time()
-            try:
-                _sign_retry_if_unsent_1591r30(page, worker)  # nothing sent + button still there → one retry
-            except Exception as exc:
-                print(f"[Вкладка {worker['id']}] Проверка отправки подписи: {type(exc).__name__}: {exc}", flush=True)
             worker["phase"] = "SIGN_WAIT"
             worker["sign_submit_url"] = page.url
             worker["sign_button_gone_since"] = None
             external_heartbeat(worker, "signature_submitted_success_guard")
-            queue_success_assist(worker, "подпись отправлена; наблюдай результат")
+            if _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37
+                print(
+                    f"[Вкладка {worker['id']}] Запрос подписи ушёл и принят сайтом (след сети); "
+                    "DeepSeek не вызываю.",
+                    flush=True,
+                )
+            else:
+                queue_success_assist(
+                    worker,
+                    "подпись нажата, но запроса подписи в сети не видно; проверь ошибки/обязательные поля",
+                    force=True,
+                )
             return
         except Exception as exc:
             capture_blackbox(worker, "signature_submit_failed", exc)
@@ -8043,13 +7917,9 @@ def settle_success_1591r24(base_dir, worker):
     if payment_text:
         _finish_payment_required_1591r26(base_dir, worker, payment_text)
         return False
-    verdict = _ai_verdict_1591r30(worker)  # SIGN_ROBUST_1591R31
-    if verdict == "PAYMENT":
-        _finish_payment_required_1591r26(base_dir, worker, "по вердикту DeepSeek: сайт требует оплату eSIM")
-        return False
     evidence = _signed_evidence_1591r24(page) if page is not None else ""
-    if not evidence and verdict == "SIGNED":
-        evidence = "ai:verdict_signed"
+    if not evidence and _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37
+        evidence = "network:signature_accepted"  # the site answered the signing request with 2xx
     if evidence:
         worker["success_evidence"] = evidence
         finalize_success(base_dir, worker)
@@ -8111,13 +7981,15 @@ def tick_sign_wait(base_dir, worker):
         pass
 
     if _post_auth_error_page(page):
-        worker["phase"] = "SUCCESS_ASSIST"
-        set_tab_status(
-            worker, "🧠",
-            "После подписи сайт показал ошибку — DeepSeek анализирует. Страницу не трогаю."
-        )
+        # AI_ON_SIGN_FAIL_1591R37: registration/error after the click has no field DeepSeek could
+        # fill; the row is recorded as unverified (number not processed, tab kept open) at once.
         external_heartbeat(worker, "success_sign_error")
-        queue_success_assist(worker, "ошибка после попытки подписи")
+        accepted = _sign_went_through_1591r37(worker)
+        _finish_unverified_1591r24(
+            base_dir, worker,
+            "после «Подписать договор» сайт показал registration/error"
+            + (" (запрос подписи при этом был принят сайтом)" if accepted else ""),
+        )
         return
 
     button = _signature_button_locator(page)

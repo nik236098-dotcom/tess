@@ -91,7 +91,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "0544d1e2190d7ac7a2d091fe2370a558f038dbef17dbb775ce973d7a86642643",  # r35 lite output
                          "1a0258ca2f63186b153280b6e546652deebf624e426fdc629e7348560023c5a4",  # r35 output
                          "725adc5426e06707060bd25daa5af8fd4d66e83bfe064869f323177db3d8a12e",  # r36 lite output
-                         "655faf868b4a4ace53dc7845617b4b765890d833822eb7c1d5b2d8b61fcbcb2f"}  # r36 output
+                         "655faf868b4a4ace53dc7845617b4b765890d833822eb7c1d5b2d8b61fcbcb2f",  # r36 output
+                         "cce2c689b26dd7ea0aa865576071d7b8372768efb7d67ec8dbb1ae23bf0c5738",  # r37 lite output
+                         "a31f394aa9d9b708bb9c85c182a871dd0d63b96de78de58429c5746a07babd44"}  # r37 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3094,6 +3096,23 @@ OLD_CTRL_RELAUNCH_DEF_R36 = 'def _restart_after_drain(proc):\n'
 NEW_CTRL_ROWLINK_R36 = '# SIM_URL_PER_ROW_1591R36\n_RL_LINE = re.compile(r"^(?P<ts>\\S+)\\s+\\S+\\s+python\\[(?P<pid>\\d+)\\]:\\s?(?P<msg>.*)$")\n_RL_START = re.compile(r"\\[Вкладка (?P<tab>\\d+)\\] Обрабатываю строку (?P<row>\\d+), номер заканчивается на (?P<tail>\\d+)")\n_RL_OFFER = re.compile(r"eSIM offer сохранён: номер=(?P<num>\\S+) \\| (?P<url>\\S+hash_order=[0-9a-f]+)")\n_RL_OUTCOMES = (\n    ("оплата", re.compile(r"ТРЕБУЕТСЯ ОПЛАТА\\. Строка (?P<row>\\d+)")),\n    ("не подтверждена", re.compile(r"ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА\\. Строка (?P<row>\\d+)")),\n    ("результат", re.compile(r"Результат строки (?P<row>\\d+): (?P<status>\\S+)")),\n)\n\n\ndef _rows_from_journal_1591r36(log):\n    """Rows as the journal saw them: start line, every «продолжить» offer capture, outcome."""\n    rows, current = [], {}\n    for line in log.splitlines():\n        m = _RL_LINE.match(line)\n        if not m:\n            continue\n        ts, pid, msg = m.group("ts")[:19].replace("T", " "), m.group("pid"), m.group("msg")\n        s = _RL_START.search(msg)\n        if s:\n            info = {"row": s.group("row"), "tab": s.group("tab"), "tail": s.group("tail"), "start": ts,\n                    "offers": [], "signed": False, "outcome": ""}\n            rows.append(info)\n            current[pid] = info\n            continue\n        info = current.get(pid)\n        if info is None:\n            continue\n        o = _RL_OFFER.search(msg)\n        if o:\n            info["offers"].append((ts, o.group("num"), o.group("url")))\n            continue\n        if "Нажата кнопка «Подписать договор»" in msg:\n            info["signed"] = True\n            continue\n        for name, pat in _RL_OUTCOMES:\n            r = pat.search(msg)\n            if r and r.group("row") == info["row"]:\n                info["outcome"] = name if name != "результат" else r.group("status")\n                break\n    return rows\n\n\ndef _row_link_command(argument):\n    """/res <номер eSIM из пуша, хотя бы 4 последние цифры> или /res <номер строки>.\n\n    Before revision 36 the push could carry the link of the tab\'s earlier row; the journal\n    keeps the real one: the last offer captured for the row is the order that was signed."""\n    key = re.sub(r"\\D", "", argument or "")\n    if len(key) < 3:\n        return ("Формат: /res <номер eSIM из пуша> (можно последние 4–6 цифр) или /res <номер строки>. "\n                "Отвечу ссылкой заказа, который реально подписан в этой строке.")\n    try:\n        log = subprocess.run(["journalctl", "-u", "beeline", "--no-pager", "-o", "short-iso", "--since", "-3 days"],\n                             capture_output=True, text=True, timeout=120).stdout\n    except Exception as exc:\n        return f"Журнал недоступен: {type(exc).__name__}: {exc}"\n    rows = _rows_from_journal_1591r36(log)\n    by_row = [r for r in rows if r["row"] == key] if len(key) <= 5 else []\n    by_number = [r for r in rows if any(re.sub(r"\\D", "", num).endswith(key) for _, num, _ in r["offers"])\n                 or r["tail"] == key]\n    hits = (by_row + [r for r in by_number if r not in by_row])[-5:]\n    if not hits:\n        return f"В журнале за 3 дня нет строки или номера eSIM, оканчивающегося на …{key[-6:]}."\n    out = []\n    for r in hits:\n        outcome = r["outcome"] or ("подписана" if r["signed"] else "не завершена")\n        head = f"Строка {r[\'row\']} (вкладка {r[\'tab\']}, …{r[\'tail\']}, {r[\'start\'][5:16]}), исход: {outcome}"\n        if not r["offers"]:\n            out.append(head + "\\nСсылка в журнале не найдена.")\n            continue\n        ts, num, url = r["offers"][-1]\n        text = head + f"\\neSIM {num}\\nСсылка заказа: {url}"\n        if len(r["offers"]) > 1:\n            text += f"\\n(ранних заказов этой строки без данных: {len(r[\'offers\']) - 1})"\n        out.append(text)\n    return "\\n\\n".join(out)\n\n\ndef _restart_after_drain(proc):\n'
 OLD_TEST_CTRL_NS_R36 = "'_send':lambda *a:None,'_typing':lambda:None,'MENU_MARKUP':'{}','_restart_after_drain':lambda p:False,\n"
 NEW_TEST_CTRL_NS_R36 = "'_send':lambda *a:None,'_typing':lambda:None,'MENU_MARKUP':'{}','_restart_after_drain':lambda p:False,'_row_link_command':lambda a:'',\n"
+# Revision 37: DeepSeek is asked for help only when the signature did not go through.
+AI_SIGN_FAIL_MARKER = "AI_ON_SIGN_FAIL_1591R37"
+OLD_GUARD_ASSIST_R37 = '    publish_worker_phase(worker, "POST_AUTH_REVIEW", note)\n    queue_success_assist(worker, note, force=True)\n'
+NEW_GUARD_ASSIST_R37 = '    publish_worker_phase(worker, "POST_AUTH_REVIEW", note)\n    # AI_ON_SIGN_FAIL_1591R37: DeepSeek is no longer summoned on every confirmed row. The runtime\n    # signs by itself; DeepSeek is asked only when the signature does not go through (disabled\n    # button, missing region, signing error, request not seen in the network, error page,\n    # unverified page). The push with the network trace is the report for the rest.\n    print(\n        f"[Вкладка {worker[\'id\']}] DeepSeek на подпись не вызываю: runtime подписывает сам; "\n        "вызов только при сбое подписи.",\n        flush=True,\n    )\n'
+OLD_AFTER_CLICK_R37 = '            external_heartbeat(worker, "signature_submitted_success_guard")\n            queue_success_assist(worker, "подпись отправлена; наблюдай результат")\n            return\n'
+NEW_AFTER_CLICK_R37 = '            external_heartbeat(worker, "signature_submitted_success_guard")\n            if _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37\n                print(\n                    f"[Вкладка {worker[\'id\']}] Запрос подписи ушёл и принят сайтом (след сети); "\n                    "DeepSeek не вызываю.",\n                    flush=True,\n                )\n            else:\n                queue_success_assist(\n                    worker,\n                    "подпись нажата, но запроса подписи в сети не видно; проверь ошибки/обязательные поля",\n                    force=True,\n                )\n            return\n'
+OLD_GUARD_DEF_R37 = 'def enter_success_guard(worker, note):\n'
+NEW_GUARD_DEF_R37 = '# AI_ON_SIGN_FAIL_1591R37\nSIGN_OK_RE_1591R37 = re.compile(r"checksignature|/sign\\b", re.I)\n\n\ndef _sign_went_through_1591r37(worker):\n    """True when the trace of the sign click (revision 25) holds a successful answer (status\n    2xx/3xx) to the signing request: the site accepted the signature, DeepSeek is not needed."""\n    trace = (worker or {}).get("sign_trace") or {}\n    for response in trace.get("responses") or []:\n        try:\n            status = int(response.get("status") or 0)\n        except (TypeError, ValueError):\n            status = 0\n        if SIGN_OK_RE_1591R37.search(str(response.get("url") or "")) and 200 <= status < 400:\n            return True\n    return False\n\n\ndef enter_success_guard(worker, note):\n'
+README_NOTE_R37 = '\n\nРЕВИЗИЯ 37 (fix_package_1591.py)\nDeepSeek только при сбое подписи. Раньше SUCCESS_ASSIST ставился на каждую строку, прошедшую\nподтверждение (enter_success_guard), и ещё раз после клика «Подписать договор»; на успешных строках\nэто были запросы со скриншотами и отчёт в 2–4 сообщения Telegram впустую. Теперь при входе в\npost-auth DeepSeek не вызывается, а после клика — только если в следе сети (ревизия 25) нет\nуспешного ответа на запрос подписи (_sign_went_through_1591r37). Вызовы при неактивной кнопке,\nотсутствующей области, ошибке подписи, странице ошибки, оставшейся кнопке и неподтверждённой\nстранице сохранены. registration/error после клика записывается как #неподтверждено сразу, без DeepSeek\n(дописывать там нечего); принятый сайтом запрос подписи (2xx) считается доказательством подписания в\nsettle_success. Маркер: AI_ON_SIGN_FAIL_1591R37.\n'
+OLD_SIGN_ERROR_R37 = '    if _post_auth_error_page(page):\n        worker["phase"] = "SUCCESS_ASSIST"\n        set_tab_status(\n            worker, "🧠",\n            "После подписи сайт показал ошибку — DeepSeek анализирует. Страницу не трогаю."\n        )\n        external_heartbeat(worker, "success_sign_error")\n        queue_success_assist(worker, "ошибка после попытки подписи")\n        return\n'
+NEW_SIGN_ERROR_R37 = '    if _post_auth_error_page(page):\n        # AI_ON_SIGN_FAIL_1591R37: registration/error after the click has no field DeepSeek could\n        # fill; the row is recorded as unverified (number not processed, tab kept open) at once.\n        external_heartbeat(worker, "success_sign_error")\n        accepted = _sign_went_through_1591r37(worker)\n        _finish_unverified_1591r24(\n            base_dir, worker,\n            "после «Подписать договор» сайт показал registration/error"\n            + (" (запрос подписи при этом был принят сайтом)" if accepted else ""),\n        )\n        return\n'
+OLD_EVIDENCE_R37 = '    evidence = _signed_evidence_1591r24(page) if page is not None else ""\n'
+NEW_EVIDENCE_R37 = '    evidence = _signed_evidence_1591r24(page) if page is not None else ""\n    if not evidence and _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37\n        evidence = "network:signature_accepted"  # the site answered the signing request with 2xx\n'
+# A lite package (r37 without r31) already carries the r37 evidence lines inside the settle block
+# that the r31 step rewrites; both application orders give the same text.
+OLD_SETTLE_PAYMENT_R26_WITH_R37 = OLD_SETTLE_PAYMENT_R26.replace(OLD_EVIDENCE_R37, NEW_EVIDENCE_R37)
+NEW_SETTLE_PAYMENT_R30_WITH_R37 = NEW_SETTLE_PAYMENT_R30.replace(OLD_EVIDENCE_R37, NEW_EVIDENCE_R37)
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3915,8 +3934,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if AI_SIGN_FAIL_MARKER in source:
+        return 37   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if SIM_URL_MARKER in source:
-        return 36   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 36
     if TRACE_COMPACT_MARKER in source:
         return 35
     if BROWSER_ENV_MARKER in source:
@@ -3955,7 +3976,8 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 33 or TARIFF_CHANGE_MARKER in source)\
             and (MAX_REVISION < 34 or BROWSER_ENV_MARKER in source)\
             and (MAX_REVISION < 35 or TRACE_COMPACT_MARKER in source)\
-            and (MAX_REVISION < 36 or SIM_URL_MARKER in source):
+            and (MAX_REVISION < 36 or SIM_URL_MARKER in source)\
+            and (MAX_REVISION < 37 or AI_SIGN_FAIL_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4420,7 +4442,9 @@ def main(argv: list[str]) -> int:
                                (OLD_OBSERVER_PRINT, NEW_OBSERVER_PRINT, "observer busy flag"),
                                (OLD_OBSERVER_COMPLETE, NEW_OBSERVER_COMPLETE, "observer verdict"),
                                (OLD_OBSERVER_FAIL, NEW_OBSERVER_FAIL, "observer busy off"),
-                               (OLD_SETTLE_PAYMENT_R26, NEW_SETTLE_PAYMENT_R30, "settle verdict")):
+                               *(((OLD_SETTLE_PAYMENT_R26, NEW_SETTLE_PAYMENT_R30, "settle verdict"),)
+                                 if OLD_SETTLE_PAYMENT_R26 in new_source else
+                                 ((OLD_SETTLE_PAYMENT_R26_WITH_R37, NEW_SETTLE_PAYMENT_R30_WITH_R37, "settle verdict (lite upgrade)"),))):
             new_source = replace_once(new_source, old, new, what)
             if old in source:
                 add_edit(edits["test_beeline.py"], source, old, new, reflected)
@@ -4533,6 +4557,25 @@ def main(argv: list[str]) -> int:
                     raise SystemExit(f"edits.json: earlier controller entry for {what} not found")
         test_src = replace_once(test_src, OLD_TEST_CTRL_NS_R36, NEW_TEST_CTRL_NS_R36, "test_update.py controller fixture (/res)")
 
+    # 38 (r37). DeepSeek only when the signature did not go through.
+    if AI_SIGN_FAIL_MARKER not in source and MAX_REVISION >= 37:
+        for old, new, what in ((OLD_GUARD_DEF_R37, NEW_GUARD_DEF_R37, "sign went through helper"),
+                               (OLD_GUARD_ASSIST_R37, NEW_GUARD_ASSIST_R37, "no assist at guard entry"),
+                               (OLD_AFTER_CLICK_R37, NEW_AFTER_CLICK_R37, "assist only when unsent"),
+                               (OLD_SIGN_ERROR_R37, NEW_SIGN_ERROR_R37, "error after sign: unverified, no assist"),
+                               (OLD_EVIDENCE_R37, NEW_EVIDENCE_R37, "network acceptance as evidence")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4593,7 +4636,8 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 33", README_NOTE_R33),) if built_revision >= 33 else ()),
                           *((("РЕВИЗИЯ 34", README_NOTE_R34),) if built_revision >= 34 else ()),
                           *((("РЕВИЗИЯ 35", README_NOTE_R35),) if built_revision >= 35 else ()),
-                          *((("РЕВИЗИЯ 36", README_NOTE_R36),) if built_revision >= 36 else ())):
+                          *((("РЕВИЗИЯ 36", README_NOTE_R36),) if built_revision >= 36 else ()),
+                          *((("РЕВИЗИЯ 37", README_NOTE_R37),) if built_revision >= 37 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
