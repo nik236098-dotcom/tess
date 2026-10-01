@@ -61,7 +61,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER, fix.TARIFF_SCOPE_MARKER, fix.TARIFF_CHANGE_MARKER, fix.BROWSER_ENV_MARKER, fix.TRACE_COMPACT_MARKER, fix.SIM_URL_MARKER, fix.AI_SIGN_FAIL_MARKER, fix.TELEGRAM_MENU_MARKER, fix.SIGN_REJECTED_MARKER, fix.ISOLATED_CONTEXT_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER, fix.TARIFF_SCOPE_MARKER, fix.TARIFF_CHANGE_MARKER, fix.BROWSER_ENV_MARKER, fix.TRACE_COMPACT_MARKER, fix.SIM_URL_MARKER, fix.AI_SIGN_FAIL_MARKER, fix.TELEGRAM_MENU_MARKER, fix.SIGN_REJECTED_MARKER, fix.ISOLATED_CONTEXT_MARKER, fix.TARIFF_CONFIG_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -195,7 +195,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_40(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_41(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -203,12 +203,12 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertIn("Already revision 30", run.stdout)
-            # a server on the prompt-only build is accepted by the full (r40) installer
+            # a server on the prompt-only build is accepted by the full (r41) installer
             self.assertIn(hashlib.sha256((r30 / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             app = Path(d) / "app"; app.mkdir()
             for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "install.py", "test_update.py"):
@@ -258,7 +258,8 @@ class PackageTests(unittest.TestCase):
         for node in ast.parse(self.source).body:
             if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id in ("_TARIFF_PICKER_HEADER_RE_1591R32", "_TARIFF_TITLE_RE_1591R32", "_TARIFF_BASKET_BUTTON_RE_1591R32") for x in node.targets):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
-        exec_functions(self.source, ["_tariff_choose_button", "_tariff_card_button_1591r32"], ns)
+        exec_functions(self.source, ["_tariff_choose_button", "_tariff_card_button_1591r32", "_confirm_tariff_configurator_1591r41"], ns)
+        ns["TARIFF_NAME"] = "подписка bee START"
         card = lambda name, price, metric: (f"<div class='card'><div><p>{name}</p></div><div><p>{price}</p>"
                                            f"<button data-metric-name='{metric}'><p>выбрать</p></button></div></div>")
         basket = ("<div id='basket'><div><p>подписка bee START</p></div><div><button>изменить</button>"
@@ -372,24 +373,24 @@ class PackageTests(unittest.TestCase):
             self.assertIn(f'None if completed else _row_for_respawn_1591r32(saved_row, tab_id, base_dir, "{who}"),  # ROW_RESTART_LIMIT_1591R32', self.source)
         self.assertNotIn("None if completed else saved_row,", self.source)
 
-    def test_lite_build_is_revision_40_without_the_signing_code(self):
+    def test_lite_build_is_revision_41_without_the_signing_code(self):
         with tempfile.TemporaryDirectory() as d:
             lite = Path(d) / "lite"
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 40 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 41 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 40", run.stdout)
+            self.assertIn("Already revision 41", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 40 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 41 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -399,7 +400,7 @@ class PackageTests(unittest.TestCase):
         except ImportError:
             self.skipTest("playwright not installed")
         import re as _re
-        ns = {"re": _re, "expect": expect, "_TARIFF_TITLE_RE_1591R32": _re.compile(r"^\s*подписка bee\b", _re.I)}
+        ns = {"re": _re, "expect": expect, "_TARIFF_TITLE_RE_1591R32": _re.compile(r"^\s*подписка bee\b", _re.I), "TARIFF_NAME": "подписка bee START"}
         for node in ast.parse(self.source).body:
             if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "_TARIFF_CHANGE_METRIC_1591R33" for x in node.targets):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
@@ -599,9 +600,9 @@ class PackageTests(unittest.TestCase):
             menu.state["view"] = "menu"; n = len(calls); self.assertFalse(menu.tick()); self.assertEqual(len(calls), n, "a closed status view is never edited")
             menu.handle_callback(cb("m|esims|0")); e = last(); kb = json.loads(e["reply_markup"])["inline_keyboard"]
             self.assertIn("12 шт.", e["text"]); self.assertEqual(len(kb), 12); self.assertEqual(kb[-2][0]["text"], "1/2")
-            self.assertTrue(kb[0][0]["text"].startswith("🆕 💳 +7 962 615-")); self.assertNotIn("стр.", kb[0][0]["text"]); key = kb[0][0]["callback_data"].split("|")[2]
+            self.assertTrue(kb[0][0]["text"].startswith("🆕 +7 962 615-")); self.assertIn(" · 🕒 01.10 0", kb[0][0]["text"]); self.assertNotIn("стр.", kb[0][0]["text"]); key = kb[0][0]["callback_data"].split("|")[2]
             menu.handle_callback(cb("m|esims|1")); kb = json.loads(last()["reply_markup"])["inline_keyboard"]
-            self.assertEqual(kb[-2][0]["text"], "◀️"); self.assertEqual(kb[-3][0]["text"], "🆕 📄 +7 962 000-00-01")
+            self.assertEqual(kb[-2][0]["text"], "◀️"); self.assertEqual(kb[-3][0]["text"], "🆕 +7 962 000-00-01", "no time known: number only")
             menu.handle_callback(cb(f"m|esim|{key}|0")); e = last()
             self.assertIn("Требуется оплата", e["text"]); self.assertIn("ФИО: Тест &lt;Имя&gt;", e["text"]); self.assertIn("Подпись (сеть)", e["text"])
             menu.handle_callback(cb(f"m|set|{key}|ok|0")); self.assertIn("Отметка: ✅ оформлена", last()["text"])
@@ -690,13 +691,16 @@ class PackageTests(unittest.TestCase):
                             __import__("time").sleep(0.5)
                     if worker is None:
                         self.skipTest("chromium did not open its CDP port")
-                    own_ns = {"os": types.SimpleNamespace(environ={}), "print": lambda *a, **k: None, "ISOLATED_CONTEXTS": True}
+                    said = []
+                    own_ns = {"os": types.SimpleNamespace(environ={}), "print": lambda *a, **k: said.append(" ".join(map(str, a))), "ISOLATED_CONTEXTS": True}
                     exec_functions(src, ["_isolated_context_1591r40"], own_ns)
+                    before = list(worker.contexts)        # the default context may register late in headless Chromium
                     ctx = own_ns["_isolated_context_1591r40"](worker, 3)
-                    self.assertIsNot(ctx, worker.contexts[0])
+                    self.assertNotIn(ctx, before, said); self.assertTrue(any("создан" in x for x in said), said)
+                    shared = next((c for c in worker.contexts if c is not ctx), None) or worker.contexts[0]
                     page = ctx.new_page(); page.goto(url)
                     page.evaluate("() => { window.name = 'esim-worker-3-p1-g1'; localStorage.setItem('personal_token', 'A'); document.cookie = 'basket=A'; }")
-                    other = worker.contexts[0].new_page(); other.goto(url)
+                    other = shared.new_page(); other.goto(url)
                     self.assertIsNone(other.evaluate("() => localStorage.getItem('personal_token')"), "the shared context does not see the worker's storage")
                     self.assertEqual(other.evaluate("() => document.cookie"), "")
                     self.assertEqual(page.evaluate("() => innerWidth"), other.evaluate("() => innerWidth"), "no viewport emulation")
@@ -706,6 +710,51 @@ class PackageTests(unittest.TestCase):
                     parent.close(); worker.close()
             finally:
                 proc.terminate(); proc.wait(timeout=10); srv.shutdown()
+
+    def test_tariff_from_env_and_the_configurator_is_confirmed(self):
+        """TARIFF_CONFIG_1591R41: «для смарт часов» opens a configurator after the card's «выбрать»."""
+        src = self.source
+        self.assertIn('TARIFF_NAME = (os.environ.get("BEELINE_TARIFF") or "").strip() or "подписка bee START"', src)
+        self.assertIn("_confirm_tariff_configurator_1591r41(page, diagnostic)", src)
+        self.assertIn('if card.get_by_role("button", name=_CHOOSE_BUTTON_RE).count() != 1:', src)
+        self.assertNotIn("if card.get_by_text(_TARIFF_TITLE_RE_1591R32).count() != 1:", src)
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("playwright not installed")
+        import re as _re
+        ns = {"re": _re, "TARIFF_NAME": "для смарт часов", "monotonic": __import__("time").monotonic, "print": lambda *a, **k: None,
+              "_CHOOSE_BUTTON_RE": _re.compile(r"^\s*выбрать\s*$", _re.I)}
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id in ("_TARIFF_PICKER_HEADER_RE_1591R32", "_TARIFF_TITLE_RE_1591R32", "_TARIFF_BASKET_BUTTON_RE_1591R32") for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(src, ["_tariff_choose_button", "_tariff_card_button_1591r32", "_confirm_tariff_configurator_1591r41"], ns)
+        picker = ("<div id='picker' role='dialog'><p>выберите тариф</p>"
+                  "<div class='card'><p>подписка bee START</p><p>0 ₽/месяц</p><button id='start'><p>выбрать</p></button></div>"
+                  "<div class='card'><p>для смарт часов</p><p>2 гб, 50 мин</p><p>200 ₽/месяц</p><button id='watch' onclick=\"document.getElementById('cfg').style.display='block'\"><p>выбрать</p></button></div>"
+                  "</div>"
+                  "<div id='cfg' role='dialog' style='display:none'><p>гигабайты и минуты</p><button>2</button><button>10</button>"
+                  "<p>бесконечный трафик</p><div>200 ₽/мес <button id='confirm' onclick=\"document.body.insertAdjacentHTML('beforeend', '<input id=esim name=sim type=radio>')\">выбрать</button></div></div>")
+        try:
+            with sync_playwright() as p:
+                try:
+                    browser = p.chromium.launch(headless=True)
+                except Exception:
+                    browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+                page = browser.new_page()
+                page.set_content(picker)
+                self.assertFalse(ns["_confirm_tariff_configurator_1591r41"](page, None, timeout=500), "the picker alone: many «выбрать», nothing confirmed")
+                button = ns["_tariff_choose_button"](page, None, timeout=1500)
+                self.assertEqual(button.get_attribute("id"), "watch", "a card without «подписка bee» in its title is found")
+                button.click()
+                self.assertEqual(page.locator("input#esim").count(), 0)
+                self.assertTrue(ns["_confirm_tariff_configurator_1591r41"](page, None, timeout=3000))
+                self.assertEqual(page.locator("input#esim").count(), 1, "the configurator's «выбрать» was pressed and the eSIM control appeared")
+                browser.close()
+        except (AssertionError, RuntimeError):
+            raise
+        except Exception as exc:
+            self.skipTest(f"chromium not available: {type(exc).__name__}")
 
     def test_stale_drain_file_is_discarded_at_start(self):
         src = self.source
@@ -787,7 +836,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-40", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-41", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -965,7 +1014,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 40", run.stdout)
+            self.assertIn("Already revision 41", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -999,7 +1048,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 40)
+        self.assertEqual(manifest["revision"], 41)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)

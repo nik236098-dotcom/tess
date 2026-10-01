@@ -99,7 +99,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "e37251fe2500cf89471a3e042f2d7a018c8b98748c933e15b965f1ae0333e00f",  # r39 lite output
                          "85d8693a6d059492252969da1f11966aa79c25fbe42c6ae6a3c6aacd7102c57a",  # r39 output
                          "df25464f90f9f73d006d821da6a918b94386631e30990f42524db157159b6e81",  # r40 lite output
-                         "a2dd94165ec5926ad1512956706843987b7ca60efc4a91ec25e95a7de83eb604"}  # r40 output
+                         "a2dd94165ec5926ad1512956706843987b7ca60efc4a91ec25e95a7de83eb604",  # r40 output
+                         "500488cc68d96a1cebda5d421ca4ca653329494d798bd2225ce0ef4b330421ef",  # r41 lite output
+                         "f05c32d36010b729259267d3f376cd44ae3a7feb12c653f36efee830e10ee8a6"}  # r41 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3192,6 +3194,19 @@ NEW_TAB_DEF_R40 = '# ISOLATED_CONTEXT_1591R40\nISOLATED_CONTEXTS = str(os.enviro
 README_NOTE_R40 = '\n\nРЕВИЗИЯ 40 (fix_package_1591.py)\nСвой контекст браузера каждой вкладке внутри общего Chromium (browser.new_context через CDP):\nсвои cookies, localStorage, корзина и персональный токен mobile-id, как у отдельного браузера, а по\nпамяти как одна вкладка. Закрывает перезапись токена соседней вкладкой (412 PERSONAL_TOKEN_ERROR,\nревизия 39) и общую корзину (ревизии 32–33) без восьми Chromium. Chromium удаляет контекст, когда\nпроцесс вкладки завершается, поэтому вкладка успеха/оплаты не остаётся открытой после завершения\nworker (снимки blackbox и записи jsonl сохраняются). Выключить: BEELINE_ISOLATED_CONTEXTS=0.\nМаркер: ISOLATED_CONTEXT_1591R40.\n'
 OLD_TEST_TAB_NS_R40 = "                'capture_blackbox':lambda *a:(_ for _ in ()).throw(AssertionError('unexpected phase'))}\n            extract({'_tab_process'},ns)\n"
 NEW_TEST_TAB_NS_R40 = "                'capture_blackbox':lambda *a:(_ for _ in ()).throw(AssertionError('unexpected phase')),\n                '_isolated_context_1591r40':lambda b,t:b.contexts[0]}  # ISOLATED_CONTEXT_1591R40\n            extract({'_tab_process'},ns)\n"
+# Revision 41: the tariff from the environment; a tariff configurator is confirmed with its defaults.
+TARIFF_CONFIG_MARKER = "TARIFF_CONFIG_1591R41"
+OLD_TARIFF_NAME_R41 = 'TARIFF_NAME = "подписка bee START"\n'
+NEW_TARIFF_NAME_R41 = '# TARIFF_CONFIG_1591R41: BEELINE_TARIFF in the systemd unit picks another card of the picker\n# («для смарт часов», «подписка bee HIT»…), spelled exactly as on the site; default bee START.\nTARIFF_NAME = (os.environ.get("BEELINE_TARIFF") or "").strip() or "подписка bee START"\n'
+OLD_CHOOSE_BREAK_R41 = '            if choose_clicked:\n                break\n\n            print(\n                f"После «выбрать» переход пока не подтверждён "\n'
+NEW_CHOOSE_BREAK_R41 = '            if choose_clicked and page.locator(\'input#esim[name="sim"]\').count() == 0:\n                # TARIFF_CONFIG_1591R41: some tariffs open a configurator (GB, minutes, options)\n                # after the card\'s «выбрать»; confirm it with the defaults.\n                _confirm_tariff_configurator_1591r41(page, diagnostic)\n            if choose_clicked:\n                break\n\n            print(\n                f"После «выбрать» переход пока не подтверждён "\n'
+OLD_CARD_DEF_R41 = 'def _tariff_card_button_1591r32(scope):\n'
+NEW_CARD_DEF_R41 = '# TARIFF_CONFIG_1591R41\ndef _confirm_tariff_configurator_1591r41(page, diagnostic=None, timeout=8000):\n    """Some tariffs («для смарт часов») open a configurator after the card\'s «выбрать»: GB,\n    minutes, options and one «выбрать» with the price. Confirm it with the defaults; True when\n    the eSIM control appeared afterwards. Tariffs without a configurator (bee START) never get here\n    with a candidate: the picker holds many «выбрать», the basket page none."""\n    candidates = []\n    try:\n        dialogs = page.locator(\'[role="dialog"], [aria-modal="true"]\')\n        for index in range(min(dialogs.count(), 6)):\n            dialog = dialogs.nth(index)\n            try:\n                if not dialog.is_visible():\n                    continue\n                buttons = dialog.get_by_role("button", name=_CHOOSE_BUTTON_RE)\n                if buttons.count() == 1 and buttons.first.is_visible():\n                    candidates.append(buttons.first)\n            except Exception:\n                continue\n    except Exception:\n        pass\n    if not candidates:\n        try:\n            buttons = page.get_by_role("button", name=_CHOOSE_BUTTON_RE)\n            visible = [buttons.nth(i) for i in range(min(buttons.count(), 30)) if buttons.nth(i).is_visible()]\n            if len(visible) == 1:\n                candidates.append(visible[0])\n        except Exception:\n            pass\n    if not candidates:\n        return False\n    print("Тариф с окном параметров: подтверждаю выбор с настройками по умолчанию...", flush=True)\n    if diagnostic is not None:\n        try:\n            diagnostic.write("tariff_configurator_confirm", tariff=TARIFF_NAME)\n        except Exception:\n            pass\n    try:\n        candidates[0].click(timeout=7000, no_wait_after=True)\n    except Exception as exc:\n        print(f"Кнопка подтверждения тарифа не нажалась: {type(exc).__name__}", flush=True)\n        return False\n    try:\n        page.locator(\'input#esim[name="sim"]\').wait_for(state="attached", timeout=timeout)\n        return True\n    except Exception:\n        return False\n\n\ndef _tariff_card_button_1591r32(scope):\n'
+OLD_CARD_RULE_R41 = '            if card.get_by_text(_TARIFF_TITLE_RE_1591R32).count() != 1:\n                continue  # a container of several cards (or the basket plus the picker), not a card\n'
+NEW_CARD_RULE_R41 = '            if card.get_by_role("button", name=_CHOOSE_BUTTON_RE).count() != 1:\n                continue  # a container of several cards (or the basket plus the picker), not a card (TARIFF_CONFIG_1591R41: any title)\n'
+OLD_CHANGE_TITLES_R41 = '        titles = page.get_by_text(_TARIFF_TITLE_RE_1591R32)\n        for index in range(min(titles.count(), 4)):\n'
+NEW_CHANGE_TITLES_R41 = '        titles = page.get_by_text(TARIFF_NAME, exact=True)  # TARIFF_CONFIG_1591R41: any tariff name\n        if titles.count() == 0:\n            titles = page.get_by_text(_TARIFF_TITLE_RE_1591R32)\n        for index in range(min(titles.count(), 4)):\n'
+README_NOTE_R41 = '\n\nРЕВИЗИЯ 41 (fix_package_1591.py)\nТариф по настройке. BEELINE_TARIFF в окружении службы задаёт карточку окна «выберите тариф» (точно\nкак на сайте: «для смарт часов», «подписка bee HIT»…), по умолчанию «подписка bee START». У части\nтарифов после «выбрать» на карточке открывается окно параметров (гигабайты, минуты, опции) с одной\nкнопкой «выбрать» и ценой: бот подтверждает его с настройками по умолчанию и дальше идёт как обычно.\nПоиск карточки и кнопки «изменить» больше не требует названия вида «подписка bee …».\nМаркер: TARIFF_CONFIG_1591R41.\n'
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -4013,8 +4028,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if TARIFF_CONFIG_MARKER in source:
+        return 41   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if ISOLATED_CONTEXT_MARKER in source:
-        return 40   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 40
     if SIGN_REJECTED_MARKER in source:
         return 39
     if TELEGRAM_MENU_MARKER in source:
@@ -4065,7 +4082,8 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 37 or AI_SIGN_FAIL_MARKER in source)\
             and (MAX_REVISION < 38 or TELEGRAM_MENU_MARKER in source)\
             and (MAX_REVISION < 39 or SIGN_REJECTED_MARKER in source)\
-            and (MAX_REVISION < 40 or ISOLATED_CONTEXT_MARKER in source):
+            and (MAX_REVISION < 40 or ISOLATED_CONTEXT_MARKER in source)\
+            and (MAX_REVISION < 41 or TARIFF_CONFIG_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4759,6 +4777,25 @@ def main(argv: list[str]) -> int:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
         test_src = replace_once(test_src, OLD_TEST_TAB_NS_R40, NEW_TEST_TAB_NS_R40, "test_update.py _tab_process fixture (context)")
 
+    # 42 (r41). The tariff from the environment; a configurator after the card is confirmed.
+    if TARIFF_CONFIG_MARKER not in source and MAX_REVISION >= 41:
+        for old, new, what in ((OLD_TARIFF_NAME_R41, NEW_TARIFF_NAME_R41, "tariff from env"),
+                               (OLD_CHOOSE_BREAK_R41, NEW_CHOOSE_BREAK_R41, "configurator confirm call"),
+                               (OLD_CARD_DEF_R41, NEW_CARD_DEF_R41, "configurator confirm helper"),
+                               (OLD_CARD_RULE_R41, NEW_CARD_RULE_R41, "card rule: one choose button"),
+                               (OLD_CHANGE_TITLES_R41, NEW_CHANGE_TITLES_R41, "change button near any tariff name")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4823,7 +4860,8 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 37", README_NOTE_R37),) if built_revision >= 37 else ()),
                           *((("РЕВИЗИЯ 38", README_NOTE_R38),) if built_revision >= 38 else ()),
                           *((("РЕВИЗИЯ 39", README_NOTE_R39),) if built_revision >= 39 else ()),
-                          *((("РЕВИЗИЯ 40", README_NOTE_R40),) if built_revision >= 40 else ())):
+                          *((("РЕВИЗИЯ 40", README_NOTE_R40),) if built_revision >= 40 else ()),
+                          *((("РЕВИЗИЯ 41", README_NOTE_R41),) if built_revision >= 41 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 

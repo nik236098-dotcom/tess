@@ -228,7 +228,9 @@ from playwright.sync_api import sync_playwright, expect, TimeoutError as Playwri
 
 REGION_HOST = "saratov.beeline.ru"
 START_URL = f"https://{REGION_HOST}/basket/"
-TARIFF_NAME = "подписка bee START"
+# TARIFF_CONFIG_1591R41: BEELINE_TARIFF in the systemd unit picks another card of the picker
+# («для смарт часов», «подписка bee HIT»…), spelled exactly as on the site; default bee START.
+TARIFF_NAME = (os.environ.get("BEELINE_TARIFF") or "").strip() or "подписка bee START"
 TELEGRAM_CONFIG_FILE = Path(__file__).resolve().parent / "telegram_config.json"
 ROW_START_STALL_SECONDS = 120
 DEFAULT_EXTERNAL_STALL_SECONDS = 90
@@ -3906,6 +3908,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             f"[AI {lane.upper()}] Обрабатываю update {update_id}: {latest[:120]}",
             flush=True,
         )
+        _ai_mark_busy_1591r30(status_map, latest, update_id)  # SIGN_ROBUST_1591R31
 
         try:
             _ai_health_touch(ai_health, "busy_browser", f"update={update_id}")
@@ -3995,6 +3998,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
                             + str(plan.get("summary") or "Готово.")
                         )
 
+            _ai_success_verdict_1591r30(status_map, latest, response_text)  # SIGN_ROBUST_1591R31
             # Mark complete and queue the response in one local durable store.
             _ai_db_complete(
                 update_id,
@@ -4008,6 +4012,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             err = f"{type(exc).__name__}: {exc}"
             print(f"[AI {lane.upper()}] Operator error update {update_id}: {err}", flush=True)
             _ai_db_fail(update_id, err, job.get("attempts", 1))
+            _ai_success_verdict_1591r30(status_map, latest, "")  # SIGN_ROBUST_1591R31: busy flag off
             _ai_health_touch(ai_health, "job_error", err)
 
         time.sleep(0.2)
@@ -5035,7 +5040,9 @@ def _tariff_change_button_1591r33(page):
     except Exception:
         pass
     try:
-        titles = page.get_by_text(_TARIFF_TITLE_RE_1591R32)
+        titles = page.get_by_text(TARIFF_NAME, exact=True)  # TARIFF_CONFIG_1591R41: any tariff name
+        if titles.count() == 0:
+            titles = page.get_by_text(_TARIFF_TITLE_RE_1591R32)
         for index in range(min(titles.count(), 4)):
             near = titles.nth(index).locator(
                 "xpath=ancestor::*[.//button[normalize-space(.)='изменить']][1]"
@@ -5053,6 +5060,55 @@ _TARIFF_TITLE_RE_1591R32 = re.compile(r"^\s*подписка bee\b", re.I)
 _TARIFF_BASKET_BUTTON_RE_1591R32 = re.compile(r"^\s*(изменить|удалить тариф)\s*$", re.I)
 
 
+# TARIFF_CONFIG_1591R41
+def _confirm_tariff_configurator_1591r41(page, diagnostic=None, timeout=8000):
+    """Some tariffs («для смарт часов») open a configurator after the card's «выбрать»: GB,
+    minutes, options and one «выбрать» with the price. Confirm it with the defaults; True when
+    the eSIM control appeared afterwards. Tariffs without a configurator (bee START) never get here
+    with a candidate: the picker holds many «выбрать», the basket page none."""
+    candidates = []
+    try:
+        dialogs = page.locator('[role="dialog"], [aria-modal="true"]')
+        for index in range(min(dialogs.count(), 6)):
+            dialog = dialogs.nth(index)
+            try:
+                if not dialog.is_visible():
+                    continue
+                buttons = dialog.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+                if buttons.count() == 1 and buttons.first.is_visible():
+                    candidates.append(buttons.first)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    if not candidates:
+        try:
+            buttons = page.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+            visible = [buttons.nth(i) for i in range(min(buttons.count(), 30)) if buttons.nth(i).is_visible()]
+            if len(visible) == 1:
+                candidates.append(visible[0])
+        except Exception:
+            pass
+    if not candidates:
+        return False
+    print("Тариф с окном параметров: подтверждаю выбор с настройками по умолчанию...", flush=True)
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_configurator_confirm", tariff=TARIFF_NAME)
+        except Exception:
+            pass
+    try:
+        candidates[0].click(timeout=7000, no_wait_after=True)
+    except Exception as exc:
+        print(f"Кнопка подтверждения тарифа не нажалась: {type(exc).__name__}", flush=True)
+        return False
+    try:
+        page.locator('input#esim[name="sim"]').wait_for(state="attached", timeout=timeout)
+        return True
+    except Exception:
+        return False
+
+
 def _tariff_card_button_1591r32(scope):
     """The visible «выбрать» of the one card titled TARIFF_NAME inside `scope`, else None."""
     titles = scope.get_by_text(TARIFF_NAME, exact=True)
@@ -5066,8 +5122,8 @@ def _tariff_card_button_1591r32(scope):
             )
             if card.count() == 0:
                 continue
-            if card.get_by_text(_TARIFF_TITLE_RE_1591R32).count() != 1:
-                continue  # a container of several cards (or the basket plus the picker), not a card
+            if card.get_by_role("button", name=_CHOOSE_BUTTON_RE).count() != 1:
+                continue  # a container of several cards (or the basket plus the picker), not a card (TARIFF_CONFIG_1591R41: any title)
             if card.get_by_role("button", name=_TARIFF_BASKET_BUTTON_RE_1591R32).count() > 0:
                 continue  # the basket card («изменить» / «Удалить тариф»): its «выбрать» belong to options
             button = card.get_by_role("button", name=_CHOOSE_BUTTON_RE)
@@ -5621,6 +5677,10 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
                     pass
                 page.wait_for_timeout(250)
 
+            if choose_clicked and page.locator('input#esim[name="sim"]').count() == 0:
+                # TARIFF_CONFIG_1591R41: some tariffs open a configurator (GB, minutes, options)
+                # after the card's «выбрать»; confirm it with the defaults.
+                _confirm_tariff_configurator_1591r41(page, diagnostic)
             if choose_clicked:
                 break
 
@@ -7479,6 +7539,156 @@ def enter_success_guard(worker, note):
     )
 
 
+# SIGN_ROBUST_1591R31
+AI_BUSY_MAX_SECONDS = 150      # a DeepSeek session older than this no longer blocks the local signing
+AI_YIELD_MAX_SECONDS = 120     # the local code yields to DeepSeek at most this long per row
+AI_VERDICT_MAX_AGE = 900
+SIGN_SENT_RE_1591R30 = re.compile(r"checksignature|/sign", re.I)
+
+
+def _ai_busy_1591r30(worker):
+    """True while a DeepSeek SUCCESS_ASSIST session is working on this tab (bounded)."""
+    sm = worker.get("status_map")
+    if sm is None:
+        return False
+    try:
+        info = sm.get(f"ai_busy:{worker.get('id')}") or {}
+    except Exception:
+        return False
+    now = time.time()
+    if not info or now - float(info.get("time") or 0) > AI_BUSY_MAX_SECONDS:
+        worker["ai_yield_since"] = None
+        return False
+    since = worker.get("ai_yield_since")
+    if since is None:
+        worker["ai_yield_since"] = now
+        return True
+    return now - float(since) < AI_YIELD_MAX_SECONDS
+
+
+def _ai_verdict_1591r30(worker):
+    """DeepSeek's VERDICT for this tab, if given after the local click and still fresh."""
+    sm = worker.get("status_map")
+    if sm is None:
+        return ""
+    try:
+        info = sm.get(f"verdict:{worker.get('id')}") or {}
+    except Exception:
+        return ""
+    when = float(info.get("time") or 0)
+    if not info or time.time() - when > AI_VERDICT_MAX_AGE:
+        return ""
+    if when < float(worker.get("sign_clicked_at") or 0):
+        return ""
+    return str(info.get("verdict") or "").upper()
+
+
+def _ai_mark_busy_1591r30(status_map, request_text, update_id):
+    """Observer side: this SUCCESS_ASSIST request is being worked on — the tab's local code yields."""
+    m = re.search(r"\[AUTO_SUCCESS_ASSIST TAB (\d+)\]", str(request_text or ""))
+    if not m or status_map is None:
+        return None
+    tab = int(m.group(1))
+    try:
+        status_map[f"ai_busy:{tab}"] = {"time": time.time(), "update": update_id}
+    except Exception:
+        pass
+    return tab
+
+
+def _ai_success_verdict_1591r30(status_map, request_text, response_text):
+    """Observer side: record DeepSeek's VERDICT for the tab named in the request; clear busy."""
+    m = re.search(r"\[AUTO_SUCCESS_ASSIST TAB (\d+)\]", str(request_text or ""))
+    if not m or status_map is None:
+        return None
+    tab = int(m.group(1))
+    try:
+        status_map.pop(f"ai_busy:{tab}", None)
+    except Exception:
+        pass
+    v = re.search(r"VERDICT:\s*(SIGNED|PAYMENT|NOT_SIGNED)", str(response_text or ""), re.I)
+    if not v:
+        return None
+    verdict = v.group(1).upper()
+    try:
+        status_map[f"verdict:{tab}"] = {"verdict": verdict, "time": time.time(),
+                                        "text": str(response_text or "")[-300:]}
+    except Exception:
+        pass
+    print(f"[AI VERDICT] TAB {tab}: {verdict}", flush=True)
+    return verdict
+
+
+_SIGNATURE_CANVAS_FILLED_JS_1591R30 = r"""() => {
+  const list = [...document.querySelectorAll('canvas')].filter(c => {
+    const r = c.getBoundingClientRect(); return r.width >= 250 && r.height >= 120;
+  });
+  if (!list.length) return null;
+  const c = list[0];
+  try {
+    const blank = document.createElement('canvas'); blank.width = c.width; blank.height = c.height;
+    return c.toDataURL() !== blank.toDataURL();
+  } catch (e) { return null; }
+}"""
+
+
+def _signature_canvas_filled_1591r30(page):
+    """True/False when the signature pad is/is not drawn on; None when unknown."""
+    try:
+        return page.evaluate(_SIGNATURE_CANVAS_FILLED_JS_1591R30)
+    except Exception:
+        return None
+
+
+def _sign_prepare_1591r30(page, worker):
+    """Before the local signing: no portal modal may intercept the click."""
+    try:
+        dismiss_blocking_overlays(page, keep_text="подписать")
+    except Exception:
+        pass
+
+
+def _sign_request_sent_1591r30(trace):
+    for r in (trace or {}).get("responses") or []:
+        url = str(r.get("url") or "")
+        if SIGN_SENT_RE_1591R30.search(url):
+            return True
+        if str(r.get("method")) in ("POST", "PUT", "PATCH") and int(r.get("status") or 0) < 400 and "esim" in url.lower():
+            return True
+    return False
+
+
+def _sign_retry_if_unsent_1591r30(page, worker):
+    """The click sent nothing and the button is still there: overlays away, redraw, ONE more click."""
+    trace = worker.get("sign_trace") or {}
+    if _sign_request_sent_1591r30(trace) or int(worker.get("sign_retries") or 0) >= 1:
+        return False
+    try:
+        if _signature_button_locator(page) is None:
+            return False
+    except Exception:
+        return False
+    worker["sign_retries"] = int(worker.get("sign_retries") or 0) + 1
+    filled = _signature_canvas_filled_1591r30(page)
+    canvas = "пуст" if filled is False else ("не пуст" if filled else "?")
+    print(
+        f"[Вкладка {worker.get('id')}] Подпись: запрос на сервер не ушёл (холст {canvas}) — "
+        "снимаю оверлеи и повторяю один раз.",
+        flush=True,
+    )
+    _sign_prepare_1591r30(page, worker)
+    _sign_trace_begin_1591r25(page, worker)
+    try:
+        fill_signature_and_submit(page, worker.get("diagnostic"))
+        worker["sign_clicked_at"] = time.time()
+        return True
+    except Exception as exc:
+        print(f"[Вкладка {worker.get('id')}] Повтор подписи не удался: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
+        return False
+    finally:
+        _sign_trace_end_1591r25(page, worker, note="retry")
+
+
 def tick_post_auth_review(base_dir, worker):
     page = worker["page"]
 
@@ -7526,6 +7736,10 @@ def tick_post_auth_review(base_dir, worker):
             queue_success_assist(worker, "область отсутствует или не принялась")
 
     button = _signature_button_locator(page)
+    if button is not None and _ai_busy_1591r30(worker):  # SIGN_ROBUST_1591R31: DeepSeek is on this tab
+        set_tab_status(worker, "🧠", "Подтверждение успешно. DeepSeek работает с вкладкой — подпись отложена.")
+        external_heartbeat(worker, "sign_yield_to_ai")
+        return
     if button is not None:
         try:
             enabled = button.is_enabled()
@@ -7548,11 +7762,17 @@ def tick_post_auth_review(base_dir, worker):
                 "Подтверждение успешно. Заполняю подпись и подписываю договор."
             )
             capture_contract_details(page, worker)
+            _sign_prepare_1591r30(page, worker)  # SIGN_ROBUST_1591R31: overlays away first
             _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25
             try:
                 fill_signature_and_submit(page, worker.get("diagnostic"))
             finally:
                 _sign_trace_end_1591r25(page, worker)
+            worker["sign_clicked_at"] = time.time()
+            try:
+                _sign_retry_if_unsent_1591r30(page, worker)  # nothing sent + button still there → one retry
+            except Exception as exc:
+                print(f"[Вкладка {worker['id']}] Проверка отправки подписи: {type(exc).__name__}: {exc}", flush=True)
             worker["phase"] = "SIGN_WAIT"
             worker["sign_submit_url"] = page.url
             worker["sign_button_gone_since"] = None
@@ -7963,9 +8183,15 @@ def settle_success_1591r24(base_dir, worker):
     if payment_text:
         _finish_payment_required_1591r26(base_dir, worker, payment_text)
         return False
+    verdict = _ai_verdict_1591r30(worker)  # SIGN_ROBUST_1591R31
+    if verdict == "PAYMENT":
+        _finish_payment_required_1591r26(base_dir, worker, "по вердикту DeepSeek: сайт требует оплату eSIM")
+        return False
     evidence = _signed_evidence_1591r24(page) if page is not None else ""
     if not evidence and _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37
         evidence = "network:signature_accepted"  # the site answered the signing request with 2xx
+    if not evidence and verdict == "SIGNED":
+        evidence = "ai:verdict_signed"
     if evidence:
         worker["success_evidence"] = evidence
         finalize_success(base_dir, worker)

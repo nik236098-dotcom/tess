@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 40 лежит в `beeline_integrated_io_15_91_r40/` (включает ревизии 30–39); рядом
-`beeline_integrated_io_15_91_r40_lite/` — та же ревизия 40 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 41 лежит в `beeline_integrated_io_15_91_r41/` (включает ревизии 30–40); рядом
+`beeline_integrated_io_15_91_r41_lite/` — та же ревизия 41 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -69,7 +69,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r40
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r41
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -333,7 +333,13 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    вместе с процессом вкладки, поэтому вкладка успеха не остаётся открытой после завершения worker;
    записи и снимки сохраняются. Выключить: `BEELINE_ISOLATED_CONTEXTS=0`. Маркер
    `ISOLATED_CONTEXT_1591R40`.
-42. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+42. **Тариф по настройке и окно параметров (ревизия 41).** `BEELINE_TARIFF` в окружении службы задаёт
+   карточку окна «выберите тариф» точно как на сайте («для смарт часов», «подписка bee HIT»…), по
+   умолчанию «подписка bee START». У части тарифов после «выбрать» открывается окно параметров
+   (гигабайты, минуты, опции) с одной кнопкой «выбрать» и ценой: бот подтверждает его с настройками
+   по умолчанию. Поиск карточки и кнопки «изменить» больше не требует названия «подписка bee …».
+   Маркер `TARIFF_CONFIG_1591R41`.
+43. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

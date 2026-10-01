@@ -91,6 +91,14 @@ def pretty_phone(value):
     return str(value or "—")
 
 
+def _when(value):
+    """«01.10 02:49» from the record's «2026-10-01 02:49:24»; "" when unknown."""
+    value = str(value or "")
+    if len(value) < 16:
+        return ""
+    return f"{value[8:10]}.{value[5:7]} {value[11:16]}"
+
+
 def _kb(rows):
     return json.dumps({"inline_keyboard": rows}, ensure_ascii=False)
 
@@ -351,16 +359,17 @@ class TelegramMenu:
         for rec in recs:
             counts[self._mark_of(rec)] = counts.get(self._mark_of(rec), 0) + 1
         text = (f"📱 <b>Мои eSIM</b> — {len(recs)} шт.\n"
-                f"🆕 {counts['new']} · ✅ {counts['ok']} · ❌ {counts['bad']}\n"
-                "💳 ждёт оплаты · 📄 договор оформлен\n\n"
+                f"🆕 {counts['new']} · ✅ {counts['ok']} · ❌ {counts['bad']}\n\n"
                 "Нажми на номер, чтобы открыть карточку и поставить отметку.")
         if not recs:
             text = "📱 <b>Мои eSIM</b>\n\nПока ни одной оформленной eSIM."
         rows = []
         for rec in chunk:
             icon = MARKS[self._mark_of(rec)]
-            kind = "💳" if rec["_kind"] == "payment" else "📄"
-            label = f"{icon} {kind} {pretty_phone(rec.get('sim_number') or rec.get('active_digits'))}"
+            label = f"{icon} {pretty_phone(rec.get('sim_number') or rec.get('active_digits'))}"
+            when = _when(rec.get("time"))
+            if when:
+                label += f" · 🕒 {when}"
             rows.append([_btn(label, f"m|esim|{rec['_key']}|{page}")])
         nav = []
         if page > 0:
