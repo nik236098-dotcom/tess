@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 35 лежит в `beeline_integrated_io_15_91_r35/` (включает ревизии 30–34); рядом
-`beeline_integrated_io_15_91_r35_lite/` — та же ревизия 35 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 36 лежит в `beeline_integrated_io_15_91_r36/` (включает ревизии 30–35); рядом
+`beeline_integrated_io_15_91_r36_lite/` — та же ревизия 36 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -69,7 +69,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r35
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r36
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -294,7 +294,14 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    списка запросов одна строка «Подпись (сеть): подпись → 200, паспортные данные → 202»; ошибки HTTP,
    сбои сети и ошибки console по-прежнему перечисляются, полный след остаётся в jsonl и журнале.
    Маркер `TRACE_COMPACT_1591R35`.
-37. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+37. **Ссылка заказа своей строки (ревизия 36).** Ссылка eSIM (`hash_order`) копировалась в память вкладки
+   только когда там пусто и не очищалась между строками: первая строка вкладки получала свою ссылку,
+   все следующие — ссылку первой, по ней сайт показывал чужой заказ без данных («введите данные
+   заново»). Теперь берётся захват текущей строки, а `reset_runtime_state` очищает ссылку и номер.
+   Правильные ссылки прошлых строк восстанавливает `tools/row_links.py` по журналу, а в Telegram команда
+   `/res <номер eSIM из пуша или номер строки>` отвечает ссылкой подписанного заказа. Маркер
+   `SIM_URL_PER_ROW_1591R36`.
+38. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

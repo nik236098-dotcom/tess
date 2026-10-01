@@ -61,7 +61,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER, fix.TARIFF_SCOPE_MARKER, fix.TARIFF_CHANGE_MARKER, fix.BROWSER_ENV_MARKER, fix.TRACE_COMPACT_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER, fix.TARIFF_SCOPE_MARKER, fix.TARIFF_CHANGE_MARKER, fix.BROWSER_ENV_MARKER, fix.TRACE_COMPACT_MARKER, fix.SIM_URL_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -203,7 +203,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_35(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_36(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -211,12 +211,12 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertIn("Already revision 30", run.stdout)
-            # a server on the prompt-only build is accepted by the full (r35) installer
+            # a server on the prompt-only build is accepted by the full (r36) installer
             self.assertIn(hashlib.sha256((r30 / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             app = Path(d) / "app"; app.mkdir()
             for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "install.py", "test_update.py"):
@@ -380,24 +380,24 @@ class PackageTests(unittest.TestCase):
             self.assertIn(f'None if completed else _row_for_respawn_1591r32(saved_row, tab_id, base_dir, "{who}"),  # ROW_RESTART_LIMIT_1591R32', self.source)
         self.assertNotIn("None if completed else saved_row,", self.source)
 
-    def test_lite_build_is_revision_35_without_the_signing_code(self):
+    def test_lite_build_is_revision_36_without_the_signing_code(self):
         with tempfile.TemporaryDirectory() as d:
             lite = Path(d) / "lite"
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 35 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 36 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 35", run.stdout)
+            self.assertIn("Already revision 36", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 35 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 36 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -435,6 +435,69 @@ class PackageTests(unittest.TestCase):
         self.assertEqual((marked, by_title, only), ("t", "t", "r"))
         head = self.source[self.source.index("        def click_tariff_change():"):][:600]
         self.assertIn("_tariff_change_button_1591r33(page),\n                page.get_by_role(\"button\", name=\"изменить\", exact=True),", head)
+
+    def test_pushed_order_link_belongs_to_the_current_row(self):
+        """Row 538 of tab 2 was pushed with the hash_order of the tab's earlier row: the worker's
+        link was copied only when empty and never cleared between rows."""
+        ns = {}
+        exec_functions(self.source, ["reset_runtime_state"], ns)
+        w = {"row": {"row_no": 1}, "diagnostic": None, "reserved_sim_url": "https://x/?hash_order=aaa", "reserved_sim_number": "+7999",
+             "post_retries": 0, "confirm_attempt": 0}
+        ns["reset_runtime_state"](w)
+        self.assertIsNone(w["reserved_sim_url"]); self.assertIsNone(w["reserved_sim_number"]); self.assertIsNone(w["row"])
+        pending = self.source[self.source.index('    if status == "PENDING_CONFIRM":'):][:900]
+        self.assertIn('if cached_url and (getattr(page, "_reserved_sim_url_locked", False) or not worker.get("reserved_sim_url")):\n'
+                      '            worker["reserved_sim_url"] = cached_url', pending)
+        self.assertNotIn('if cached_url and not worker.get("reserved_sim_url"):', self.source)
+        # the same-row restart keeps the worker dict: a new page's locked capture must win
+        import textwrap
+        src = pending.replace("    if status == \"PENDING_CONFIRM\":\n", "")
+        body = textwrap.dedent("\n".join(src.splitlines()[:7]))  # two captures, three comment lines, if, assignment
+        page = types.SimpleNamespace(_reserved_sim_url="https://x/?hash_order=new", _reserved_sim_number="+7111", _reserved_sim_url_locked=True)
+        worker = {"reserved_sim_url": "https://x/?hash_order=old"}
+        exec(compile(body, "pending", "exec"), {"getattr": getattr}, {"page": page, "worker": worker})
+        self.assertEqual(worker["reserved_sim_url"], "https://x/?hash_order=new"); self.assertEqual(worker["reserved_sim_number"], "+7111")
+        page.__dict__["_reserved_sim_url_locked"] = False; page.__dict__["_reserved_sim_url"] = "https://x/registration/esim/mobile-id-auth"
+        exec(compile(body, "pending", "exec"), {"getattr": getattr}, {"page": page, "worker": worker})
+        self.assertEqual(worker["reserved_sim_url"], "https://x/?hash_order=new", "an unlocked later URL never replaces the offer link")
+
+    def test_res_command_answers_with_the_rows_real_order_link(self):
+        ctrl = (self.pkg / "server_controller.py").read_text("utf-8")
+        self.assertIn("import re\n", ctrl)
+        self.assertLess(ctrl.index('if text.startswith("/restart"):'), ctrl.index('if text.startswith("/res"):'), "/restart is matched before /res")
+        journal = (
+            "2026-10-01T02:30:00+0000 h python[415717]: [Вкладка 2] Обрабатываю строку 530, номер заканчивается на 1111.\n"
+            "2026-10-01T02:30:10+0000 h python[415717]: eSIM offer сохранён: номер=+79620000001 | https://s.beeline.ru/registration/esim?hash_order=ba031a19\n"
+            "2026-10-01T02:35:00+0000 h python[415717]: [Вкладка 2] Результат строки 530: CONFIRM_TIMEOUT\n"
+            "2026-10-01T02:41:27+0000 h python[415717]: [Вкладка 2] Обрабатываю строку 538, номер заканчивается на 9929.\n"
+            "2026-10-01T02:41:43+0000 h python[415717]: eSIM offer сохранён: номер=+79626158923 | https://s.beeline.ru/registration/esim?hash_order=47180f97\n"
+            "2026-10-01T02:49:12+0000 h python[415717]: Нажата кнопка «Подписать договор».\n"
+            "2026-10-01T02:49:24+0000 h python[415717]: [Вкладка 2] 💳 ТРЕБУЕТСЯ ОПЛАТА. Строка 538: подпись принята.\n"
+            "2026-10-01T03:28:00+0000 h python[421427]: [Вкладка 3] Обрабатываю строку 540, номер заканчивается на 2222.\n"
+            "2026-10-01T03:28:20+0000 h python[421427]: eSIM offer сохранён: номер=+79053802755 | https://s.beeline.ru/registration/esim?hash_order=8b03e9a8\n"
+            "2026-10-01T03:28:46+0000 h python[421427]: eSIM offer сохранён: номер=+79648785843 | https://s.beeline.ru/registration/esim?hash_order=0f125838\n"
+        )
+        import re as _re
+        calls = []
+        def fake_run(cmd, **kw):
+            calls.append(cmd); return types.SimpleNamespace(stdout=journal)
+        ns = {"re": _re, "subprocess": types.SimpleNamespace(run=fake_run)}
+        for node in ast.parse(ctrl).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id.startswith("_RL_") for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "ctrl", "exec"), ns)
+        exec_functions(ctrl, ["_rows_from_journal_1591r36", "_row_link_command"], ns)
+        answer = ns["_row_link_command"](" 79626158923")
+        self.assertIn("Строка 538", answer); self.assertIn("hash_order=47180f97", answer); self.assertNotIn("ba031a19", answer)
+        self.assertIn("исход: оплата", answer); self.assertEqual(calls[0][:2], ["journalctl", "-u"])
+        self.assertIn("hash_order=47180f97", ns["_row_link_command"]("8923"), "the last digits of the eSIM are enough")
+        self.assertIn("hash_order=47180f97", ns["_row_link_command"]("538"), "or the row number")
+        by_row = ns["_row_link_command"]("540")
+        self.assertIn("hash_order=0f125838", by_row); self.assertIn("ранних заказов этой строки без данных: 1", by_row)
+        self.assertIn("нет строки или номера", ns["_row_link_command"]("0000009"))
+        self.assertIn("Формат", ns["_row_link_command"](""))
+        self.assertIn("'_row_link_command':lambda a:''", (self.pkg / "test_update.py").read_text("utf-8"))
+        manifest = json.loads((self.pkg / "manifest.json").read_text("utf-8"))
+        self.assertIn(fix.CONTROLLER_OUTPUT_SHA_R27_R35, manifest["files"]["server_controller.py"]["previous_output_sha256"])
 
     def test_stale_drain_file_is_discarded_at_start(self):
         src = self.source
@@ -516,7 +579,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-35", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-36", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -694,7 +757,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 35", run.stdout)
+            self.assertIn("Already revision 36", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -728,7 +791,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 35)
+        self.assertEqual(manifest["revision"], 36)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)

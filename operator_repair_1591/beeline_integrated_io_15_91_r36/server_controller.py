@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -206,6 +207,86 @@ def _relaunch_marker_fresh(marker):
     except OSError:
         pass
     return False
+
+
+# SIM_URL_PER_ROW_1591R36
+_RL_LINE = re.compile(r"^(?P<ts>\S+)\s+\S+\s+python\[(?P<pid>\d+)\]:\s?(?P<msg>.*)$")
+_RL_START = re.compile(r"\[Вкладка (?P<tab>\d+)\] Обрабатываю строку (?P<row>\d+), номер заканчивается на (?P<tail>\d+)")
+_RL_OFFER = re.compile(r"eSIM offer сохранён: номер=(?P<num>\S+) \| (?P<url>\S+hash_order=[0-9a-f]+)")
+_RL_OUTCOMES = (
+    ("оплата", re.compile(r"ТРЕБУЕТСЯ ОПЛАТА\. Строка (?P<row>\d+)")),
+    ("не подтверждена", re.compile(r"ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА\. Строка (?P<row>\d+)")),
+    ("результат", re.compile(r"Результат строки (?P<row>\d+): (?P<status>\S+)")),
+)
+
+
+def _rows_from_journal_1591r36(log):
+    """Rows as the journal saw them: start line, every «продолжить» offer capture, outcome."""
+    rows, current = [], {}
+    for line in log.splitlines():
+        m = _RL_LINE.match(line)
+        if not m:
+            continue
+        ts, pid, msg = m.group("ts")[:19].replace("T", " "), m.group("pid"), m.group("msg")
+        s = _RL_START.search(msg)
+        if s:
+            info = {"row": s.group("row"), "tab": s.group("tab"), "tail": s.group("tail"), "start": ts,
+                    "offers": [], "signed": False, "outcome": ""}
+            rows.append(info)
+            current[pid] = info
+            continue
+        info = current.get(pid)
+        if info is None:
+            continue
+        o = _RL_OFFER.search(msg)
+        if o:
+            info["offers"].append((ts, o.group("num"), o.group("url")))
+            continue
+        if "Нажата кнопка «Подписать договор»" in msg:
+            info["signed"] = True
+            continue
+        for name, pat in _RL_OUTCOMES:
+            r = pat.search(msg)
+            if r and r.group("row") == info["row"]:
+                info["outcome"] = name if name != "результат" else r.group("status")
+                break
+    return rows
+
+
+def _row_link_command(argument):
+    """/res <номер eSIM из пуша, хотя бы 4 последние цифры> или /res <номер строки>.
+
+    Before revision 36 the push could carry the link of the tab's earlier row; the journal
+    keeps the real one: the last offer captured for the row is the order that was signed."""
+    key = re.sub(r"\D", "", argument or "")
+    if len(key) < 3:
+        return ("Формат: /res <номер eSIM из пуша> (можно последние 4–6 цифр) или /res <номер строки>. "
+                "Отвечу ссылкой заказа, который реально подписан в этой строке.")
+    try:
+        log = subprocess.run(["journalctl", "-u", "beeline", "--no-pager", "-o", "short-iso", "--since", "-3 days"],
+                             capture_output=True, text=True, timeout=120).stdout
+    except Exception as exc:
+        return f"Журнал недоступен: {type(exc).__name__}: {exc}"
+    rows = _rows_from_journal_1591r36(log)
+    by_row = [r for r in rows if r["row"] == key] if len(key) <= 5 else []
+    by_number = [r for r in rows if any(re.sub(r"\D", "", num).endswith(key) for _, num, _ in r["offers"])
+                 or r["tail"] == key]
+    hits = (by_row + [r for r in by_number if r not in by_row])[-5:]
+    if not hits:
+        return f"В журнале за 3 дня нет строки или номера eSIM, оканчивающегося на …{key[-6:]}."
+    out = []
+    for r in hits:
+        outcome = r["outcome"] or ("подписана" if r["signed"] else "не завершена")
+        head = f"Строка {r['row']} (вкладка {r['tab']}, …{r['tail']}, {r['start'][5:16]}), исход: {outcome}"
+        if not r["offers"]:
+            out.append(head + "\nСсылка в журнале не найдена.")
+            continue
+        ts, num, url = r["offers"][-1]
+        text = head + f"\neSIM {num}\nСсылка заказа: {url}"
+        if len(r["offers"]) > 1:
+            text += f"\n(ранних заказов этой строки без данных: {len(r['offers']) - 1})"
+        out.append(text)
+    return "\n\n".join(out)
 
 
 def _restart_after_drain(proc):
@@ -433,6 +514,11 @@ def main():
                     if text.startswith("/restart"):  # SCHEDULED_RESTART_1591R13
                         waiting_upload = False
                         _send(_restart_command(text[len("/restart"):]))
+                        continue
+
+                    if text.startswith("/res"):  # SIM_URL_PER_ROW_1591R36: the row's real order link
+                        waiting_upload = False
+                        _send(_row_link_command(text[len("/res"):]))
                         continue
 
                     # Any slash-command belongs to controller namespace and is

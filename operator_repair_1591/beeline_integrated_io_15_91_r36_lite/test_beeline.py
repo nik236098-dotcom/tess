@@ -6314,6 +6314,8 @@ def _row_restart_exhausted_1591r32(worker, row, rows):
 def reset_runtime_state(worker):
     worker["row"] = None
     worker["diagnostic"] = None
+    worker["reserved_sim_url"] = None     # SIM_URL_PER_ROW_1591R36: a row never inherits the
+    worker["reserved_sim_number"] = None  # previous row's order link or reserved number
     worker["post_retry_deadline"] = None
     worker["post_retries"] = 0
     worker["auth_deadline"] = None
@@ -6521,7 +6523,10 @@ def start_row_in_worker(base_dir, browser_version, worker, row):
     if status == "PENDING_CONFIRM":
         cached_url = getattr(page, "_reserved_sim_url", None)
         cached_number = getattr(page, "_reserved_sim_number", None)
-        if cached_url and not worker.get("reserved_sim_url"):
+        # SIM_URL_PER_ROW_1591R36: the offer URL captured for THIS row (locked by
+        # capture_esim_offer_page) replaces whatever the worker remembered; the old rule
+        # "only when empty" kept the first row's link for every later row of the tab.
+        if cached_url and (getattr(page, "_reserved_sim_url_locked", False) or not worker.get("reserved_sim_url")):
             worker["reserved_sim_url"] = cached_url
         if cached_number:
             worker["reserved_sim_number"] = cached_number

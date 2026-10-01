@@ -89,7 +89,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "abd23f11da908dd2e3bf17e7b5321a95505eb7fcf8eb7d41c8b9cb622c51322f",  # r34 lite output
                          "941b2964bf5f0b549047d4776ad830996951d8f6d35619e20dfed6763f4bc7e2",  # r34 output
                          "0544d1e2190d7ac7a2d091fe2370a558f038dbef17dbb775ce973d7a86642643",  # r35 lite output
-                         "1a0258ca2f63186b153280b6e546652deebf624e426fdc629e7348560023c5a4"}  # r35 output
+                         "1a0258ca2f63186b153280b6e546652deebf624e426fdc629e7348560023c5a4",  # r35 output
+                         "725adc5426e06707060bd25daa5af8fd4d66e83bfe064869f323177db3d8a12e",  # r36 lite output
+                         "655faf868b4a4ace53dc7845617b4b765890d833822eb7c1d5b2d8b61fcbcb2f"}  # r36 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -630,7 +632,8 @@ CONTROLLER_OUTPUT_SHA_R12 = "506a84c41558332c75cbf55abc8e940520a589b3bc754a6845c
 # server_controller.py as produced by revisions 13..20 (unchanged between them); a server on any
 # of those must be accepted by the installer now that r21 changed the controller again.
 CONTROLLER_OUTPUT_SHA_R13_R20 = "5104af2bf68452b1dcd3b814b35e696699232087b92db87ee7e1e9a6ee1a8bd9"
-CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13_R20}
+CONTROLLER_OUTPUT_SHA_R27_R35 = "384e2c06274159c01dae2b9dc8698dff2a93912e5a6bf3de9eb57efce6d256c4"  # controller of r27..r35
+CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13_R20, CONTROLLER_OUTPUT_SHA_R27_R35}
 RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
 RESTART_POLICY_FILE_NAME = "restart_policy.json"
 RESTART_DRAIN_FILE_NAME = "restart_drain.json"
@@ -3076,6 +3079,21 @@ TRACE_COMPACT_MARKER = "TRACE_COMPACT_1591R35"
 OLD_TRACE_LINES_R35 = 'def _sign_trace_lines_1591r25(summary):\n    if not summary:\n        return []\n    out = [f"Подпись: {summary.get(\'url_before\') or \'—\'} → {summary.get(\'url_after\') or \'—\'}"]\n    for r in (summary.get("responses") or [])[:6]:\n        line = f"  {r.get(\'method\')} {r.get(\'url\')} → {r.get(\'status\')}"\n        if r.get("body"):\n            line += " " + str(r["body"])[:160]\n        out.append(line)\n    for f in (summary.get("failed") or [])[:3]:\n        out.append(f"  сеть: {f.get(\'url\')} — {f.get(\'error\')}")\n    for c in (summary.get("console") or [])[:3]:\n        out.append(f"  console {c.get(\'type\')}: {c.get(\'text\')}")\n    return out\n'
 NEW_TRACE_LINES_R35 = 'def _sign_trace_lines_1591r25(summary):\n    """TRACE_COMPACT_1591R35: one line in Telegram (the full trace stays in the jsonl record and\n    the journal); HTTP errors, network failures and console errors are still listed."""\n    if not summary:\n        return []\n    responses = summary.get("responses") or []\n\n    def _status(response):\n        try:\n            return int(response.get("status") or 0)\n        except (TypeError, ValueError):\n            return 0\n\n    signed = [r for r in responses if "checksignature" in str(r.get("url") or "").lower()]\n    passport = [r for r in responses if "sendpassportdata" in str(r.get("url") or "").lower()]\n    parts = []\n    if signed:\n        parts.append(f"подпись → {_status(signed[-1])}")\n    if passport:\n        parts.append(f"паспортные данные → {_status(passport[-1])}")\n    if not parts:\n        parts.append("запрос подписи в сети не замечен" if not responses else f"ответов {len(responses)}")\n    out = ["Подпись (сеть): " + ", ".join(parts)]\n    for r in [r for r in responses if _status(r) >= 400][:3]:\n        line = f"  {r.get(\'method\')} {r.get(\'url\')} → {r.get(\'status\')}"\n        if r.get("body"):\n            line += " " + str(r["body"])[:160]\n        out.append(line)\n    for f in (summary.get("failed") or [])[:3]:\n        out.append(f"  сеть: {f.get(\'url\')} — {f.get(\'error\')}")\n    for c in (summary.get("console") or [])[:3]:\n        out.append(f"  console {c.get(\'type\')}: {c.get(\'text\')}")\n    return out\n'
 README_NOTE_R35 = '\n\nРЕВИЗИЯ 35 (fix_package_1591.py)\nСообщения #оплата и #неподтверждено без сетевого следа подписи ревизии 25 построчно: вместо списка\nзапросов одна строка «Подпись (сеть): подпись → 200, паспортные данные → 202». Ошибки HTTP (>= 400),\nсбои сети и ошибки console по-прежнему перечисляются. Полный след остаётся в записи jsonl и в\nжурнале. Маркер: TRACE_COMPACT_1591R35.\n'
+# Revision 36: the pushed hash_order link belongs to the current row, never to an earlier one of the tab.
+SIM_URL_MARKER = "SIM_URL_PER_ROW_1591R36"
+OLD_PENDING_URL_R36 = '        cached_url = getattr(page, "_reserved_sim_url", None)\n        cached_number = getattr(page, "_reserved_sim_number", None)\n        if cached_url and not worker.get("reserved_sim_url"):\n            worker["reserved_sim_url"] = cached_url\n'
+NEW_PENDING_URL_R36 = '        cached_url = getattr(page, "_reserved_sim_url", None)\n        cached_number = getattr(page, "_reserved_sim_number", None)\n        # SIM_URL_PER_ROW_1591R36: the offer URL captured for THIS row (locked by\n        # capture_esim_offer_page) replaces whatever the worker remembered; the old rule\n        # "only when empty" kept the first row\'s link for every later row of the tab.\n        if cached_url and (getattr(page, "_reserved_sim_url_locked", False) or not worker.get("reserved_sim_url")):\n            worker["reserved_sim_url"] = cached_url\n'
+OLD_RESET_STATE_R36 = '    worker["diagnostic"] = None\n    worker["post_retry_deadline"] = None\n'
+NEW_RESET_STATE_R36 = '    worker["diagnostic"] = None\n    worker["reserved_sim_url"] = None     # SIM_URL_PER_ROW_1591R36: a row never inherits the\n    worker["reserved_sim_number"] = None  # previous row\'s order link or reserved number\n    worker["post_retry_deadline"] = None\n'
+README_NOTE_R36 = '\n\nРЕВИЗИЯ 36 (fix_package_1591.py)\nСсылка eSIM в пуше принадлежала не той строке. Ссылка заказа (hash_order) копировалась в память\nвкладки только когда там пусто, а между строками память не очищалась: первая строка вкладки\nполучала свою ссылку, все следующие — ссылку первой (номер eSIM при этом перезаписывался и был\nверным). По такой ссылке сайт показывал чужой заказ без данных («введите данные заново»). Теперь\nссылка берётся из захвата текущей строки (замок capture_esim_offer_page), а reset_runtime_state\nочищает ссылку и номер между строками. Команда Telegram /res <номер eSIM из пуша или номер строки>\nотвечает ссылкой заказа, который реально подписан в этой строке (по журналу за 3 дня).\nМаркер: SIM_URL_PER_ROW_1591R36.\n'
+OLD_CTRL_IMPORT_R36 = 'import os\nimport signal\n'
+NEW_CTRL_IMPORT_R36 = 'import os\nimport re\nimport signal\n'
+OLD_CTRL_RESTART_BRANCH_R36 = '                    if text.startswith("/restart"):  # SCHEDULED_RESTART_1591R13\n                        waiting_upload = False\n                        _send(_restart_command(text[len("/restart"):]))\n                        continue\n'
+NEW_CTRL_RESTART_BRANCH_R36 = '                    if text.startswith("/restart"):  # SCHEDULED_RESTART_1591R13\n                        waiting_upload = False\n                        _send(_restart_command(text[len("/restart"):]))\n                        continue\n\n                    if text.startswith("/res"):  # SIM_URL_PER_ROW_1591R36: the row\'s real order link\n                        waiting_upload = False\n                        _send(_row_link_command(text[len("/res"):]))\n                        continue\n'
+OLD_CTRL_RELAUNCH_DEF_R36 = 'def _restart_after_drain(proc):\n'
+NEW_CTRL_ROWLINK_R36 = '# SIM_URL_PER_ROW_1591R36\n_RL_LINE = re.compile(r"^(?P<ts>\\S+)\\s+\\S+\\s+python\\[(?P<pid>\\d+)\\]:\\s?(?P<msg>.*)$")\n_RL_START = re.compile(r"\\[Вкладка (?P<tab>\\d+)\\] Обрабатываю строку (?P<row>\\d+), номер заканчивается на (?P<tail>\\d+)")\n_RL_OFFER = re.compile(r"eSIM offer сохранён: номер=(?P<num>\\S+) \\| (?P<url>\\S+hash_order=[0-9a-f]+)")\n_RL_OUTCOMES = (\n    ("оплата", re.compile(r"ТРЕБУЕТСЯ ОПЛАТА\\. Строка (?P<row>\\d+)")),\n    ("не подтверждена", re.compile(r"ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА\\. Строка (?P<row>\\d+)")),\n    ("результат", re.compile(r"Результат строки (?P<row>\\d+): (?P<status>\\S+)")),\n)\n\n\ndef _rows_from_journal_1591r36(log):\n    """Rows as the journal saw them: start line, every «продолжить» offer capture, outcome."""\n    rows, current = [], {}\n    for line in log.splitlines():\n        m = _RL_LINE.match(line)\n        if not m:\n            continue\n        ts, pid, msg = m.group("ts")[:19].replace("T", " "), m.group("pid"), m.group("msg")\n        s = _RL_START.search(msg)\n        if s:\n            info = {"row": s.group("row"), "tab": s.group("tab"), "tail": s.group("tail"), "start": ts,\n                    "offers": [], "signed": False, "outcome": ""}\n            rows.append(info)\n            current[pid] = info\n            continue\n        info = current.get(pid)\n        if info is None:\n            continue\n        o = _RL_OFFER.search(msg)\n        if o:\n            info["offers"].append((ts, o.group("num"), o.group("url")))\n            continue\n        if "Нажата кнопка «Подписать договор»" in msg:\n            info["signed"] = True\n            continue\n        for name, pat in _RL_OUTCOMES:\n            r = pat.search(msg)\n            if r and r.group("row") == info["row"]:\n                info["outcome"] = name if name != "результат" else r.group("status")\n                break\n    return rows\n\n\ndef _row_link_command(argument):\n    """/res <номер eSIM из пуша, хотя бы 4 последние цифры> или /res <номер строки>.\n\n    Before revision 36 the push could carry the link of the tab\'s earlier row; the journal\n    keeps the real one: the last offer captured for the row is the order that was signed."""\n    key = re.sub(r"\\D", "", argument or "")\n    if len(key) < 3:\n        return ("Формат: /res <номер eSIM из пуша> (можно последние 4–6 цифр) или /res <номер строки>. "\n                "Отвечу ссылкой заказа, который реально подписан в этой строке.")\n    try:\n        log = subprocess.run(["journalctl", "-u", "beeline", "--no-pager", "-o", "short-iso", "--since", "-3 days"],\n                             capture_output=True, text=True, timeout=120).stdout\n    except Exception as exc:\n        return f"Журнал недоступен: {type(exc).__name__}: {exc}"\n    rows = _rows_from_journal_1591r36(log)\n    by_row = [r for r in rows if r["row"] == key] if len(key) <= 5 else []\n    by_number = [r for r in rows if any(re.sub(r"\\D", "", num).endswith(key) for _, num, _ in r["offers"])\n                 or r["tail"] == key]\n    hits = (by_row + [r for r in by_number if r not in by_row])[-5:]\n    if not hits:\n        return f"В журнале за 3 дня нет строки или номера eSIM, оканчивающегося на …{key[-6:]}."\n    out = []\n    for r in hits:\n        outcome = r["outcome"] or ("подписана" if r["signed"] else "не завершена")\n        head = f"Строка {r[\'row\']} (вкладка {r[\'tab\']}, …{r[\'tail\']}, {r[\'start\'][5:16]}), исход: {outcome}"\n        if not r["offers"]:\n            out.append(head + "\\nСсылка в журнале не найдена.")\n            continue\n        ts, num, url = r["offers"][-1]\n        text = head + f"\\neSIM {num}\\nСсылка заказа: {url}"\n        if len(r["offers"]) > 1:\n            text += f"\\n(ранних заказов этой строки без данных: {len(r[\'offers\']) - 1})"\n        out.append(text)\n    return "\\n\\n".join(out)\n\n\ndef _restart_after_drain(proc):\n'
+OLD_TEST_CTRL_NS_R36 = "'_send':lambda *a:None,'_typing':lambda:None,'MENU_MARKUP':'{}','_restart_after_drain':lambda p:False,\n"
+NEW_TEST_CTRL_NS_R36 = "'_send':lambda *a:None,'_typing':lambda:None,'MENU_MARKUP':'{}','_restart_after_drain':lambda p:False,'_row_link_command':lambda a:'',\n"
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3897,8 +3915,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if SIM_URL_MARKER in source:
+        return 36   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if TRACE_COMPACT_MARKER in source:
-        return 35   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 35
     if BROWSER_ENV_MARKER in source:
         return 34
     if TARIFF_CHANGE_MARKER in source:
@@ -3934,7 +3954,8 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 32 or TARIFF_SCOPE_MARKER in source)\
             and (MAX_REVISION < 33 or TARIFF_CHANGE_MARKER in source)\
             and (MAX_REVISION < 34 or BROWSER_ENV_MARKER in source)\
-            and (MAX_REVISION < 35 or TRACE_COMPACT_MARKER in source):
+            and (MAX_REVISION < 35 or TRACE_COMPACT_MARKER in source)\
+            and (MAX_REVISION < 36 or SIM_URL_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4480,6 +4501,38 @@ def main(argv: list[str]) -> int:
             else:
                 raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 37 (r36). The pushed order link is the current row's.
+    if SIM_URL_MARKER not in source and MAX_REVISION >= 36:
+        for old, new, what in ((OLD_PENDING_URL_R36, NEW_PENDING_URL_R36, "offer url per row"),
+                               (OLD_RESET_STATE_R36, NEW_RESET_STATE_R36, "reset offer memory")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        # /res <номер eSIM | строка>: the controller answers with the row's real order link.
+        for old, new, what in ((OLD_CTRL_IMPORT_R36, NEW_CTRL_IMPORT_R36, "controller import re"),
+                               (OLD_CTRL_RESTART_BRANCH_R36, NEW_CTRL_RESTART_BRANCH_R36, "controller /res branch"),
+                               (OLD_CTRL_RELAUNCH_DEF_R36, NEW_CTRL_ROWLINK_R36, "controller /res command")):
+            new_ctrl = replace_once(new_ctrl, old, new, what)
+            if old in ctrl_source:
+                add_edit(edits["server_controller.py"], ctrl_source, old, new, ctrl_reflected)
+            else:
+                for change in edits["server_controller.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier controller entry for {what} not found")
+        test_src = replace_once(test_src, OLD_TEST_CTRL_NS_R36, NEW_TEST_CTRL_NS_R36, "test_update.py controller fixture (/res)")
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4539,7 +4592,8 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 32", README_NOTE_R32),) if built_revision >= 32 else ()),
                           *((("РЕВИЗИЯ 33", README_NOTE_R33),) if built_revision >= 33 else ()),
                           *((("РЕВИЗИЯ 34", README_NOTE_R34),) if built_revision >= 34 else ()),
-                          *((("РЕВИЗИЯ 35", README_NOTE_R35),) if built_revision >= 35 else ())):
+                          *((("РЕВИЗИЯ 35", README_NOTE_R35),) if built_revision >= 35 else ()),
+                          *((("РЕВИЗИЯ 36", README_NOTE_R36),) if built_revision >= 36 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
