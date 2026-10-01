@@ -87,7 +87,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "92c9cc68e5cfd3a0f8717d4bb53fb247e43f3564dc55dac75f2bd1b6924112f0",  # r33 lite output
                          "8561fef2069ee3c6df376c6060084aca717405e63f009d96bb0b98aa4aa7c1bc",  # r33 output
                          "abd23f11da908dd2e3bf17e7b5321a95505eb7fcf8eb7d41c8b9cb622c51322f",  # r34 lite output
-                         "941b2964bf5f0b549047d4776ad830996951d8f6d35619e20dfed6763f4bc7e2"}  # r34 output
+                         "941b2964bf5f0b549047d4776ad830996951d8f6d35619e20dfed6763f4bc7e2",  # r34 output
+                         "0544d1e2190d7ac7a2d091fe2370a558f038dbef17dbb775ce973d7a86642643",  # r35 lite output
+                         "1a0258ca2f63186b153280b6e546652deebf624e426fdc629e7348560023c5a4"}  # r35 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3069,6 +3071,11 @@ BROWSER_ENV_MARKER = "BROWSER_COUNT_ENV_1591R34"
 OLD_BROWSER_COUNT_R34 = 'BROWSER_COUNT = 2  # TWO_BROWSERS_1591R28: two Chromium instances, TABS_PER_BROWSER tabs each\n'
 NEW_BROWSER_COUNT_R34 = '# BROWSER_COUNT_ENV_1591R34: BEELINE_BROWSERS=1 in the systemd unit runs one Chromium on a small\n# server (4 vCPU / 8 GB ran two at load average 20: every click and wait timed out). Default 2 (r28).\ndef _browser_count_1591r34(default=2):\n    try:\n        value = int(str(os.environ.get("BEELINE_BROWSERS") or default).strip())\n    except ValueError:\n        value = default\n    return min(max(value, 1), 4)\n\n\nBROWSER_COUNT = _browser_count_1591r34()  # TWO_BROWSERS_1591R28: Chromium instances, TABS_PER_BROWSER tabs each\n'
 README_NOTE_R34 = '\n\nРЕВИЗИЯ 34 (fix_package_1591.py)\nЧисло Chromium задаётся переменной окружения BEELINE_BROWSERS (по умолчанию 2, как в ревизии 28;\nдопустимо 1–4), вкладок по-прежнему 4 на браузер. На сервере 4 vCPU / 8 ГБ два Chromium дали load\naverage 20 и нехватку памяти: клики и ожидания не укладывались в таймауты, строки падали на тарифе.\nТам ставится 1: drop-in /etc/systemd/system/beeline.service.d/browsers.conf с\n[Service] Environment=BEELINE_BROWSERS=1, затем systemctl daemon-reload и restart.\nМаркер: BROWSER_COUNT_ENV_1591R34.\n'
+# Revision 35: the sign trace in Telegram is one line; the jsonl record keeps the full trace.
+TRACE_COMPACT_MARKER = "TRACE_COMPACT_1591R35"
+OLD_TRACE_LINES_R35 = 'def _sign_trace_lines_1591r25(summary):\n    if not summary:\n        return []\n    out = [f"Подпись: {summary.get(\'url_before\') or \'—\'} → {summary.get(\'url_after\') or \'—\'}"]\n    for r in (summary.get("responses") or [])[:6]:\n        line = f"  {r.get(\'method\')} {r.get(\'url\')} → {r.get(\'status\')}"\n        if r.get("body"):\n            line += " " + str(r["body"])[:160]\n        out.append(line)\n    for f in (summary.get("failed") or [])[:3]:\n        out.append(f"  сеть: {f.get(\'url\')} — {f.get(\'error\')}")\n    for c in (summary.get("console") or [])[:3]:\n        out.append(f"  console {c.get(\'type\')}: {c.get(\'text\')}")\n    return out\n'
+NEW_TRACE_LINES_R35 = 'def _sign_trace_lines_1591r25(summary):\n    """TRACE_COMPACT_1591R35: one line in Telegram (the full trace stays in the jsonl record and\n    the journal); HTTP errors, network failures and console errors are still listed."""\n    if not summary:\n        return []\n    responses = summary.get("responses") or []\n\n    def _status(response):\n        try:\n            return int(response.get("status") or 0)\n        except (TypeError, ValueError):\n            return 0\n\n    signed = [r for r in responses if "checksignature" in str(r.get("url") or "").lower()]\n    passport = [r for r in responses if "sendpassportdata" in str(r.get("url") or "").lower()]\n    parts = []\n    if signed:\n        parts.append(f"подпись → {_status(signed[-1])}")\n    if passport:\n        parts.append(f"паспортные данные → {_status(passport[-1])}")\n    if not parts:\n        parts.append("запрос подписи в сети не замечен" if not responses else f"ответов {len(responses)}")\n    out = ["Подпись (сеть): " + ", ".join(parts)]\n    for r in [r for r in responses if _status(r) >= 400][:3]:\n        line = f"  {r.get(\'method\')} {r.get(\'url\')} → {r.get(\'status\')}"\n        if r.get("body"):\n            line += " " + str(r["body"])[:160]\n        out.append(line)\n    for f in (summary.get("failed") or [])[:3]:\n        out.append(f"  сеть: {f.get(\'url\')} — {f.get(\'error\')}")\n    for c in (summary.get("console") or [])[:3]:\n        out.append(f"  console {c.get(\'type\')}: {c.get(\'text\')}")\n    return out\n'
+README_NOTE_R35 = '\n\nРЕВИЗИЯ 35 (fix_package_1591.py)\nСообщения #оплата и #неподтверждено без сетевого следа подписи ревизии 25 построчно: вместо списка\nзапросов одна строка «Подпись (сеть): подпись → 200, паспортные данные → 202». Ошибки HTTP (>= 400),\nсбои сети и ошибки console по-прежнему перечисляются. Полный след остаётся в записи jsonl и в\nжурнале. Маркер: TRACE_COMPACT_1591R35.\n'
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3890,8 +3897,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if TRACE_COMPACT_MARKER in source:
+        return 35   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if BROWSER_ENV_MARKER in source:
-        return 34   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 34
     if TARIFF_CHANGE_MARKER in source:
         return 33
     if TARIFF_SCOPE_MARKER in source:
@@ -3924,7 +3933,8 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 31 or WITHOUT_R31 or SIGN_ROBUST_MARKER in source)\
             and (MAX_REVISION < 32 or TARIFF_SCOPE_MARKER in source)\
             and (MAX_REVISION < 33 or TARIFF_CHANGE_MARKER in source)\
-            and (MAX_REVISION < 34 or BROWSER_ENV_MARKER in source):
+            and (MAX_REVISION < 34 or BROWSER_ENV_MARKER in source)\
+            and (MAX_REVISION < 35 or TRACE_COMPACT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4455,6 +4465,21 @@ def main(argv: list[str]) -> int:
             else:
                 raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 36 (r35). Compact sign trace in Telegram.
+    if TRACE_COMPACT_MARKER not in source and MAX_REVISION >= 35:
+        old, new, what = OLD_TRACE_LINES_R35, NEW_TRACE_LINES_R35, "compact sign trace"
+        new_source = replace_once(new_source, old, new, what)
+        if old in source:
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        else:
+            for change in edits["test_beeline.py"]:
+                joined = "".join(change["replacement"])
+                if old in joined:
+                    change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                    break
+            else:
+                raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4513,7 +4538,8 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 31", README_NOTE_R31),) if SIGN_ROBUST_MARKER in new_source else ()),
                           *((("РЕВИЗИЯ 32", README_NOTE_R32),) if built_revision >= 32 else ()),
                           *((("РЕВИЗИЯ 33", README_NOTE_R33),) if built_revision >= 33 else ()),
-                          *((("РЕВИЗИЯ 34", README_NOTE_R34),) if built_revision >= 34 else ())):
+                          *((("РЕВИЗИЯ 34", README_NOTE_R34),) if built_revision >= 34 else ()),
+                          *((("РЕВИЗИЯ 35", README_NOTE_R35),) if built_revision >= 35 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 

@@ -455,3 +455,9 @@ average 20 и нехватку памяти: клики и ожидания не
 Там ставится 1: drop-in /etc/systemd/system/beeline.service.d/browsers.conf с
 [Service] Environment=BEELINE_BROWSERS=1, затем systemctl daemon-reload и restart.
 Маркер: BROWSER_COUNT_ENV_1591R34.
+
+РЕВИЗИЯ 35 (fix_package_1591.py)
+Сообщения #оплата и #неподтверждено без сетевого следа подписи ревизии 25 построчно: вместо списка
+запросов одна строка «Подпись (сеть): подпись → 200, паспортные данные → 202». Ошибки HTTP (>= 400),
+сбои сети и ошибки console по-прежнему перечисляются. Полный след остаётся в записи jsonl и в
+журнале. Маркер: TRACE_COMPACT_1591R35.

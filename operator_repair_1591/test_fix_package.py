@@ -61,7 +61,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER, fix.TARIFF_SCOPE_MARKER, fix.TARIFF_CHANGE_MARKER, fix.BROWSER_ENV_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER, fix.TARIFF_SCOPE_MARKER, fix.TARIFF_CHANGE_MARKER, fix.BROWSER_ENV_MARKER, fix.TRACE_COMPACT_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -203,7 +203,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_34(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_35(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -211,12 +211,12 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertIn("Already revision 30", run.stdout)
-            # a server on the prompt-only build is accepted by the full (r34) installer
+            # a server on the prompt-only build is accepted by the full (r35) installer
             self.assertIn(hashlib.sha256((r30 / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             app = Path(d) / "app"; app.mkdir()
             for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "install.py", "test_update.py"):
@@ -380,24 +380,24 @@ class PackageTests(unittest.TestCase):
             self.assertIn(f'None if completed else _row_for_respawn_1591r32(saved_row, tab_id, base_dir, "{who}"),  # ROW_RESTART_LIMIT_1591R32', self.source)
         self.assertNotIn("None if completed else saved_row,", self.source)
 
-    def test_lite_build_is_revision_34_without_the_signing_code(self):
+    def test_lite_build_is_revision_35_without_the_signing_code(self):
         with tempfile.TemporaryDirectory() as d:
             lite = Path(d) / "lite"
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 34 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 35 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 34", run.stdout)
+            self.assertIn("Already revision 35", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 34 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 35 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -516,7 +516,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-34", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-35", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -694,7 +694,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 34", run.stdout)
+            self.assertIn("Already revision 35", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -728,7 +728,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 34)
+        self.assertEqual(manifest["revision"], 35)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1281,8 +1281,15 @@ class PackageTests(unittest.TestCase):
         summary = ns["_sign_trace_summary_1591r25"](trace)
         self.assertEqual([r["url"] for r in summary["responses"]], ["https://saratov.beeline.ru/api/sign"])
         lines = ns["_sign_trace_lines_1591r25"](summary)
-        self.assertTrue(lines[0].startswith("Подпись: https://saratov.beeline.ru/registration/esim/personal-data-form → https://saratov.beeline.ru/registration/esim"))
+        self.assertEqual(lines[0], "Подпись (сеть): ответов 1")  # TRACE_COMPACT_1591R35: no url line
         self.assertIn("POST https://saratov.beeline.ru/api/sign → 400", lines[1]); self.assertIn("session expired", lines[1])
+        # the paid/unverified message of a signed row: one line, no polling GETs, no 2xx bodies
+        ok = {"url_before": "a", "url_after": "b", "failed": [], "console": [], "responses": [
+            {"method": "POST", "url": "https://saratov.beeline.ru/v1/esim-selfreg/checksignature/", "status": 200, "body": '{"isSucceeded":true}'},
+            {"method": "POST", "url": "https://saratov.beeline.ru/v1/esim-selfreg/v2/sendpassportdataexistingsubscriber/?aggregateId=x", "status": 202, "body": "{...}"},
+            *[{"method": "GET", "url": "https://saratov.beeline.ru/v1/esim-selfreg/v2/getselfregstatus/?aggregateId=x", "status": 200, "body": "{...}"} for _ in range(4)]]}
+        self.assertEqual(ns["_sign_trace_lines_1591r25"](ok), ["Подпись (сеть): подпись → 200, паспортные данные → 202"])
+        self.assertEqual(ns["_sign_trace_lines_1591r25"]({"responses": [], "failed": [], "console": []}), ["Подпись (сеть): запрос подписи в сети не замечен"])
         self.assertTrue(any("net::ERR_ABORTED" in x for x in lines)); self.assertTrue(any("Uncaught TypeError" in x for x in lines))
         self.assertEqual(ns["_sign_trace_lines_1591r25"](None), []); self.assertIsNone(ns["_sign_trace_summary_1591r25"](None))
         self.assertIsNone(ns["_sign_trace_end_1591r25"](page, {"id": 1}))

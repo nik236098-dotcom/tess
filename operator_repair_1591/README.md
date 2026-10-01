@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 34 лежит в `beeline_integrated_io_15_91_r34/` (включает ревизии 30–33); рядом
-`beeline_integrated_io_15_91_r34_lite/` — та же ревизия 34 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 35 лежит в `beeline_integrated_io_15_91_r35/` (включает ревизии 30–34); рядом
+`beeline_integrated_io_15_91_r35_lite/` — та же ревизия 35 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -69,7 +69,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r34
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r35
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -290,7 +290,11 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    клики не укладывались в таймауты. Там ставится 1 через drop-in
    `/etc/systemd/system/beeline.service.d/browsers.conf` (`[Service]` / `Environment=BEELINE_BROWSERS=1`),
    затем `systemctl daemon-reload` и `restart`. Маркер `BROWSER_COUNT_ENV_1591R34`.
-36. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+36. **Короткий след подписи в Telegram (ревизия 35).** В сообщениях `#оплата` и `#неподтверждено` вместо
+   списка запросов одна строка «Подпись (сеть): подпись → 200, паспортные данные → 202»; ошибки HTTP,
+   сбои сети и ошибки console по-прежнему перечисляются, полный след остаётся в jsonl и журнале.
+   Маркер `TRACE_COMPACT_1591R35`.
+37. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
