@@ -61,7 +61,7 @@ class PackageTests(unittest.TestCase):
         shutil.copytree(PACKAGE, cls.pkg, ignore=shutil.ignore_patterns("__pycache__"))
         source = (cls.pkg / "test_beeline.py").read_text("utf-8")
         speed = cls.pkg / "symbol_matching.py"
-        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER, fix.TARIFF_SCOPE_MARKER, fix.TARIFF_CHANGE_MARKER, fix.BROWSER_ENV_MARKER, fix.TRACE_COMPACT_MARKER, fix.SIM_URL_MARKER, fix.AI_SIGN_FAIL_MARKER, fix.TELEGRAM_MENU_MARKER, fix.SIGN_REJECTED_MARKER))
+        if (any(m not in source for m in (fix.MARKER, fix.PROXY_MARKER, fix.ASSIST_MARKER, fix.ERROR_MARKER, fix.OVERLAY_MARKER, fix.TARIFF_MARKER, fix.ROWSTART_MARKER, fix.MATCHER_MARKER, fix.OBSERVER_MARKER, fix.PROFILE_MARKER, fix.RESTART_MARKER, fix.POSTAUTH_MARKER, fix.PERSDATA_MARKER, fix.ERRORSKIP_MARKER, fix.SUCCESSTAG_MARKER, fix.BROWSER_MARKER, fix.PROFILE_LABELS_MARKER, fix.PROXY_DIRECT_MARKER, fix.RESTART_RELAUNCH_MARKER, fix.ROW_SKIP_MARKER, fix.FINAL_PAGE_MARKER, fix.SIGNED_MARKER, fix.SIGN_TRACE_MARKER, fix.PAYMENT_MARKER, fix.TG_RATE_MARKER, fix.TWO_BROWSERS_MARKER, fix.STALE_DRAIN_MARKER, fix.AI_VERDICT_MARKER, fix.SIGN_ROBUST_MARKER, fix.TARIFF_SCOPE_MARKER, fix.TARIFF_CHANGE_MARKER, fix.BROWSER_ENV_MARKER, fix.TRACE_COMPACT_MARKER, fix.SIM_URL_MARKER, fix.AI_SIGN_FAIL_MARKER, fix.TELEGRAM_MENU_MARKER, fix.SIGN_REJECTED_MARKER, fix.ISOLATED_CONTEXT_MARKER))
                 or not speed.is_file() or fix.MATCHER_SPEED_MARKER not in speed.read_text("utf-8")):
             subprocess.run([sys.executable, fix.__file__, str(cls.pkg)], check=True, capture_output=True, text=True)
         cls.source = (cls.pkg / "test_beeline.py").read_text("utf-8")
@@ -195,7 +195,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_39(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_40(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -203,12 +203,12 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertIn("Already revision 30", run.stdout)
-            # a server on the prompt-only build is accepted by the full (r39) installer
+            # a server on the prompt-only build is accepted by the full (r40) installer
             self.assertIn(hashlib.sha256((r30 / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             app = Path(d) / "app"; app.mkdir()
             for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "install.py", "test_update.py"):
@@ -372,24 +372,24 @@ class PackageTests(unittest.TestCase):
             self.assertIn(f'None if completed else _row_for_respawn_1591r32(saved_row, tab_id, base_dir, "{who}"),  # ROW_RESTART_LIMIT_1591R32', self.source)
         self.assertNotIn("None if completed else saved_row,", self.source)
 
-    def test_lite_build_is_revision_39_without_the_signing_code(self):
+    def test_lite_build_is_revision_40_without_the_signing_code(self):
         with tempfile.TemporaryDirectory() as d:
             lite = Path(d) / "lite"
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 39 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 40 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 39", run.stdout)
+            self.assertIn("Already revision 40", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 39 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 40 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -642,6 +642,71 @@ class PackageTests(unittest.TestCase):
         self.assertIn('path = _tg_status_file_1591r27().with_name("status_snapshot.json")', src)
         self.assertNotIn('"text": f"⏳ Вкладка {i}\\nСтатус: запуск..."', src)
 
+    def test_each_worker_gets_its_own_browser_context(self):
+        """ISOLATED_CONTEXT_1591R40: the worker's context has its own storage, the parent still
+        sees its page over CDP, and a disabled flag falls back to the shared context."""
+        src = self.source
+        boot = src[src.index("def _tab_process("):][:2500]
+        self.assertIn("context = _isolated_context_1591r40(browser, tab_id)", boot); self.assertNotIn("context = browser.contexts[0]\n        page = context.new_page()", boot)
+        ns = {"os": types.SimpleNamespace(environ={}), "print": lambda *a, **k: None}
+        exec_functions(src, ["_isolated_context_1591r40"], ns)
+        ns["ISOLATED_CONTEXTS"] = False
+        shared = object()
+        fake = types.SimpleNamespace(contexts=[shared], new_context=lambda **kw: (_ for _ in ()).throw(AssertionError("not asked")))
+        self.assertIs(ns["_isolated_context_1591r40"](fake, 1), shared, "disabled: the shared context")
+        ns["ISOLATED_CONTEXTS"] = True
+        made = []
+        fake = types.SimpleNamespace(contexts=[shared], new_context=lambda **kw: made.append(kw) or "own")
+        self.assertEqual(ns["_isolated_context_1591r40"](fake, 1), "own"); self.assertEqual(made, [{"no_viewport": True}])
+        failing = types.SimpleNamespace(contexts=[shared], new_context=lambda **kw: (_ for _ in ()).throw(RuntimeError("no")))
+        self.assertIs(ns["_isolated_context_1591r40"](failing, 1), shared, "Chromium refuses: the shared context")
+        self.assertIn('"BEELINE_ISOLATED_CONTEXTS"', src)
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("playwright not installed")
+        import http.server, socketserver, threading, socket
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200); self.send_header("Content-Type", "text/html"); self.end_headers(); self.wfile.write(b"<title>t</title>ok")
+            def log_message(self, *a): pass
+        srv = socketserver.TCPServer(("127.0.0.1", 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0)); cdp_port = sock.getsockname()[1]
+        with tempfile.TemporaryDirectory() as d:
+            exe = "/opt/pw-browsers/chromium"
+            if not Path(exe).is_file():
+                srv.shutdown(); self.skipTest("chromium not available")
+            proc = subprocess.Popen([exe, "--headless=new", f"--remote-debugging-port={cdp_port}", "--no-sandbox", "--disable-gpu",
+                                     f"--user-data-dir={d}/profile", "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                url = f"http://127.0.0.1:{srv.server_address[1]}/"
+                with sync_playwright() as p:
+                    worker = None
+                    for _ in range(20):
+                        try:
+                            worker = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}", timeout=3000); break
+                        except Exception:
+                            __import__("time").sleep(0.5)
+                    if worker is None:
+                        self.skipTest("chromium did not open its CDP port")
+                    own_ns = {"os": types.SimpleNamespace(environ={}), "print": lambda *a, **k: None, "ISOLATED_CONTEXTS": True}
+                    exec_functions(src, ["_isolated_context_1591r40"], own_ns)
+                    ctx = own_ns["_isolated_context_1591r40"](worker, 3)
+                    self.assertIsNot(ctx, worker.contexts[0])
+                    page = ctx.new_page(); page.goto(url)
+                    page.evaluate("() => { window.name = 'esim-worker-3-p1-g1'; localStorage.setItem('personal_token', 'A'); document.cookie = 'basket=A'; }")
+                    other = worker.contexts[0].new_page(); other.goto(url)
+                    self.assertIsNone(other.evaluate("() => localStorage.getItem('personal_token')"), "the shared context does not see the worker's storage")
+                    self.assertEqual(other.evaluate("() => document.cookie"), "")
+                    self.assertEqual(page.evaluate("() => innerWidth"), other.evaluate("() => innerWidth"), "no viewport emulation")
+                    parent = p.chromium.connect_over_cdp(f"http://127.0.0.1:{cdp_port}", timeout=5000)
+                    names = [pg.evaluate("() => window.name") for c in parent.contexts for pg in c.pages]
+                    self.assertIn("esim-worker-3-p1-g1", names, "the parent sees the worker's page over CDP")
+                    parent.close(); worker.close()
+            finally:
+                proc.terminate(); proc.wait(timeout=10); srv.shutdown()
+
     def test_stale_drain_file_is_discarded_at_start(self):
         src = self.source
         head = src[src.index("restart_started_at = monotonic()"):src.index("def _restart_tick():")]
@@ -722,7 +787,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-39", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-40", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -900,7 +965,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 39", run.stdout)
+            self.assertIn("Already revision 40", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -934,7 +999,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 39)
+        self.assertEqual(manifest["revision"], 40)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)

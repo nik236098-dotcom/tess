@@ -505,3 +505,12 @@ settle_success. Маркер: AI_ON_SIGN_FAIL_1591R37.
 (б) BEELINE_TABS_PER_BROWSER (1–4, по умолчанию 4): с BEELINE_BROWSERS=8 и
 BEELINE_TABS_PER_BROWSER=1 у каждой вкладки свой Chromium, как при ручном оформлении.
 Маркер: SIGN_REJECTED_1591R39.
+
+РЕВИЗИЯ 40 (fix_package_1591.py)
+Свой контекст браузера каждой вкладке внутри общего Chromium (browser.new_context через CDP):
+свои cookies, localStorage, корзина и персональный токен mobile-id, как у отдельного браузера, а по
+памяти как одна вкладка. Закрывает перезапись токена соседней вкладкой (412 PERSONAL_TOKEN_ERROR,
+ревизия 39) и общую корзину (ревизии 32–33) без восьми Chromium. Chromium удаляет контекст, когда
+процесс вкладки завершается, поэтому вкладка успеха/оплаты не остаётся открытой после завершения
+worker (снимки blackbox и записи jsonl сохраняются). Выключить: BEELINE_ISOLATED_CONTEXTS=0.
+Маркер: ISOLATED_CONTEXT_1591R40.

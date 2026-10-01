@@ -97,7 +97,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "ef28ef77fbb8cb8afac35e6daaaeffee983e759322ebafb76c06e2d5fcdce6c1",  # r38 lite output
                          "74a466855054bb9f8cf05ae05c66224a519f0c1322ad695316006ae4aad40348",  # r38 output
                          "e37251fe2500cf89471a3e042f2d7a018c8b98748c933e15b965f1ae0333e00f",  # r39 lite output
-                         "85d8693a6d059492252969da1f11966aa79c25fbe42c6ae6a3c6aacd7102c57a"}  # r39 output
+                         "85d8693a6d059492252969da1f11966aa79c25fbe42c6ae6a3c6aacd7102c57a",  # r39 output
+                         "df25464f90f9f73d006d821da6a918b94386631e30990f42524db157159b6e81",  # r40 lite output
+                         "a2dd94165ec5926ad1512956706843987b7ca60efc4a91ec25e95a7de83eb604"}  # r40 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3181,6 +3183,15 @@ NEW_ERR_R39 = '        rejected = _sign_rejected_1591r39(worker)  # SIGN_REJECTE
 OLD_TABS_R39 = 'TABS_PER_BROWSER = 4  # SUCCESS_TAG_1591R17: four worker tabs\n'
 NEW_TABS_R39 = '# SIGN_REJECTED_1591R39: BEELINE_TABS_PER_BROWSER=1 with BEELINE_BROWSERS=8 gives every tab its\n# own Chromium (own cookies, basket and mobile-id token: tabs of one Chromium overwrote each\n# other\'s personal token, 412 PERSONAL_TOKEN_ERROR on the passport data). Default 4 (r17).\ndef _tabs_per_browser_1591r39(default=4):\n    try:\n        value = int(str(os.environ.get("BEELINE_TABS_PER_BROWSER") or default).strip())\n    except ValueError:\n        value = default\n    return min(max(value, 1), 4)\n\n\nTABS_PER_BROWSER = _tabs_per_browser_1591r39()  # SUCCESS_TAG_1591R17: worker tabs per Chromium\n'
 README_NOTE_R39 = '\n\nРЕВИЗИЯ 39 (fix_package_1591.py)\n(а) Отказ сайта после подписи. Вкладки одного Chromium делят cookies и localStorage, и персональный\nтокен mobile-id одной вкладки перезаписывался запросом SMS соседней: подпись принималась\n(checksignature 200), а паспортные данные отвергались (sendpassportdata 412 PERSONAL_TOKEN_ERROR).\nКод считал такую строку подписанной по одному checksignature 200. Теперь подпись принята только\nбез 4xx/5xx на запросах selfreg; при отказе строка сразу записывается как #неподтверждено с кодом\nсайта (без DeepSeek и без трёх минут ожидания), номер не помечается обработанным.\n(б) BEELINE_TABS_PER_BROWSER (1–4, по умолчанию 4): с BEELINE_BROWSERS=8 и\nBEELINE_TABS_PER_BROWSER=1 у каждой вкладки свой Chromium, как при ручном оформлении.\nМаркер: SIGN_REJECTED_1591R39.\n'
+# Revision 40: an own browser context per worker tab inside the shared Chromium.
+ISOLATED_CONTEXT_MARKER = "ISOLATED_CONTEXT_1591R40"
+OLD_TAB_CONTEXT_R40 = '        browser = p.chromium.connect_over_cdp(cdp_url)\n        if not browser.contexts:\n            raise RuntimeError("Chromium не вернул общий контекст через CDP.")\n\n        context = browser.contexts[0]\n        page = context.new_page()\n'
+NEW_TAB_CONTEXT_R40 = '        browser = p.chromium.connect_over_cdp(cdp_url)\n        if not browser.contexts:\n            raise RuntimeError("Chromium не вернул общий контекст через CDP.")\n\n        # ISOLATED_CONTEXT_1591R40: every worker gets its own browser context inside the shared\n        # Chromium: own cookies, localStorage, basket and mobile-id personal token, like a\n        # separate browser at the memory cost of one tab (tabs of one context overwrote each\n        # other\'s token: 412 PERSONAL_TOKEN_ERROR). Chromium disposes the context when this\n        # process ends; the parent still sees and closes its pages over CDP.\n        context = _isolated_context_1591r40(browser, tab_id)\n        page = context.new_page()\n'
+OLD_TAB_DEF_R40 = 'def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heartbeat=None, status_map=None, initial_row=None, total_rows=None, diagnostic_session_dir=None, success_queue=None, captcha_gate=None):  # TWO_BROWSERS_1591R28\n'
+NEW_TAB_DEF_R40 = '# ISOLATED_CONTEXT_1591R40\nISOLATED_CONTEXTS = str(os.environ.get("BEELINE_ISOLATED_CONTEXTS") or "1").strip().lower() not in {"0", "off", "no", "false"}\n\n\ndef _isolated_context_1591r40(browser, tab_id):\n    """A browser context of this worker\'s own (no viewport emulation: the real window size, as\n    the shared context had); the shared context when disabled or when Chromium refuses."""\n    if not ISOLATED_CONTEXTS:\n        return browser.contexts[0]\n    try:\n        context = browser.new_context(no_viewport=True)\n        print(f"[Вкладка {tab_id}] Отдельный контекст браузера создан (свои cookies и хранилище).", flush=True)\n        return context\n    except Exception as exc:\n        print(\n            f"[Вкладка {tab_id}] Отдельный контекст не создан ({type(exc).__name__}: {exc}); "\n            "работаю в общем контексте.",\n            flush=True,\n        )\n        return browser.contexts[0]\n\n\ndef _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heartbeat=None, status_map=None, initial_row=None, total_rows=None, diagnostic_session_dir=None, success_queue=None, captcha_gate=None):  # TWO_BROWSERS_1591R28\n'
+README_NOTE_R40 = '\n\nРЕВИЗИЯ 40 (fix_package_1591.py)\nСвой контекст браузера каждой вкладке внутри общего Chromium (browser.new_context через CDP):\nсвои cookies, localStorage, корзина и персональный токен mobile-id, как у отдельного браузера, а по\nпамяти как одна вкладка. Закрывает перезапись токена соседней вкладкой (412 PERSONAL_TOKEN_ERROR,\nревизия 39) и общую корзину (ревизии 32–33) без восьми Chromium. Chromium удаляет контекст, когда\nпроцесс вкладки завершается, поэтому вкладка успеха/оплаты не остаётся открытой после завершения\nworker (снимки blackbox и записи jsonl сохраняются). Выключить: BEELINE_ISOLATED_CONTEXTS=0.\nМаркер: ISOLATED_CONTEXT_1591R40.\n'
+OLD_TEST_TAB_NS_R40 = "                'capture_blackbox':lambda *a:(_ for _ in ()).throw(AssertionError('unexpected phase'))}\n            extract({'_tab_process'},ns)\n"
+NEW_TEST_TAB_NS_R40 = "                'capture_blackbox':lambda *a:(_ for _ in ()).throw(AssertionError('unexpected phase')),\n                '_isolated_context_1591r40':lambda b,t:b.contexts[0]}  # ISOLATED_CONTEXT_1591R40\n            extract({'_tab_process'},ns)\n"
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -4002,8 +4013,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if ISOLATED_CONTEXT_MARKER in source:
+        return 40   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if SIGN_REJECTED_MARKER in source:
-        return 39   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 39
     if TELEGRAM_MENU_MARKER in source:
         return 38
     if AI_SIGN_FAIL_MARKER in source:
@@ -4051,7 +4064,8 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 36 or SIM_URL_MARKER in source)\
             and (MAX_REVISION < 37 or AI_SIGN_FAIL_MARKER in source)\
             and (MAX_REVISION < 38 or TELEGRAM_MENU_MARKER in source)\
-            and (MAX_REVISION < 39 or SIGN_REJECTED_MARKER in source):
+            and (MAX_REVISION < 39 or SIGN_REJECTED_MARKER in source)\
+            and (MAX_REVISION < 40 or ISOLATED_CONTEXT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4728,6 +4742,23 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 41 (r40). An own browser context per worker tab.
+    if ISOLATED_CONTEXT_MARKER not in source and MAX_REVISION >= 40:
+        for old, new, what in ((OLD_TAB_DEF_R40, NEW_TAB_DEF_R40, "isolated context helper"),
+                               (OLD_TAB_CONTEXT_R40, NEW_TAB_CONTEXT_R40, "worker uses its own context")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        test_src = replace_once(test_src, OLD_TEST_TAB_NS_R40, NEW_TEST_TAB_NS_R40, "test_update.py _tab_process fixture (context)")
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4791,7 +4822,8 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 36", README_NOTE_R36),) if built_revision >= 36 else ()),
                           *((("РЕВИЗИЯ 37", README_NOTE_R37),) if built_revision >= 37 else ()),
                           *((("РЕВИЗИЯ 38", README_NOTE_R38),) if built_revision >= 38 else ()),
-                          *((("РЕВИЗИЯ 39", README_NOTE_R39),) if built_revision >= 39 else ())):
+                          *((("РЕВИЗИЯ 39", README_NOTE_R39),) if built_revision >= 39 else ()),
+                          *((("РЕВИЗИЯ 40", README_NOTE_R40),) if built_revision >= 40 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 

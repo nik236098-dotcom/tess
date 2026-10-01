@@ -264,7 +264,8 @@ class StateTests(unittest.TestCase):
                 'install_page_activity_tracker':lambda *a:None,'configure_matcher_runtime':lambda *a,**k:None,
                 'start_row_in_worker':start,'tick_worker':tick,
                 'restart_same_row_in_new_page':lambda *a:(_ for _ in ()).throw(AssertionError('restart')),
-                'capture_blackbox':lambda *a:(_ for _ in ()).throw(AssertionError('unexpected phase'))}
+                'capture_blackbox':lambda *a:(_ for _ in ()).throw(AssertionError('unexpected phase')),
+                '_isolated_context_1591r40':lambda b,t:b.contexts[0]}  # ISOLATED_CONTEXT_1591R40
             extract({'_tab_process'},ns)
             ns['_tab_process'](1,'mock',None,'.',None,initial_row=('test',))
             self.assertEqual(calls,[phase]);self.assertEqual(page.mutations,[])

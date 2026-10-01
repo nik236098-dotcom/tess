@@ -2884,7 +2884,46 @@
       "start": 6979,
       "end": 6980,
       "replacement": [
+        "# ISOLATED_CONTEXT_1591R40\n",
+        "ISOLATED_CONTEXTS = str(os.environ.get(\"BEELINE_ISOLATED_CONTEXTS\") or \"1\").strip().lower() not in {\"0\", \"off\", \"no\", \"false\"}\n",
+        "\n",
+        "\n",
+        "def _isolated_context_1591r40(browser, tab_id):\n",
+        "    \"\"\"A browser context of this worker's own (no viewport emulation: the real window size, as\n",
+        "    the shared context had); the shared context when disabled or when Chromium refuses.\"\"\"\n",
+        "    if not ISOLATED_CONTEXTS:\n",
+        "        return browser.contexts[0]\n",
+        "    try:\n",
+        "        context = browser.new_context(no_viewport=True)\n",
+        "        print(f\"[Вкладка {tab_id}] Отдельный контекст браузера создан (свои cookies и хранилище).\", flush=True)\n",
+        "        return context\n",
+        "    except Exception as exc:\n",
+        "        print(\n",
+        "            f\"[Вкладка {tab_id}] Отдельный контекст не создан ({type(exc).__name__}: {exc}); \"\n",
+        "            \"работаю в общем контексте.\",\n",
+        "            flush=True,\n",
+        "        )\n",
+        "        return browser.contexts[0]\n",
+        "\n",
+        "\n",
         "def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heartbeat=None, status_map=None, initial_row=None, total_rows=None, diagnostic_session_dir=None, success_queue=None, captcha_gate=None):  # TWO_BROWSERS_1591R28\n"
+      ]
+    },
+    {
+      "start": 6983,
+      "end": 6989,
+      "replacement": [
+        "        browser = p.chromium.connect_over_cdp(cdp_url)\n",
+        "        if not browser.contexts:\n",
+        "            raise RuntimeError(\"Chromium не вернул общий контекст через CDP.\")\n",
+        "\n",
+        "        # ISOLATED_CONTEXT_1591R40: every worker gets its own browser context inside the shared\n",
+        "        # Chromium: own cookies, localStorage, basket and mobile-id personal token, like a\n",
+        "        # separate browser at the memory cost of one tab (tabs of one context overwrote each\n",
+        "        # other's token: 412 PERSONAL_TOKEN_ERROR). Chromium disposes the context when this\n",
+        "        # process ends; the parent still sees and closes its pages over CDP.\n",
+        "        context = _isolated_context_1591r40(browser, tab_id)\n",
+        "        page = context.new_page()\n"
       ]
     },
     {
