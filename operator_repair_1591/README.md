@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 38 лежит в `beeline_integrated_io_15_91_r38/` (включает ревизии 30–37); рядом
-`beeline_integrated_io_15_91_r38_lite/` — та же ревизия 38 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 39 лежит в `beeline_integrated_io_15_91_r39/` (включает ревизии 30–38); рядом
+`beeline_integrated_io_15_91_r39_lite/` — та же ревизия 39 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -69,7 +69,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r38
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r39
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -319,7 +319,14 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    сообщения один раз переправляются на «статус в меню». Пуши об успехе и оплате короткие: номер eSIM,
    ФИО, дата рождения, строка и исходные данные, исход и для оплаты ссылка заказа. Код регистрации не
    менялся. Маркер `TELEGRAM_MENU_1591R38`.
-40. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+40. **Отказ сайта после подписи и свой Chromium на вкладку (ревизия 39).** Вкладки одного Chromium
+   делят cookies и localStorage: запрос SMS соседней вкладки перезаписывал персональный токен mobile-id,
+   подпись принималась, а паспортные данные отвергались (`412 PERSONAL_TOKEN_ERROR`), и код считал
+   строку подписанной по одному `checksignature 200`. Теперь подпись принята только без 4xx/5xx на
+   запросах selfreg; при отказе строка сразу `#неподтверждено` с кодом сайта, без DeepSeek, номер не
+   помечен. `BEELINE_TABS_PER_BROWSER` (1–4): с `BEELINE_BROWSERS=8` и `BEELINE_TABS_PER_BROWSER=1` у
+   каждой вкладки свой Chromium, как при ручном оформлении. Маркер `SIGN_REJECTED_1591R39`.
+41. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).

@@ -95,7 +95,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "cce2c689b26dd7ea0aa865576071d7b8372768efb7d67ec8dbb1ae23bf0c5738",  # r37 lite output
                          "a31f394aa9d9b708bb9c85c182a871dd0d63b96de78de58429c5746a07babd44",  # r37 output
                          "ef28ef77fbb8cb8afac35e6daaaeffee983e759322ebafb76c06e2d5fcdce6c1",  # r38 lite output
-                         "74a466855054bb9f8cf05ae05c66224a519f0c1322ad695316006ae4aad40348"}  # r38 output
+                         "74a466855054bb9f8cf05ae05c66224a519f0c1322ad695316006ae4aad40348",  # r38 output
+                         "e37251fe2500cf89471a3e042f2d7a018c8b98748c933e15b965f1ae0333e00f",  # r39 lite output
+                         "85d8693a6d059492252969da1f11966aa79c25fbe42c6ae6a3c6aacd7102c57a"}  # r39 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3166,6 +3168,19 @@ NEW_T_CTRL_R38 = "'_restart_after_drain':lambda p:False,'_row_link_command':lamb
 OLD_T_COMPILE_R38 = "for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py','symbol_matching.py'):"
 NEW_T_COMPILE_R38 = "for name in ('test_beeline.py','server_controller.py','operator_runtime_io.py','install.py','symbol_matching.py','telegram_menu.py'):"
 README_NOTE_R38 = '\n\nРЕВИЗИЯ 38 (fix_package_1591.py)\nМеню бота (telegram_menu.py). Одно сообщение-панель с inline-кнопками: 📊 Статус (правится на месте\nтолько пока открыт, сам закрывается через час), 📱 Мои eSIM (последние оформленные eSIM по 10 на\nстраницу, карточка как прежний полный пуш, отметки 🆕/✅/❌, ссылка из журнала), 📜 Логи (события из\nжурнала за 2 дня постранично), 🤖 Спросить DeepSeek (следующее сообщение уходит DeepSeek, кнопка\nотмены), ▶️ ⏹ 🔄 📥 управление. Нижняя клавиатура убрана. Любое сообщение, кроме команд\n(/restart, /res), открывает меню; к DeepSeek попадает только текст после кнопки «Спросить».\nСтатус вкладок пишется runtime в status_snapshot.json, восемь редактируемых статусных сообщений\nревизии 27 отменены (при первом запуске они один раз переправляются на «статус в меню»).\nПуши об успехе и оплате стали короткими: номер eSIM, ФИО, дата рождения, строка и исходные данные,\nисход (для оплаты — ссылка заказа); полная карточка — в «Мои eSIM». Маркер: TELEGRAM_MENU_1591R38.\n'
+# Revision 39: a 4xx on the selfreg requests after the click is a rejection; tabs per Chromium from env.
+SIGN_REJECTED_MARKER = "SIGN_REJECTED_1591R39"
+OLD_WENT_R39 = 'def _sign_went_through_1591r37(worker):\n    """True when the trace of the sign click (revision 25) holds a successful answer (status\n    2xx/3xx) to the signing request: the site accepted the signature, DeepSeek is not needed."""\n    trace = (worker or {}).get("sign_trace") or {}\n    for response in trace.get("responses") or []:\n        try:\n            status = int(response.get("status") or 0)\n        except (TypeError, ValueError):\n            status = 0\n        if SIGN_OK_RE_1591R37.search(str(response.get("url") or "")) and 200 <= status < 400:\n            return True\n    return False\n'
+NEW_WENT_R39 = 'def _sign_went_through_1591r37(worker):\n    """True when the site accepted the WHOLE signing step: a 2xx/3xx answer to the signing\n    request and no 4xx/5xx on any selfreg request of the click (SIGN_REJECTED_1591R39: a\n    checksignature 200 followed by sendpassportdata 412 is a rejection, not a success)."""\n    trace = (worker or {}).get("sign_trace") or {}\n    accepted = False\n    for response in trace.get("responses") or []:\n        url = str(response.get("url") or "")\n        try:\n            status = int(response.get("status") or 0)\n        except (TypeError, ValueError):\n            status = 0\n        if SELFREG_RE_1591R39.search(url) and status >= 400:\n            return False\n        if SIGN_OK_RE_1591R37.search(url) and 200 <= status < 400:\n            accepted = True\n    return accepted\n\n\n# SIGN_REJECTED_1591R39\nSELFREG_RE_1591R39 = re.compile(r"esim-selfreg|checksignature|sendpassportdata|/sign\\b", re.I)\n\n\ndef _sign_rejected_1591r39(worker):\n    """The site\'s refusal after the click, as «412 PERSONAL_TOKEN_ERROR», or "" when none:\n    the first 4xx/5xx answer to a selfreg request in the trace of the sign click."""\n    trace = (worker or {}).get("sign_trace") or {}\n    for response in trace.get("responses") or []:\n        url = str(response.get("url") or "")\n        try:\n            status = int(response.get("status") or 0)\n        except (TypeError, ValueError):\n            status = 0\n        if status < 400 or not SELFREG_RE_1591R39.search(url):\n            continue\n        code = ""\n        m = re.search(r\'"codeValue"\\s*:\\s*"([A-Z_0-9]+)"\', str(response.get("body") or ""))\n        if m:\n            code = m.group(1)\n        step = "паспортные данные" if "sendpassportdata" in url.lower() else ("подпись" if SIGN_OK_RE_1591R37.search(url) else url.rsplit("/", 2)[-2][:30])\n        return f"{status} {code}".strip() + f" ({step})"\n    return ""\n'
+OLD_SETTLE_HEAD_R39 = '    page = worker.get("page")\n    payment_text = _payment_page_1591r26(page) if page is not None else ""  # PAYMENT_STEP_1591R26\n'
+NEW_SETTLE_HEAD_R39 = '    page = worker.get("page")\n    rejected = _sign_rejected_1591r39(worker)  # SIGN_REJECTED_1591R39: the site refused the data\n    if rejected:\n        _finish_unverified_1591r24(base_dir, worker, f"сайт отверг данные после подписи: {rejected}")\n        return False\n    payment_text = _payment_page_1591r26(page) if page is not None else ""  # PAYMENT_STEP_1591R26\n'
+OLD_AFTER_R39 = '            if _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37\n                print(\n                    f"[Вкладка {worker[\'id\']}] Запрос подписи ушёл и принят сайтом (след сети); "\n                    "DeepSeek не вызываю.",\n                    flush=True,\n                )\n            else:\n'
+NEW_AFTER_R39 = '            rejected = _sign_rejected_1591r39(worker)  # SIGN_REJECTED_1591R39\n            if rejected:\n                print(\n                    f"[Вкладка {worker[\'id\']}] Сайт отверг данные после подписи ({rejected}); "\n                    "строка не подтверждена, DeepSeek не вызываю.",\n                    flush=True,\n                )\n                _finish_unverified_1591r24(base_dir, worker, f"сайт отверг данные после подписи: {rejected}")\n                return\n            if _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37\n                print(\n                    f"[Вкладка {worker[\'id\']}] Запрос подписи ушёл и принят сайтом (след сети); "\n                    "DeepSeek не вызываю.",\n                    flush=True,\n                )\n            else:\n'
+OLD_ERR_R39 = '        accepted = _sign_went_through_1591r37(worker)\n        _finish_unverified_1591r24(\n            base_dir, worker,\n            "после «Подписать договор» сайт показал registration/error"\n            + (" (запрос подписи при этом был принят сайтом)" if accepted else ""),\n        )\n'
+NEW_ERR_R39 = '        rejected = _sign_rejected_1591r39(worker)  # SIGN_REJECTED_1591R39\n        accepted = _sign_went_through_1591r37(worker)\n        _finish_unverified_1591r24(\n            base_dir, worker,\n            "после «Подписать договор» сайт показал registration/error"\n            + (f": {rejected}" if rejected else (" (запрос подписи при этом был принят сайтом)" if accepted else "")),\n        )\n'
+OLD_TABS_R39 = 'TABS_PER_BROWSER = 4  # SUCCESS_TAG_1591R17: four worker tabs\n'
+NEW_TABS_R39 = '# SIGN_REJECTED_1591R39: BEELINE_TABS_PER_BROWSER=1 with BEELINE_BROWSERS=8 gives every tab its\n# own Chromium (own cookies, basket and mobile-id token: tabs of one Chromium overwrote each\n# other\'s personal token, 412 PERSONAL_TOKEN_ERROR on the passport data). Default 4 (r17).\ndef _tabs_per_browser_1591r39(default=4):\n    try:\n        value = int(str(os.environ.get("BEELINE_TABS_PER_BROWSER") or default).strip())\n    except ValueError:\n        value = default\n    return min(max(value, 1), 4)\n\n\nTABS_PER_BROWSER = _tabs_per_browser_1591r39()  # SUCCESS_TAG_1591R17: worker tabs per Chromium\n'
+README_NOTE_R39 = '\n\nРЕВИЗИЯ 39 (fix_package_1591.py)\n(а) Отказ сайта после подписи. Вкладки одного Chromium делят cookies и localStorage, и персональный\nтокен mobile-id одной вкладки перезаписывался запросом SMS соседней: подпись принималась\n(checksignature 200), а паспортные данные отвергались (sendpassportdata 412 PERSONAL_TOKEN_ERROR).\nКод считал такую строку подписанной по одному checksignature 200. Теперь подпись принята только\nбез 4xx/5xx на запросах selfreg; при отказе строка сразу записывается как #неподтверждено с кодом\nсайта (без DeepSeek и без трёх минут ожидания), номер не помечается обработанным.\n(б) BEELINE_TABS_PER_BROWSER (1–4, по умолчанию 4): с BEELINE_BROWSERS=8 и\nBEELINE_TABS_PER_BROWSER=1 у каждой вкладки свой Chromium, как при ручном оформлении.\nМаркер: SIGN_REJECTED_1591R39.\n'
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3987,8 +4002,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if SIGN_REJECTED_MARKER in source:
+        return 39   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if TELEGRAM_MENU_MARKER in source:
-        return 38   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 38
     if AI_SIGN_FAIL_MARKER in source:
         return 37
     if SIM_URL_MARKER in source:
@@ -4033,7 +4050,8 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 35 or TRACE_COMPACT_MARKER in source)\
             and (MAX_REVISION < 36 or SIM_URL_MARKER in source)\
             and (MAX_REVISION < 37 or AI_SIGN_FAIL_MARKER in source)\
-            and (MAX_REVISION < 38 or TELEGRAM_MENU_MARKER in source):
+            and (MAX_REVISION < 38 or TELEGRAM_MENU_MARKER in source)\
+            and (MAX_REVISION < 39 or SIGN_REJECTED_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4691,6 +4709,25 @@ def main(argv: list[str]) -> int:
                                (OLD_T_COMPILE_R38, NEW_T_COMPILE_R38, "test_update.py compile list (menu)")):
             test_src = replace_once(test_src, old, new, what)
 
+    # 40 (r39). A site refusal after the click is a rejection; tabs per Chromium from the environment.
+    if SIGN_REJECTED_MARKER not in source and MAX_REVISION >= 39:
+        for old, new, what in ((OLD_WENT_R39, NEW_WENT_R39, "strict acceptance + rejection helper"),
+                               (OLD_SETTLE_HEAD_R39, NEW_SETTLE_HEAD_R39, "settle: rejection first"),
+                               (OLD_AFTER_R39, NEW_AFTER_R39, "after click: rejection"),
+                               (OLD_ERR_R39, NEW_ERR_R39, "error page: rejection code"),
+                               (OLD_TABS_R39, NEW_TABS_R39, "tabs per browser from env")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4753,7 +4790,8 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 35", README_NOTE_R35),) if built_revision >= 35 else ()),
                           *((("РЕВИЗИЯ 36", README_NOTE_R36),) if built_revision >= 36 else ()),
                           *((("РЕВИЗИЯ 37", README_NOTE_R37),) if built_revision >= 37 else ()),
-                          *((("РЕВИЗИЯ 38", README_NOTE_R38),) if built_revision >= 38 else ())):
+                          *((("РЕВИЗИЯ 38", README_NOTE_R38),) if built_revision >= 38 else ()),
+                          *((("РЕВИЗИЯ 39", README_NOTE_R39),) if built_revision >= 39 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
