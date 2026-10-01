@@ -83,7 +83,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "0b6cc34c63b6cfb1eb2f38909d41b05966eb1251b77c52cf1012d7cd4e95c3ab",  # r30 output (prompt only)
                          "bd07c22559bcd89c0244ed2e67e75c1ee1139274af0e627732b0444f58b546c8",  # r31 output
                          "f64ef74d8f4b6b3875c77253e23ede004065f6afcfc342e971c249138f570541",  # r32 lite output (FIX_1591_WITHOUT_R31=1)
-                         "5a4c11e2d64d6d32bed1544d8f83ad44bfdb0c64b33f2df9eeda780d1db8b3dd"}  # r32 output
+                         "5a4c11e2d64d6d32bed1544d8f83ad44bfdb0c64b33f2df9eeda780d1db8b3dd",  # r32 output
+                         "92c9cc68e5cfd3a0f8717d4bb53fb247e43f3564dc55dac75f2bd1b6924112f0",  # r33 lite output
+                         "8561fef2069ee3c6df376c6060084aca717405e63f009d96bb0b98aa4aa7c1bc"}  # r33 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3053,6 +3055,13 @@ OLD_DEAD_SPAWN_R32 = '                heartbeat.pop(str(tab_id), None)\n        
 NEW_DEAD_SPAWN_R32 = '                heartbeat.pop(str(tab_id), None)\n                new_proc, _ = spawn_worker(\n                    tab_id,\n                    None if completed else _row_for_respawn_1591r32(saved_row, tab_id, base_dir, "dead recovery"),  # ROW_RESTART_LIMIT_1591R32\n                )\n                processes[tab_id] = new_proc\n                recovered = True\n            return recovered\n\n\n        def recover_stalled_workers():\n'
 OLD_STALL_SPAWN_R32 = '                heartbeat.pop(str(tab_id), None)\n                new_proc, _ = spawn_worker(\n                    tab_id,\n                    None if completed else saved_row,\n                )\n                processes[tab_id] = new_proc\n                recovered = True\n            return recovered\n\n\n        last_ai_restart_at = {}\n'
 NEW_STALL_SPAWN_R32 = '                heartbeat.pop(str(tab_id), None)\n                new_proc, _ = spawn_worker(\n                    tab_id,\n                    None if completed else _row_for_respawn_1591r32(saved_row, tab_id, base_dir, "watchdog"),  # ROW_RESTART_LIMIT_1591R32\n                )\n                processes[tab_id] = new_proc\n                recovered = True\n            return recovered\n\n\n        last_ai_restart_at = {}\n'
+# Revision 33: the basket shows several «изменить»; the tariff one is clicked, not the region one.
+TARIFF_CHANGE_MARKER = "TARIFF_CHANGE_BUTTON_1591R33"
+OLD_TARIFF_CHANGE_R33 = '            candidates = [\n                page.get_by_role("button", name="изменить", exact=True),\n                page.locator("button").filter(has_text=re.compile(r"^\\s*изменить\\s*$", re.I)),\n            ]\n'
+NEW_TARIFF_CHANGE_R33 = '            candidates = [  # TARIFF_CHANGE_BUTTON_1591R33: the tariff «изменить», not the region one\n                _tariff_change_button_1591r33(page),\n                page.get_by_role("button", name="изменить", exact=True),\n                page.locator("button").filter(has_text=re.compile(r"^\\s*изменить\\s*$", re.I)),\n            ]\n'
+OLD_TARIFF_HELPER_ANCHOR_R33 = '# TARIFF_SCOPE_1591R32\n_TARIFF_PICKER_HEADER_RE_1591R32 = re.compile(r"^\\s*выберите тариф\\s*$", re.I)\n'
+NEW_TARIFF_HELPER_R33 = '# TARIFF_CHANGE_BUTTON_1591R33\n_TARIFF_CHANGE_METRIC_1591R33 = \'button[data-metric-name="basketMetric:handleClickChangeTariffButton"]\'\n\n\ndef _tariff_change_button_1591r33(page):\n    """Locator of the tariff block\'s «изменить». The basket can show several «изменить» (the region\n    block «Саратов • изменить» comes first) and the first one opened the region picker, not the\n    tariff picker. Preference: the site\'s own tariff-change button when it is marked, else the\n    «изменить» nearest to a tariff title («подписка bee …»), else every «изменить» (the caller\n    clicks the first). Any «изменить» is waited for first, so a late render does not fall through."""\n    generic = page.get_by_role("button", name="изменить", exact=True)\n    try:\n        expect(generic.first).to_be_visible(timeout=20000)\n    except Exception:\n        return generic\n    try:\n        marked = page.locator(_TARIFF_CHANGE_METRIC_1591R33)\n        if marked.count() > 0:\n            return marked\n    except Exception:\n        pass\n    try:\n        titles = page.get_by_text(_TARIFF_TITLE_RE_1591R32)\n        for index in range(min(titles.count(), 4)):\n            near = titles.nth(index).locator(\n                "xpath=ancestor::*[.//button[normalize-space(.)=\'изменить\']][1]"\n            ).get_by_role("button", name="изменить", exact=True)\n            if near.count() > 0:\n                return near\n    except Exception:\n        pass\n    return generic\n\n\n# TARIFF_SCOPE_1591R32\n_TARIFF_PICKER_HEADER_RE_1591R32 = re.compile(r"^\\s*выберите тариф\\s*$", re.I)\n'
+README_NOTE_R33 = '\n\nРЕВИЗИЯ 33 (fix_package_1591.py)\nКнопка «изменить» тарифа. В корзине бывает несколько «изменить» (первая — у региона «Саратов»);\nкод нажимал первую, открывался выбор региона, а не тарифов, и карточка тарифа «не находилась»,\nпока строка не отдавалась (ревизия 32, 3 попытки). Теперь берётся кнопка смены тарифа сайта\n(data-metric-name basketMetric:handleClickChangeTariffButton), иначе «изменить» рядом с названием\nтарифа «подписка bee …», иначе первая «изменить». Маркер: TARIFF_CHANGE_BUTTON_1591R33.\n'
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -3874,8 +3883,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if TARIFF_CHANGE_MARKER in source:
+        return 33   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if TARIFF_SCOPE_MARKER in source:
-        return 32   # the lite build (FIX_1591_WITHOUT_R31=1) is 32 without the r31 signing code
+        return 32
     return 31 if SIGN_ROBUST_MARKER in source else 30
 
 
@@ -3902,7 +3913,8 @@ def main(argv: list[str]) -> int:
                                                 PAYMENT_MARKER, TG_RATE_MARKER, TWO_BROWSERS_MARKER,
                                                 STALE_DRAIN_MARKER, AI_VERDICT_MARKER))\
             and (MAX_REVISION < 31 or WITHOUT_R31 or SIGN_ROBUST_MARKER in source)\
-            and (MAX_REVISION < 32 or TARIFF_SCOPE_MARKER in source):
+            and (MAX_REVISION < 32 or TARIFF_SCOPE_MARKER in source)\
+            and (MAX_REVISION < 33 or TARIFF_CHANGE_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4402,6 +4414,22 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 34 (r33). The tariff «изменить», not the region one.
+    if TARIFF_CHANGE_MARKER not in source and MAX_REVISION >= 33:
+        for old, new, what in ((OLD_TARIFF_CHANGE_R33, NEW_TARIFF_CHANGE_R33, "tariff change button"),
+                               (OLD_TARIFF_HELPER_ANCHOR_R33, NEW_TARIFF_HELPER_R33, "tariff change helper")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4458,7 +4486,8 @@ def main(argv: list[str]) -> int:
                           ("РЕВИЗИЯ 29", README_NOTE_R29),
                           ("РЕВИЗИЯ 30", README_NOTE_R30),
                           *((("РЕВИЗИЯ 31", README_NOTE_R31),) if SIGN_ROBUST_MARKER in new_source else ()),
-                          *((("РЕВИЗИЯ 32", README_NOTE_R32),) if built_revision >= 32 else ())):
+                          *((("РЕВИЗИЯ 32", README_NOTE_R32),) if built_revision >= 32 else ()),
+                          *((("РЕВИЗИЯ 33", README_NOTE_R33),) if built_revision >= 33 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 

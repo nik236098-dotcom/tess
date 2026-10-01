@@ -3949,6 +3949,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             f"[AI {lane.upper()}] Обрабатываю update {update_id}: {latest[:120]}",
             flush=True,
         )
+        _ai_mark_busy_1591r30(status_map, latest, update_id)  # SIGN_ROBUST_1591R31
 
         try:
             _ai_health_touch(ai_health, "busy_browser", f"update={update_id}")
@@ -4038,6 +4039,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
                             + str(plan.get("summary") or "Готово.")
                         )
 
+            _ai_success_verdict_1591r30(status_map, latest, response_text)  # SIGN_ROBUST_1591R31
             # Mark complete and queue the response in one local durable store.
             _ai_db_complete(
                 update_id,
@@ -4051,6 +4053,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             err = f"{type(exc).__name__}: {exc}"
             print(f"[AI {lane.upper()}] Operator error update {update_id}: {err}", flush=True)
             _ai_db_fail(update_id, err, job.get("attempts", 1))
+            _ai_success_verdict_1591r30(status_map, latest, "")  # SIGN_ROBUST_1591R31: busy flag off
             _ai_health_touch(ai_health, "job_error", err)
 
         time.sleep(0.2)
@@ -5025,6 +5028,40 @@ def _tariff_choose_button(page, diagnostic=None, timeout=10000):
     )
 
 
+# TARIFF_CHANGE_BUTTON_1591R33
+_TARIFF_CHANGE_METRIC_1591R33 = 'button[data-metric-name="basketMetric:handleClickChangeTariffButton"]'
+
+
+def _tariff_change_button_1591r33(page):
+    """Locator of the tariff block's «изменить». The basket can show several «изменить» (the region
+    block «Саратов • изменить» comes first) and the first one opened the region picker, not the
+    tariff picker. Preference: the site's own tariff-change button when it is marked, else the
+    «изменить» nearest to a tariff title («подписка bee …»), else every «изменить» (the caller
+    clicks the first). Any «изменить» is waited for first, so a late render does not fall through."""
+    generic = page.get_by_role("button", name="изменить", exact=True)
+    try:
+        expect(generic.first).to_be_visible(timeout=20000)
+    except Exception:
+        return generic
+    try:
+        marked = page.locator(_TARIFF_CHANGE_METRIC_1591R33)
+        if marked.count() > 0:
+            return marked
+    except Exception:
+        pass
+    try:
+        titles = page.get_by_text(_TARIFF_TITLE_RE_1591R32)
+        for index in range(min(titles.count(), 4)):
+            near = titles.nth(index).locator(
+                "xpath=ancestor::*[.//button[normalize-space(.)='изменить']][1]"
+            ).get_by_role("button", name="изменить", exact=True)
+            if near.count() > 0:
+                return near
+    except Exception:
+        pass
+    return generic
+
+
 # TARIFF_SCOPE_1591R32
 _TARIFF_PICKER_HEADER_RE_1591R32 = re.compile(r"^\s*выберите тариф\s*$", re.I)
 _TARIFF_TITLE_RE_1591R32 = re.compile(r"^\s*подписка bee\b", re.I)
@@ -5533,7 +5570,8 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
         _row_progress(page, "открываю выбор тарифа")  # ROW_START_ACTIVITY_1591R8
         print("Открываю выбор тарифа...")
         def click_tariff_change():
-            candidates = [
+            candidates = [  # TARIFF_CHANGE_BUTTON_1591R33: the tariff «изменить», not the region one
+                _tariff_change_button_1591r33(page),
                 page.get_by_role("button", name="изменить", exact=True),
                 page.locator("button").filter(has_text=re.compile(r"^\s*изменить\s*$", re.I)),
             ]
@@ -7374,6 +7412,156 @@ def enter_success_guard(worker, note):
     queue_success_assist(worker, note, force=True)
 
 
+# SIGN_ROBUST_1591R31
+AI_BUSY_MAX_SECONDS = 150      # a DeepSeek session older than this no longer blocks the local signing
+AI_YIELD_MAX_SECONDS = 120     # the local code yields to DeepSeek at most this long per row
+AI_VERDICT_MAX_AGE = 900
+SIGN_SENT_RE_1591R30 = re.compile(r"checksignature|/sign", re.I)
+
+
+def _ai_busy_1591r30(worker):
+    """True while a DeepSeek SUCCESS_ASSIST session is working on this tab (bounded)."""
+    sm = worker.get("status_map")
+    if sm is None:
+        return False
+    try:
+        info = sm.get(f"ai_busy:{worker.get('id')}") or {}
+    except Exception:
+        return False
+    now = time.time()
+    if not info or now - float(info.get("time") or 0) > AI_BUSY_MAX_SECONDS:
+        worker["ai_yield_since"] = None
+        return False
+    since = worker.get("ai_yield_since")
+    if since is None:
+        worker["ai_yield_since"] = now
+        return True
+    return now - float(since) < AI_YIELD_MAX_SECONDS
+
+
+def _ai_verdict_1591r30(worker):
+    """DeepSeek's VERDICT for this tab, if given after the local click and still fresh."""
+    sm = worker.get("status_map")
+    if sm is None:
+        return ""
+    try:
+        info = sm.get(f"verdict:{worker.get('id')}") or {}
+    except Exception:
+        return ""
+    when = float(info.get("time") or 0)
+    if not info or time.time() - when > AI_VERDICT_MAX_AGE:
+        return ""
+    if when < float(worker.get("sign_clicked_at") or 0):
+        return ""
+    return str(info.get("verdict") or "").upper()
+
+
+def _ai_mark_busy_1591r30(status_map, request_text, update_id):
+    """Observer side: this SUCCESS_ASSIST request is being worked on — the tab's local code yields."""
+    m = re.search(r"\[AUTO_SUCCESS_ASSIST TAB (\d+)\]", str(request_text or ""))
+    if not m or status_map is None:
+        return None
+    tab = int(m.group(1))
+    try:
+        status_map[f"ai_busy:{tab}"] = {"time": time.time(), "update": update_id}
+    except Exception:
+        pass
+    return tab
+
+
+def _ai_success_verdict_1591r30(status_map, request_text, response_text):
+    """Observer side: record DeepSeek's VERDICT for the tab named in the request; clear busy."""
+    m = re.search(r"\[AUTO_SUCCESS_ASSIST TAB (\d+)\]", str(request_text or ""))
+    if not m or status_map is None:
+        return None
+    tab = int(m.group(1))
+    try:
+        status_map.pop(f"ai_busy:{tab}", None)
+    except Exception:
+        pass
+    v = re.search(r"VERDICT:\s*(SIGNED|PAYMENT|NOT_SIGNED)", str(response_text or ""), re.I)
+    if not v:
+        return None
+    verdict = v.group(1).upper()
+    try:
+        status_map[f"verdict:{tab}"] = {"verdict": verdict, "time": time.time(),
+                                        "text": str(response_text or "")[-300:]}
+    except Exception:
+        pass
+    print(f"[AI VERDICT] TAB {tab}: {verdict}", flush=True)
+    return verdict
+
+
+_SIGNATURE_CANVAS_FILLED_JS_1591R30 = r"""() => {
+  const list = [...document.querySelectorAll('canvas')].filter(c => {
+    const r = c.getBoundingClientRect(); return r.width >= 250 && r.height >= 120;
+  });
+  if (!list.length) return null;
+  const c = list[0];
+  try {
+    const blank = document.createElement('canvas'); blank.width = c.width; blank.height = c.height;
+    return c.toDataURL() !== blank.toDataURL();
+  } catch (e) { return null; }
+}"""
+
+
+def _signature_canvas_filled_1591r30(page):
+    """True/False when the signature pad is/is not drawn on; None when unknown."""
+    try:
+        return page.evaluate(_SIGNATURE_CANVAS_FILLED_JS_1591R30)
+    except Exception:
+        return None
+
+
+def _sign_prepare_1591r30(page, worker):
+    """Before the local signing: no portal modal may intercept the click."""
+    try:
+        dismiss_blocking_overlays(page, keep_text="подписать")
+    except Exception:
+        pass
+
+
+def _sign_request_sent_1591r30(trace):
+    for r in (trace or {}).get("responses") or []:
+        url = str(r.get("url") or "")
+        if SIGN_SENT_RE_1591R30.search(url):
+            return True
+        if str(r.get("method")) in ("POST", "PUT", "PATCH") and int(r.get("status") or 0) < 400 and "esim" in url.lower():
+            return True
+    return False
+
+
+def _sign_retry_if_unsent_1591r30(page, worker):
+    """The click sent nothing and the button is still there: overlays away, redraw, ONE more click."""
+    trace = worker.get("sign_trace") or {}
+    if _sign_request_sent_1591r30(trace) or int(worker.get("sign_retries") or 0) >= 1:
+        return False
+    try:
+        if _signature_button_locator(page) is None:
+            return False
+    except Exception:
+        return False
+    worker["sign_retries"] = int(worker.get("sign_retries") or 0) + 1
+    filled = _signature_canvas_filled_1591r30(page)
+    canvas = "пуст" if filled is False else ("не пуст" if filled else "?")
+    print(
+        f"[Вкладка {worker.get('id')}] Подпись: запрос на сервер не ушёл (холст {canvas}) — "
+        "снимаю оверлеи и повторяю один раз.",
+        flush=True,
+    )
+    _sign_prepare_1591r30(page, worker)
+    _sign_trace_begin_1591r25(page, worker)
+    try:
+        fill_signature_and_submit(page, worker.get("diagnostic"))
+        worker["sign_clicked_at"] = time.time()
+        return True
+    except Exception as exc:
+        print(f"[Вкладка {worker.get('id')}] Повтор подписи не удался: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
+        return False
+    finally:
+        _sign_trace_end_1591r25(page, worker, note="retry")
+
+
 def tick_post_auth_review(base_dir, worker):
     page = worker["page"]
 
@@ -7421,6 +7609,10 @@ def tick_post_auth_review(base_dir, worker):
             queue_success_assist(worker, "область отсутствует или не принялась")
 
     button = _signature_button_locator(page)
+    if button is not None and _ai_busy_1591r30(worker):  # SIGN_ROBUST_1591R31: DeepSeek is on this tab
+        set_tab_status(worker, "🧠", "Подтверждение успешно. DeepSeek работает с вкладкой — подпись отложена.")
+        external_heartbeat(worker, "sign_yield_to_ai")
+        return
     if button is not None:
         try:
             enabled = button.is_enabled()
@@ -7443,11 +7635,17 @@ def tick_post_auth_review(base_dir, worker):
                 "Подтверждение успешно. Заполняю подпись и подписываю договор."
             )
             capture_contract_details(page, worker)
+            _sign_prepare_1591r30(page, worker)  # SIGN_ROBUST_1591R31: overlays away first
             _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25
             try:
                 fill_signature_and_submit(page, worker.get("diagnostic"))
             finally:
                 _sign_trace_end_1591r25(page, worker)
+            worker["sign_clicked_at"] = time.time()
+            try:
+                _sign_retry_if_unsent_1591r30(page, worker)  # nothing sent + button still there → one retry
+            except Exception as exc:
+                print(f"[Вкладка {worker['id']}] Проверка отправки подписи: {type(exc).__name__}: {exc}", flush=True)
             worker["phase"] = "SIGN_WAIT"
             worker["sign_submit_url"] = page.url
             worker["sign_button_gone_since"] = None
@@ -7811,7 +8009,13 @@ def settle_success_1591r24(base_dir, worker):
     if payment_text:
         _finish_payment_required_1591r26(base_dir, worker, payment_text)
         return False
+    verdict = _ai_verdict_1591r30(worker)  # SIGN_ROBUST_1591R31
+    if verdict == "PAYMENT":
+        _finish_payment_required_1591r26(base_dir, worker, "по вердикту DeepSeek: сайт требует оплату eSIM")
+        return False
     evidence = _signed_evidence_1591r24(page) if page is not None else ""
+    if not evidence and verdict == "SIGNED":
+        evidence = "ai:verdict_signed"
     if evidence:
         worker["success_evidence"] = evidence
         finalize_success(base_dir, worker)

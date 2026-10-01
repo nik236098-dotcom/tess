@@ -44,7 +44,7 @@ else
   git clone -q --depth 1 -b "$BRANCH" "$REPO_URL" "$REPO"
 fi
 PACKAGE="$(ls -d "$REPO"/operator_repair_1591/beeline_integrated_io_15_91_r*/ 2>/dev/null \
-  | sed -E 's#/$##' | sort -t r -k 3 -n | tail -1)"
+  | sed -E 's#/$##' | grep -E '_r[0-9]+$' | sort -t r -k 3 -n | tail -1)"   # the full package, not *_lite
 [[ -n "$PACKAGE" && -f "$PACKAGE/install.py" ]] || die "в репозитории нет папки beeline_integrated_io_15_91_r*/"
 REVISION="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["revision"])' "$PACKAGE/manifest.json")"
 say "Пакет: $(basename "$PACKAGE") (ревизия $REVISION)"

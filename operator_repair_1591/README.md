@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 32 лежит в `beeline_integrated_io_15_91_r32/` (включает ревизии 30 и 31); рядом
-`beeline_integrated_io_15_91_r32_lite/` — та же ревизия 32 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 33 лежит в `beeline_integrated_io_15_91_r33/` (включает ревизии 30–32); рядом
+`beeline_integrated_io_15_91_r33_lite/` — та же ревизия 33 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -69,7 +69,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r32
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r33
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -280,7 +280,12 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    watchdog'ом или DEAD RECOVERY с той же строкой: зависший в CANCELLING worker иначе заменялся с той же
    строкой бесконечно. Маркеры `TARIFF_SCOPE_1591R32`,
    `ROW_RESTART_LIMIT_1591R32`, `DRAIN_DEADLINE_1591R32`.
-34. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
+34. **Кнопка «изменить» тарифа (ревизия 33).** В корзине бывает несколько «изменить», первая у региона
+   («Саратов»); код нажимал первую, открывался выбор региона, и карточка тарифа «не находилась», пока
+   строка не отдавалась. Теперь берётся кнопка смены тарифа сайта (`data-metric-name
+   basketMetric:handleClickChangeTariffButton`), иначе «изменить» рядом с названием «подписка bee …»,
+   иначе первая. Маркер `TARIFF_CHANGE_BUTTON_1591R33`.
+35. Пересчитаны `manifest.json`, `edits.json`, `SHA256SUMS.txt`, `verification.json`,
    `test_results.txt`.
 
 Скрипт идемпотентен и отказывается работать с любым другим пакетом (проверка SHA-256).
