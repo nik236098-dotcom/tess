@@ -603,6 +603,12 @@ def main():
                         if not menu.text_is_for_ai():
                             menu.show_menu(fresh=True)
                             continue
+                        if not text.lower().startswith(("/op ", "/operator ", "оператор ")):
+                            # OPERATOR_LIVE_1591R46: a question from «Спросить DeepSeek» is an
+                            # operator order with the live browser tools, not a read-only chat.
+                            upd = dict(upd)
+                            upd["message"] = dict(upd.get("message") or {})
+                            upd["message"]["text"] = "/op " + text
                         app._ai_db_store_telegram_update(upd, chat)
                         print(
                             f"[CTRL→AI] update={update_id}: {text[:120]}",

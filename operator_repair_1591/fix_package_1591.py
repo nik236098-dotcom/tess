@@ -112,7 +112,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "0dfc1ad88d2c5adce03a4d86845e2332982da4090d7e4e0d2306036ab7649ed2",  # r44 exp8 output
                          "342653a2a33ecebaf2d8041a6b50e18803c9ba352422cba969b71d0f27ad9266",  # r45 lite output
                          "4b683ec4f6ca6a1d6eb4758f75e302331064e7930ea93f9247918956c7972d8d",  # r45 output
-                         "9fab6235a28e8df26a93f71c13cd7f96b0a6d3483ff4c3285d72322dd9eec1cc"}  # r45 exp8 output
+                         "9fab6235a28e8df26a93f71c13cd7f96b0a6d3483ff4c3285d72322dd9eec1cc",  # r45 exp8 output
+                         "7275523887462f81983785d57e8acbbc37f88a4cc046ff22b12c490120d3add6",  # r46 lite output
+                         "5eb56796a49d7555e6bf8eb8f644e2fb0dfc7468d211c91e26e355f65f4dead2",  # r46 output
+                         "0190d63301cb9d8b3e1102902489813fd1a24ff4d3e270da8138dbd60e24c2dd"}  # r46 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -656,7 +659,8 @@ CONTROLLER_OUTPUT_SHA_R13_R20 = "5104af2bf68452b1dcd3b814b35e696699232087b92db87
 CONTROLLER_OUTPUT_SHA_R27_R35 = "384e2c06274159c01dae2b9dc8698dff2a93912e5a6bf3de9eb57efce6d256c4"  # controller of r27..r35
 CONTROLLER_OUTPUT_SHA_R36_R37 = "f3b36badf1e9d77a1dda6fe287b5210372d42a1846f993a28cf9c1f6aa7abacd"  # controller of r36..r37 (/res)
 CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13_R20, CONTROLLER_OUTPUT_SHA_R27_R35,
-                            CONTROLLER_OUTPUT_SHA_R36_R37}
+                            CONTROLLER_OUTPUT_SHA_R36_R37,
+                            "d561621ddacaa0c4e602a5da75842207a9b76f563f2d26202e75e9e7eeb6012b"}  # controller of r38..r45 (menu)
 RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
 RESTART_POLICY_FILE_NAME = "restart_policy.json"
 RESTART_DRAIN_FILE_NAME = "restart_drain.json"
@@ -3742,6 +3746,73 @@ README_NOTE_R45 = ('\\n\\nРЕВИЗИЯ 45 (fix_package_1591.py)\\nОкно п�
                    '200) панель должна показать эту цену в месяц, иначе строка перезапускается и ничего не подтверждается.\\n'
                    'Строка «Корзина:» журнала показывает блок тарифа после «изменить». Маркер: CONFIGURATOR_SELECT_1591R45.\\n')
 
+
+# Revision 46: a question typed after «Спросить DeepSeek» is an operator order. The tool set DeepSeek
+# gets is chosen from the text: the bot's own [AUTO_…] jobs and texts with a command word get the
+# live browser tools, anything else only reading. «ставь улицу» matched no command word, so the
+# operator answered it had nothing to write with. The controller now prefixes such a question with
+# «/op », the explicit operator prefix (live tools; code tools when it asks for a code change;
+# the SUCCESS GUARD bans on close/reload/navigate are unchanged), and the command words are wider.
+# Also: the configurator dump is printed once, and the price line prefers «… ₽ в месяц» over options.
+CONTROLLER_OUTPUT_SHA_R38_R45 = "d561621ddacaa0c4e602a5da75842207a9b76f563f2d26202e75e9e7eeb6012b"  # controller of r38..r45 (menu)
+OPERATOR_LIVE_MARKER = "OPERATOR_LIVE_1591R46"
+OLD_C_ASK_R46 = '''                        app._ai_db_store_telegram_update(upd, chat)
+                        print(
+                            f"[CTRL→AI] update={update_id}: {text[:120]}",
+'''
+NEW_C_ASK_R46 = '''                        if not text.lower().startswith(("/op ", "/operator ", "оператор ")):
+                            # OPERATOR_LIVE_1591R46: a question from «Спросить DeepSeek» is an
+                            # operator order with the live browser tools, not a read-only chat.
+                            upd = dict(upd)
+                            upd["message"] = dict(upd.get("message") or {})
+                            upd["message"]["text"] = "/op " + text
+                        app._ai_db_store_telegram_update(upd, chat)
+                        print(
+                            f"[CTRL→AI] update={update_id}: {text[:120]}",
+'''
+OLD_LIVE_WORDS_R46 = '''    triggers = (
+        "нажми", "кликни", "введи", "заполни", "напечатай",
+'''
+NEW_LIVE_WORDS_R46 = '''    triggers = (
+        "нажми", "кликни", "введи", "заполни", "напечатай",
+        "ставь", "поставь", "впиши", "вписать", "укажи", "выбери", "подпиши",  # OPERATOR_LIVE_1591R46
+        "нарисуй", "дорисуй", "допиши", "заполн", "в поле", "исправь на стран",
+'''
+OLD_DUMP_HEAD_R46 = '''def _dump_configurator_1591r44(page, scope=None, diagnostic=None):
+'''
+NEW_DUMP_HEAD_R46 = '''def _dump_configurator_1591r44(page, scope=None, diagnostic=None, announce=True):
+'''
+OLD_DUMP_PRINT_R46 = '''    print(
+        f"Окно параметров тарифа «{TARIFF_NAME}»: вариантов {len(options)}; выбрано: {', '.join(checked) or '—'}; "
+        f"цены: {', '.join(prices) or '—'}",
+        flush=True,
+    )
+'''
+NEW_DUMP_PRINT_R46 = '''    if announce:  # OPERATOR_LIVE_1591R46: the second read (after the selection) is reported by its caller
+        print(
+            f"Окно параметров тарифа «{TARIFF_NAME}»: вариантов {len(options)}; выбрано: {', '.join(checked) or '—'}; "
+            f"цены: {', '.join(prices) or '—'}",
+            flush=True,
+        )
+'''
+OLD_AFTER_DUMP_R46 = '''    after = _dump_configurator_1591r44(page, scope, diagnostic) or {}
+'''
+NEW_AFTER_DUMP_R46 = '''    after = _dump_configurator_1591r44(page, scope, None, announce=False) or {}  # OPERATOR_LIVE_1591R46: one journal line
+'''
+OLD_BARE_R46 = '''    bare = [line[:60] for line in lines if re.match(r"^\\d[\\d\\s]*₽", line)]
+'''
+NEW_BARE_R46 = '''    bare = [line[:60] for line in lines if re.match(r"^\\d[\\d\\s]*₽", line)]
+    monthly = [line for line in bare if "в месяц" in line.lower()]  # OPERATOR_LIVE_1591R46: the tariff's line, not «60 ₽/мес» of an option
+    bare = monthly or [line for line in bare if "/мес" not in line.lower()] or bare
+'''
+README_NOTE_R46 = ('\\n\\nРЕВИЗИЯ 46 (fix_package_1591.py)\\nВопрос из кнопки «Спросить DeepSeek» — поручение оператору. Набор инструментов DeepSeek выбирается по\\n'
+                   'тексту: автоматические задания бота и тексты со словом-командой получают живые инструменты браузера\\n'
+                   '(ввод, клик, JS), остальное — только чтение. «Ставь улицу» слова-команды не содержало, и оператор отвечал,\\n'
+                   'что писать ему нечем. Теперь контроллер добавляет к такому вопросу префикс «/op » (явная команда\\n'
+                   'оператору), список слов-команд шире («ставь», «поставь», «впиши», «укажи», «выбери», «подпиши»…);\\n'
+                   'запреты SUCCESS GUARD на закрытие/перезагрузку вкладок не меняются. Строка «Окно параметров тарифа …»\\n'
+                   'печатается один раз, в «цена теперь» предпочитается строка «… ₽ в месяц». Маркер: OPERATOR_LIVE_1591R46.\\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -4583,8 +4654,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if OPERATOR_LIVE_MARKER in source:
+        return 46   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if CONFIGURATOR_SELECT_MARKER in source:
-        return 45   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 45
     if CONFIGURATOR_DUMP_MARKER in source:
         return 44
     if BASKET_SUMMARY_MARKER in source:
@@ -4651,6 +4724,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 43 or BASKET_SUMMARY_MARKER in source)\
             and (MAX_REVISION < 44 or CONFIGURATOR_DUMP_MARKER in source)\
             and (MAX_REVISION < 45 or CONFIGURATOR_SELECT_MARKER in source)\
+            and (MAX_REVISION < 46 or OPERATOR_LIVE_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -5446,6 +5520,38 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 47 (r46). A menu question is an operator order; wider command words; one dump line; monthly price first.
+    if OPERATOR_LIVE_MARKER not in source and MAX_REVISION >= 46:
+        for old, new, what in ((OLD_LIVE_WORDS_R46, NEW_LIVE_WORDS_R46, "operator: command words"),
+                               (OLD_DUMP_HEAD_R46, NEW_DUMP_HEAD_R46, "configurator dump: announce flag"),
+                               (OLD_DUMP_PRINT_R46, NEW_DUMP_PRINT_R46, "configurator dump: print once"),
+                               (OLD_AFTER_DUMP_R46, NEW_AFTER_DUMP_R46, "configurator: quiet second read"),
+                               (OLD_BARE_R46, NEW_BARE_R46, "configurator: monthly price first")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        if OPERATOR_LIVE_MARKER not in ctrl_source:
+            for old, new, what in ((OLD_C_ASK_R46, NEW_C_ASK_R46, "controller: menu question as /op"),):
+                new_ctrl = replace_once(new_ctrl, old, new, what)
+                if old in ctrl_source:
+                    add_edit(edits["server_controller.py"], ctrl_source, old, new, ctrl_reflected)
+                else:
+                    for change in edits["server_controller.py"]:
+                        joined = "".join(change["replacement"])
+                        if old in joined:
+                            change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                            break
+                    else:
+                        raise SystemExit(f"edits.json: earlier controller entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -5534,6 +5640,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 43", README_NOTE_R43),) if built_revision >= 43 else ()),
                           *((("РЕВИЗИЯ 44", README_NOTE_R44),) if built_revision >= 44 else ()),
                           *((("РЕВИЗИЯ 45", README_NOTE_R45),) if built_revision >= 45 else ()),
+                          *((("РЕВИЗИЯ 46", README_NOTE_R46),) if built_revision >= 46 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

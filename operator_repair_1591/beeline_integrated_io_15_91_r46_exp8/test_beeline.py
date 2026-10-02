@@ -3077,6 +3077,8 @@ def _explicit_live_action_request(text):
         return True
     triggers = (
         "нажми", "кликни", "введи", "заполни", "напечатай",
+        "ставь", "поставь", "впиши", "вписать", "укажи", "выбери", "подпиши",  # OPERATOR_LIVE_1591R46
+        "нарисуй", "дорисуй", "допиши", "заполн", "в поле", "исправь на стран",
         "перезагрузи", "reload", "обнови вкладку",
         "перейди на", "открой страницу", "назад", "вперёд", "вперед",
         "закрой вклад", "перезапусти", "рестарт", "restart",
@@ -5266,6 +5268,8 @@ def _configurator_prices_1591r45(dump):
     text, not the per-option prices («мессенджеры 79 ₽/мес»)."""
     lines = [" ".join(line.split()) for line in str((dump or {}).get("text") or "").splitlines()]
     bare = [line[:60] for line in lines if re.match(r"^\d[\d\s]*₽", line)]
+    monthly = [line for line in bare if "в месяц" in line.lower()]  # OPERATOR_LIVE_1591R46: the tariff's line, not «60 ₽/мес» of an option
+    bare = monthly or [line for line in bare if "/мес" not in line.lower()] or bare
     button = [line[:60] for line in lines if re.match(r"^\s*выбрать\b.*₽", line, re.I)]
     return (bare + button) or list((dump or {}).get("prices") or [])
 
@@ -5286,7 +5290,7 @@ def _select_configurator_minimum_1591r45(page, scope=None, diagnostic=None):
             if not done:
                 break
             page.wait_for_timeout(700)
-    after = _dump_configurator_1591r44(page, scope, diagnostic) or {}
+    after = _dump_configurator_1591r44(page, scope, None, announce=False) or {}  # OPERATOR_LIVE_1591R46: one journal line
     prices = _configurator_prices_1591r45(after)
     print(f"Окно параметров: действия: {'; '.join(actions) or 'не потребовались'}; цена теперь: {', '.join(prices) or '—'}", flush=True)
     if diagnostic is not None:
@@ -5304,7 +5308,7 @@ def _select_configurator_minimum_1591r45(page, scope=None, diagnostic=None):
 
 
 # CONFIGURATOR_DUMP_1591R44
-def _dump_configurator_1591r44(page, scope=None, diagnostic=None):
+def _dump_configurator_1591r44(page, scope=None, diagnostic=None, announce=True):
     """The configurator as the site shows it before the bot confirms it: its text and every option
     with its state. One journal line (the checked options and the ₽ lines) and the full dump in
     the diagnostic (event tariff_configurator_dump). Read-only; never raises."""
@@ -5321,11 +5325,12 @@ def _dump_configurator_1591r44(page, scope=None, diagnostic=None):
     lines = [" ".join(line.split()) for line in text.splitlines()]
     prices = [line[:60] for line in lines if "₽" in line][:6]
     checked = [f"{o.get('text') or o.get('value') or o.get('tag')}" for o in options if str(o.get("state")) == "true"][:8]
-    print(
-        f"Окно параметров тарифа «{TARIFF_NAME}»: вариантов {len(options)}; выбрано: {', '.join(checked) or '—'}; "
-        f"цены: {', '.join(prices) or '—'}",
-        flush=True,
-    )
+    if announce:  # OPERATOR_LIVE_1591R46: the second read (after the selection) is reported by its caller
+        print(
+            f"Окно параметров тарифа «{TARIFF_NAME}»: вариантов {len(options)}; выбрано: {', '.join(checked) or '—'}; "
+            f"цены: {', '.join(prices) or '—'}",
+            flush=True,
+        )
     if diagnostic is not None:
         try:
             diagnostic.write("tariff_configurator_dump", tariff=TARIFF_NAME, text=text[:2500], options=options[:60])
@@ -6425,7 +6430,7 @@ def _browser_count_1591r34(default=2):
         value = int(str(os.environ.get("BEELINE_BROWSERS") or default).strip())
     except ValueError:
         value = default
-    return min(max(value, 1), 4)
+    return min(max(value, 1), 8)  # EXPERIMENT_BROWSERS8_1591: up to 8 Chromium (32 tabs) on a big test server
 
 
 BROWSER_COUNT = _browser_count_1591r34()  # TWO_BROWSERS_1591R28: Chromium instances, TABS_PER_BROWSER tabs each
@@ -9559,6 +9564,7 @@ def main():
     print(f"Загружено новых записей: {len(clients)} (в исходном файле: {total_source_rows})")
     print(f"Запускаю {BROWSER_COUNT} Chromium и {TAB_COUNT} рабочие вкладки. Общая очередь строк.")  # BROWSER_HANG_1591R18
     print(f"Тариф: «{TARIFF_NAME}»" + (" (BEELINE_TARIFF из окружения службы)" if (os.environ.get("BEELINE_TARIFF") or "").strip() else " (по умолчанию)"), flush=True)  # TARIFF_LOG_1591R42
+    print(f"ЭКСПЕРИМЕНТ browsers8: лимит BEELINE_BROWSERS поднят до 8 Chromium; сейчас {BROWSER_COUNT} × {TABS_PER_BROWSER} вкладок.", flush=True)  # EXPERIMENT_BROWSERS8_1591
 
     # Два полностью независимых Chromium: отдельный процесс, CDP-порт и профиль.
     # Общими остаются только очередь строк, Telegram status_map и persistent progress.
