@@ -875,6 +875,13 @@ def _auto_assist_pending(kind, tab_id):
         conn.close()
 
 
+# RESIGN_LIMIT_1591R48: BEELINE_AI=0 in the systemd unit switches the DeepSeek operator off: no automatic
+# jobs, idle lanes, «DeepSeek выключен» to a menu question. Rows that cannot confirm the signature
+# go to the user as unverified after the usual hold. AI_DEFAULT is "0" in the experiment build.
+AI_DEFAULT_1591R48 = "1"
+AI_ENABLED_1591R48 = str(os.environ.get("BEELINE_AI") or AI_DEFAULT_1591R48).strip().lower() not in {"0", "off", "no", "false"}
+
+
 def _auto_assist_allowed(worker, kind, force=False):
     """Budget for autonomous assist requests: the page state, not the clock, decides.
 
@@ -884,6 +891,8 @@ def _auto_assist_allowed(worker, kind, force=False):
     queued while the previous one for this tab has not been answered yet. `force`
     only waives the minimum gap.
     """
+    if not AI_ENABLED_1591R48:
+        return False  # RESIGN_LIMIT_1591R48: nothing is asked of DeepSeek
     now = monotonic()
     try:
         url = str(worker.get("page").url or "")
@@ -3734,7 +3743,9 @@ def _observer_collect_pages(cdp_urls, with_screenshots=True, timeout=None):
     exits and the parent respawns it, releasing its inbox claims.
     """
     import threading
-    limit = float(OBSERVER_COLLECT_TIMEOUT_SECONDS if timeout is None else timeout)
+    # RESIGN_LIMIT_1591R48: the budget grows with the tabs (28 tabs never fit into 45 s, the lane
+    # was respawned every 45 s and answered nothing).
+    limit = float(timeout) if timeout is not None else max(float(OBSERVER_COLLECT_TIMEOUT_SECONDS), 6.0 * float(globals().get("TAB_COUNT") or 8))
     outcome = {}
 
     def run():
@@ -3883,6 +3894,13 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
         flush=True,
     )
     last_observe = 0.0
+
+    if not AI_ENABLED_1591R48:  # RESIGN_LIMIT_1591R48: the lane idles (the supervisor keeps it alive) and never calls the API
+        print(f"[AI {lane.upper()}] DeepSeek выключен (BEELINE_AI=0): запросы не отправляются.", flush=True)
+        while not stop_event.is_set():
+            _ai_health_touch(ai_health, "idle")
+            stop_event.wait(5)
+        return
 
     while not stop_event.is_set():
         _ai_health_touch(ai_health, "idle")
@@ -6444,7 +6462,7 @@ def _browser_count_1591r34(default=2):
         value = int(str(os.environ.get("BEELINE_BROWSERS") or default).strip())
     except ValueError:
         value = default
-    return min(max(value, 1), 8)  # EXPERIMENT_BROWSERS8_1591: up to 8 Chromium (32 tabs) on a big test server
+    return min(max(value, 1), 4)
 
 
 BROWSER_COUNT = _browser_count_1591r34()  # TWO_BROWSERS_1591R28: Chromium instances, TABS_PER_BROWSER tabs each
@@ -6695,6 +6713,8 @@ def _row_restart_exhausted_1591r32(worker, row, rows):
 def reset_runtime_state(worker):
     worker["row"] = None
     worker["diagnostic"] = None
+    worker["sign_attempts_1591r48"] = 0   # RESIGN_LIMIT_1591R48: the click budget is per row
+    worker["sign_attempts_reported_1591r48"] = False
     worker["reserved_sim_url"] = None     # SIM_URL_PER_ROW_1591R36: a row never inherits the
     worker["reserved_sim_number"] = None  # previous row's order link or reserved number
     worker["post_retry_deadline"] = None
@@ -7924,12 +7944,16 @@ def tick_post_auth_review(base_dir, worker):
             queue_success_assist(worker, "кнопка «Подписать договор» неактивна")
             return
 
+        if _sign_attempts_exhausted_1591r48(worker):  # RESIGN_LIMIT_1591R48: no third click
+            settle_success_1591r24(base_dir, worker)
+            return
         try:
             set_tab_status(
                 worker, "✍️",
                 "Подтверждение успешно. Заполняю подпись и подписываю договор."
             )
             capture_contract_details(page, worker)
+            worker["sign_attempts_1591r48"] = int(worker.get("sign_attempts_1591r48") or 0) + 1  # RESIGN_LIMIT_1591R48
             _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25
             try:
                 fill_signature_and_submit(page, worker.get("diagnostic"))
@@ -8329,6 +8353,25 @@ def _finish_payment_required_1591r26(base_dir, worker, payment_text):
     )
     worker["stopped"] = True
     return rec
+
+
+# RESIGN_LIMIT_1591R48
+SIGN_ATTEMPTS_MAX_1591R48 = 2
+
+
+def _sign_attempts_exhausted_1591r48(worker):
+    """True once «Подписать договор» was clicked SIGN_ATTEMPTS_MAX_1591R48 times for this row and
+    the page still shows the button: the click is not repeated (each one sends a new checksignature
+    to the site); the row goes to the unverified hold instead (DeepSeek once, then UNVERIFIED)."""
+    exhausted = int((worker or {}).get("sign_attempts_1591r48") or 0) >= SIGN_ATTEMPTS_MAX_1591R48
+    if exhausted and not worker.get("sign_attempts_reported_1591r48"):
+        worker["sign_attempts_reported_1591r48"] = True
+        print(
+            f"[Вкладка {worker.get('id')}] «Подписать договор» нажата {SIGN_ATTEMPTS_MAX_1591R48} раза, страница не "
+            "продвинулась; больше не нажимаю, держу вкладку и отдаю на проверку.",
+            flush=True,
+        )
+    return exhausted
 
 
 def settle_success_1591r24(base_dir, worker):
@@ -9577,8 +9620,8 @@ def main():
         )
     print(f"Загружено новых записей: {len(clients)} (в исходном файле: {total_source_rows})")
     print(f"Запускаю {BROWSER_COUNT} Chromium и {TAB_COUNT} рабочие вкладки. Общая очередь строк.")  # BROWSER_HANG_1591R18
+    print("DeepSeek: " + ("включён" if AI_ENABLED_1591R48 else "выключен (BEELINE_AI=0)"), flush=True)  # RESIGN_LIMIT_1591R48
     print(f"Тариф: «{TARIFF_NAME}»" + (" (BEELINE_TARIFF из окружения службы)" if (os.environ.get("BEELINE_TARIFF") or "").strip() else " (по умолчанию)"), flush=True)  # TARIFF_LOG_1591R42
-    print(f"ЭКСПЕРИМЕНТ browsers8: лимит BEELINE_BROWSERS поднят до 8 Chromium; сейчас {BROWSER_COUNT} × {TABS_PER_BROWSER} вкладок.", flush=True)  # EXPERIMENT_BROWSERS8_1591
 
     # Два полностью независимых Chromium: отдельный процесс, CDP-порт и профиль.
     # Общими остаются только очередь строк, Telegram status_map и persistent progress.

@@ -118,7 +118,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "0190d63301cb9d8b3e1102902489813fd1a24ff4d3e270da8138dbd60e24c2dd",  # r46 exp8 output
                          "0a9170c05a703f46232345b1eb3ab8a31fd72438880f111e67753fd3ce38535e",  # r47 lite output
                          "7094978d4a2900df39257572619963c579909cfc3cc29259887b13b2d007b7fe",  # r47 output
-                         "ee14eacc783114065a00649bdf1a78872ca74c00bbc936a2f0e01e7040638ff5"}  # r47 exp8 output
+                         "ee14eacc783114065a00649bdf1a78872ca74c00bbc936a2f0e01e7040638ff5",  # r47 exp8 output
+                         "45925d827db3e587aa6d7d7b12888888b99d9f51799e14b88f258876db43b72b",  # r48 lite output
+                         "3645c2db0ac230dae1201fb32d83826d4d95d638258d208d853a26ffa7348706",  # r48 output
+                         "a9b7c58e581b6b0ecb19c4a9303ed94d253181dc56648660b0b93269d41cb293"}  # r48 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -663,7 +666,8 @@ CONTROLLER_OUTPUT_SHA_R27_R35 = "384e2c06274159c01dae2b9dc8698dff2a93912e5a6bf3d
 CONTROLLER_OUTPUT_SHA_R36_R37 = "f3b36badf1e9d77a1dda6fe287b5210372d42a1846f993a28cf9c1f6aa7abacd"  # controller of r36..r37 (/res)
 CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13_R20, CONTROLLER_OUTPUT_SHA_R27_R35,
                             CONTROLLER_OUTPUT_SHA_R36_R37,
-                            "d561621ddacaa0c4e602a5da75842207a9b76f563f2d26202e75e9e7eeb6012b"}  # controller of r38..r45 (menu)
+                            "d561621ddacaa0c4e602a5da75842207a9b76f563f2d26202e75e9e7eeb6012b",  # controller of r38..r45 (menu)
+                            "c700c997e758c55001e598e10b0386cd009bc7def04b89ee234aacda704484cd"}  # controller of r46..r47 (/op)
 RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
 RESTART_POLICY_FILE_NAME = "restart_policy.json"
 RESTART_DRAIN_FILE_NAME = "restart_drain.json"
@@ -3741,13 +3745,13 @@ NEW_BASKET_PRINT_LINE_R45 = '''        f"цена карточки: {', '.join(c
 '''
 OLD_STRICT_SEEN_R45 = '    seen = list(summary.get("other_titles") or [])\n'
 NEW_STRICT_SEEN_R45 = '    seen = list(dict.fromkeys(list(summary.get("block") or []) + list(summary.get("other_titles") or [])))  # CONFIGURATOR_SELECT_1591R45\n'
-README_NOTE_R45 = ('\\n\\nРЕВИЗИЯ 45 (fix_package_1591.py)\\nОкно параметров решает, а не форма eSIM. В корзине, которую сайт заполняет сам (bee HIT), форма eSIM\\n'
-                   'уже есть, поэтому проверка окна параметров из r41 («только если формы нет») не запускалась и панель\\n'
-                   'оставалась открытой, а строка шла дальше. Теперь панель обрабатывается всегда, когда видна после\\n'
-                   '«выбрать» на карточке: выставляется минимальный набор (наименьшие ГБ и минуты, платные опции\\n'
-                   'выключаются; BEELINE_TARIFF_MINIMAL=0 оставляет настройки сайта), а при BEELINE_TARIFF_PRICE (например\\n'
-                   '200) панель должна показать эту цену в месяц, иначе строка перезапускается и ничего не подтверждается.\\n'
-                   'Строка «Корзина:» журнала показывает блок тарифа после «изменить». Маркер: CONFIGURATOR_SELECT_1591R45.\\n')
+README_NOTE_R45 = ('\n\nРЕВИЗИЯ 45 (fix_package_1591.py)\nОкно параметров решает, а не форма eSIM. В корзине, которую сайт заполняет сам (bee HIT), форма eSIM\n'
+                   'уже есть, поэтому проверка окна параметров из r41 («только если формы нет») не запускалась и панель\n'
+                   'оставалась открытой, а строка шла дальше. Теперь панель обрабатывается всегда, когда видна после\n'
+                   '«выбрать» на карточке: выставляется минимальный набор (наименьшие ГБ и минуты, платные опции\n'
+                   'выключаются; BEELINE_TARIFF_MINIMAL=0 оставляет настройки сайта), а при BEELINE_TARIFF_PRICE (например\n'
+                   '200) панель должна показать эту цену в месяц, иначе строка перезапускается и ничего не подтверждается.\n'
+                   'Строка «Корзина:» журнала показывает блок тарифа после «изменить». Маркер: CONFIGURATOR_SELECT_1591R45.\n')
 
 
 # Revision 46: a question typed after «Спросить DeepSeek» is an operator order. The tool set DeepSeek
@@ -3808,13 +3812,13 @@ NEW_BARE_R46 = '''    bare = [line[:60] for line in lines if re.match(r"^\\d[\\d
     monthly = [line for line in bare if "в месяц" in line.lower()]  # OPERATOR_LIVE_1591R46: the tariff's line, not «60 ₽/мес» of an option
     bare = monthly or [line for line in bare if "/мес" not in line.lower()] or bare
 '''
-README_NOTE_R46 = ('\\n\\nРЕВИЗИЯ 46 (fix_package_1591.py)\\nВопрос из кнопки «Спросить DeepSeek» — поручение оператору. Набор инструментов DeepSeek выбирается по\\n'
-                   'тексту: автоматические задания бота и тексты со словом-командой получают живые инструменты браузера\\n'
-                   '(ввод, клик, JS), остальное — только чтение. «Ставь улицу» слова-команды не содержало, и оператор отвечал,\\n'
-                   'что писать ему нечем. Теперь контроллер добавляет к такому вопросу префикс «/op » (явная команда\\n'
-                   'оператору), список слов-команд шире («ставь», «поставь», «впиши», «укажи», «выбери», «подпиши»…);\\n'
-                   'запреты SUCCESS GUARD на закрытие/перезагрузку вкладок не меняются. Строка «Окно параметров тарифа …»\\n'
-                   'печатается один раз, в «цена теперь» предпочитается строка «… ₽ в месяц». Маркер: OPERATOR_LIVE_1591R46.\\n')
+README_NOTE_R46 = ('\n\nРЕВИЗИЯ 46 (fix_package_1591.py)\nВопрос из кнопки «Спросить DeepSeek» — поручение оператору. Набор инструментов DeepSeek выбирается по\n'
+                   'тексту: автоматические задания бота и тексты со словом-командой получают живые инструменты браузера\n'
+                   '(ввод, клик, JS), остальное — только чтение. «Ставь улицу» слова-команды не содержало, и оператор отвечал,\n'
+                   'что писать ему нечем. Теперь контроллер добавляет к такому вопросу префикс «/op » (явная команда\n'
+                   'оператору), список слов-команд шире («ставь», «поставь», «впиши», «укажи», «выбери», «подпиши»…);\n'
+                   'запреты SUCCESS GUARD на закрытие/перезагрузку вкладок не меняются. Строка «Окно параметров тарифа …»\n'
+                   'печатается один раз, в «цена теперь» предпочитается строка «… ₽ в месяц». Маркер: OPERATOR_LIVE_1591R46.\n')
 
 
 # Revision 47: the operator fills a missing street instead of stopping. The auto SUCCESS_ASSIST job
@@ -3851,13 +3855,145 @@ NEW_MISSION_CITY_R47 = '''- Для этого сценария: если отс�
   контактный номер — номер телефона этой строки. Инструменты ввода (browser_fill, browser_type,
   browser_press, browser_click, browser_evaluate_js) у тебя есть всегда в этой задаче.
 '''
-README_NOTE_R47 = ('\\n\\nРЕВИЗИЯ 47 (fix_package_1591.py)\\nОператор заполняет пустую улицу, а не останавливается. В автоматическом задании и в миссии было\\n'
-                   'сказано, что делать с пустым городом и областью, но не с улицей: оператор отвечал «улицу не знаю,\\n'
-                   'случайную не поставлю», и строка висела. Теперь правило: вписывать по очереди «Центральная», «Ленина»,\\n'
-                   '«Советская», «Школьная», «Молодёжная» и брать первую подсказку сайта для этого населённого пункта (район,\\n'
-                   'если обязателен, — так же), пустой контактный номер — номер строки; к пользователю уходит только форма,\\n'
-                   'которую сайт отверг после всех попыток. В задании перечислены инструменты ввода, которыми он располагает.\\n'
-                   'Маркер: STREET_RULE_1591R47.\\n')
+README_NOTE_R47 = ('\n\nРЕВИЗИЯ 47 (fix_package_1591.py)\nОператор заполняет пустую улицу, а не останавливается. В автоматическом задании и в миссии было\n'
+                   'сказано, что делать с пустым городом и областью, но не с улицей: оператор отвечал «улицу не знаю,\n'
+                   'случайную не поставлю», и строка висела. Теперь правило: вписывать по очереди «Центральная», «Ленина»,\n'
+                   '«Советская», «Школьная», «Молодёжная» и брать первую подсказку сайта для этого населённого пункта (район,\n'
+                   'если обязателен, — так же), пустой контактный номер — номер строки; к пользователю уходит только форма,\n'
+                   'которую сайт отверг после всех попыток. В задании перечислены инструменты ввода, которыми он располагает.\n'
+                   'Маркер: STREET_RULE_1591R47.\n')
+
+
+# Revision 48: no endless re-signing, and the observer keeps up with many tabs. When the site
+# answered the signing request with 200 but the page stayed on personal-data-form, the row saw the
+# button again 12 s later and clicked it again, for ever (every click a new checksignature) with
+# DeepSeek never asked (r37). Now the click is made at most SIGN_ATTEMPTS_MAX times per row; then
+# the row enters the usual unverified hold (DeepSeek once, 3 minutes, UNVERIFIED for the user).
+# The DeepSeek lanes' page collection had a fixed 45 s budget: with 28 tabs it never finished, the
+# lane was respawned every 45 s and no job was ever answered; the budget now grows with TAB_COUNT.
+RESIGN_LIMIT_MARKER = "RESIGN_LIMIT_1591R48"
+OLD_RESIGN_SIGN_R48 = '''        try:
+            set_tab_status(
+                worker, "✍️",
+                "Подтверждение успешно. Заполняю подпись и подписываю договор."
+            )
+'''
+NEW_RESIGN_SIGN_R48 = '''        if _sign_attempts_exhausted_1591r48(worker):  # RESIGN_LIMIT_1591R48: no third click
+            settle_success_1591r24(base_dir, worker)
+            return
+        try:
+            set_tab_status(
+                worker, "✍️",
+                "Подтверждение успешно. Заполняю подпись и подписываю договор."
+            )
+'''
+OLD_RESIGN_COUNT_R48 = '            _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25\n'
+NEW_RESIGN_COUNT_R48 = ('            worker["sign_attempts_1591r48"] = int(worker.get("sign_attempts_1591r48") or 0) + 1  # RESIGN_LIMIT_1591R48\n'
+                        '            _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25\n')
+OLD_RESIGN_DEF_R48 = 'def settle_success_1591r24(base_dir, worker):\n'
+NEW_RESIGN_DEF_R48 = '''# RESIGN_LIMIT_1591R48
+SIGN_ATTEMPTS_MAX_1591R48 = 2
+
+
+def _sign_attempts_exhausted_1591r48(worker):
+    """True once «Подписать договор» was clicked SIGN_ATTEMPTS_MAX_1591R48 times for this row and
+    the page still shows the button: the click is not repeated (each one sends a new checksignature
+    to the site); the row goes to the unverified hold instead (DeepSeek once, then UNVERIFIED)."""
+    exhausted = int((worker or {}).get("sign_attempts_1591r48") or 0) >= SIGN_ATTEMPTS_MAX_1591R48
+    if exhausted and not worker.get("sign_attempts_reported_1591r48"):
+        worker["sign_attempts_reported_1591r48"] = True
+        print(
+            f"[Вкладка {worker.get('id')}] «Подписать договор» нажата {SIGN_ATTEMPTS_MAX_1591R48} раза, страница не "
+            "продвинулась; больше не нажимаю, держу вкладку и отдаю на проверку.",
+            flush=True,
+        )
+    return exhausted
+
+
+def settle_success_1591r24(base_dir, worker):
+'''
+OLD_RESIGN_RESET_R48 = '    worker["reserved_sim_url"] = None     # SIM_URL_PER_ROW_1591R36: a row never inherits the\n'
+NEW_RESIGN_RESET_R48 = ('    worker["sign_attempts_1591r48"] = 0   # RESIGN_LIMIT_1591R48: the click budget is per row\n'
+                        '    worker["sign_attempts_reported_1591r48"] = False\n'
+                        '    worker["reserved_sim_url"] = None     # SIM_URL_PER_ROW_1591R36: a row never inherits the\n')
+OLD_OBSERVER_LIMIT_R48 = '    limit = float(OBSERVER_COLLECT_TIMEOUT_SECONDS if timeout is None else timeout)\n'
+NEW_OBSERVER_LIMIT_R48 = ('    # RESIGN_LIMIT_1591R48: the budget grows with the tabs (28 tabs never fit into 45 s, the lane\n'
+                          '    # was respawned every 45 s and answered nothing).\n'
+                          '    limit = float(timeout) if timeout is not None else max(float(OBSERVER_COLLECT_TIMEOUT_SECONDS), 6.0 * float(globals().get("TAB_COUNT") or 8))\n')
+README_NOTE_R48 = ('\n\nРЕВИЗИЯ 48 (fix_package_1591.py)\nВыключатель DeepSeek: BEELINE_AI=0 в окружении службы отключает оператора целиком (автоматические\n'
+                   'задания не ставятся, линии простаивают без запросов к API, при старте «DeepSeek: выключен», на вопрос из меню\n'
+                   'бот отвечает, что DeepSeek выключен); в экспериментальной сборке он выключен по умолчанию, BEELINE_AI=1 включает.\n'
+                   'Без бесконечного переподписания и с наблюдателем, который успевает за вкладками. Когда сайт отвечал на\n'
+                   'запрос подписи 200, а страница оставалась на personal-data-form, бот через 12 с снова видел кнопку и\n'
+                   'нажимал её опять, без конца (каждое нажатие — новый checksignature), а DeepSeek не звал (r37). Теперь\n'
+                   'кнопка нажимается не более двух раз на строку, затем строка идёт в обычное удержание «не подтверждено»\n'
+                   '(DeepSeek один раз, 3 минуты, запись для пользователя). Сбор страниц для линий DeepSeek имел жёсткие 45 с:\n'
+                   'при 28 вкладках он не укладывался, линия перезапускалась каждые 45 с и не отвечала; теперь лимит растёт\n'
+                   'с числом вкладок (6 с на вкладку, не меньше 45). Маркер: RESIGN_LIMIT_1591R48.\n')
+
+
+# r48, part two: the DeepSeek switch. BEELINE_AI=0 (the experiment build's default; production builds
+# default to on) switches the operator off entirely: no automatic jobs (a row whose signature is not
+# confirmed is held the usual 3 minutes and recorded as unverified for the user), both lanes idle
+# without an API call, the startup line says so, a menu question is answered «DeepSeek выключен».
+CONTROLLER_OUTPUT_SHA_R46_R47 = "c700c997e758c55001e598e10b0386cd009bc7def04b89ee234aacda704484cd"  # controller of r46..r47 (/op)
+OLD_AI_GATE_DEF_R48 = 'def _auto_assist_allowed(worker, kind, force=False):\n'
+NEW_AI_GATE_DEF_R48 = ('# RESIGN_LIMIT_1591R48: BEELINE_AI=0 in the systemd unit switches the DeepSeek operator off: no automatic\n'
+                       '# jobs, idle lanes, «DeepSeek выключен» to a menu question. Rows that cannot confirm the signature\n'
+                       '# go to the user as unverified after the usual hold. AI_DEFAULT is "0" in the experiment build.\n'
+                       'AI_DEFAULT_1591R48 = "1"\n'
+                       'AI_ENABLED_1591R48 = str(os.environ.get("BEELINE_AI") or AI_DEFAULT_1591R48).strip().lower() not in {"0", "off", "no", "false"}\n\n\n'
+                       'def _auto_assist_allowed(worker, kind, force=False):\n')
+OLD_AI_GATE_BODY_R48 = '''    now = monotonic()
+    try:
+        url = str(worker.get("page").url or "")
+    except Exception:
+        url = ""
+    states = worker.setdefault("auto_assist_state", {})
+'''
+NEW_AI_GATE_BODY_R48 = '''    if not AI_ENABLED_1591R48:
+        return False  # RESIGN_LIMIT_1591R48: nothing is asked of DeepSeek
+    now = monotonic()
+    try:
+        url = str(worker.get("page").url or "")
+    except Exception:
+        url = ""
+    states = worker.setdefault("auto_assist_state", {})
+'''
+OLD_AI_LANE_R48 = '''    last_observe = 0.0
+
+    while not stop_event.is_set():
+        _ai_health_touch(ai_health, "idle")
+'''
+NEW_AI_LANE_R48 = '''    last_observe = 0.0
+
+    if not AI_ENABLED_1591R48:  # RESIGN_LIMIT_1591R48: the lane idles (the supervisor keeps it alive) and never calls the API
+        print(f"[AI {lane.upper()}] DeepSeek выключен (BEELINE_AI=0): запросы не отправляются.", flush=True)
+        while not stop_event.is_set():
+            _ai_health_touch(ai_health, "idle")
+            stop_event.wait(5)
+        return
+
+    while not stop_event.is_set():
+        _ai_health_touch(ai_health, "idle")
+'''
+OLD_AI_START_R48 = NEW_TARIFF_START_R42[len(OLD_TARIFF_START_R42):]   # the «Тариф: …» startup line of r42
+NEW_AI_START_R48 = '    print("DeepSeek: " + ("включён" if AI_ENABLED_1591R48 else "выключен (BEELINE_AI=0)"), flush=True)  # RESIGN_LIMIT_1591R48\n' + OLD_AI_START_R48
+OLD_C_AI_OFF_R48 = '''                        if not text.lower().startswith(("/op ", "/operator ", "оператор ")):
+'''
+NEW_C_AI_OFF_R48 = '''                        if str(os.environ.get("BEELINE_AI") or "1").strip().lower() in {"0", "off", "no", "false"}:
+                            _send("🤖 DeepSeek выключен (BEELINE_AI=0 в настройках службы).")  # RESIGN_LIMIT_1591R48
+                            continue
+                        if not text.lower().startswith(("/op ", "/operator ", "оператор ")):
+'''
+OLD_TEST_AI_NS_R48 = "            '_ai_db_fail':lambda *a:(_ for _ in ()).throw(AssertionError(a))"
+NEW_TEST_AI_NS_R48 = "            'AI_ENABLED_1591R48':True,'_ai_db_fail':lambda *a:(_ for _ in ()).throw(AssertionError(a))"  # RESIGN_LIMIT_1591R48
+# the lite build carries the r48 click counter between capture_contract_details and the trace: the
+# r31 step (lite → full) must recognise that shape too
+OLD_SIGN_CALL_R25_WITH_R48 = OLD_SIGN_CALL_R25.replace(OLD_RESIGN_COUNT_R48, NEW_RESIGN_COUNT_R48)
+NEW_SIGN_CALL_R30_WITH_R48 = NEW_SIGN_CALL_R30.replace(OLD_RESIGN_COUNT_R48, NEW_RESIGN_COUNT_R48)
+OLD_EXP_AI_DEFAULT = 'AI_DEFAULT_1591R48 = "1"\n'
+NEW_EXP_AI_DEFAULT = 'AI_DEFAULT_1591R48 = "0"  # EXPERIMENT_BROWSERS8_1591: DeepSeek off unless BEELINE_AI=1\n'
 
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
@@ -4700,8 +4836,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if RESIGN_LIMIT_MARKER in source:
+        return 48   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if STREET_RULE_MARKER in source:
-        return 47   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 47
     if OPERATOR_LIVE_MARKER in source:
         return 46
     if CONFIGURATOR_SELECT_MARKER in source:
@@ -4774,6 +4912,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 45 or CONFIGURATOR_SELECT_MARKER in source)\
             and (MAX_REVISION < 46 or OPERATOR_LIVE_MARKER in source)\
             and (MAX_REVISION < 47 or STREET_RULE_MARKER in source)\
+            and (MAX_REVISION < 48 or RESIGN_LIMIT_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -5235,7 +5374,9 @@ def main(argv: list[str]) -> int:
     if SIGN_ROBUST_MARKER not in source and MAX_REVISION >= 31 and not WITHOUT_R31:
         for old, new, what in ((OLD_POST_AUTH_DEF, NEW_POST_AUTH_DEF, "sign robust helpers"),
                                (OLD_BUTTON_BLOCK, NEW_BUTTON_BLOCK_R30, "yield to deepseek"),
-                               (OLD_SIGN_CALL_R25, NEW_SIGN_CALL_R30, "sign prepare + retry"),
+                               *(((OLD_SIGN_CALL_R25, NEW_SIGN_CALL_R30, "sign prepare + retry"),)
+                                 if OLD_SIGN_CALL_R25 in new_source else
+                                 ((OLD_SIGN_CALL_R25_WITH_R48, NEW_SIGN_CALL_R30_WITH_R48, "sign prepare + retry (lite upgrade, r48)"),)),
                                (OLD_OBSERVER_PRINT, NEW_OBSERVER_PRINT, "observer busy flag"),
                                (OLD_OBSERVER_COMPLETE, NEW_OBSERVER_COMPLETE, "observer verdict"),
                                (OLD_OBSERVER_FAIL, NEW_OBSERVER_FAIL, "observer busy off"),
@@ -5253,7 +5394,12 @@ def main(argv: list[str]) -> int:
                         break
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
-        test_src = replace_once(test_src, OLD_TEST_OBSERVER_NS, NEW_TEST_OBSERVER_NS, "test_update.py observer fixture")
+        if OLD_TEST_OBSERVER_NS in test_src:
+            test_src = replace_once(test_src, OLD_TEST_OBSERVER_NS, NEW_TEST_OBSERVER_NS, "test_update.py observer fixture")
+        else:  # RESIGN_LIMIT_1591R48 already put its switch before '_ai_db_fail' (lite → full upgrade)
+            test_src = replace_once(test_src, OLD_TEST_OBSERVER_NS.replace("            '_ai_db_fail'", "            'AI_ENABLED_1591R48':True,'_ai_db_fail'"),
+                                    NEW_TEST_OBSERVER_NS.replace("            '_ai_db_fail'", "            'AI_ENABLED_1591R48':True,'_ai_db_fail'"),
+                                    "test_update.py observer fixture (after r48)")
 
     # 33 (r32). Tariff card inside the picker, same-row restart cap, drain deadline.
     if TARIFF_SCOPE_MARKER not in source and MAX_REVISION >= 32:
@@ -5617,6 +5763,42 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 49 (r48). Two sign clicks per row at most; the observer's page budget grows with the tabs.
+    if RESIGN_LIMIT_MARKER not in source and MAX_REVISION >= 48:
+        for old, new, what in ((OLD_RESIGN_DEF_R48, NEW_RESIGN_DEF_R48, "resign limit: helper"),
+                               (OLD_RESIGN_SIGN_R48, NEW_RESIGN_SIGN_R48, "resign limit: the sign branch"),
+                               (OLD_RESIGN_COUNT_R48, NEW_RESIGN_COUNT_R48, "resign limit: the click counter"),
+                               (OLD_RESIGN_RESET_R48, NEW_RESIGN_RESET_R48, "resign limit: per-row reset"),
+                               (OLD_OBSERVER_LIMIT_R48, NEW_OBSERVER_LIMIT_R48, "observer: budget per tab"),
+                               (OLD_AI_GATE_DEF_R48, NEW_AI_GATE_DEF_R48, "ai switch: constant"),
+                               (OLD_AI_GATE_BODY_R48, NEW_AI_GATE_BODY_R48, "ai switch: no automatic jobs"),
+                               (OLD_AI_LANE_R48, NEW_AI_LANE_R48, "ai switch: idle lanes"),
+                               (OLD_AI_START_R48, NEW_AI_START_R48, "ai switch: startup line")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        if "RESIGN_LIMIT_1591R48" not in ctrl_source:
+            # The /op block of r46 lies inside the AI-gate entry of r38 in edits.json: rewrite the entry
+            # that carries it instead of mapping positions.
+            new_ctrl = replace_once(new_ctrl, OLD_C_AI_OFF_R48, NEW_C_AI_OFF_R48, "controller: DeepSeek off answer")
+            for change in edits["server_controller.py"]:
+                joined = "".join(change["replacement"])
+                if OLD_C_AI_OFF_R48 in joined:
+                    change["replacement"] = joined.replace(OLD_C_AI_OFF_R48, NEW_C_AI_OFF_R48, 1).splitlines(keepends=True)
+                    break
+            else:
+                raise SystemExit("edits.json: earlier controller entry for the /op block not found")
+        if "AI_ENABLED_1591R48" not in test_src:
+            test_src = replace_once(test_src, OLD_TEST_AI_NS_R48, NEW_TEST_AI_NS_R48, "test_update.py observer fixture (ai switch)")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -5632,6 +5814,18 @@ def main(argv: list[str]) -> int:
                         break
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
+    if EXPERIMENT == "browsers8" and OLD_EXP_AI_DEFAULT in new_source:
+        # DeepSeek off by default in the experiment build; also when an older exp build is upgraded
+        # (the marker is already there, the r48 constant is new).
+        new_source = replace_once(new_source, OLD_EXP_AI_DEFAULT, NEW_EXP_AI_DEFAULT, "experiment: DeepSeek off by default")
+        for change in edits["test_beeline.py"]:
+            joined = "".join(change["replacement"])
+            if OLD_EXP_AI_DEFAULT in joined:
+                change["replacement"] = joined.replace(OLD_EXP_AI_DEFAULT, NEW_EXP_AI_DEFAULT, 1).splitlines(keepends=True)
+                break
+        else:
+            raise SystemExit("edits.json: earlier entry for the AI default not found")
 
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
@@ -5707,6 +5901,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 45", README_NOTE_R45),) if built_revision >= 45 else ()),
                           *((("РЕВИЗИЯ 46", README_NOTE_R46),) if built_revision >= 46 else ()),
                           *((("РЕВИЗИЯ 47", README_NOTE_R47),) if built_revision >= 47 else ()),
+                          *((("РЕВИЗИЯ 48", README_NOTE_R48),) if built_revision >= 48 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

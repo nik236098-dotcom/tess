@@ -232,7 +232,7 @@ class PromptTests(unittest.TestCase):
             '_operator_needs_tools':lambda _:False,'_chat_prompt':lambda *a:'question',
             '_agent_system_prompt':lambda *a:'current policy','deepseek_vision_request':request,
             '_ai_db_complete':complete,'AI_AGENT_PENDING_FILE':Path('/not-existing-fixture'),
-            '_ai_db_fail':lambda *a:(_ for _ in ()).throw(AssertionError(a)),
+            'AI_ENABLED_1591R48':True,'_ai_db_fail':lambda *a:(_ for _ in ()).throw(AssertionError(a)),
             '_ai_mark_busy_1591r30':lambda *a:None,'_ai_success_verdict_1591r30':lambda *a:None}  # SIGN_ROBUST_1591R31
         extract({'ai_observer_process'},ns)
         ns['ai_observer_process']({},[],stop,{},None,None,'chat')

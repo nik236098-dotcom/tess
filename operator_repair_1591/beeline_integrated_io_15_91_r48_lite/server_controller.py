@@ -603,6 +603,9 @@ def main():
                         if not menu.text_is_for_ai():
                             menu.show_menu(fresh=True)
                             continue
+                        if str(os.environ.get("BEELINE_AI") or "1").strip().lower() in {"0", "off", "no", "false"}:
+                            _send("🤖 DeepSeek выключен (BEELINE_AI=0 в настройках службы).")  # RESIGN_LIMIT_1591R48
+                            continue
                         if not text.lower().startswith(("/op ", "/operator ", "оператор ")):
                             # OPERATOR_LIVE_1591R46: a question from «Спросить DeepSeek» is an
                             # operator order with the live browser tools, not a read-only chat.
