@@ -2264,7 +2264,8 @@ class FreshInstallTests(unittest.TestCase):
             run = subprocess.run(["bash", str(here / "update.sh")], env=env, capture_output=True, text=True, timeout=600)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             for name, target in (("beeline-update", "operator_repair_1591/update.sh"), ("beeline-tariff", "tools/order_tariff.py"),
-                                 ("beeline-order", "tools/order_status.py"), ("beeline-links", "tools/row_links.py")):
+                                 ("beeline-order", "tools/order_status.py"), ("beeline-links", "tools/row_links.py"),
+                                 ("beeline-secrets", "tools/set_secrets.sh")):
                 wrapper = Path(d) / "bin" / name
                 self.assertTrue(os.access(wrapper, os.X_OK), name)
                 body = wrapper.read_text()

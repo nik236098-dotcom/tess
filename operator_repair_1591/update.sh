@@ -91,7 +91,8 @@ if [[ $EUID -eq 0 || -n "${BIN_DIR_FORCE:-}" ]] && mkdir -p "$BIN_DIR" 2>/dev/nu
   write_wrapper beeline-tariff "'$PY' '$REPO/operator_repair_1591/tools/order_tariff.py'"
   write_wrapper beeline-order "'$PY' '$REPO/operator_repair_1591/tools/order_status.py'"
   write_wrapper beeline-links "'$PY' '$REPO/operator_repair_1591/tools/row_links.py'"
-  echo "Команды: sudo beeline-update | sudo beeline-tariff <ссылка> | sudo beeline-order | sudo beeline-links (в $BIN_DIR)"
+  write_wrapper beeline-secrets "bash '$REPO/operator_repair_1591/tools/set_secrets.sh'"
+  echo "Команды: sudo beeline-update | sudo beeline-tariff <ссылка> | sudo beeline-order | sudo beeline-links | sudo beeline-secrets (в $BIN_DIR)"
 fi
 
 # 4. Проверка без изменений, затем установка с перезапуском.
