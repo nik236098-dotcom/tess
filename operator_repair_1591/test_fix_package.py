@@ -2015,6 +2015,23 @@ class FreshInstallTests(unittest.TestCase):
                 self.assertIn(f"Пакет: {package.name} (ревизия {json.loads((package / 'manifest.json').read_text())['revision']}, сборка {build})", run.stdout)
                 self.assertIn("CHECK OK", run.stdout); self.assertIn("ничего не менял", run.stdout)
                 self.assertEqual({p.name: p.read_bytes() for p in app.iterdir()}, before)
+                self.assertFalse((Path(d) / "bin").exists(), "no wrappers without root or BIN_DIR_FORCE")
+        with tempfile.TemporaryDirectory() as d:  # the short commands point at this clone and its tools
+            app = Path(d) / "app"; app.mkdir()
+            for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "telegram_menu.py"):
+                shutil.copy(lite / name, app / name)
+            (app / "telegram_config.json").write_text(json.dumps({"token": "T", "chat_id": "C", "proxy": "socks5h://u:p@h:1"}))
+            env = dict(os.environ, APP_DIR=str(app), CHECK="1", NO_PULL="1", REPO=str(here.parent), BIN_DIR=str(Path(d) / "bin"), BIN_DIR_FORCE="1")
+            run = subprocess.run(["bash", str(here / "update.sh")], env=env, capture_output=True, text=True, timeout=600)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            for name, target in (("beeline-update", "operator_repair_1591/update.sh"), ("beeline-tariff", "tools/order_tariff.py"),
+                                 ("beeline-order", "tools/order_status.py"), ("beeline-links", "tools/row_links.py")):
+                wrapper = Path(d) / "bin" / name
+                self.assertTrue(os.access(wrapper, os.X_OK), name)
+                body = wrapper.read_text()
+                self.assertIn(str(here.parent), body); self.assertIn(target, body); self.assertTrue(body.rstrip().endswith('"$@"'))
+                self.assertTrue(Path(body.split("'")[-2]).is_file(), body)   # the quoted target exists
+            self.assertIn("sudo beeline-tariff", run.stdout)
         with tempfile.TemporaryDirectory() as d:  # not an installed bot
             run = subprocess.run(["bash", str(here / "update.sh")], env=dict(os.environ, APP_DIR=d, CHECK="1", NO_PULL="1"),
                                  capture_output=True, text=True, timeout=60)

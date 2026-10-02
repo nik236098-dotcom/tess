@@ -11,6 +11,11 @@
 # Переменные: APP_DIR (/opt/beeline), REPO (путь к клону), BRANCH, CHECK=1 — только проверка, ничего не
 #   менять; NO_PULL=1 — не трогать git; NO_RESTART=1 — установить без перезапуска (служба должна быть
 #   остановлена, иначе install.py откажется).
+# После первого запуска под sudo появляются короткие команды (в /usr/local/bin):
+#   sudo beeline-update                 — это же обновление
+#   sudo beeline-tariff <ссылка заказа> — тариф и цена заказа до оплаты (tools/order_tariff.py)
+#   sudo beeline-order                  — состояние последних заказов на сайте (tools/order_status.py)
+#   sudo beeline-links                  — ссылки заказов по строкам из журнала (tools/row_links.py)
 set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-/opt/beeline}"
@@ -70,7 +75,22 @@ PACKAGE="$(ls -d "$REPO"/operator_repair_1591/beeline_integrated_io_15_91_r*/ 2>
 REVISION="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["revision"])' "$PACKAGE/manifest.json")"
 say "Пакет: $(basename "$PACKAGE") (ревизия $REVISION, сборка $BUILD)"
 
-# 3. Проверка без изменений, затем установка с перезапуском.
+# 3. Короткие команды без путей: beeline-update, beeline-tariff, beeline-order (BIN_DIR, по умолчанию /usr/local/bin).
+BIN_DIR="${BIN_DIR:-/usr/local/bin}"
+if [[ $EUID -eq 0 || -n "${BIN_DIR_FORCE:-}" ]] && mkdir -p "$BIN_DIR" 2>/dev/null; then
+  PY="$APP_DIR/venv/bin/python"; [[ -x "$PY" ]] || PY="python3"
+  write_wrapper() {  # name, command line (the arguments of the user are appended)
+    printf '#!/usr/bin/env bash\n# beeline: создано update.sh, репозиторий %s\nexec %s "$@"\n' "$REPO" "$2" > "$BIN_DIR/$1.tmp" \
+      && chmod 0755 "$BIN_DIR/$1.tmp" && mv -f "$BIN_DIR/$1.tmp" "$BIN_DIR/$1"
+  }
+  write_wrapper beeline-update "bash '$REPO/operator_repair_1591/update.sh'"
+  write_wrapper beeline-tariff "'$PY' '$REPO/operator_repair_1591/tools/order_tariff.py'"
+  write_wrapper beeline-order "'$PY' '$REPO/operator_repair_1591/tools/order_status.py'"
+  write_wrapper beeline-links "'$PY' '$REPO/operator_repair_1591/tools/row_links.py'"
+  echo "Команды: sudo beeline-update | sudo beeline-tariff <ссылка> | sudo beeline-order | sudo beeline-links (в $BIN_DIR)"
+fi
+
+# 4. Проверка без изменений, затем установка с перезапуском.
 say "Проверка"
 python3 "$PACKAGE/install.py" --app "$APP_DIR"
 if [[ -n "${CHECK:-}" ]]; then
@@ -84,7 +104,7 @@ else
   python3 "$PACKAGE/install.py" --app "$APP_DIR" --apply --restart
 fi
 
-# 4. Итог: ревизия на сервере и состояние службы.
+# 5. Итог: ревизия на сервере и состояние службы.
 INSTALLED="$(python3 - "$APP_DIR/test_beeline.py" <<'PY'
 import re, sys
 src = open(sys.argv[1], encoding="utf-8").read()
