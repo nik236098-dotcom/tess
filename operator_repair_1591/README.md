@@ -371,6 +371,14 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    `basket_summary`, в записях успеха/оплаты/неподтверждённой подписи поле `basket`, а в коротком пуше строка
    «🧾 для смарт часов · 300 ₽/мес». Маркер: `BASKET_SUMMARY_1591R43`.
 
+46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
+   лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
+   Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
+   `beeline_integrated_io_15_91_r43_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
+   `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
+   При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
+
 ## Использование
 
 ```

@@ -105,7 +105,8 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "596d521c36270a13b733832a75c694531910035ba624503e4e0cfd2533305fd9",  # r42 lite output
                          "a20d4ff24cf13165a2d75737a4caddea5a690057b42c9236d7ca242894ae2fc1",  # r42 output
                          "81c76b0265edeb7a0aa6d31abcd128754b03787ac7860ba45e3e9651929023a7",  # r43 lite output
-                         "94226cc00b365c7fcf3d644d2fdf19f1f4a208c31ada602429325af7bab390b8"}  # r43 output
+                         "94226cc00b365c7fcf3d644d2fdf19f1f4a208c31ada602429325af7bab390b8",  # r43 output
+                         "c6d5fda2950aee0bb11b3029cfbbed3fb040ee0602d35be103a9d09a251d106e"}  # r43 exp8 output (FIX_1591_EXPERIMENT=browsers8, lite based)
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3285,6 +3286,25 @@ README_NOTE_R43 = ('\n\nРЕВИЗИЯ 43 (fix_package_1591.py)\nЧто лежи
                    '(«Корзина: …»), пишется в диагностику строки и попадает в записи успеха/оплаты/неподтверждённой\n'
                    'подписи (поле basket) и в короткий пуш строкой 🧾. Ссылка заказа до оплаты тариф не показывает,\n'
                    'поэтому это единственное место, где тариф заказа виден. Маркер: BASKET_SUMMARY_1591R43.\n')
+
+# Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
+# production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
+# BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
+# FIX_1591_EXPERIMENT=browsers8 and published as beeline_integrated_io_15_91_rNN_exp8 (lite based);
+# update.sh and fresh_install.sh never pick it unless BUILD=exp8 or the server already runs it.
+EXPERIMENT = (os.environ.get("FIX_1591_EXPERIMENT") or "").strip()
+if EXPERIMENT not in {"", "browsers8"}:
+    raise SystemExit(f"FIX_1591_EXPERIMENT={EXPERIMENT!r}: the only experiment is browsers8")
+EXPERIMENT_MARKER = "EXPERIMENT_BROWSERS8_1591"
+OLD_BROWSER_CAP_EXP = ('        value = default\n    return min(max(value, 1), 4)\n\n\n'
+                       'BROWSER_COUNT = _browser_count_1591r34()  # TWO_BROWSERS_1591R28: Chromium instances, TABS_PER_BROWSER tabs each\n')
+NEW_BROWSER_CAP_EXP = ('        value = default\n    return min(max(value, 1), 8)  # EXPERIMENT_BROWSERS8_1591: up to 8 Chromium (32 tabs) on a big test server\n\n\n'
+                       'BROWSER_COUNT = _browser_count_1591r34()  # TWO_BROWSERS_1591R28: Chromium instances, TABS_PER_BROWSER tabs each\n')
+OLD_START_LINE_EXP = NEW_TARIFF_START_R42[len(OLD_TARIFF_START_R42):]   # the «Тариф: …» startup line of r42
+NEW_START_LINE_EXP = OLD_START_LINE_EXP + '    print(f"ЭКСПЕРИМЕНТ browsers8: лимит BEELINE_BROWSERS поднят до 8 Chromium; сейчас {BROWSER_COUNT} × {TABS_PER_BROWSER} вкладок.", flush=True)  # EXPERIMENT_BROWSERS8_1591\n'
+README_NOTE_EXP = ('\n\nЭКСПЕРИМЕНТ browsers8 (fix_package_1591.py, FIX_1591_EXPERIMENT=browsers8)\nОтдельная сборка для мощного тестового сервера: лимит BEELINE_BROWSERS поднят с 4 до 8 Chromium\n'
+                   '(до 32 вкладок при BEELINE_TABS_PER_BROWSER=4). Всё остальное — та же ревизия. В рабочие серверы\n'
+                   'не ставится: update.sh берёт её только при BUILD=exp8 или если она уже стоит. Маркер: EXPERIMENT_BROWSERS8_1591.\n')
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -4167,7 +4187,8 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 40 or ISOLATED_CONTEXT_MARKER in source)\
             and (MAX_REVISION < 41 or TARIFF_CONFIG_MARKER in source)\
             and (MAX_REVISION < 42 or TARIFF_LOG_MARKER in source)\
-            and (MAX_REVISION < 43 or BASKET_SUMMARY_MARKER in source):
+            and (MAX_REVISION < 43 or BASKET_SUMMARY_MARKER in source)\
+            and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4917,6 +4938,22 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
+    if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
+        for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
+                               (OLD_START_LINE_EXP, NEW_START_LINE_EXP, "experiment: startup line")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4944,6 +4981,8 @@ def main(argv: list[str]) -> int:
     ctrl_meta["previous_output_sha256"] = sorted(previous_ctrl)
     ctrl_meta["output_sha256"] = hashlib.sha256(new_ctrl.encode("utf-8")).hexdigest()
     manifest["revision"] = built_revision
+    if EXPERIMENT:
+        manifest["experiment"] = EXPERIMENT
 
     app.write_text(new_source, "utf-8")
     (package / "server_controller.py").write_text(new_ctrl, "utf-8")
@@ -4984,7 +5023,8 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 40", README_NOTE_R40),) if built_revision >= 40 else ()),
                           *((("РЕВИЗИЯ 41", README_NOTE_R41),) if built_revision >= 41 else ()),
                           *((("РЕВИЗИЯ 42", README_NOTE_R42),) if built_revision >= 42 else ()),
-                          *((("РЕВИЗИЯ 43", README_NOTE_R43),) if built_revision >= 43 else ())):
+                          *((("РЕВИЗИЯ 43", README_NOTE_R43),) if built_revision >= 43 else ()),
+                          *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
@@ -5013,7 +5053,7 @@ def main(argv: list[str]) -> int:
                 f.unlink()
             cache.rmdir()
     print(ran + " — OK")
-    print(f"Revision {built_revision} applied to", package)
+    print(f"Revision {built_revision} applied to", package, f"(experiment {EXPERIMENT})" if EXPERIMENT else "")
     return 0
 
 

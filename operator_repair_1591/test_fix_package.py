@@ -10,6 +10,7 @@ import sys
 import tempfile
 import types
 import unittest
+import unittest.mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fix_package_1591 as fix
@@ -1387,6 +1388,34 @@ class PackageTests(unittest.TestCase):
         pretty = ns["_short_push_1591r38"]({"id": 1, "row": (1, "a", "b")}, {"sim_number": "+79626158923", "profile": {"full_name": "A B", "birth_date": "1.2.1990"}, "sim_url": "https://x/?hash_order=1"}, "#оплата", "💳 pay")
         self.assertIn("📱 +7 962 615-89-23", pretty); self.assertIn("👤 A B · 🎂 1.2.1990", pretty); self.assertIn("🔗 https://x/?hash_order=1", pretty)
 
+    def test_experiment_browsers8_is_a_separate_build_with_cap_8(self):
+        """FIX_1591_EXPERIMENT=browsers8: the production build keeps the cap of 4 Chromium; the experiment raises it to 8."""
+        ns = {"os": os}
+        exec_functions(self.source, ["_browser_count_1591r34"], ns)
+        with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
+            self.assertEqual(ns["_browser_count_1591r34"](), 4, "production: capped at 4")
+        self.assertNotIn("EXPERIMENT_BROWSERS8_1591", self.source)
+        with tempfile.TemporaryDirectory() as d:
+            pkg = Path(d) / "exp"; shutil.copytree(PACKAGE, pkg, ignore=shutil.ignore_patterns("__pycache__"))
+            env = dict(os.environ, FIX_1591_EXPERIMENT="browsers8", FIX_1591_WITHOUT_R31="1")
+            run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("(experiment browsers8)", run.stdout)
+            src = (pkg / "test_beeline.py").read_text("utf-8")
+            self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
+            self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
+            manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
+            self.assertEqual(manifest["revision"], 43); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
+            ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
+            with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
+                self.assertEqual(ns["_browser_count_1591r34"](), 7)
+            with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "12"}):
+                self.assertEqual(ns["_browser_count_1591r34"](), 8)
+            run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
+            self.assertIn("Already revision 43", run.stdout)
+            bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
+            self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
+
     def test_basket_summary_names_the_tariff_and_reaches_the_push(self):
         """BASKET_SUMMARY_1591R43: the basket text is read once, kept on the page, copied into the records and the push."""
         src = self.source
@@ -2064,6 +2093,20 @@ class FreshInstallTests(unittest.TestCase):
                 self.assertIn(str(here.parent), body); self.assertIn(target, body); self.assertTrue(body.rstrip().endswith('"$@"'))
                 self.assertTrue(Path(body.split("'")[-2]).is_file(), body)   # the quoted target exists
             self.assertIn("sudo beeline-tariff", run.stdout)
+        exp = here / (full.name + "_exp8")
+        if exp.is_dir():  # the experiment stays where it was put, and is never picked by default
+            with tempfile.TemporaryDirectory() as d:
+                app = Path(d) / "app"; app.mkdir()
+                for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "telegram_menu.py"):
+                    shutil.copy(exp / name, app / name)
+                (app / "telegram_config.json").write_text(json.dumps({"token": "T", "chat_id": "C", "proxy": "socks5h://u:p@h:1"}))
+                env = dict(os.environ, APP_DIR=str(app), CHECK="1", NO_PULL="1", REPO=str(here.parent))
+                run = subprocess.run(["bash", str(here / "update.sh")], env=env, capture_output=True, text=True, timeout=600)
+                self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn(f"Пакет: {exp.name} (ревизия", run.stdout); self.assertIn("сборка exp8)", run.stdout)
+                for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "telegram_menu.py"):
+                    shutil.copy(lite / name, app / name)
+                run = subprocess.run(["bash", str(here / "update.sh")], env=dict(env, BUILD="exp8"), capture_output=True, text=True, timeout=600)
+                self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn(f"Пакет: {exp.name}", run.stdout)
         with tempfile.TemporaryDirectory() as d:  # not an installed bot
             run = subprocess.run(["bash", str(here / "update.sh")], env=dict(os.environ, APP_DIR=d, CHECK="1", NO_PULL="1"),
                                  capture_output=True, text=True, timeout=60)

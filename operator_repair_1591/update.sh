@@ -8,6 +8,8 @@
 #
 # Сборка выбирается как стоит на сервере: lite (без кода подписи r31), если в /opt/beeline/test_beeline.py
 # нет маркера SIGN_ROBUST_1591R31, иначе полная. BUILD=lite или BUILD=full меняют выбор явно.
+# BUILD=exp8 ставит экспериментальную сборку (лимит до 8 Chromium) для мощного тестового сервера; раз
+# поставленная, она остаётся при следующих обновлениях (маркер EXPERIMENT_BROWSERS8_1591).
 # Переменные: APP_DIR (/opt/beeline), REPO (путь к клону), BRANCH, CHECK=1 — только проверка, ничего не
 #   менять; NO_PULL=1 — не трогать git; NO_RESTART=1 — установить без перезапуска (служба должна быть
 #   остановлена, иначе install.py откажется).
@@ -62,15 +64,17 @@ fi
 
 # 2. Сборка (lite/full) и последняя папка пакета этой сборки.
 if [[ -z "${BUILD:-}" ]]; then
-  if grep -q SIGN_ROBUST_1591R31 "$APP_DIR/test_beeline.py"; then BUILD=full; else BUILD=lite; fi
+  if grep -q EXPERIMENT_BROWSERS8_1591 "$APP_DIR/test_beeline.py"; then BUILD=exp8      # the experiment stays where it was put
+  elif grep -q SIGN_ROBUST_1591R31 "$APP_DIR/test_beeline.py"; then BUILD=full; else BUILD=lite; fi
 fi
 case "$BUILD" in
   lite) PATTERN='_r[0-9]+_lite$' ;;
   full) PATTERN='_r[0-9]+$' ;;
-  *) die "BUILD=$BUILD; допустимо lite или full" ;;
+  exp8) PATTERN='_r[0-9]+_exp8$' ;;   # the experiment: up to 8 Chromium, for a big test server only
+  *) die "BUILD=$BUILD; допустимо lite, full или exp8" ;;
 esac
 PACKAGE="$(ls -d "$REPO"/operator_repair_1591/beeline_integrated_io_15_91_r*/ 2>/dev/null \
-  | sed -E 's#/$##' | grep -E "$PATTERN" | sed -E 's#(.*_r)([0-9]+)(_lite)?$#\2 \0#' | sort -n | tail -1 | cut -d' ' -f2-)"
+  | sed -E 's#/$##' | grep -E "$PATTERN" | sed -E 's#(.*_r)([0-9]+)(_[a-z0-9]+)?$#\2 \0#' | sort -n | tail -1 | cut -d' ' -f2-)"
 [[ -n "$PACKAGE" && -f "$PACKAGE/install.py" ]] || die "в репозитории нет папки пакета для сборки $BUILD"
 REVISION="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["revision"])' "$PACKAGE/manifest.json")"
 say "Пакет: $(basename "$PACKAGE") (ревизия $REVISION, сборка $BUILD)"
