@@ -11,7 +11,7 @@ test_running_service_requires_explicit_restart (test_update.InstallerTests.test_
 test_startup_failure_restores_code (test_update.InstallerTests.test_startup_failure_restores_code) ... ok
 test_actual_chat_http_payload_with_images (test_update.PromptTests.test_actual_chat_http_payload_with_images) ... [AI REQUEST 15.91] {"route": "chat", "system_count": 1, "system_chars": 7, "system_sha256": "e3cc57e193d6512e6debf0e925febe757e87e85d66150a2f212aa8641940b027"}
 ok
-test_actual_observer_saves_full_reply_without_browser (test_update.PromptTests.test_actual_observer_saves_full_reply_without_browser) ... [AI CHAT] Operator process стартовал PID=2499.
+test_actual_observer_saves_full_reply_without_browser (test_update.PromptTests.test_actual_observer_saves_full_reply_without_browser) ... [AI CHAT] Operator process стартовал PID=4837.
 [AI CHAT] Обрабатываю update 7: привет
 [AI CHAT] update 7 завершён.
 ok
@@ -83,6 +83,6 @@ test_runtime_tick_invoked_instead_of_restart (test_update.StateTests.test_runtim
 ok
 
 ----------------------------------------------------------------------
-Ran 58 tests in 6.735s
+Ran 58 tests in 7.325s
 
 OK

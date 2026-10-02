@@ -197,7 +197,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_44(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_45(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -205,12 +205,12 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertIn("Already revision 30", run.stdout)
-            # a server on the prompt-only build is accepted by the full (r44) installer
+            # a server on the prompt-only build is accepted by the full (r45) installer
             self.assertIn(hashlib.sha256((r30 / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             app = Path(d) / "app"; app.mkdir()
             for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "install.py", "test_update.py"):
@@ -375,24 +375,24 @@ class PackageTests(unittest.TestCase):
             self.assertIn(f'None if completed else _row_for_respawn_1591r32(saved_row, tab_id, base_dir, "{who}"),  # ROW_RESTART_LIMIT_1591R32', self.source)
         self.assertNotIn("None if completed else saved_row,", self.source)
 
-    def test_lite_build_is_revision_44_without_the_signing_code(self):
+    def test_lite_build_is_revision_45_without_the_signing_code(self):
         with tempfile.TemporaryDirectory() as d:
             lite = Path(d) / "lite"
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 44 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 45 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 44", run.stdout)
+            self.assertIn("Already revision 45", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 44 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 45 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -838,7 +838,7 @@ class PackageTests(unittest.TestCase):
                                   capture_output=True, text=True, timeout=300)
     def test_installer_check_accepts_first_1591_build_and_itself(self):
         manifest = json.loads((self.pkg / "manifest.json").read_text())
-        for variant, src in (("first-build", Path(PACKAGE)), ("revision-44", self.pkg)):
+        for variant, src in (("first-build", Path(PACKAGE)), ("revision-45", self.pkg)):
             run = self._check(src, proxy=True)
             self.assertEqual(run.returncode, 0, variant + "\n" + run.stdout + run.stderr)
             self.assertIn("CHECK OK", run.stdout, variant)
@@ -1016,7 +1016,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 44", run.stdout)
+            self.assertIn("Already revision 45", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1050,7 +1050,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 44)
+        self.assertEqual(manifest["revision"], 45)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1402,10 +1402,10 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("(experiment browsers8)", run.stdout)
             src = (pkg / "test_beeline.py").read_text("utf-8")
-            self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
+            self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 44); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 45); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1413,7 +1413,7 @@ class PackageTests(unittest.TestCase):
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "12"}):
                 self.assertEqual(ns["_browser_count_1591r34"](), 8)
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 44", run.stdout)
+            self.assertIn("Already revision 45", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -1450,18 +1450,93 @@ class PackageTests(unittest.TestCase):
         self.assertIsNone(ns["_basket_summary_1591r43"](Broken(), None))
         class Missing:
             def evaluate(self, js, arg=None): return "корзина\nвыберите тариф"
-        self.assertEqual(ns["_basket_summary_1591r43"](Missing(), None), {"tariff": None, "prices": [], "page_prices": [], "other_titles": []})
+        self.assertEqual(ns["_basket_summary_1591r43"](Missing(), None), {"tariff": None, "prices": [], "page_prices": [], "other_titles": [], "block": []})
+
+    def _configurator_ns(self, src, price=""):
+        from time import monotonic
+        ns = {"os": os, "re": re, "monotonic": monotonic, "TARIFF_NAME": "для смарт часов", "TARIFF_STRICT_1591R44": True,
+              "TARIFF_MINIMAL_1591R45": True, "TARIFF_PRICE_1591R45": price}
+        names = ("_BASKET_JS_1591R44", "_CONFIGURATOR_JS_1591R44", "_TARIFF_TITLE_RE_1591R32", "_CHOOSE_BUTTON_RE",
+                 "_CONFIGURATOR_HEADER_RE_1591R44", "_CHOOSE_PREFIX_RE_1591R44", "_SELECT_MIN_JS_1591R45")
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id in names for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(src, ["_basket_summary_1591r43", "_require_tariff_in_basket_1591r44", "_dump_configurator_1591r44",
+                             "_confirm_tariff_configurator_1591r41", "_configurator_visible_1591r45", "_configurator_prices_1591r45",
+                             "_select_configurator_minimum_1591r45"], ns)
+        return ns
+
+    def test_r45_configurator_minimal_set_and_price_gate(self):
+        """CONFIGURATOR_SELECT_1591R45: with the eSIM form already in the prefilled basket the visible panel is still handled;
+        the smallest GB/minutes are chosen, paid options switched off, free ones kept, and «выбрать» is pressed only when the
+        panel shows BEELINE_TARIFF_PRICE; a slider panel works too; a wrong price restarts the row with nothing confirmed."""
+        src = self.source
+        self.assertIn("or _configurator_visible_1591r45(page)):", src)
+        self.assertIn("_select_configurator_minimum_1591r45(page, scope, diagnostic)", src)
+        html = """<!doctype html><html><head><meta charset="utf-8"><style>.chip{display:inline-block;padding:4px;border:1px solid #999;margin:2px}.chip.active{background:#ff0}</style></head><body>
+<h1>корзина</h1><div class="basket"><button>изменить</button><div>подписка bee HIT</div><div>700 ₽ в месяц</div><input id="esim" name="sim" type="radio"></div>
+<div class="picker"><h2>выберите тариф</h2><div class="card"><div>для смарт часов</div><button>выбрать</button></div><div class="card"><div>подписка bee START 1 гб</div><button>выбрать</button></div></div>
+<section id="cfg"><h3>гигабайты и минуты</h3><div>гб</div><div id="gb">GBCHIPS</div><div>мин</div><div id="min"><button class="chip">0</button><button class="chip active">50</button></div>
+<div><label>мессенджеры 79 ₽/мес <input type="checkbox" id="msg" checked></label></div><div><label>пакет 100 смс бесплатно <input type="checkbox" id="sms" checked></label></div>
+<div id="total">800 ₽ в месяц</div><button id="go">выбрать за 800 ₽</button></section>
+<script>
+const gbValue = () => GBVALUE;
+const price = () => { const mn = document.querySelector('#min .active').innerText;
+  let p = {2:BASE, 10:500, 60:700, 100:800}[gbValue()] + (mn === '50' ? 100 : 0) + (document.getElementById('msg').checked ? 79 : 0);
+  document.getElementById('total').innerText = p + ' ₽ в месяц'; document.getElementById('go').innerText = 'выбрать за ' + p + ' ₽'; };
+for (const g of ['gb','min']) for (const b of document.querySelectorAll('#'+g+' .chip')) b.onclick = () => { document.querySelectorAll('#'+g+' .chip').forEach(x => x.classList.remove('active')); b.classList.add('active'); price(); };
+document.getElementById('msg').onchange = price; const rg = document.getElementById('rg'); if (rg) rg.oninput = price; price();
+document.getElementById('go').onclick = () => { document.querySelector('.basket div').innerText = 'для смарт часов'; document.querySelector('.basket div:nth-of-type(2)').innerText = document.getElementById('total').innerText; };
+</script></body></html>"""
+        chips = '<button class="chip">2</button><button class="chip active">10</button><button class="chip">60</button><button class="chip">100</button>'
+        page_chips = html.replace("GBCHIPS", chips).replace("GBVALUE", "document.querySelector('#gb .active').innerText").replace("BASE", "200")
+        page_slider = html.replace("GBCHIPS", '<input type="range" id="rg" min="2" max="100" step="1" value="10">').replace("GBVALUE", "document.getElementById('rg').value").replace("BASE", "200")
+        page_wrong = page_chips.replace("{2:200", "{2:350")
+        class Diag:
+            def __init__(self): self.events = []
+            def write(self, event, **data): self.events.append((event, data))
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch(headless=True)
+            except Exception:
+                browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+            try:
+                ns = self._configurator_ns(src, price="200")
+                page = browser.new_page(); page.set_content(page_chips); diag = Diag()
+                self.assertEqual(page.locator("input#esim").count(), 1, "the prefilled basket already has the eSIM form")
+                self.assertTrue(ns["_configurator_visible_1591r45"](page, 500))
+                self.assertTrue(ns["_confirm_tariff_configurator_1591r41"](page, diag, timeout=2000))
+                self.assertEqual(page.locator("#total").inner_text(), "200 ₽ в месяц"); self.assertTrue(page.locator("#sms").is_checked(), "the free option stays on")
+                selected = next(e for e in diag.events if e[0] == "tariff_configurator_selected")
+                self.assertEqual(selected[1]["actions"], ["выбрано 2", "выбрано 0", "выключено: мессенджеры 79 ₽/мес"]); self.assertEqual(selected[1]["prices"], ["200 ₽ в месяц", "выбрать за 200 ₽"])
+                summary = ns["_basket_summary_1591r43"](page, None)
+                self.assertEqual(summary["tariff"], "для смарт часов"); self.assertEqual(summary["block"][:2], ["для смарт часов", "200 ₽ в месяц"])
+                ns["_require_tariff_in_basket_1591r44"](summary, None)
+                page = browser.new_page(); page.set_content(page_slider)
+                self.assertTrue(ns["_confirm_tariff_configurator_1591r41"](page, Diag(), timeout=2000)); self.assertEqual(page.locator("#total").inner_text(), "200 ₽ в месяц")
+                page = browser.new_page(); page.set_content(page_wrong); diag = Diag()
+                with self.assertRaises(RuntimeError) as ctx:
+                    ns["_confirm_tariff_configurator_1591r41"](page, diag, timeout=1000)
+                self.assertIn("RECOVERABLE_RESTART_ROW", str(ctx.exception)); self.assertIn("350 ₽", str(ctx.exception))
+                self.assertEqual(page.locator(".basket div").first.inner_text(), "подписка bee HIT", "nothing confirmed at the wrong price")
+                ns = self._configurator_ns(src, price="")
+                page = browser.new_page(); page.set_content(page_wrong)
+                self.assertTrue(ns["_confirm_tariff_configurator_1591r41"](page, Diag(), timeout=2000), "no price configured: the minimal set is confirmed")
+                self.assertEqual(page.locator("#total").inner_text(), "350 ₽ в месяц")
+                with unittest.mock.patch.dict(os.environ, {"BEELINE_TARIFF": "для смарт часов"}):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        ns["_require_tariff_in_basket_1591r44"]({"tariff": None, "block": ["подписка bee HIT", "700 ₽ в месяц"], "other_titles": ["подписка bee HIT"], "page_prices": []}, None)
+                    self.assertIn("подписка bee HIT, 700 ₽ в месяц", str(ctx.exception))
+            finally:
+                browser.close()
 
     def test_r44_foreign_tariff_stops_the_row_and_the_configurator_panel_is_recognised(self):
         """CONFIGURATOR_DUMP_1591R44: the basket with bee HIT instead of the configured tariff restarts the row; the card's
         own price is reported; the configurator panel («гигабайты и минуты») is found and dumped before it is confirmed."""
         src = self.source
         self.assertIn("_require_tariff_in_basket_1591r44(basket_1591r43, diagnostic)", src)
-        ns = {"os": os, "re": re, "TARIFF_NAME": "для смарт часов", "TARIFF_STRICT_1591R44": True}
-        for node in ast.parse(src).body:
-            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id in ("_BASKET_JS_1591R44", "_CONFIGURATOR_JS_1591R44", "_TARIFF_TITLE_RE_1591R32", "_CHOOSE_BUTTON_RE", "_CONFIGURATOR_HEADER_RE_1591R44", "_CHOOSE_PREFIX_RE_1591R44") for x in node.targets):
-                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
-        exec_functions(src, ["_basket_summary_1591r43", "_require_tariff_in_basket_1591r44", "_dump_configurator_1591r44", "_confirm_tariff_configurator_1591r41"], ns)
+        ns = self._configurator_ns(src, price="")   # CONFIGURATOR_SELECT_1591R45: no price gate in this test
         class Diag:
             def __init__(self): self.events = []
             def write(self, event, **data): self.events.append((event, data))

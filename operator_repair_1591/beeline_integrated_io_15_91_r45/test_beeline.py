@@ -5136,14 +5136,20 @@ def _basket_summary_1591r43(page, diagnostic=None):
     page_prices = [line[:60] for line in lines if "₽" in line][:4]
     others = [line[:60] for line in lines if _TARIFF_TITLE_RE_1591R32.search(line) and norm(wanted) not in norm(line)][:3]
     # "prices" are the prices of the tariff's own card (the push shows the first); the rest of the page apart
-    summary = {"tariff": tariff, "prices": card_prices, "page_prices": page_prices, "other_titles": others}
+    block = []  # CONFIGURATOR_SELECT_1591R45: the tariff block of the basket, whatever the title is
+    for index, line in enumerate(lines):
+        if line.lower() == "изменить":
+            block = [item[:60] for item in lines[index + 1:index + 4]]
+            break
+    summary = {"tariff": tariff, "prices": card_prices, "page_prices": page_prices, "other_titles": others, "block": block}
     try:
         setattr(page, "_basket_summary_1591r43", summary)
     except Exception:
         pass
     print(
         f"Корзина: {'«' + tariff + '»' if tariff else 'название «' + TARIFF_NAME + '» не видно'}; "
-        f"цена карточки: {', '.join(card_prices) or 'не найдена'}; на странице ещё: {', '.join(page_prices) or '—'}"
+        f"цена карточки: {', '.join(card_prices) or 'не найдена'}; блок тарифа: {' | '.join(block) or '—'}; "
+        f"на странице ещё: {', '.join(page_prices) or '—'}"
         + (f"; другие названия: {', '.join(others)}" if others else ""),
         flush=True,
     )
@@ -5169,7 +5175,7 @@ def _require_tariff_in_basket_1591r44(summary, diagnostic=None):
         return
     if summary is None or summary.get("tariff"):
         return
-    seen = list(summary.get("other_titles") or [])
+    seen = list(dict.fromkeys(list(summary.get("block") or []) + list(summary.get("other_titles") or [])))  # CONFIGURATOR_SELECT_1591R45
     print(
         f"В корзине нет тарифа «{TARIFF_NAME}» (видно: {', '.join(seen) or 'ничего похожего'}; "
         f"цены: {', '.join(summary.get('page_prices') or []) or '—'}). Строку с чужим тарифом не оформляю.",
@@ -5185,6 +5191,119 @@ def _require_tariff_in_basket_1591r44(summary, diagnostic=None):
 
 _CONFIGURATOR_HEADER_RE_1591R44 = re.compile(r"^\s*гигабайты и минуты\s*$", re.I)  # CONFIGURATOR_DUMP_1591R44
 _CHOOSE_PREFIX_RE_1591R44 = re.compile(r"^\s*выбрать(\s|$)", re.I)  # «выбрать», «выбрать за 300 ₽»… (no \b: JS has no Cyrillic word boundary)
+
+
+# CONFIGURATOR_SELECT_1591R45
+TARIFF_PRICE_1591R45 = (os.environ.get("BEELINE_TARIFF_PRICE") or "").strip()   # «200»: the monthly price the panel must show
+TARIFF_MINIMAL_1591R45 = str(os.environ.get("BEELINE_TARIFF_MINIMAL") or "1").strip().lower() not in {"0", "off", "no", "false"}
+
+_SELECT_MIN_JS_1591R45 = """(root) => {
+  const scope = root || document.body;
+  const vis = el => { try { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (_) { return false; } };
+  const txt = el => ((el && el.innerText) || '').replace(/\\s+/g, ' ').trim();
+  const active = el => ['aria-checked', 'aria-selected', 'aria-pressed'].some(a => el.getAttribute(a) === 'true')
+    || /(^|[\\s_-])(active|selected|checked|current)([\\s_-]|$)/i.test(typeof el.className === 'string' ? el.className : '');
+  const actions = [];
+  for (const r of scope.querySelectorAll('input[type=range]')) {           // sliders: to their minimum
+    const min = r.min !== '' ? r.min : '0';
+    if (String(r.value) === String(min)) continue;
+    try {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(r, min);
+      r.dispatchEvent(new Event('input', {bubbles: true}));
+      r.dispatchEvent(new Event('change', {bubbles: true}));
+      actions.push('ползунок→' + min);
+    } catch (_) {}
+  }
+  const chips = [];                                                        // numeric chips: 2 / 10 / 60 / 100
+  for (const el of scope.querySelectorAll('button,[role=radio],[role=tab],[role=option],label,li,span,div')) {
+    if (!vis(el) || el.children.length > 1 || el.querySelector('input[type=range]')) continue;
+    if (/^\\d{1,4}$/.test(txt(el))) chips.push(el);
+  }
+  const groups = new Map();
+  for (const el of chips) {
+    if (el.parentElement && chips.includes(el.parentElement) && txt(el.parentElement) === txt(el)) continue;
+    const key = el.parentElement;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(el);
+  }
+  for (const els of groups.values()) {
+    if (els.length < 2) continue;
+    els.sort((a, b) => parseInt(txt(a), 10) - parseInt(txt(b), 10));
+    const smallest = els[0];
+    const target = smallest.closest('button,[role=radio],[role=tab],[role=option],label') || smallest;
+    if (active(target) || active(smallest)) continue;
+    target.click();
+    actions.push('выбрано ' + txt(smallest));
+  }
+  for (const sw of scope.querySelectorAll('[role=switch],[role=checkbox],input[type=checkbox]')) {   // paid options off
+    const on = sw.getAttribute('aria-checked') === 'true' || sw.checked === true;
+    if (!on) continue;
+    const row = sw.closest('label,li,[role=listitem],div');
+    const rowText = txt(row);
+    if (!/₽/.test(rowText) || /бесплатно/i.test(rowText)) continue;
+    (sw.tagName === 'INPUT' && sw.labels && sw.labels[0] ? sw.labels[0] : sw).click();
+    actions.push('выключено: ' + rowText.slice(0, 40));
+  }
+  return actions;
+}"""
+
+
+def _configurator_visible_1591r45(page, timeout_ms=3000):
+    """True when the configurator panel («гигабайты и минуты») is visible, waiting up to timeout_ms
+    for it to render after the card's «выбрать»."""
+    deadline = monotonic() + timeout_ms / 1000.0
+    while True:
+        try:
+            header = page.get_by_text(_CONFIGURATOR_HEADER_RE_1591R44).first
+            if header.count() > 0 and header.is_visible():
+                return True
+        except Exception:
+            pass
+        if monotonic() >= deadline:
+            return False
+        page.wait_for_timeout(250)
+
+
+def _configurator_prices_1591r45(dump):
+    """The panel's own price lines: bare prices («200 ₽ в месяц», «800 ₽») and the «выбрать…» button
+    text, not the per-option prices («мессенджеры 79 ₽/мес»)."""
+    lines = [" ".join(line.split()) for line in str((dump or {}).get("text") or "").splitlines()]
+    bare = [line[:60] for line in lines if re.match(r"^\d[\d\s]*₽", line)]
+    button = [line[:60] for line in lines if re.match(r"^\s*выбрать\b.*₽", line, re.I)]
+    return (bare + button) or list((dump or {}).get("prices") or [])
+
+
+def _select_configurator_minimum_1591r45(page, scope=None, diagnostic=None):
+    """The minimal set in the configurator and the price check. Raises RECOVERABLE_RESTART_ROW when
+    BEELINE_TARIFF_PRICE is set and the panel does not show that price: a wrong set is never confirmed."""
+    actions = []
+    if TARIFF_MINIMAL_1591R45:
+        for _round in range(3):
+            try:
+                handle = scope.element_handle(timeout=2000) if scope is not None else None
+                done = page.evaluate(_SELECT_MIN_JS_1591R45, handle) or []
+            except Exception as exc:
+                print(f"Минимальный набор в окне параметров не выставлен: {type(exc).__name__}", flush=True)
+                done = []
+            actions.extend(str(a) for a in done)
+            if not done:
+                break
+            page.wait_for_timeout(700)
+    after = _dump_configurator_1591r44(page, scope, diagnostic) or {}
+    prices = _configurator_prices_1591r45(after)
+    print(f"Окно параметров: действия: {'; '.join(actions) or 'не потребовались'}; цена теперь: {', '.join(prices) or '—'}", flush=True)
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_configurator_selected", actions=actions, prices=prices, checked=after.get("checked"))
+        except Exception:
+            pass
+    want = re.sub(r"\D", "", TARIFF_PRICE_1591R45)
+    if want and not any(re.search(r"(?<!\d)" + want + r"(?!\d)", p) for p in prices):
+        print(f"Окно параметров показывает не ту цену (ожидалось {want} ₽): {', '.join(prices) or 'цену не видно'}. Строку не оформляю.", flush=True)
+        raise RuntimeError(
+            f"RECOVERABLE_RESTART_ROW: окно параметров тарифа «{TARIFF_NAME}» показывает {', '.join(prices) or 'цену не видно'}, ожидалось {want} ₽."
+        )
+    return actions
 
 
 # CONFIGURATOR_DUMP_1591R44
@@ -5272,8 +5391,9 @@ def _confirm_tariff_configurator_1591r41(page, diagnostic=None, timeout=8000):
         except Exception:
             pass
         return False
-    print("Тариф с окном параметров: подтверждаю выбор с настройками по умолчанию...", flush=True)
+    print("Тариф с окном параметров: читаю его и выставляю минимальный набор...", flush=True)
     _dump_configurator_1591r44(page, scope, diagnostic)  # CONFIGURATOR_DUMP_1591R44: what is preselected
+    _select_configurator_minimum_1591r45(page, scope, diagnostic)  # CONFIGURATOR_SELECT_1591R45: may restart the row
     if diagnostic is not None:
         try:
             diagnostic.write("tariff_configurator_confirm", tariff=TARIFF_NAME)
@@ -5859,9 +5979,11 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
                     pass
                 page.wait_for_timeout(250)
 
-            if choose_clicked and page.locator('input#esim[name="sim"]').count() == 0:
+            if choose_clicked and (page.locator('input#esim[name="sim"]').count() == 0
+                                   or _configurator_visible_1591r45(page)):
                 # TARIFF_CONFIG_1591R41: some tariffs open a configurator (GB, minutes, options)
-                # after the card's «выбрать»; confirm it with the defaults.
+                # after the card's «выбрать». CONFIGURATOR_SELECT_1591R45: the prefilled basket already
+                # shows an eSIM form, so the visible panel decides, not the form.
                 _confirm_tariff_configurator_1591r41(page, diagnostic)
             if choose_clicked:
                 break

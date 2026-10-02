@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 41 лежит в `beeline_integrated_io_15_91_r44/` (включает ревизии 30–40); рядом
-`beeline_integrated_io_15_91_r44_lite/` — та же ревизия 41 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 41 лежит в `beeline_integrated_io_15_91_r45/` (включает ревизии 30–40); рядом
+`beeline_integrated_io_15_91_r45_lite/` — та же ревизия 41 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -69,7 +69,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r44
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r45
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -374,7 +374,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r44_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r45_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -391,6 +391,16 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    из карточки тарифа (блок вокруг названия с ₽), остальные цены страницы в поле `page_prices`; текст
    корзины пишется в диагностику (`basket_summary`). В `add_edit` исправлена потеря первой из нескольких
    правок одной ранней записи edits.json при апгрейде. Маркер: `CONFIGURATOR_DUMP_1591R44`.
+
+48. **Окно параметров решает, минимальный набор и проверка цены (ревизия 45).** Журнал показал, что после
+   «выбрать» на карточке часов панель параметров открывалась, но бот её не проверял: условие r41 «только если на
+   странице нет формы eSIM» не срабатывало, потому что в корзине, заполненной сайтом (bee HIT), форма eSIM уже
+   есть. Теперь панель обрабатывается всегда, когда видна: выставляется минимальный набор (наименьшие ГБ и
+   минуты, ползунки в минимум, платные опции выключаются, бесплатные остаются; `BEELINE_TARIFF_MINIMAL=0`
+   оставляет настройки сайта), а при `BEELINE_TARIFF_PRICE=200` панель должна показать эту цену в месяц, иначе
+   строка перезапускается и «выбрать» не нажимается. Все действия и цена пишутся в журнал («Окно параметров:
+   действия: …; цена теперь: …») и в диагностику (`tariff_configurator_selected`). Строка «Корзина:» показывает
+   блок тарифа после «изменить», он же в сообщении «В корзине нет тарифа …». Маркер: `CONFIGURATOR_SELECT_1591R45`.
 
 ## Использование
 
