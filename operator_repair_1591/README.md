@@ -356,6 +356,14 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    печатает ревизию и состояние службы. `CHECK=1` — только проверка, `NO_PULL=1` — без git.
    Без клона на сервере: `curl -fsSL https://raw.githubusercontent.com/nik236098-dotcom/tess/codex/operator-observer-15.87/operator_repair_1591/update.sh | sudo bash`.
 
+44. **Тариф заказа до оплаты: `tools/order_tariff.py`.** Ссылка заказа показывает только оплату, а тариф
+   виден лишь после неё. Инструмент открывает ссылку (`hash_order=…`, или её хвост, или последние 10 ссылок
+   из `payment_required.jsonl`) в отдельном headless Chromium, не трогая браузер бота, и печатает тариф и
+   цену из JSON-ответов сайта (ключи tariff/soc/name/price… и строки с bee/смарт часов/подписка) и строки
+   страницы с тарифом или ценой в ₽. Ничего не нажимает и не оплачивает; длинные цифры маскируются.
+   `sudo /opt/beeline/venv/bin/python /root/tess/operator_repair_1591/tools/order_tariff.py <ссылка>`;
+   `--all` печатает все поля ответов, если тариф назван неожиданным ключом.
+
 ## Использование
 
 ```

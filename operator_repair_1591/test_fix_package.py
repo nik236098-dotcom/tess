@@ -1915,6 +1915,45 @@ class MatcherEquivalenceTests(unittest.TestCase):
         self.assertLess(totals["new"], totals["old"], "the 14.1 shape_costs must not be slower than 14.0")
 
 
+class OrderTariffToolTests(unittest.TestCase):
+    """tools/order_tariff.py: the parsing parts, without a browser."""
+
+    def setUp(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("order_tariff", Path(__file__).resolve().parent / "tools" / "order_tariff.py")
+        self.mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(self.mod)
+
+    def test_links_from_args_and_hashes(self):
+        links = self.mod.links_from_args(["https://s.beeline.ru/registration/esim?hash_order=47180f97", "ba031a19", "junk"])
+        self.assertEqual(links, ["https://s.beeline.ru/registration/esim?hash_order=47180f97",
+                                 "https://s.beeline.ru/registration/esim?hash_order=ba031a19"])
+        self.assertEqual(self.mod.links_from_args(["--all"]), [])
+
+    def test_tariff_hits_keep_tariff_and_price_and_mask_numbers(self):
+        payloads = [("https://s.beeline.ru/v1/esim-selfreg/v2/getorder/?hash=abc",
+                     {"data": {"tariff": {"soc": "WATCH1", "name": "для смарт часов"}, "price": {"amount": 300},
+                               "msisdn": "79620000001", "ctn": 79620000001, "note": "подписка bee START в корзине"}})]
+        lines = self.mod.tariff_hits(payloads)
+        joined = "\n".join(lines)
+        self.assertIn("data.tariff.name = для смарт часов", joined)
+        self.assertIn("data.price.amount = 300", joined)
+        self.assertIn("data.note = подписка bee START в корзине", joined)
+        self.assertNotIn("79620000001", joined)          # a phone number is neither a tariff key nor a tariff word
+        self.assertIn("XXXXXXXXXXX", "\n".join(self.mod.tariff_hits(payloads, everything=True)))
+        self.assertEqual(self.mod.page_lines("Оплата\nК оплате: 300 ₽\nТелефон +79620000001\nТариф для смарт часов"),
+                         ["    К оплате: 300 ₽", "    Тариф для смарт часов"])
+
+    def test_links_from_records_reads_the_last_payment_links(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            (base / "payment_required.jsonl").write_text(
+                '{"row": 530, "text": "оплата https://s.beeline.ru/registration/esim?hash_order=ba031a19"}\n'
+                '{"row": 538, "text": "оплата https://s.beeline.ru/registration/esim?hash_order=47180f97"}\n')
+            self.assertEqual(self.mod.links_from_records(limit=10, base=base),
+                             ["https://s.beeline.ru/registration/esim?hash_order=ba031a19",
+                              "https://s.beeline.ru/registration/esim?hash_order=47180f97"])
+
+
 class FreshInstallTests(unittest.TestCase):
     """fresh_install.sh builds a server from the repository alone (offline mode: no apt, venv, systemd)."""
     SCRIPT = Path(__file__).resolve().parent / "fresh_install.sh"
