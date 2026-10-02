@@ -244,6 +244,46 @@ def _rows_from_journal_1591r36(log):
     return rows
 
 
+# CLEAR_BASE_1591R50
+def _clear_base_command(proc):
+    """/clear: the same base from the start. The worker is stopped, processed_numbers.txt and
+    deferred_rows.jsonl go to base_archive/ and are removed (clients.txt stays), and the worker is
+    started again, so every row of the loaded base is processed anew. Results and eSIM records are
+    not touched."""
+    if not CLIENTS_FILE.exists() or not CLIENTS_FILE.stat().st_size:
+        return "❌ База пуста: нечего запускать заново. Загрузи базу («📥 Загрузить базу»)."
+    try:
+        rows = len(load_clients(CLIENTS_FILE))
+    except Exception:
+        rows = -1
+    was_running = proc.running()
+    if was_running:
+        proc.stop()
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    deferred = BASE_DIR / "deferred_rows.jsonl"
+    processed = 0
+    try:
+        if PROCESSED_FILE.exists():
+            processed = sum(1 for line in PROCESSED_FILE.read_text("utf-8", errors="replace").splitlines() if line.strip())
+    except Exception:
+        processed = -1
+    for path, name in ((PROCESSED_FILE, f"processed_numbers_{stamp}.txt"), (deferred, f"deferred_rows_{stamp}.jsonl")):
+        try:
+            if path.exists() and path.stat().st_size:
+                (ARCHIVE_DIR / name).write_bytes(path.read_bytes())
+            path.unlink(missing_ok=True)
+        except Exception as exc:
+            return f"❌ Не очищено: {path.name}: {type(exc).__name__}: {exc}"
+    ok, start_msg = proc.start()
+    shown_rows = f"{rows} строк" if rows >= 0 else "строки"
+    shown_done = f"{processed}" if processed >= 0 else "?"
+    head = f"🧹 Отработанные номера очищены ({shown_done}), отложенные строки сброшены. База из {shown_rows} идёт с начала."
+    if ok:
+        return head + ("\n🔄 Процесс перезапущен." if was_running else "\n▶️ Процесс запущен.")
+    return head + f"\n⚠️ Запуск не удался: {start_msg}"
+
+
 def _row_link_command(argument):
     """/res <номер eSIM из пуша, хотя бы 4 последние цифры> или /res <номер строки>.
 
@@ -519,6 +559,11 @@ def main():
                     if text.startswith("/restart"):  # SCHEDULED_RESTART_1591R13
                         waiting_upload = False
                         _send(_restart_command(text[len("/restart"):]))
+                        continue
+
+                    if text.split()[0].lower().split("@")[0] == "/clear":  # CLEAR_BASE_1591R50
+                        waiting_upload = False
+                        _send(_clear_base_command(proc))
                         continue
 
                     if text.startswith("/res"):  # SIM_URL_PER_ROW_1591R36: the row's real order link

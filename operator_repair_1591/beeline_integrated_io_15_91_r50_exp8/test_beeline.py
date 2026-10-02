@@ -9391,6 +9391,8 @@ def parent_watchdog(processes, heartbeat):
     return stalled
 
 
+# CLEAR_BASE_1591R50: /clear in the controller archives and removes processed_numbers.txt and
+# deferred_rows.jsonl (base_archive/) and starts the worker again: the same base from the start.
 PROGRESS_FILE_NAME = "processed_numbers.txt"
 
 

@@ -124,7 +124,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "a9b7c58e581b6b0ecb19c4a9303ed94d253181dc56648660b0b93269d41cb293",  # r48 exp8 output
                          "a13c867e3dd9385c683a4ef1114ef7580d8767de4a555bf05764d705add4216d",  # r49 lite output
                          "c85853861d6522b598fc80f8afd85a98596ba22e2878447dab18dba17351f0d7",  # r49 output
-                         "a23d36bbb0712b40a3bf86834458a5bd32187b0dac36fc55e19cc385084d59bb"}  # r49 exp8 output
+                         "a23d36bbb0712b40a3bf86834458a5bd32187b0dac36fc55e19cc385084d59bb",  # r49 exp8 output
+                         "0e096c8f8b07be0aa13685ca9390be67716ffe2da0f2afce8a2e48b9b9ccc84c",  # r50 lite output
+                         "f47094fadff8d8b884b526453c6c696007b796e7128f81f80d56583262f4cd33",  # r50 output
+                         "6c75c1fa45f918bc0bc00a97f0109e7f6f6fa609b57055b4e3d088824324de5e"}  # r50 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -670,7 +673,8 @@ CONTROLLER_OUTPUT_SHA_R36_R37 = "f3b36badf1e9d77a1dda6fe287b5210372d42a1846f993a
 CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13_R20, CONTROLLER_OUTPUT_SHA_R27_R35,
                             CONTROLLER_OUTPUT_SHA_R36_R37,
                             "d561621ddacaa0c4e602a5da75842207a9b76f563f2d26202e75e9e7eeb6012b",  # controller of r38..r45 (menu)
-                            "c700c997e758c55001e598e10b0386cd009bc7def04b89ee234aacda704484cd"}  # controller of r46..r47 (/op)
+                            "c700c997e758c55001e598e10b0386cd009bc7def04b89ee234aacda704484cd",  # controller of r46..r47 (/op)
+                            "b008baad1551e6574389743c1b2810a39f03e198a5af4c3a823fe4296386c25c"}  # controller of r48..r49 (BEELINE_AI)
 RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
 RESTART_POLICY_FILE_NAME = "restart_policy.json"
 RESTART_DRAIN_FILE_NAME = "restart_drain.json"
@@ -4018,6 +4022,73 @@ NEW_SETTLE_PAYMENT_R30_WITH_R49 = NEW_SETTLE_PAYMENT_R30_WITH_R37.replace(OLD_NE
 README_NOTE_R49 = ('\n\nРЕВИЗИЯ 49 (fix_package_1591.py)\nВ статусе удержания «не подтверждено» DeepSeek упоминается только когда он включён. Логика подписания\n'
                    'не менялась. Маркер: EXHAUSTED_UNVERIFIED_1591R49.\n')
 
+
+# Revision 50: /clear in the bot runs the same base from the start. The worker is stopped,
+# processed_numbers.txt and deferred_rows.jsonl are archived (base_archive/) and removed, clients.txt
+# stays, and the worker is started again. Results and eSIM records are untouched.
+CONTROLLER_OUTPUT_SHA_R48_R49 = "b008baad1551e6574389743c1b2810a39f03e198a5af4c3a823fe4296386c25c"  # controller of r48..r49 (BEELINE_AI)
+CLEAR_BASE_MARKER = "CLEAR_BASE_1591R50"
+OLD_CLEAR_MARK_R50 = 'PROGRESS_FILE_NAME = "processed_numbers.txt"\n'
+NEW_CLEAR_MARK_R50 = ('# CLEAR_BASE_1591R50: /clear in the controller archives and removes processed_numbers.txt and\n'
+                      '# deferred_rows.jsonl (base_archive/) and starts the worker again: the same base from the start.\n'
+                      'PROGRESS_FILE_NAME = "processed_numbers.txt"\n')
+OLD_C_CLEAR_DEF_R50 = 'def _row_link_command(argument):\n'
+NEW_C_CLEAR_DEF_R50 = '''# CLEAR_BASE_1591R50
+def _clear_base_command(proc):
+    """/clear: the same base from the start. The worker is stopped, processed_numbers.txt and
+    deferred_rows.jsonl go to base_archive/ and are removed (clients.txt stays), and the worker is
+    started again, so every row of the loaded base is processed anew. Results and eSIM records are
+    not touched."""
+    if not CLIENTS_FILE.exists() or not CLIENTS_FILE.stat().st_size:
+        return "❌ База пуста: нечего запускать заново. Загрузи базу («📥 Загрузить базу»)."
+    try:
+        rows = len(load_clients(CLIENTS_FILE))
+    except Exception:
+        rows = -1
+    was_running = proc.running()
+    if was_running:
+        proc.stop()
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    deferred = BASE_DIR / "deferred_rows.jsonl"
+    processed = 0
+    try:
+        if PROCESSED_FILE.exists():
+            processed = sum(1 for line in PROCESSED_FILE.read_text("utf-8", errors="replace").splitlines() if line.strip())
+    except Exception:
+        processed = -1
+    for path, name in ((PROCESSED_FILE, f"processed_numbers_{stamp}.txt"), (deferred, f"deferred_rows_{stamp}.jsonl")):
+        try:
+            if path.exists() and path.stat().st_size:
+                (ARCHIVE_DIR / name).write_bytes(path.read_bytes())
+            path.unlink(missing_ok=True)
+        except Exception as exc:
+            return f"❌ Не очищено: {path.name}: {type(exc).__name__}: {exc}"
+    ok, start_msg = proc.start()
+    shown_rows = f"{rows} строк" if rows >= 0 else "строки"
+    shown_done = f"{processed}" if processed >= 0 else "?"
+    head = f"🧹 Отработанные номера очищены ({shown_done}), отложенные строки сброшены. База из {shown_rows} идёт с начала."
+    if ok:
+        return head + ("\\n🔄 Процесс перезапущен." if was_running else "\\n▶️ Процесс запущен.")
+    return head + f"\\n⚠️ Запуск не удался: {start_msg}"
+
+
+def _row_link_command(argument):
+'''
+
+OLD_C_CLEAR_CMD_R50 = '''                    if text.startswith("/res"):  # SIM_URL_PER_ROW_1591R36: the row's real order link
+'''
+NEW_C_CLEAR_CMD_R50 = '''                    if text.split()[0].lower().split("@")[0] == "/clear":  # CLEAR_BASE_1591R50
+                        waiting_upload = False
+                        _send(_clear_base_command(proc))
+                        continue
+
+                    if text.startswith("/res"):  # SIM_URL_PER_ROW_1591R36: the row's real order link
+'''
+README_NOTE_R50 = ('\n\nРЕВИЗИЯ 50 (fix_package_1591.py)\nКоманда /clear в боте запускает ту же базу с начала: процесс останавливается, processed_numbers.txt и\n'
+                   'deferred_rows.jsonl копируются в base_archive/ и удаляются (clients.txt остаётся), процесс запускается снова,\n'
+                   'и все строки загруженной базы проходят заново. Результаты и записи eSIM не трогаются. Маркер: CLEAR_BASE_1591R50.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -4859,8 +4930,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if CLEAR_BASE_MARKER in source:
+        return 50   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if EXHAUSTED_UNVERIFIED_MARKER in source:
-        return 49   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 49
     if RESIGN_LIMIT_MARKER in source:
         return 48
     if STREET_RULE_MARKER in source:
@@ -4939,6 +5012,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 47 or STREET_RULE_MARKER in source)\
             and (MAX_REVISION < 48 or RESIGN_LIMIT_MARKER in source)\
             and (MAX_REVISION < 49 or EXHAUSTED_UNVERIFIED_MARKER in source)\
+            and (MAX_REVISION < 50 or CLEAR_BASE_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -5838,6 +5912,35 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 51 (r50). /clear: the current base out of the queue.
+    if CLEAR_BASE_MARKER not in source and MAX_REVISION >= 50:
+        for old, new, what in ((OLD_CLEAR_MARK_R50, NEW_CLEAR_MARK_R50, "clear: marker"),):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        if CLEAR_BASE_MARKER not in ctrl_source:
+            for old, new, what in ((OLD_C_CLEAR_DEF_R50, NEW_C_CLEAR_DEF_R50, "controller: /clear helper"),
+                                   (OLD_C_CLEAR_CMD_R50, NEW_C_CLEAR_CMD_R50, "controller: /clear command")):
+                new_ctrl = replace_once(new_ctrl, old, new, what)
+                if old in ctrl_source:
+                    add_edit(edits["server_controller.py"], ctrl_source, old, new, ctrl_reflected)
+                else:
+                    for change in edits["server_controller.py"]:
+                        joined = "".join(change["replacement"])
+                        if old in joined:
+                            change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                            break
+                    else:
+                        raise SystemExit(f"edits.json: earlier controller entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -5942,6 +6045,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 47", README_NOTE_R47),) if built_revision >= 47 else ()),
                           *((("РЕВИЗИЯ 48", README_NOTE_R48),) if built_revision >= 48 else ()),
                           *((("РЕВИЗИЯ 49", README_NOTE_R49),) if built_revision >= 49 else ()),
+                          *((("РЕВИЗИЯ 50", README_NOTE_R50),) if built_revision >= 50 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
