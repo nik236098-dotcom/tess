@@ -268,7 +268,7 @@
         "# RESIGN_LIMIT_1591R48: BEELINE_AI=0 in the systemd unit switches the DeepSeek operator off: no automatic\n",
         "# jobs, idle lanes, «DeepSeek выключен» to a menu question. Rows that cannot confirm the signature\n",
         "# go to the user as unverified after the usual hold. AI_DEFAULT is \"0\" in the experiment build.\n",
-        "AI_DEFAULT_1591R48 = \"1\"\n",
+        "AI_DEFAULT_1591R48 = \"0\"  # EXPERIMENT_BROWSERS8_1591: DeepSeek off unless BEELINE_AI=1\n",
         "AI_ENABLED_1591R48 = str(os.environ.get(\"BEELINE_AI\") or AI_DEFAULT_1591R48).strip().lower() not in {\"0\", \"off\", \"no\", \"false\"}\n",
         "\n",
         "\n",
@@ -1802,7 +1802,7 @@
         "        value = int(str(os.environ.get(\"BEELINE_BROWSERS\") or default).strip())\n",
         "    except ValueError:\n",
         "        value = default\n",
-        "    return min(max(value, 1), 4)\n",
+        "    return min(max(value, 1), 8)  # EXPERIMENT_BROWSERS8_1591: up to 8 Chromium (32 tabs) on a big test server\n",
         "\n",
         "\n",
         "BROWSER_COUNT = _browser_count_1591r34()  # TWO_BROWSERS_1591R28: Chromium instances, TABS_PER_BROWSER tabs each\n"
@@ -1934,8 +1934,6 @@
       "end": 5562,
       "replacement": [
         "    worker[\"diagnostic\"] = None\n",
-        "    worker[\"sign_attempts_1591r48\"] = 0   # RESIGN_LIMIT_1591R48: the click budget is per row\n",
-        "    worker[\"sign_attempts_reported_1591r48\"] = False\n",
         "    worker[\"reserved_sim_url\"] = None     # SIM_URL_PER_ROW_1591R36: a row never inherits the\n",
         "    worker[\"reserved_sim_number\"] = None  # previous row's order link or reserved number\n",
         "    worker[\"post_retry_deadline\"] = None\n"
@@ -2482,25 +2480,10 @@
       ]
     },
     {
-      "start": 6423,
-      "end": 6428,
-      "replacement": [
-        "        if _sign_attempts_exhausted_1591r48(worker):  # RESIGN_LIMIT_1591R48: no third click\n",
-        "            settle_success_1591r24(base_dir, worker)\n",
-        "            return\n",
-        "        try:\n",
-        "            set_tab_status(\n",
-        "                worker, \"✍️\",\n",
-        "                \"Подтверждение успешно. Заполняю подпись и подписываю договор.\"\n",
-        "            )\n"
-      ]
-    },
-    {
       "start": 6428,
       "end": 6431,
       "replacement": [
         "            capture_contract_details(page, worker)\n",
-        "            worker[\"sign_attempts_1591r48\"] = int(worker.get(\"sign_attempts_1591r48\") or 0) + 1  # RESIGN_LIMIT_1591R48\n",
         "            _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25\n",
         "            try:\n",
         "                fill_signature_and_submit(page, worker.get(\"diagnostic\"))\n",
@@ -2881,25 +2864,6 @@
         "    return rec\n",
         "\n",
         "\n",
-        "# RESIGN_LIMIT_1591R48\n",
-        "SIGN_ATTEMPTS_MAX_1591R48 = 2\n",
-        "\n",
-        "\n",
-        "def _sign_attempts_exhausted_1591r48(worker):\n",
-        "    \"\"\"True once «Подписать договор» was clicked SIGN_ATTEMPTS_MAX_1591R48 times for this row and\n",
-        "    the page still shows the button: the click is not repeated (each one sends a new checksignature\n",
-        "    to the site); the row goes to the unverified hold instead (DeepSeek once, then UNVERIFIED).\"\"\"\n",
-        "    exhausted = int((worker or {}).get(\"sign_attempts_1591r48\") or 0) >= SIGN_ATTEMPTS_MAX_1591R48\n",
-        "    if exhausted and not worker.get(\"sign_attempts_reported_1591r48\"):\n",
-        "        worker[\"sign_attempts_reported_1591r48\"] = True\n",
-        "        print(\n",
-        "            f\"[Вкладка {worker.get('id')}] «Подписать договор» нажата {SIGN_ATTEMPTS_MAX_1591R48} раза, страница не \"\n",
-        "            \"продвинулась; больше не нажимаю, держу вкладку и отдаю на проверку.\",\n",
-        "            flush=True,\n",
-        "        )\n",
-        "    return exhausted\n",
-        "\n",
-        "\n",
         "def settle_success_1591r24(base_dir, worker):\n",
         "    \"\"\"Called where the code used to declare success because no contract controls remained.\n",
         "\n",
@@ -2940,7 +2904,7 @@
         "        set_tab_status(\n",
         "            worker, \"⚠️\",\n",
         "            \"Кнопка «Подписать договор» пропала, но признаков подписанного договора нет. \"\n",
-        "            f\"Держу вкладку {UNVERIFIED_HOLD_SECONDS // 60} мин, DeepSeek проверяет.\",\n",
+        "            f\"Держу вкладку {UNVERIFIED_HOLD_SECONDS // 60} мин, \" + (\"DeepSeek проверяет.\" if AI_ENABLED_1591R48 else \"затем отметка «не подтверждено» (DeepSeek выключен).\"),  # EXHAUSTED_UNVERIFIED_1591R49\n",
         "        )\n",
         "        external_heartbeat(worker, \"success_unverified_hold\")\n",
         "        queue_success_assist(\n",
@@ -3578,7 +3542,8 @@
       "replacement": [
         "    print(f\"Запускаю {BROWSER_COUNT} Chromium и {TAB_COUNT} рабочие вкладки. Общая очередь строк.\")  # BROWSER_HANG_1591R18\n",
         "    print(\"DeepSeek: \" + (\"включён\" if AI_ENABLED_1591R48 else \"выключен (BEELINE_AI=0)\"), flush=True)  # RESIGN_LIMIT_1591R48\n",
-        "    print(f\"Тариф: «{TARIFF_NAME}»\" + (\" (BEELINE_TARIFF из окружения службы)\" if (os.environ.get(\"BEELINE_TARIFF\") or \"\").strip() else \" (по умолчанию)\"), flush=True)  # TARIFF_LOG_1591R42\n"
+        "    print(f\"Тариф: «{TARIFF_NAME}»\" + (\" (BEELINE_TARIFF из окружения службы)\" if (os.environ.get(\"BEELINE_TARIFF\") or \"\").strip() else \" (по умолчанию)\"), flush=True)  # TARIFF_LOG_1591R42\n",
+        "    print(f\"ЭКСПЕРИМЕНТ browsers8: лимит BEELINE_BROWSERS поднят до 8 Chromium; сейчас {BROWSER_COUNT} × {TABS_PER_BROWSER} вкладок.\", flush=True)  # EXPERIMENT_BROWSERS8_1591\n"
       ]
     },
     {

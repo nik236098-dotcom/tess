@@ -6713,8 +6713,6 @@ def _row_restart_exhausted_1591r32(worker, row, rows):
 def reset_runtime_state(worker):
     worker["row"] = None
     worker["diagnostic"] = None
-    worker["sign_attempts_1591r48"] = 0   # RESIGN_LIMIT_1591R48: the click budget is per row
-    worker["sign_attempts_reported_1591r48"] = False
     worker["reserved_sim_url"] = None     # SIM_URL_PER_ROW_1591R36: a row never inherits the
     worker["reserved_sim_number"] = None  # previous row's order link or reserved number
     worker["post_retry_deadline"] = None
@@ -7944,16 +7942,12 @@ def tick_post_auth_review(base_dir, worker):
             queue_success_assist(worker, "кнопка «Подписать договор» неактивна")
             return
 
-        if _sign_attempts_exhausted_1591r48(worker):  # RESIGN_LIMIT_1591R48: no third click
-            settle_success_1591r24(base_dir, worker)
-            return
         try:
             set_tab_status(
                 worker, "✍️",
                 "Подтверждение успешно. Заполняю подпись и подписываю договор."
             )
             capture_contract_details(page, worker)
-            worker["sign_attempts_1591r48"] = int(worker.get("sign_attempts_1591r48") or 0) + 1  # RESIGN_LIMIT_1591R48
             _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25
             try:
                 fill_signature_and_submit(page, worker.get("diagnostic"))
@@ -8355,25 +8349,6 @@ def _finish_payment_required_1591r26(base_dir, worker, payment_text):
     return rec
 
 
-# RESIGN_LIMIT_1591R48
-SIGN_ATTEMPTS_MAX_1591R48 = 2
-
-
-def _sign_attempts_exhausted_1591r48(worker):
-    """True once «Подписать договор» was clicked SIGN_ATTEMPTS_MAX_1591R48 times for this row and
-    the page still shows the button: the click is not repeated (each one sends a new checksignature
-    to the site); the row goes to the unverified hold instead (DeepSeek once, then UNVERIFIED)."""
-    exhausted = int((worker or {}).get("sign_attempts_1591r48") or 0) >= SIGN_ATTEMPTS_MAX_1591R48
-    if exhausted and not worker.get("sign_attempts_reported_1591r48"):
-        worker["sign_attempts_reported_1591r48"] = True
-        print(
-            f"[Вкладка {worker.get('id')}] «Подписать договор» нажата {SIGN_ATTEMPTS_MAX_1591R48} раза, страница не "
-            "продвинулась; больше не нажимаю, держу вкладку и отдаю на проверку.",
-            flush=True,
-        )
-    return exhausted
-
-
 def settle_success_1591r24(base_dir, worker):
     """Called where the code used to declare success because no contract controls remained.
 
@@ -8414,7 +8389,7 @@ def settle_success_1591r24(base_dir, worker):
         set_tab_status(
             worker, "⚠️",
             "Кнопка «Подписать договор» пропала, но признаков подписанного договора нет. "
-            f"Держу вкладку {UNVERIFIED_HOLD_SECONDS // 60} мин, DeepSeek проверяет.",
+            f"Держу вкладку {UNVERIFIED_HOLD_SECONDS // 60} мин, " + ("DeepSeek проверяет." if AI_ENABLED_1591R48 else "затем отметка «не подтверждено» (DeepSeek выключен)."),  # EXHAUSTED_UNVERIFIED_1591R49
         )
         external_heartbeat(worker, "success_unverified_hold")
         queue_success_assist(

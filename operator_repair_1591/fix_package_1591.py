@@ -121,7 +121,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "ee14eacc783114065a00649bdf1a78872ca74c00bbc936a2f0e01e7040638ff5",  # r47 exp8 output
                          "45925d827db3e587aa6d7d7b12888888b99d9f51799e14b88f258876db43b72b",  # r48 lite output
                          "3645c2db0ac230dae1201fb32d83826d4d95d638258d208d853a26ffa7348706",  # r48 output
-                         "a9b7c58e581b6b0ecb19c4a9303ed94d253181dc56648660b0b93269d41cb293"}  # r48 exp8 output
+                         "a9b7c58e581b6b0ecb19c4a9303ed94d253181dc56648660b0b93269d41cb293",  # r48 exp8 output
+                         "a13c867e3dd9385c683a4ef1114ef7580d8767de4a555bf05764d705add4216d",  # r49 lite output
+                         "c85853861d6522b598fc80f8afd85a98596ba22e2878447dab18dba17351f0d7",  # r49 output
+                         "a23d36bbb0712b40a3bf86834458a5bd32187b0dac36fc55e19cc385084d59bb"}  # r49 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3923,13 +3926,8 @@ NEW_OBSERVER_LIMIT_R48 = ('    # RESIGN_LIMIT_1591R48: the budget grows with the
 README_NOTE_R48 = ('\n\nРЕВИЗИЯ 48 (fix_package_1591.py)\nВыключатель DeepSeek: BEELINE_AI=0 в окружении службы отключает оператора целиком (автоматические\n'
                    'задания не ставятся, линии простаивают без запросов к API, при старте «DeepSeek: выключен», на вопрос из меню\n'
                    'бот отвечает, что DeepSeek выключен); в экспериментальной сборке он выключен по умолчанию, BEELINE_AI=1 включает.\n'
-                   'Без бесконечного переподписания и с наблюдателем, который успевает за вкладками. Когда сайт отвечал на\n'
-                   'запрос подписи 200, а страница оставалась на personal-data-form, бот через 12 с снова видел кнопку и\n'
-                   'нажимал её опять, без конца (каждое нажатие — новый checksignature), а DeepSeek не звал (r37). Теперь\n'
-                   'кнопка нажимается не более двух раз на строку, затем строка идёт в обычное удержание «не подтверждено»\n'
-                   '(DeepSeek один раз, 3 минуты, запись для пользователя). Сбор страниц для линий DeepSeek имел жёсткие 45 с:\n'
-                   'при 28 вкладках он не укладывался, линия перезапускалась каждые 45 с и не отвечала; теперь лимит растёт\n'
-                   'с числом вкладок (6 с на вкладку, не меньше 45). Маркер: RESIGN_LIMIT_1591R48.\n')
+                   'Сбор страниц для линий DeepSeek имел жёсткие 45 с: при 28 вкладках он не укладывался и линия перезапускалась\n'
+                   'каждые 45 с; лимит теперь 6 с на вкладку, не меньше 45. Логика подписания не менялась. Маркер: RESIGN_LIMIT_1591R48.\n')
 
 
 # r48, part two: the DeepSeek switch. BEELINE_AI=0 (the experiment build's default; production builds
@@ -3994,6 +3992,31 @@ OLD_SIGN_CALL_R25_WITH_R48 = OLD_SIGN_CALL_R25.replace(OLD_RESIGN_COUNT_R48, NEW
 NEW_SIGN_CALL_R30_WITH_R48 = NEW_SIGN_CALL_R30.replace(OLD_RESIGN_COUNT_R48, NEW_RESIGN_COUNT_R48)
 OLD_EXP_AI_DEFAULT = 'AI_DEFAULT_1591R48 = "1"\n'
 NEW_EXP_AI_DEFAULT = 'AI_DEFAULT_1591R48 = "0"  # EXPERIMENT_BROWSERS8_1591: DeepSeek off unless BEELINE_AI=1\n'
+
+
+# Revision 49: an exhausted row is never a success by the network alone. r48 sent a row whose
+# «Подписать договор» had been clicked twice to settle_success, where the r37 rule «a 2xx answer to
+# the signing request is evidence» turned it into a false #успешно while the button was still on
+# the page. For such rows the network shortcut is off: the usual 3-minute hold, then UNVERIFIED
+# with the link for the user. The hold status names DeepSeek only when it is on.
+EXHAUSTED_UNVERIFIED_MARKER = "EXHAUSTED_UNVERIFIED_1591R49"
+OLD_NET_EVIDENCE_R49 = '    if not evidence and _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37\n'
+NEW_NET_EVIDENCE_R49 = ('    # EXHAUSTED_UNVERIFIED_1591R49: a row that used up its sign clicks with the button still on the page\n'
+                        '    # is never a success by the network answer alone\n'
+                        '    if not evidence and not worker.get("sign_attempts_reported_1591r48") and _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37\n')
+OLD_LIMIT_CONST_R49 = 'SIGN_ATTEMPTS_MAX_1591R48 = 2\n'
+NEW_LIMIT_CONST_R49 = ('# EXHAUSTED_UNVERIFIED_1591R49: off by default (r47 behaviour: the click is repeated while the button is\n'
+                       '# there); BEELINE_SIGN_ATTEMPTS=2 in the systemd unit switches the limit on.\n'
+                       'SIGN_ATTEMPTS_MAX_1591R48 = int(str(os.environ.get("BEELINE_SIGN_ATTEMPTS") or "0").strip() or 0)\n')
+OLD_LIMIT_CHECK_R49 = '    exhausted = int((worker or {}).get("sign_attempts_1591r48") or 0) >= SIGN_ATTEMPTS_MAX_1591R48\n'
+NEW_LIMIT_CHECK_R49 = '    exhausted = SIGN_ATTEMPTS_MAX_1591R48 > 0 and int((worker or {}).get("sign_attempts_1591r48") or 0) >= SIGN_ATTEMPTS_MAX_1591R48\n'
+OLD_HOLD_STATUS_R49 = '            f"Держу вкладку {UNVERIFIED_HOLD_SECONDS // 60} мин, DeepSeek проверяет.",\n'
+NEW_HOLD_STATUS_R49 = ('            f"Держу вкладку {UNVERIFIED_HOLD_SECONDS // 60} мин, " + ("DeepSeek проверяет." if AI_ENABLED_1591R48 else "затем отметка «не подтверждено» (DeepSeek выключен)."),  # EXHAUSTED_UNVERIFIED_1591R49\n')
+# the r31 step (lite → full) must recognise the settle block in its r49 shape as well
+OLD_SETTLE_PAYMENT_R26_WITH_R49 = OLD_SETTLE_PAYMENT_R26_WITH_R37.replace(OLD_NET_EVIDENCE_R49, NEW_NET_EVIDENCE_R49)
+NEW_SETTLE_PAYMENT_R30_WITH_R49 = NEW_SETTLE_PAYMENT_R30_WITH_R37.replace(OLD_NET_EVIDENCE_R49, NEW_NET_EVIDENCE_R49)
+README_NOTE_R49 = ('\n\nРЕВИЗИЯ 49 (fix_package_1591.py)\nВ статусе удержания «не подтверждено» DeepSeek упоминается только когда он включён. Логика подписания\n'
+                   'не менялась. Маркер: EXHAUSTED_UNVERIFIED_1591R49.\n')
 
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
@@ -4836,8 +4859,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if EXHAUSTED_UNVERIFIED_MARKER in source:
+        return 49   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if RESIGN_LIMIT_MARKER in source:
-        return 48   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 48
     if STREET_RULE_MARKER in source:
         return 47
     if OPERATOR_LIVE_MARKER in source:
@@ -4913,6 +4938,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 46 or OPERATOR_LIVE_MARKER in source)\
             and (MAX_REVISION < 47 or STREET_RULE_MARKER in source)\
             and (MAX_REVISION < 48 or RESIGN_LIMIT_MARKER in source)\
+            and (MAX_REVISION < 49 or EXHAUSTED_UNVERIFIED_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -5382,7 +5408,9 @@ def main(argv: list[str]) -> int:
                                (OLD_OBSERVER_FAIL, NEW_OBSERVER_FAIL, "observer busy off"),
                                *(((OLD_SETTLE_PAYMENT_R26, NEW_SETTLE_PAYMENT_R30, "settle verdict"),)
                                  if OLD_SETTLE_PAYMENT_R26 in new_source else
-                                 ((OLD_SETTLE_PAYMENT_R26_WITH_R37, NEW_SETTLE_PAYMENT_R30_WITH_R37, "settle verdict (lite upgrade)"),))):
+                                 ((OLD_SETTLE_PAYMENT_R26_WITH_R37, NEW_SETTLE_PAYMENT_R30_WITH_R37, "settle verdict (lite upgrade)"),)
+                                 if OLD_SETTLE_PAYMENT_R26_WITH_R37 in new_source else
+                                 ((OLD_SETTLE_PAYMENT_R26_WITH_R49, NEW_SETTLE_PAYMENT_R30_WITH_R49, "settle verdict (lite upgrade, r49)"),))):
             new_source = replace_once(new_source, old, new, what)
             if old in source:
                 add_edit(edits["test_beeline.py"], source, old, new, reflected)
@@ -5765,11 +5793,7 @@ def main(argv: list[str]) -> int:
 
     # 49 (r48). Two sign clicks per row at most; the observer's page budget grows with the tabs.
     if RESIGN_LIMIT_MARKER not in source and MAX_REVISION >= 48:
-        for old, new, what in ((OLD_RESIGN_DEF_R48, NEW_RESIGN_DEF_R48, "resign limit: helper"),
-                               (OLD_RESIGN_SIGN_R48, NEW_RESIGN_SIGN_R48, "resign limit: the sign branch"),
-                               (OLD_RESIGN_COUNT_R48, NEW_RESIGN_COUNT_R48, "resign limit: the click counter"),
-                               (OLD_RESIGN_RESET_R48, NEW_RESIGN_RESET_R48, "resign limit: per-row reset"),
-                               (OLD_OBSERVER_LIMIT_R48, NEW_OBSERVER_LIMIT_R48, "observer: budget per tab"),
+        for old, new, what in ((OLD_OBSERVER_LIMIT_R48, NEW_OBSERVER_LIMIT_R48, "observer: budget per tab"),
                                (OLD_AI_GATE_DEF_R48, NEW_AI_GATE_DEF_R48, "ai switch: constant"),
                                (OLD_AI_GATE_BODY_R48, NEW_AI_GATE_BODY_R48, "ai switch: no automatic jobs"),
                                (OLD_AI_LANE_R48, NEW_AI_LANE_R48, "ai switch: idle lanes"),
@@ -5798,6 +5822,21 @@ def main(argv: list[str]) -> int:
                 raise SystemExit("edits.json: earlier controller entry for the /op block not found")
         if "AI_ENABLED_1591R48" not in test_src:
             test_src = replace_once(test_src, OLD_TEST_AI_NS_R48, NEW_TEST_AI_NS_R48, "test_update.py observer fixture (ai switch)")
+
+    # 50 (r49). An exhausted row is never a success by the network alone; the hold status names DeepSeek only when on.
+    if EXHAUSTED_UNVERIFIED_MARKER not in source and MAX_REVISION >= 49:
+        for old, new, what in ((OLD_HOLD_STATUS_R49, NEW_HOLD_STATUS_R49, "hold status: DeepSeek named only when on"),):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
@@ -5902,6 +5941,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 46", README_NOTE_R46),) if built_revision >= 46 else ()),
                           *((("РЕВИЗИЯ 47", README_NOTE_R47),) if built_revision >= 47 else ()),
                           *((("РЕВИЗИЯ 48", README_NOTE_R48),) if built_revision >= 48 else ()),
+                          *((("РЕВИЗИЯ 49", README_NOTE_R49),) if built_revision >= 49 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
