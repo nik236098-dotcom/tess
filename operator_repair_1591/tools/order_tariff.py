@@ -23,8 +23,10 @@ from playwright.sync_api import sync_playwright
 LINK_RE = re.compile(r"https?://\S*hash_order=[0-9a-f]+", re.I)
 HASH_RE = re.compile(r"^[0-9a-f]{6,32}$", re.I)
 DEFAULT_LINK = "https://s.beeline.ru/registration/esim?hash_order={}"
-TARIFF_WORDS = re.compile(r"bee\s*\w+|смарт|часов|подписк|тариф|start|hit|up\b", re.I)
-KEY_WORDS = re.compile(r"tarif|tariff|soc|plan|price|amount|sum|cost|total|name|title|product|offer", re.I)
+TARIFF_WORDS = re.compile(r"bee\s*\w+|смарт|часов|подписк|тариф", re.I)
+KEY_WORDS = re.compile(r"tarif|tariff|soc\b|plan|price|amount|sum\b|cost|total|product|offer|rate", re.I)
+# static dictionaries of the site (texts of errors and hints), not the order: skipped unless --all
+STATIC_URL = re.compile(r"selfregcontent|/content/|dictionar|i18n|translation|static\.", re.I)
 PRICE_LINE = re.compile(r"₽|руб", re.I)
 MASK_RE = re.compile(r"\d{10,}")
 
@@ -73,15 +75,42 @@ def tariff_hits(payloads, everything=False):
     """Lines worth reading from the captured JSON answers: tariff-like keys and tariff-like strings."""
     lines = []
     for url, data in payloads:
+        if STATIC_URL.search(url) and not everything:
+            continue
         short_url = re.sub(r"^https?://[^/]+", "", url)[:90]
+        per_payload = 0
         for path, value in walk(data):
+            if per_payload >= 40:
+                break
             text = str(value)
             key = path.rsplit(".", 1)[-1]
             wanted = everything or (KEY_WORDS.search(key) and value not in (None, "", [], {})) \
                 or (isinstance(value, str) and TARIFF_WORDS.search(value))
             if wanted and len(text) <= 160:
                 lines.append(f"    {short_url}  {path} = {mask(text)}")
-    return lines[:80]
+                per_payload += 1
+    return lines[:120]
+
+
+def answers_summary(payloads):
+    """One line per JSON answer: path, size and the top-level keys, so an unexpected endpoint is visible."""
+    out = []
+    for url, data in payloads:
+        short_url = re.sub(r"^https?://[^/]+", "", url)[:100]
+        body = data.get("data", data) if isinstance(data, dict) else data
+        keys = ", ".join(list(body.keys())[:12]) if isinstance(body, dict) else type(body).__name__
+        tag = "  (словарь текстов сайта)" if STATIC_URL.search(url) else ""
+        out.append(f"    {short_url}  ключи: {mask(keys)[:150]}{tag}")
+    return out
+
+
+def first_lines(text, limit=14):
+    out = []
+    for raw in (text or "").splitlines():
+        line = " ".join(raw.split())
+        if line:
+            out.append("    " + mask(line)[:160])
+    return out[:limit]
 
 
 def page_lines(text):
@@ -130,7 +159,7 @@ def inspect(browser, link, everything=False, settle_ms=4000):
         context.close()
     return {"status": status, "final_url": final_url, "title": title,
             "json_lines": tariff_hits(payloads, everything), "page_lines": page_lines(text),
-            "answers": len(payloads)}
+            "answers": answers_summary(payloads), "first_lines": first_lines(text)}
 
 
 def launch_headless(p):
@@ -163,11 +192,14 @@ def main(argv):
                     print(f"  не открылась: {type(exc).__name__}: {str(exc)[:160]}")
                     continue
                 print(f"  HTTP {info['status']}  → {info['final_url'][:110]}\n  Заголовок: {info['title'][:100]}")
-                print(f"  Ответов сайта в JSON: {info['answers']}")
-                print("  Тариф и цена в ответах сайта:" if info["json_lines"] else "  В ответах сайта тариф не назван.")
+                print(f"  Ответов сайта в JSON: {len(info['answers'])}")
+                print("\n".join(info["answers"]))
+                print("  Тариф и цена в ответах сайта:" if info["json_lines"] else "  В ответах сайта (кроме словарей) тариф не назван.")
                 print("\n".join(info["json_lines"]))
                 print("  На странице:" if info["page_lines"] else "  На странице нет строк с тарифом или ценой.")
                 print("\n".join(info["page_lines"]))
+                print("  Первые строки страницы:")
+                print("\n".join(info["first_lines"]) or "    (пусто)")
         finally:
             browser.close()
     return 0
