@@ -23,10 +23,10 @@ from playwright.sync_api import sync_playwright
 LINK_RE = re.compile(r"https?://\S*hash_order=[0-9a-f]+", re.I)
 HASH_RE = re.compile(r"^[0-9a-f]{6,32}$", re.I)
 DEFAULT_LINK = "https://s.beeline.ru/registration/esim?hash_order={}"
-TARIFF_WORDS = re.compile(r"bee\s*\w+|смарт|часов|подписк|тариф", re.I)
+TARIFF_WORDS = re.compile(r"\bbee(?!line)\s*\w+|смарт|часов|подписк|тариф", re.I)  # bee START/HIT, not beeline
 KEY_WORDS = re.compile(r"tarif|tariff|soc\b|plan|price|amount|sum\b|cost|total|product|offer|rate", re.I)
 # static dictionaries of the site (texts of errors and hints), not the order: skipped unless --all
-STATIC_URL = re.compile(r"selfregcontent|/content/|dictionar|i18n|translation|static\.", re.I)
+STATIC_URL = re.compile(r"selfregcontent|/content/|dictionar|i18n|translation|static\.|chatwidget|analytics|metrika", re.I)
 PRICE_LINE = re.compile(r"₽|руб", re.I)
 MASK_RE = re.compile(r"\d{10,}")
 
