@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 41 лежит в `beeline_integrated_io_15_91_r42/` (включает ревизии 30–40); рядом
-`beeline_integrated_io_15_91_r42_lite/` — та же ревизия 41 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 41 лежит в `beeline_integrated_io_15_91_r43/` (включает ревизии 30–40); рядом
+`beeline_integrated_io_15_91_r43_lite/` — та же ревизия 41 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -69,7 +69,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r42
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r43
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -363,6 +363,13 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    страницы с тарифом или ценой в ₽. Ничего не нажимает и не оплачивает; длинные цифры маскируются.
    `sudo /opt/beeline/venv/bin/python /root/tess/operator_repair_1591/tools/order_tariff.py <ссылка>`;
    `--all` печатает все поля ответов, если тариф назван неожиданным ключом.
+
+45. **Тариф заказа виден в журнале и в пуше (ревизия 43).** Ссылка заказа до оплаты тариф не показывает
+   (`tools/order_tariff.py` это подтвердил: в ответах сайта только статус заказа). Поэтому после шага тарифа
+   строка один раз читает видимый текст страницы, ничего не нажимая: строку с названием `TARIFF_NAME` и строки
+   с ценой (₽). В журнале появляется «Корзина: «для смарт часов»; цены: 300 ₽/мес», в диагностике событие
+   `basket_summary`, в записях успеха/оплаты/неподтверждённой подписи поле `basket`, а в коротком пуше строка
+   «🧾 для смарт часов · 300 ₽/мес». Маркер: `BASKET_SUMMARY_1591R43`.
 
 ## Использование
 

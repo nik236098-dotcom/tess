@@ -810,6 +810,9 @@
         "        f\"📄 Строка {row_no}/{worker.get('total_rows') or '?'} · {active_value} | {second_value}\",\n",
         "        outcome,\n",
         "    ]\n",
+        "    basket = rec.get(\"basket\") or {}  # BASKET_SUMMARY_1591R43: the tariff as the basket showed it\n",
+        "    if basket.get(\"tariff\") or basket.get(\"prices\"):\n",
+        "        lines.append(f\"🧾 {basket.get('tariff') or '—'} · {(basket.get('prices') or ['—'])[0]}\")\n",
         "    if tag == \"#оплата\" and rec.get(\"sim_url\"):\n",
         "        lines.append(f\"🔗 {rec['sim_url']}\")\n",
         "    lines.append(\"🗂 Карточка и отметки: меню бота → 📱 Мои eSIM\")\n",
@@ -943,6 +946,14 @@
       "replacement": [
         "        \"time\": time.strftime(\"%Y-%m-%d %H:%M:%S\"),  # TELEGRAM_MENU_1591R38: order in «Мои eSIM»\n",
         "        \"profile\":dict(worker.get(\"success_profile\") or {}),\n"
+      ]
+    },
+    {
+      "start": 4511,
+      "end": 4512,
+      "replacement": [
+        "        \"profile\":dict(worker.get(\"success_profile\") or {}),\n",
+        "        \"basket\": getattr(worker.get(\"page\"), \"_basket_summary_1591r43\", None),  # BASKET_SUMMARY_1591R43\n"
       ]
     },
     {
@@ -1117,6 +1128,40 @@
         "_TARIFF_PICKER_HEADER_RE_1591R32 = re.compile(r\"^\\s*выберите тариф\\s*$\", re.I)\n",
         "_TARIFF_TITLE_RE_1591R32 = re.compile(r\"^\\s*подписка bee\\b\", re.I)\n",
         "_TARIFF_BASKET_BUTTON_RE_1591R32 = re.compile(r\"^\\s*(изменить|удалить тариф)\\s*$\", re.I)\n",
+        "\n",
+        "\n",
+        "# BASKET_SUMMARY_1591R43\n",
+        "def _basket_summary_1591r43(page, diagnostic=None):\n",
+        "    \"\"\"The tariff title and the price lines visible after the tariff step, read once from the\n",
+        "    page text (nothing clicked, nothing awaited). Printed, written to the diagnostic and kept on\n",
+        "    the page object for the success/payment records and the push. None when the page cannot be read.\"\"\"\n",
+        "    try:\n",
+        "        text = page.evaluate(\"() => document.body ? document.body.innerText : ''\") or \"\"\n",
+        "    except Exception as exc:\n",
+        "        print(f\"Корзина не прочитана: {type(exc).__name__}\", flush=True)\n",
+        "        return None\n",
+        "    lines = [\" \".join(line.split()) for line in str(text).splitlines()]\n",
+        "    lines = [line for line in lines if line]\n",
+        "    wanted = TARIFF_NAME.lower()\n",
+        "    tariff = next((line[:80] for line in lines if wanted in line.lower()), None)\n",
+        "    prices = [line[:60] for line in lines if \"₽\" in line][:4]\n",
+        "    others = [line[:60] for line in lines if _TARIFF_TITLE_RE_1591R32.search(line) and wanted not in line.lower()][:3]\n",
+        "    summary = {\"tariff\": tariff, \"prices\": prices, \"other_titles\": others}\n",
+        "    try:\n",
+        "        setattr(page, \"_basket_summary_1591r43\", summary)\n",
+        "    except Exception:\n",
+        "        pass\n",
+        "    print(\n",
+        "        f\"Корзина: {'«' + tariff + '»' if tariff else 'название «' + TARIFF_NAME + '» не видно'}; \"\n",
+        "        f\"цены: {', '.join(prices) or '—'}\" + (f\"; другие названия: {', '.join(others)}\" if others else \"\"),\n",
+        "        flush=True,\n",
+        "    )\n",
+        "    if diagnostic is not None:\n",
+        "        try:\n",
+        "            diagnostic.write(\"basket_summary\", **summary)\n",
+        "        except Exception:\n",
+        "            pass\n",
+        "    return summary\n",
         "\n",
         "\n",
         "# TARIFF_CONFIG_1591R41\n",
@@ -1354,6 +1399,15 @@
       "end": 5058,
       "replacement": [
         "            print(f\"На странице найдено название «{TARIFF_NAME}». Выбираю eSIM...\")  # TARIFF_LOG_1591R42\n"
+      ]
+    },
+    {
+      "start": 5058,
+      "end": 5060,
+      "replacement": [
+        "        else:\n",
+        "            print(\"Форма eSIM уже доступна. Продолжаю без ожидания заголовка тарифа...\")\n",
+        "        _basket_summary_1591r43(page, diagnostic)  # BASKET_SUMMARY_1591R43: what the basket holds\n"
       ]
     },
     {
@@ -2353,6 +2407,7 @@
         "        \"profile\": dict(worker.get(\"success_profile\") or {}),\n",
         "        \"final_url\": final.get(\"url\") or \"\", \"final_title\": final.get(\"title\") or \"\",\n",
         "        \"final_links\": list(final.get(\"links\") or []), \"reason\": str(reason or \"\"),\n",
+        "        \"basket\": getattr(worker.get(\"page\"), \"_basket_summary_1591r43\", None),  # BASKET_SUMMARY_1591R43\n",
         "        \"time\": time.strftime(\"%Y-%m-%d %H:%M:%S\"),\n",
         "        \"sign_trace\": _sign_trace_summary_1591r25(worker.get(\"sign_trace\")),  # SIGN_TRACE_1591R25\n",
         "    }\n",
@@ -2439,6 +2494,7 @@
         "        \"profile\": dict(worker.get(\"success_profile\") or {}),\n",
         "        \"final_url\": final.get(\"url\") or \"\", \"final_title\": final.get(\"title\") or \"\",\n",
         "        \"final_links\": list(final.get(\"links\") or []), \"payment_text\": str(payment_text or \"\"),\n",
+        "        \"basket\": getattr(worker.get(\"page\"), \"_basket_summary_1591r43\", None),  # BASKET_SUMMARY_1591R43\n",
         "        \"sign_trace\": _sign_trace_summary_1591r25(worker.get(\"sign_trace\")),\n",
         "        \"time\": time.strftime(\"%Y-%m-%d %H:%M:%S\"),\n",
         "    }\n",

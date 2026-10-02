@@ -103,7 +103,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "500488cc68d96a1cebda5d421ca4ca653329494d798bd2225ce0ef4b330421ef",  # r41 lite output
                          "f05c32d36010b729259267d3f376cd44ae3a7feb12c653f36efee830e10ee8a6",  # r41 output
                          "596d521c36270a13b733832a75c694531910035ba624503e4e0cfd2533305fd9",  # r42 lite output
-                         "a20d4ff24cf13165a2d75737a4caddea5a690057b42c9236d7ca242894ae2fc1"}  # r42 output
+                         "a20d4ff24cf13165a2d75737a4caddea5a690057b42c9236d7ca242894ae2fc1",  # r42 output
+                         "81c76b0265edeb7a0aa6d31abcd128754b03787ac7860ba45e3e9651929023a7",  # r43 lite output
+                         "94226cc00b365c7fcf3d644d2fdf19f1f4a208c31ada602429325af7bab390b8"}  # r43 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3222,6 +3224,67 @@ NEW_TARIFF_WAIT_R42 = '                f"Точный текст «{TARIFF_NAME}
 OLD_TARIFF_START_R42 = '    print(f"Запускаю {BROWSER_COUNT} Chromium и {TAB_COUNT} рабочие вкладки. Общая очередь строк.")  # BROWSER_HANG_1591R18\n'
 NEW_TARIFF_START_R42 = OLD_TARIFF_START_R42 + '    print(f"Тариф: «{TARIFF_NAME}»" + (" (BEELINE_TARIFF из окружения службы)" if (os.environ.get("BEELINE_TARIFF") or "").strip() else " (по умолчанию)"), flush=True)  # TARIFF_LOG_1591R42\n'
 README_NOTE_R42 = '\n\nРЕВИЗИЯ 42 (fix_package_1591.py)\nЖурнал называет настоящий тариф. Строки «На странице найдено название bee START» и «Точный текст\nbee START пока не появился» были зашиты в код как есть, хотя проверка шла по TARIFF_NAME: при\nBEELINE_TARIFF=для смарт часов журнал всё равно писал про bee START. Теперь в них подставляется\nTARIFF_NAME, а при старте печатается «Тариф: «…» (BEELINE_TARIFF из окружения службы | по умолчанию)».\nМаркер: TARIFF_LOG_1591R42.\n'
+
+# Revision 43: what the basket really holds. After the tariff step the row reads the visible text
+# of the page once (no clicks, no waits): the line naming TARIFF_NAME and the price lines (₽). It is
+# printed to the journal («Корзина: …»), written to the row's diagnostic, kept on the page object and
+# copied into the success/payment/unverified records and the short push (🧾 line). The payment link
+# shows no tariff before paying, so this is the only place the tariff of an order is visible.
+BASKET_SUMMARY_MARKER = "BASKET_SUMMARY_1591R43"
+OLD_BASKET_CALL_R43 = '        else:\n            print("Форма eSIM уже доступна. Продолжаю без ожидания заголовка тарифа...")\n'
+NEW_BASKET_CALL_R43 = OLD_BASKET_CALL_R43 + '        _basket_summary_1591r43(page, diagnostic)  # BASKET_SUMMARY_1591R43: what the basket holds\n'
+OLD_BASKET_DEF_R43 = '# TARIFF_CONFIG_1591R41\ndef _confirm_tariff_configurator_1591r41(page, diagnostic=None, timeout=8000):\n'
+NEW_BASKET_DEF_R43 = '''# BASKET_SUMMARY_1591R43
+def _basket_summary_1591r43(page, diagnostic=None):
+    """The tariff title and the price lines visible after the tariff step, read once from the
+    page text (nothing clicked, nothing awaited). Printed, written to the diagnostic and kept on
+    the page object for the success/payment records and the push. None when the page cannot be read."""
+    try:
+        text = page.evaluate("() => document.body ? document.body.innerText : ''") or ""
+    except Exception as exc:
+        print(f"Корзина не прочитана: {type(exc).__name__}", flush=True)
+        return None
+    lines = [" ".join(line.split()) for line in str(text).splitlines()]
+    lines = [line for line in lines if line]
+    wanted = TARIFF_NAME.lower()
+    tariff = next((line[:80] for line in lines if wanted in line.lower()), None)
+    prices = [line[:60] for line in lines if "₽" in line][:4]
+    others = [line[:60] for line in lines if _TARIFF_TITLE_RE_1591R32.search(line) and wanted not in line.lower()][:3]
+    summary = {"tariff": tariff, "prices": prices, "other_titles": others}
+    try:
+        setattr(page, "_basket_summary_1591r43", summary)
+    except Exception:
+        pass
+    print(
+        f"Корзина: {'«' + tariff + '»' if tariff else 'название «' + TARIFF_NAME + '» не видно'}; "
+        f"цены: {', '.join(prices) or '—'}" + (f"; другие названия: {', '.join(others)}" if others else ""),
+        flush=True,
+    )
+    if diagnostic is not None:
+        try:
+            diagnostic.write("basket_summary", **summary)
+        except Exception:
+            pass
+    return summary
+
+
+''' + OLD_BASKET_DEF_R43
+OLD_BASKET_SUCCESS_R43 = '        "profile":dict(worker.get("success_profile") or {}),\n'
+NEW_BASKET_SUCCESS_R43 = OLD_BASKET_SUCCESS_R43 + '        "basket": getattr(worker.get("page"), "_basket_summary_1591r43", None),  # BASKET_SUMMARY_1591R43\n'
+OLD_BASKET_PAYMENT_R43 = '        "final_links": list(final.get("links") or []), "payment_text": str(payment_text or ""),\n'
+NEW_BASKET_PAYMENT_R43 = OLD_BASKET_PAYMENT_R43 + '        "basket": getattr(worker.get("page"), "_basket_summary_1591r43", None),  # BASKET_SUMMARY_1591R43\n'
+OLD_BASKET_UNVERIFIED_R43 = '        "final_links": list(final.get("links") or []), "reason": str(reason or ""),\n'
+NEW_BASKET_UNVERIFIED_R43 = OLD_BASKET_UNVERIFIED_R43 + '        "basket": getattr(worker.get("page"), "_basket_summary_1591r43", None),  # BASKET_SUMMARY_1591R43\n'
+OLD_BASKET_PUSH_R43 = '    if tag == "#оплата" and rec.get("sim_url"):\n'
+NEW_BASKET_PUSH_R43 = ('    basket = rec.get("basket") or {}  # BASKET_SUMMARY_1591R43: the tariff as the basket showed it\n'
+                       '    if basket.get("tariff") or basket.get("prices"):\n'
+                       '        lines.append(f"🧾 {basket.get(\'tariff\') or \'—\'} · {(basket.get(\'prices\') or [\'—\'])[0]}")\n'
+                       + OLD_BASKET_PUSH_R43)
+README_NOTE_R43 = ('\n\nРЕВИЗИЯ 43 (fix_package_1591.py)\nЧто лежит в корзине. После шага тарифа строка один раз читает видимый текст страницы (ничего не\n'
+                   'нажимая и не ожидая): строку с названием TARIFF_NAME и строки с ценой (₽). Это печатается в журнал\n'
+                   '(«Корзина: …»), пишется в диагностику строки и попадает в записи успеха/оплаты/неподтверждённой\n'
+                   'подписи (поле basket) и в короткий пуш строкой 🧾. Ссылка заказа до оплаты тариф не показывает,\n'
+                   'поэтому это единственное место, где тариф заказа виден. Маркер: BASKET_SUMMARY_1591R43.\n')
 README_NOTE_R10 = '''
 
 РЕВИЗИЯ 10 (fix_package_1591.py)
@@ -4043,8 +4106,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if BASKET_SUMMARY_MARKER in source:
+        return 43   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if TARIFF_LOG_MARKER in source:
-        return 42   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 42
     if TARIFF_CONFIG_MARKER in source:
         return 41
     if ISOLATED_CONTEXT_MARKER in source:
@@ -4101,7 +4166,8 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 39 or SIGN_REJECTED_MARKER in source)\
             and (MAX_REVISION < 40 or ISOLATED_CONTEXT_MARKER in source)\
             and (MAX_REVISION < 41 or TARIFF_CONFIG_MARKER in source)\
-            and (MAX_REVISION < 42 or TARIFF_LOG_MARKER in source):
+            and (MAX_REVISION < 42 or TARIFF_LOG_MARKER in source)\
+            and (MAX_REVISION < 43 or BASKET_SUMMARY_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
     if sha(app) not in ACCEPTED_PACKAGE_SHAS:
@@ -4831,6 +4897,26 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 44 (r43). The basket summary: journal, diagnostic, records and the push.
+    if BASKET_SUMMARY_MARKER not in source and MAX_REVISION >= 43:
+        for old, new, what in ((OLD_BASKET_CALL_R43, NEW_BASKET_CALL_R43, "basket summary call"),
+                               (OLD_BASKET_DEF_R43, NEW_BASKET_DEF_R43, "basket summary helper"),
+                               (OLD_BASKET_SUCCESS_R43, NEW_BASKET_SUCCESS_R43, "basket in the success record"),
+                               (OLD_BASKET_PAYMENT_R43, NEW_BASKET_PAYMENT_R43, "basket in the payment record"),
+                               (OLD_BASKET_UNVERIFIED_R43, NEW_BASKET_UNVERIFIED_R43, "basket in the unverified record"),
+                               (OLD_BASKET_PUSH_R43, NEW_BASKET_PUSH_R43, "basket line of the push")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     built_revision = revision_of(new_source)
     compile(new_source, "test_beeline.py", "exec")
     compile(new_ctrl, "server_controller.py", "exec")
@@ -4897,7 +4983,8 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 39", README_NOTE_R39),) if built_revision >= 39 else ()),
                           *((("РЕВИЗИЯ 40", README_NOTE_R40),) if built_revision >= 40 else ()),
                           *((("РЕВИЗИЯ 41", README_NOTE_R41),) if built_revision >= 41 else ()),
-                          *((("РЕВИЗИЯ 42", README_NOTE_R42),) if built_revision >= 42 else ())):
+                          *((("РЕВИЗИЯ 42", README_NOTE_R42),) if built_revision >= 42 else ()),
+                          *((("РЕВИЗИЯ 43", README_NOTE_R43),) if built_revision >= 43 else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
 
