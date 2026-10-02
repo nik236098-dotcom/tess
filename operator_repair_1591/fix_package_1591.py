@@ -115,7 +115,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "9fab6235a28e8df26a93f71c13cd7f96b0a6d3483ff4c3285d72322dd9eec1cc",  # r45 exp8 output
                          "7275523887462f81983785d57e8acbbc37f88a4cc046ff22b12c490120d3add6",  # r46 lite output
                          "5eb56796a49d7555e6bf8eb8f644e2fb0dfc7468d211c91e26e355f65f4dead2",  # r46 output
-                         "0190d63301cb9d8b3e1102902489813fd1a24ff4d3e270da8138dbd60e24c2dd"}  # r46 exp8 output
+                         "0190d63301cb9d8b3e1102902489813fd1a24ff4d3e270da8138dbd60e24c2dd",  # r46 exp8 output
+                         "0a9170c05a703f46232345b1eb3ab8a31fd72438880f111e67753fd3ce38535e",  # r47 lite output
+                         "7094978d4a2900df39257572619963c579909cfc3cc29259887b13b2d007b7fe",  # r47 output
+                         "ee14eacc783114065a00649bdf1a78872ca74c00bbc936a2f0e01e7040638ff5"}  # r47 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3813,6 +3816,49 @@ README_NOTE_R46 = ('\\n\\nРЕВИЗИЯ 46 (fix_package_1591.py)\\nВопрос
                    'запреты SUCCESS GUARD на закрытие/перезагрузку вкладок не меняются. Строка «Окно параметров тарифа …»\\n'
                    'печатается один раз, в «цена теперь» предпочитается строка «… ₽ в месяц». Маркер: OPERATOR_LIVE_1591R46.\\n')
 
+
+# Revision 47: the operator fills a missing street instead of stopping. The auto SUCCESS_ASSIST job
+# and the mission said what to do about a missing city or region, nothing about the street, so the
+# operator reported «no street known, will not invent one» and the row stayed on hold. The rule now:
+# type common street names into the street field, take the site's first suggestion for this
+# settlement (the same for a required district), the row's phone into an empty contact number,
+# and only a form the site itself rejects after that goes to the user. The job text also names the
+# live tools the operator holds, so it cannot answer that it has none.
+STREET_RULE_MARKER = "STREET_RULE_1591R47"
+OLD_AUTO_CITY_R47 = '''        "значения не перезаписывай. Для текущего сценария город при отсутствии — Саратов, "
+        "область при отсутствии — Саратовская область. "
+'''
+NEW_AUTO_CITY_R47 = '''        "значения не перезаписывай. Для текущего сценария город при отсутствии — Саратов, "
+        "область при отсутствии — Саратовская область. "
+        "УЛИЦА (STREET_RULE_1591R47): если поле улицы пустое или помечено ошибкой, НЕ останавливайся и не "
+        "спрашивай пользователя — впиши по очереди «Центральная», «Ленина», «Советская», «Школьная», "
+        "«Молодёжная» и выбери ПЕРВУЮ подсказку сайта для этого населённого пункта; если подсказок нет "
+        "ни на одно из названий, возьми любую подсказку, которую сайт предлагает на одну букву. Район, "
+        "если сайт его требует, — так же первой подсказкой. Пустой контактный номер — номер этой строки. "
+        "У ТЕБЯ ЕСТЬ ИНСТРУМЕНТЫ browser_fill, browser_type, browser_press, browser_click, browser_evaluate_js — "
+        "действуй ими; не пиши, что инструментов ввода нет. Руки опускай только когда сайт сам отверг все "
+        "варианты — тогда перечисли их в отчёте. "
+'''
+OLD_MISSION_CITY_R47 = '''- Для этого сценария: если отсутствует город — поставь «Саратов» и выбери подсказку;
+  если отсутствует область — «Саратовская область» и выбери подсказку.
+'''
+NEW_MISSION_CITY_R47 = '''- Для этого сценария: если отсутствует город — поставь «Саратов» и выбери подсказку;
+  если отсутствует область — «Саратовская область» и выбери подсказку.
+- Улица (STREET_RULE_1591R47): пустое поле улицы — не причина останавливаться и не вопрос к
+  пользователю. Впиши по очереди «Центральная», «Ленина», «Советская», «Школьная», «Молодёжная»
+  и выбери ПЕРВУЮ подсказку сайта для этого населённого пункта; нет подсказок ни на одно — возьми
+  любую подсказку на одну букву. Район, если он обязателен, — так же первой подсказкой. Пустой
+  контактный номер — номер телефона этой строки. Инструменты ввода (browser_fill, browser_type,
+  browser_press, browser_click, browser_evaluate_js) у тебя есть всегда в этой задаче.
+'''
+README_NOTE_R47 = ('\\n\\nРЕВИЗИЯ 47 (fix_package_1591.py)\\nОператор заполняет пустую улицу, а не останавливается. В автоматическом задании и в миссии было\\n'
+                   'сказано, что делать с пустым городом и областью, но не с улицей: оператор отвечал «улицу не знаю,\\n'
+                   'случайную не поставлю», и строка висела. Теперь правило: вписывать по очереди «Центральная», «Ленина»,\\n'
+                   '«Советская», «Школьная», «Молодёжная» и брать первую подсказку сайта для этого населённого пункта (район,\\n'
+                   'если обязателен, — так же), пустой контактный номер — номер строки; к пользователю уходит только форма,\\n'
+                   'которую сайт отверг после всех попыток. В задании перечислены инструменты ввода, которыми он располагает.\\n'
+                   'Маркер: STREET_RULE_1591R47.\\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -4654,8 +4700,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if STREET_RULE_MARKER in source:
+        return 47   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if OPERATOR_LIVE_MARKER in source:
-        return 46   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 46
     if CONFIGURATOR_SELECT_MARKER in source:
         return 45
     if CONFIGURATOR_DUMP_MARKER in source:
@@ -4725,6 +4773,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 44 or CONFIGURATOR_DUMP_MARKER in source)\
             and (MAX_REVISION < 45 or CONFIGURATOR_SELECT_MARKER in source)\
             and (MAX_REVISION < 46 or OPERATOR_LIVE_MARKER in source)\
+            and (MAX_REVISION < 47 or STREET_RULE_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -5552,6 +5601,22 @@ def main(argv: list[str]) -> int:
                     else:
                         raise SystemExit(f"edits.json: earlier controller entry for {what} not found")
 
+    # 48 (r47). The street rule in the auto job and the mission.
+    if STREET_RULE_MARKER not in source and MAX_REVISION >= 47:
+        for old, new, what in ((OLD_AUTO_CITY_R47, NEW_AUTO_CITY_R47, "street rule: auto job"),
+                               (OLD_MISSION_CITY_R47, NEW_MISSION_CITY_R47, "street rule: mission")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -5641,6 +5706,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 44", README_NOTE_R44),) if built_revision >= 44 else ()),
                           *((("РЕВИЗИЯ 45", README_NOTE_R45),) if built_revision >= 45 else ()),
                           *((("РЕВИЗИЯ 46", README_NOTE_R46),) if built_revision >= 46 else ()),
+                          *((("РЕВИЗИЯ 47", README_NOTE_R47),) if built_revision >= 47 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
