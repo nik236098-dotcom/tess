@@ -8438,6 +8438,11 @@ def _payment_page_1591r26(page):
     except Exception:
         return ""
     low = body.lower()
+    # PAYMENT_STRICT_1591R51: the registration start page lists the steps («подтвердите данные → оплатите
+    # картой → дождитесь регистрации договора») next to «выбрать способ регистрации»; only the real payment
+    # screen («теперь пора оплатить eSIM») counts.
+    if "способ регистрации" in low or "пора оплатить" not in low:
+        return ""
     for needle in PAYMENT_NEEDLES_1591R26:
         if needle in low:
             start = max(0, low.index(needle) - 120)

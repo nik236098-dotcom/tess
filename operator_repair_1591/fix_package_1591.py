@@ -127,7 +127,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "a23d36bbb0712b40a3bf86834458a5bd32187b0dac36fc55e19cc385084d59bb",  # r49 exp8 output
                          "0e096c8f8b07be0aa13685ca9390be67716ffe2da0f2afce8a2e48b9b9ccc84c",  # r50 lite output
                          "f47094fadff8d8b884b526453c6c696007b796e7128f81f80d56583262f4cd33",  # r50 output
-                         "6c75c1fa45f918bc0bc00a97f0109e7f6f6fa609b57055b4e3d088824324de5e"}  # r50 exp8 output
+                         "6c75c1fa45f918bc0bc00a97f0109e7f6f6fa609b57055b4e3d088824324de5e",  # r50 exp8 output
+                         "2ed7d9c9460bc48883655306b22c9b6a48e724515ca48544d574bfaa10754d14",  # r51 lite output
+                         "446432dd4e2761eb47123d967a25f9a89cc8160e512abf750e1b51cc3098ae2d",  # r51 output
+                         "c22583a4e01233102cdb04ed6e6a7ba7228a7774705844c62e85376a85b6efc8"}  # r51 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -4089,6 +4092,28 @@ README_NOTE_R50 = ('\n\nРЕВИЗИЯ 50 (fix_package_1591.py)\nКоманда 
                    'deferred_rows.jsonl копируются в base_archive/ и удаляются (clients.txt остаётся), процесс запускается снова,\n'
                    'и все строки загруженной базы проходят заново. Результаты и записи eSIM не трогаются. Маркер: CLEAR_BASE_1591R50.\n')
 
+
+# Revision 51: the payment step is recognised only by its own heading. The registration start page
+# («оформление eSIM / выберите способ регистрации») lists the steps «подтвердите данные → оплатите
+# картой → дождитесь регистрации договора» next to the button «выбрать способ регистрации»; the
+# needles «оплатите картой» and «дождитесь регистрации договора» matched that list and a tab standing
+# on the start page was pushed as #оплата with an order that had no registration at all (row 22, tab
+# 10, 22:29). Now the real screen («теперь пора оплатить eSIM») is required and a page that offers
+# a registration method never counts.
+PAYMENT_STRICT_MARKER = "PAYMENT_STRICT_1591R51"
+OLD_PAYMENT_LOW_R51 = '    low = body.lower()\n    for needle in PAYMENT_NEEDLES_1591R26:\n'
+NEW_PAYMENT_LOW_R51 = ('    low = body.lower()\n'
+                       '    # PAYMENT_STRICT_1591R51: the registration start page lists the steps («подтвердите данные → оплатите\n'
+                       '    # картой → дождитесь регистрации договора») next to «выбрать способ регистрации»; only the real payment\n'
+                       '    # screen («теперь пора оплатить eSIM») counts.\n'
+                       '    if "способ регистрации" in low or "пора оплатить" not in low:\n'
+                       '        return ""\n'
+                       '    for needle in PAYMENT_NEEDLES_1591R26:\n')
+README_NOTE_R51 = ('\n\nРЕВИЗИЯ 51 (fix_package_1591.py)\nЭкран оплаты распознаётся только по его заголовку «пора оплатить». Стартовая страница оформления\n'
+                   '(«выберите способ регистрации») перечисляет шаги «подтвердите данные → оплатите картой → дождитесь\n'
+                   'регистрации договора», и по этим словам вкладка на стартовой странице уходила в пуш #оплата с заказом без\n'
+                   'регистрации. Страница, предлагающая способ регистрации, оплатой не считается. Маркер: PAYMENT_STRICT_1591R51.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -4930,8 +4955,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if PAYMENT_STRICT_MARKER in source:
+        return 51   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if CLEAR_BASE_MARKER in source:
-        return 50   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 50
     if EXHAUSTED_UNVERIFIED_MARKER in source:
         return 49
     if RESIGN_LIMIT_MARKER in source:
@@ -5013,6 +5040,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 48 or RESIGN_LIMIT_MARKER in source)\
             and (MAX_REVISION < 49 or EXHAUSTED_UNVERIFIED_MARKER in source)\
             and (MAX_REVISION < 50 or CLEAR_BASE_MARKER in source)\
+            and (MAX_REVISION < 51 or PAYMENT_STRICT_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -5941,6 +5969,21 @@ def main(argv: list[str]) -> int:
                     else:
                         raise SystemExit(f"edits.json: earlier controller entry for {what} not found")
 
+    # 52 (r51). The payment step only by its heading; a registration-method page is never payment.
+    if PAYMENT_STRICT_MARKER not in source and MAX_REVISION >= 51:
+        for old, new, what in ((OLD_PAYMENT_LOW_R51, NEW_PAYMENT_LOW_R51, "payment: strict screen"),):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -6046,6 +6089,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 48", README_NOTE_R48),) if built_revision >= 48 else ()),
                           *((("РЕВИЗИЯ 49", README_NOTE_R49),) if built_revision >= 49 else ()),
                           *((("РЕВИЗИЯ 50", README_NOTE_R50),) if built_revision >= 50 else ()),
+                          *((("РЕВИЗИЯ 51", README_NOTE_R51),) if built_revision >= 51 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
