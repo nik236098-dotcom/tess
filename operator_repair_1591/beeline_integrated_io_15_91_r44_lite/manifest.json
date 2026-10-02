@@ -1,17 +1,14 @@
 {
-  "python": "3.11.15 (main, Mar  3 2026, 09:26:23) [GCC 13.3.0]",
-  "tests": 58,
-  "result": "OK",
-  "live_site_test": false,
-  "server_modified_by_assistant": false,
-  "exact_input_sha256": {
+  "version": "15.91-io",
+  "files": {
     "test_beeline.py": {
       "input_sha256": "bf315d3070199410132a7b3d690d6f7a2cc8260715877b9833eab2f3648397b0",
-      "output_sha256": "81c76b0265edeb7a0aa6d31abcd128754b03787ac7860ba45e3e9651929023a7",
+      "output_sha256": "8f719b343e07cfdc2ab3d66f44b1786b368fe8300fabe923aaaa946c60ac4e6f",
       "previous_output_sha256": [
         "04e07acd1a019a943c72237a6c6c61b34134f7b753ce3f3b484c832ce742ae9d",
         "0544d1e2190d7ac7a2d091fe2370a558f038dbef17dbb775ce973d7a86642643",
         "0b6cc34c63b6cfb1eb2f38909d41b05966eb1251b77c52cf1012d7cd4e95c3ab",
+        "0dfc1ad88d2c5adce03a4d86845e2332982da4090d7e4e0d2306036ab7649ed2",
         "10af519a75ce7a6813dae1b9b7bd95192cb81587e19361325f1e69e5a231269e",
         "14ada30d264a994bdb675655b495c662217298a6b0327e6ea98dce99e4675433",
         "1a0258ca2f63186b153280b6e546652deebf624e426fdc629e7348560023c5a4",
@@ -39,6 +36,7 @@
         "8561fef2069ee3c6df376c6060084aca717405e63f009d96bb0b98aa4aa7c1bc",
         "85d8693a6d059492252969da1f11966aa79c25fbe42c6ae6a3c6aacd7102c57a",
         "8f5fc960fc6cc44faebc19eae0709057f3c8c627d623d9219a0c85cff81d3012",
+        "8f719b343e07cfdc2ab3d66f44b1786b368fe8300fabe923aaaa946c60ac4e6f",
         "90ddb7d43cfbb2d944a1fb23c62aed15cb3a9d3090810864402aa31b5410a1b0",
         "92c9cc68e5cfd3a0f8717d4bb53fb247e43f3564dc55dac75f2bd1b6924112f0",
         "941b2964bf5f0b549047d4776ad830996951d8f6d35619e20dfed6763f4bc7e2",
@@ -49,6 +47,7 @@
         "a31f394aa9d9b708bb9c85c182a871dd0d63b96de78de58429c5746a07babd44",
         "aac470f2ecd3e0d4d34b399860cda4393a0fa1896b24d206ea2c794558e853a2",
         "abd23f11da908dd2e3bf17e7b5321a95505eb7fcf8eb7d41c8b9cb622c51322f",
+        "b018a08d19e835188a7db34ee666cd311813a4bf84c4ba4d0c328e5429d69409",
         "b835682314ab8958af4500f7176ca660608f14f09bb7bd02827eb503a23597b0",
         "bb57f0437e52c61d801e94020c3d72f9bbca2b2bbef09b63e0d746e5de9a59f2",
         "bd07c22559bcd89c0244ed2e67e75c1ee1139274af0e627732b0444f58b546c8",
@@ -88,5 +87,47 @@
       "output_sha256": "0e811d8e8d9aa43679a42f2da3435ee7c8a63583608fa432eaea6a4c01be3228"
     }
   },
-  "revision": 43
+  "preserved_handlers": [
+    "fill_test_signature",
+    "fill_signature_and_submit",
+    "run_registration",
+    "process_registration_row",
+    "try_click_resend_once",
+    "queue_success_assist",
+    "queue_error_assist",
+    "_agent_tools",
+    "_agent_execute_tool",
+    "tick_post_auth_review",
+    "tick_sign_wait",
+    "tick_error_assist",
+    "tick_success_assist",
+    "tick_confirmation",
+    "tick_resend",
+    "finalize_success",
+    "main",
+    "capture_all_form_fields_v1583",
+    "ensure_region_if_missing"
+  ],
+  "preserved_ast_sha256": {
+    "fill_test_signature": "ee74f9e371250fba824a8c6070050d88e1b48cfeb4e03dca04451d0914f81ec5",
+    "fill_signature_and_submit": "e79933df907a67a8b4082f3eee5bdc18d0d53cdc74354ed2af5e8a619fb79f36",
+    "run_registration": "72dfe2785658c4e86c054446202f3159b5802e959be4ab182c3b80f3326eb32e",
+    "process_registration_row": "5429a0ef4a75464989e2d2c0b0a6544ecaa8caff3c8f37bbe6b1c26a1a1b8bba",
+    "try_click_resend_once": "ead8fb4a507eb30c475bc00e7632f0a4aa5b3515215af9d3e2c5367d17572542",
+    "queue_success_assist": "06a4556948f71d3d1dab78782b5cc6bde3e0e507d5a5ae29983f1790be6b1868",
+    "queue_error_assist": "ee37bbe0b246b5eafaffb5e057b92396ac4367728e4788d251e7008c20c2ef69",
+    "_agent_tools": "c5a100365dcaca4d6cd4629542365837d0d029d240255e5162cc3e3685418544",
+    "_agent_execute_tool": "b33b554e2e2efb0faba24b73364733fad133c7628108a37f1446bcd7c7a7ca1c",
+    "tick_post_auth_review": "b7a754b779013470b1a7a0b90e108c2d9f014198739e42470ce4bc95c2b89d0b",
+    "tick_sign_wait": "618a4f687273f338fee03bd804c4f40674535384efb4e9a755d90ce787e555f6",
+    "tick_error_assist": "7b7450725142498f444e2f35e5b8ea09e661b0e0039dea157269d8703ea41a1c",
+    "tick_success_assist": "5e845b2e8fc1c0b3739ee3d2f5bcf5a7a6c8adfcfea490ce44f6791320630932",
+    "tick_confirmation": "e1cb5d26dc1c4d0641c2f8ea64929e4870caf495c29824b74976f70b518f4497",
+    "tick_resend": "2fb0d4b0a55416d6c95c934323ae533d2428a261a1ed9fb64618232290d783dd",
+    "finalize_success": "b5c7bed13f9c0d2158efa9242cca35fcdd1521a1729657a4bea37f5961e74155",
+    "main": "37d7cada164352aa99a71585458f15f1b2b3a4355df7ff94af9ac4ae39f46397",
+    "capture_all_form_fields_v1583": "b0b320a53b939a66b94b6e3e2f3378abe0289cc852d015153ce25acc750a9f81",
+    "ensure_region_if_missing": "19d979e202cc5c5d6cc5430a624e9724ebb342f9feeb8ff9fe2d1172417e1e97"
+  },
+  "revision": 44
 }

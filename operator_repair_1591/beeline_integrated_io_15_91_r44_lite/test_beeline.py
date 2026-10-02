@@ -5061,38 +5061,158 @@ _TARIFF_TITLE_RE_1591R32 = re.compile(r"^\s*подписка bee\b", re.I)
 _TARIFF_BASKET_BUTTON_RE_1591R32 = re.compile(r"^\s*(изменить|удалить тариф)\s*$", re.I)
 
 
+# CONFIGURATOR_DUMP_1591R44: the page text plus the ₽ lines of the card holding the tariff title
+# (the nearest ancestor of the title whose text has a ₽ and is still short enough to be one card).
+_BASKET_JS_1591R44 = """(name) => {
+  const text = document.body ? document.body.innerText : '';
+  const norm = s => String(s || '').toLowerCase().replace(/[^0-9a-zа-яё]+/g, '');   // «смарт-часов» == «смарт часов»
+  const wanted = norm(name);
+  const out = {text: text, card_prices: []};
+  if (!wanted) return out;
+  const vis = el => { try { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (_) { return false; } };
+  const owns = el => { let t = ''; for (const n of el.childNodes) if (n.nodeType === 3) t += n.textContent; return norm(t); };
+  const titles = [];
+  for (const el of document.querySelectorAll('body *')) {
+    if (titles.length >= 6) break;
+    if (!vis(el)) continue;
+    const own = owns(el);
+    if (own && own.includes(wanted) && own.length <= wanted.length + 20) titles.push(el);
+  }
+  for (const title of titles) {
+    let node = title;
+    for (let depth = 0; depth < 10 && node && node !== document.body; depth++, node = node.parentElement) {
+      const t = node.innerText || '';
+      if (t.length > 900) break;
+      if (t.includes('₽')) {
+        const lines = t.split('\\n').map(s => s.replace(/\\s+/g, ' ').trim()).filter(s => s.includes('₽'));
+        if (lines.length) { out.card_prices = lines.slice(0, 3); return out; }
+      }
+    }
+  }
+  return out;
+}"""
+
+_CONFIGURATOR_JS_1591R44 = """(root) => {
+  const scope = root || document.body;
+  const vis = el => { try { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (_) { return false; } };
+  const options = [];
+  const sel = '[role=radio],[role=checkbox],[role=option],[role=tab],[role=switch],input[type=radio],input[type=checkbox],input[type=range],button,label,[aria-checked],[aria-selected],[aria-pressed]';
+  for (const el of scope.querySelectorAll(sel)) {
+    if (options.length >= 60 || !vis(el)) continue;
+    const label = (el.tagName === 'INPUT' && el.labels && el.labels[0]) ? el.labels[0].innerText : '';
+    const text = ((el.innerText || label || el.getAttribute('aria-label') || el.value || '') + '').replace(/\\s+/g, ' ').trim().slice(0, 80);
+    const state = el.getAttribute('aria-checked') || el.getAttribute('aria-selected') || el.getAttribute('aria-pressed')
+      || (el.checked === true ? 'true' : (el.checked === false ? 'false' : ''));
+    const cls = (el.className && typeof el.className === 'string') ? el.className.slice(0, 60) : '';
+    options.push({tag: el.tagName.toLowerCase(), role: el.getAttribute('role') || '', text: text, state: state,
+                  value: el.value != null ? String(el.value).slice(0, 20) : '', cls: cls});
+  }
+  return {text: (scope.innerText || '').slice(0, 2500), options: options};
+}"""
+
+
 # BASKET_SUMMARY_1591R43
 def _basket_summary_1591r43(page, diagnostic=None):
     """The tariff title and the price lines visible after the tariff step, read once from the
     page text (nothing clicked, nothing awaited). Printed, written to the diagnostic and kept on
     the page object for the success/payment records and the push. None when the page cannot be read."""
     try:
-        text = page.evaluate("() => document.body ? document.body.innerText : ''") or ""
+        got = page.evaluate(_BASKET_JS_1591R44, TARIFF_NAME)  # CONFIGURATOR_DUMP_1591R44: the card's own prices
     except Exception as exc:
         print(f"Корзина не прочитана: {type(exc).__name__}", flush=True)
         return None
+    if isinstance(got, dict):
+        text, card_prices = got.get("text") or "", [str(p)[:60] for p in (got.get("card_prices") or [])][:3]
+    else:
+        text, card_prices = got or "", []
     lines = [" ".join(line.split()) for line in str(text).splitlines()]
     lines = [line for line in lines if line]
     wanted = TARIFF_NAME.lower()
-    tariff = next((line[:80] for line in lines if wanted in line.lower()), None)
-    prices = [line[:60] for line in lines if "₽" in line][:4]
-    others = [line[:60] for line in lines if _TARIFF_TITLE_RE_1591R32.search(line) and wanted not in line.lower()][:3]
-    summary = {"tariff": tariff, "prices": prices, "other_titles": others}
+    norm = lambda s: re.sub(r"[^0-9a-zа-яё]+", "", s.lower())   # «для смарт-часов» == «для смарт часов»
+    tariff = next((line[:80] for line in lines if norm(wanted) and norm(wanted) in norm(line)), None)
+    page_prices = [line[:60] for line in lines if "₽" in line][:4]
+    others = [line[:60] for line in lines if _TARIFF_TITLE_RE_1591R32.search(line) and norm(wanted) not in norm(line)][:3]
+    # "prices" are the prices of the tariff's own card (the push shows the first); the rest of the page apart
+    summary = {"tariff": tariff, "prices": card_prices, "page_prices": page_prices, "other_titles": others}
     try:
         setattr(page, "_basket_summary_1591r43", summary)
     except Exception:
         pass
     print(
         f"Корзина: {'«' + tariff + '»' if tariff else 'название «' + TARIFF_NAME + '» не видно'}; "
-        f"цены: {', '.join(prices) or '—'}" + (f"; другие названия: {', '.join(others)}" if others else ""),
+        f"цена карточки: {', '.join(card_prices) or 'не найдена'}; на странице ещё: {', '.join(page_prices) or '—'}"
+        + (f"; другие названия: {', '.join(others)}" if others else ""),
         flush=True,
     )
     if diagnostic is not None:
         try:
-            diagnostic.write("basket_summary", **summary)
+            diagnostic.write("basket_summary", text=str(text)[:3000], **summary)  # CONFIGURATOR_DUMP_1591R44: the page as seen
         except Exception:
             pass
     return summary
+
+
+# CONFIGURATOR_DUMP_1591R44: with BEELINE_TARIFF set, a basket without that tariff stops the row.
+# The site started to prefill the basket with «подписка bee HIT» (800 ₽ start payment); when the
+# card's configurator was not recognised the row went on with that basket, because the eSIM form
+# was already there. BEELINE_TARIFF_STRICT=0 restores the old behaviour.
+TARIFF_STRICT_1591R44 = str(os.environ.get("BEELINE_TARIFF_STRICT") or "1").strip().lower() not in {"0", "off", "no", "false"}
+
+
+def _require_tariff_in_basket_1591r44(summary, diagnostic=None):
+    """RECOVERABLE_RESTART_ROW when the basket summary shows no line with TARIFF_NAME while the
+    tariff was set explicitly (BEELINE_TARIFF). An unreadable page is not a verdict."""
+    if not TARIFF_STRICT_1591R44 or not (os.environ.get("BEELINE_TARIFF") or "").strip():
+        return
+    if summary is None or summary.get("tariff"):
+        return
+    seen = list(summary.get("other_titles") or [])
+    print(
+        f"В корзине нет тарифа «{TARIFF_NAME}» (видно: {', '.join(seen) or 'ничего похожего'}; "
+        f"цены: {', '.join(summary.get('page_prices') or []) or '—'}). Строку с чужим тарифом не оформляю.",
+        flush=True,
+    )
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_missing_in_basket", tariff=TARIFF_NAME, seen=seen, prices=summary.get("page_prices") or [])
+        except Exception:
+            pass
+    raise RuntimeError(f"RECOVERABLE_RESTART_ROW: в корзине нет тарифа «{TARIFF_NAME}» (видно: {', '.join(seen) or '—'}).")
+
+
+_CONFIGURATOR_HEADER_RE_1591R44 = re.compile(r"^\s*гигабайты и минуты\s*$", re.I)  # CONFIGURATOR_DUMP_1591R44
+_CHOOSE_PREFIX_RE_1591R44 = re.compile(r"^\s*выбрать(\s|$)", re.I)  # «выбрать», «выбрать за 300 ₽»… (no \b: JS has no Cyrillic word boundary)
+
+
+# CONFIGURATOR_DUMP_1591R44
+def _dump_configurator_1591r44(page, scope=None, diagnostic=None):
+    """The configurator as the site shows it before the bot confirms it: its text and every option
+    with its state. One journal line (the checked options and the ₽ lines) and the full dump in
+    the diagnostic (event tariff_configurator_dump). Read-only; never raises."""
+    try:
+        handle = scope.element_handle(timeout=2000) if scope is not None else None
+        got = page.evaluate(_CONFIGURATOR_JS_1591R44, handle)
+    except Exception as exc:
+        print(f"Окно параметров тарифа не прочитано: {type(exc).__name__}", flush=True)
+        return None
+    if not isinstance(got, dict):
+        return None
+    options = [o for o in (got.get("options") or []) if isinstance(o, dict)]
+    text = str(got.get("text") or "")
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    prices = [line[:60] for line in lines if "₽" in line][:6]
+    checked = [f"{o.get('text') or o.get('value') or o.get('tag')}" for o in options if str(o.get("state")) == "true"][:8]
+    print(
+        f"Окно параметров тарифа «{TARIFF_NAME}»: вариантов {len(options)}; выбрано: {', '.join(checked) or '—'}; "
+        f"цены: {', '.join(prices) or '—'}",
+        flush=True,
+    )
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_configurator_dump", tariff=TARIFF_NAME, text=text[:2500], options=options[:60])
+        except Exception:
+            pass
+    return {"text": text, "options": options, "prices": prices, "checked": checked}
 
 
 # TARIFF_CONFIG_1591R41
@@ -5102,6 +5222,7 @@ def _confirm_tariff_configurator_1591r41(page, diagnostic=None, timeout=8000):
     the eSIM control appeared afterwards. Tariffs without a configurator (bee START) never get here
     with a candidate: the picker holds many «выбрать», the basket page none."""
     candidates = []
+    scope = None  # CONFIGURATOR_DUMP_1591R44: the dialog that holds the button, for the dump
     try:
         dialogs = page.locator('[role="dialog"], [aria-modal="true"]')
         for index in range(min(dialogs.count(), 6)):
@@ -5112,10 +5233,25 @@ def _confirm_tariff_configurator_1591r41(page, diagnostic=None, timeout=8000):
                 buttons = dialog.get_by_role("button", name=_CHOOSE_BUTTON_RE)
                 if buttons.count() == 1 and buttons.first.is_visible():
                     candidates.append(buttons.first)
+                    scope = dialog
             except Exception:
                 continue
     except Exception:
         pass
+    if not candidates:
+        # CONFIGURATOR_DUMP_1591R44: the site's configurator is a panel, not a dialog: the block
+        # around «гигабайты и минуты» with one button starting with «выбрать» (its price follows).
+        try:
+            panel = page.get_by_text(_CONFIGURATOR_HEADER_RE_1591R44).first
+            if panel.count() > 0 and panel.is_visible():
+                box = panel.locator("xpath=ancestor::*[.//button[starts-with(normalize-space(.), 'выбрать')]][1]")
+                buttons = box.get_by_role("button", name=_CHOOSE_PREFIX_RE_1591R44)
+                visible = [buttons.nth(i) for i in range(min(buttons.count(), 10)) if buttons.nth(i).is_visible()]
+                if len(visible) == 1:
+                    candidates.append(visible[0])
+                    scope = box
+        except Exception:
+            pass
     if not candidates:
         try:
             buttons = page.get_by_role("button", name=_CHOOSE_BUTTON_RE)
@@ -5125,8 +5261,16 @@ def _confirm_tariff_configurator_1591r41(page, diagnostic=None, timeout=8000):
         except Exception:
             pass
     if not candidates:
+        try:
+            header = page.get_by_text(_CONFIGURATOR_HEADER_RE_1591R44).first
+            if header.count() > 0 and header.is_visible():   # the panel is there, its button is not recognised
+                print("Окно параметров тарифа видно, но его кнопка «выбрать» не распознана; записываю его в диагностику.", flush=True)
+                _dump_configurator_1591r44(page, None, diagnostic)
+        except Exception:
+            pass
         return False
     print("Тариф с окном параметров: подтверждаю выбор с настройками по умолчанию...", flush=True)
+    _dump_configurator_1591r44(page, scope, diagnostic)  # CONFIGURATOR_DUMP_1591R44: what is preselected
     if diagnostic is not None:
         try:
             diagnostic.write("tariff_configurator_confirm", tariff=TARIFF_NAME)
@@ -5762,7 +5906,8 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
             print(f"На странице найдено название «{TARIFF_NAME}». Выбираю eSIM...")  # TARIFF_LOG_1591R42
         else:
             print("Форма eSIM уже доступна. Продолжаю без ожидания заголовка тарифа...")
-        _basket_summary_1591r43(page, diagnostic)  # BASKET_SUMMARY_1591R43: what the basket holds
+        basket_1591r43 = _basket_summary_1591r43(page, diagnostic)  # BASKET_SUMMARY_1591R43: what the basket holds
+        _require_tariff_in_basket_1591r44(basket_1591r43, diagnostic)  # CONFIGURATOR_DUMP_1591R44: not another tariff
         _row_progress(page, "выбор eSIM")  # ROW_START_ACTIVITY_1591R8
         select_esim(page)
         field = page.get_by_placeholder("+7 999 999 99")
@@ -6158,7 +6303,7 @@ def _browser_count_1591r34(default=2):
         value = int(str(os.environ.get("BEELINE_BROWSERS") or default).strip())
     except ValueError:
         value = default
-    return min(max(value, 1), 8)  # EXPERIMENT_BROWSERS8_1591: up to 8 Chromium (32 tabs) on a big test server
+    return min(max(value, 1), 4)
 
 
 BROWSER_COUNT = _browser_count_1591r34()  # TWO_BROWSERS_1591R28: Chromium instances, TABS_PER_BROWSER tabs each
@@ -9292,7 +9437,6 @@ def main():
     print(f"Загружено новых записей: {len(clients)} (в исходном файле: {total_source_rows})")
     print(f"Запускаю {BROWSER_COUNT} Chromium и {TAB_COUNT} рабочие вкладки. Общая очередь строк.")  # BROWSER_HANG_1591R18
     print(f"Тариф: «{TARIFF_NAME}»" + (" (BEELINE_TARIFF из окружения службы)" if (os.environ.get("BEELINE_TARIFF") or "").strip() else " (по умолчанию)"), flush=True)  # TARIFF_LOG_1591R42
-    print(f"ЭКСПЕРИМЕНТ browsers8: лимит BEELINE_BROWSERS поднят до 8 Chromium; сейчас {BROWSER_COUNT} × {TABS_PER_BROWSER} вкладок.", flush=True)  # EXPERIMENT_BROWSERS8_1591
 
     # Два полностью независимых Chromium: отдельный процесс, CDP-порт и профиль.
     # Общими остаются только очередь строк, Telegram status_map и persistent progress.

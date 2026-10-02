@@ -106,7 +106,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "a20d4ff24cf13165a2d75737a4caddea5a690057b42c9236d7ca242894ae2fc1",  # r42 output
                          "81c76b0265edeb7a0aa6d31abcd128754b03787ac7860ba45e3e9651929023a7",  # r43 lite output
                          "94226cc00b365c7fcf3d644d2fdf19f1f4a208c31ada602429325af7bab390b8",  # r43 output
-                         "c6d5fda2950aee0bb11b3029cfbbed3fb040ee0602d35be103a9d09a251d106e"}  # r43 exp8 output (FIX_1591_EXPERIMENT=browsers8, lite based)
+                         "c6d5fda2950aee0bb11b3029cfbbed3fb040ee0602d35be103a9d09a251d106e",  # r43 exp8 output (FIX_1591_EXPERIMENT=browsers8, lite based)
+                         "8f719b343e07cfdc2ab3d66f44b1786b368fe8300fabe923aaaa946c60ac4e6f",  # r44 lite output
+                         "b018a08d19e835188a7db34ee666cd311813a4bf84c4ba4d0c328e5429d69409",  # r44 output
+                         "0dfc1ad88d2c5adce03a4d86845e2332982da4090d7e4e0d2306036ab7649ed2"}  # r44 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -3287,6 +3290,289 @@ README_NOTE_R43 = ('\n\nРЕВИЗИЯ 43 (fix_package_1591.py)\nЧто лежи
                    'подписи (поле basket) и в короткий пуш строкой 🧾. Ссылка заказа до оплаты тариф не показывает,\n'
                    'поэтому это единственное место, где тариф заказа виден. Маркер: BASKET_SUMMARY_1591R43.\n')
 
+# Revision 44: honest prices. r43 took the first «₽» line of the whole basket page as the price of
+# the chosen tariff (the push said 700 ₽ for a 300 ₽ tariff). Now the price comes from the card
+# that holds TARIFF_NAME (its nearest ancestor with a ₽ line); the other prices of the page are kept
+# apart. Before the configurator of a tariff («для смарт часов») is confirmed, its text and every
+# option (radio/checkbox/tab/button, checked or not) go to the journal and the diagnostic, so the
+# set the site preselects (800 ₽ instead of the 300 ₽ base) can be seen and chosen on purpose later.
+CONFIGURATOR_DUMP_MARKER = "CONFIGURATOR_DUMP_1591R44"
+OLD_BASKET_EVAL_R44 = '''    try:
+        text = page.evaluate("() => document.body ? document.body.innerText : ''") or ""
+    except Exception as exc:
+        print(f"Корзина не прочитана: {type(exc).__name__}", flush=True)
+        return None
+    lines = [" ".join(line.split()) for line in str(text).splitlines()]
+    lines = [line for line in lines if line]
+    wanted = TARIFF_NAME.lower()
+    tariff = next((line[:80] for line in lines if wanted in line.lower()), None)
+    prices = [line[:60] for line in lines if "₽" in line][:4]
+    others = [line[:60] for line in lines if _TARIFF_TITLE_RE_1591R32.search(line) and wanted not in line.lower()][:3]
+    summary = {"tariff": tariff, "prices": prices, "other_titles": others}
+'''
+NEW_BASKET_EVAL_R44 = '''    try:
+        got = page.evaluate(_BASKET_JS_1591R44, TARIFF_NAME)  # CONFIGURATOR_DUMP_1591R44: the card's own prices
+    except Exception as exc:
+        print(f"Корзина не прочитана: {type(exc).__name__}", flush=True)
+        return None
+    if isinstance(got, dict):
+        text, card_prices = got.get("text") or "", [str(p)[:60] for p in (got.get("card_prices") or [])][:3]
+    else:
+        text, card_prices = got or "", []
+    lines = [" ".join(line.split()) for line in str(text).splitlines()]
+    lines = [line for line in lines if line]
+    wanted = TARIFF_NAME.lower()
+    norm = lambda s: re.sub(r"[^0-9a-zа-яё]+", "", s.lower())   # «для смарт-часов» == «для смарт часов»
+    tariff = next((line[:80] for line in lines if norm(wanted) and norm(wanted) in norm(line)), None)
+    page_prices = [line[:60] for line in lines if "₽" in line][:4]
+    others = [line[:60] for line in lines if _TARIFF_TITLE_RE_1591R32.search(line) and norm(wanted) not in norm(line)][:3]
+    # "prices" are the prices of the tariff's own card (the push shows the first); the rest of the page apart
+    summary = {"tariff": tariff, "prices": card_prices, "page_prices": page_prices, "other_titles": others}
+'''
+OLD_BASKET_PRINT_R44 = '''    print(
+        f"Корзина: {'«' + tariff + '»' if tariff else 'название «' + TARIFF_NAME + '» не видно'}; "
+        f"цены: {', '.join(prices) or '—'}" + (f"; другие названия: {', '.join(others)}" if others else ""),
+        flush=True,
+    )
+'''
+NEW_BASKET_PRINT_R44 = '''    print(
+        f"Корзина: {'«' + tariff + '»' if tariff else 'название «' + TARIFF_NAME + '» не видно'}; "
+        f"цена карточки: {', '.join(card_prices) or 'не найдена'}; на странице ещё: {', '.join(page_prices) or '—'}"
+        + (f"; другие названия: {', '.join(others)}" if others else ""),
+        flush=True,
+    )
+'''
+OLD_BASKET_DEF_HEAD_R44 = '# BASKET_SUMMARY_1591R43\ndef _basket_summary_1591r43(page, diagnostic=None):\n'
+NEW_BASKET_DEF_HEAD_R44 = '''# CONFIGURATOR_DUMP_1591R44: the page text plus the ₽ lines of the card holding the tariff title
+# (the nearest ancestor of the title whose text has a ₽ and is still short enough to be one card).
+_BASKET_JS_1591R44 = """(name) => {
+  const text = document.body ? document.body.innerText : '';
+  const norm = s => String(s || '').toLowerCase().replace(/[^0-9a-zа-яё]+/g, '');   // «смарт-часов» == «смарт часов»
+  const wanted = norm(name);
+  const out = {text: text, card_prices: []};
+  if (!wanted) return out;
+  const vis = el => { try { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (_) { return false; } };
+  const owns = el => { let t = ''; for (const n of el.childNodes) if (n.nodeType === 3) t += n.textContent; return norm(t); };
+  const titles = [];
+  for (const el of document.querySelectorAll('body *')) {
+    if (titles.length >= 6) break;
+    if (!vis(el)) continue;
+    const own = owns(el);
+    if (own && own.includes(wanted) && own.length <= wanted.length + 20) titles.push(el);
+  }
+  for (const title of titles) {
+    let node = title;
+    for (let depth = 0; depth < 10 && node && node !== document.body; depth++, node = node.parentElement) {
+      const t = node.innerText || '';
+      if (t.length > 900) break;
+      if (t.includes('₽')) {
+        const lines = t.split('\\\\n').map(s => s.replace(/\\\\s+/g, ' ').trim()).filter(s => s.includes('₽'));
+        if (lines.length) { out.card_prices = lines.slice(0, 3); return out; }
+      }
+    }
+  }
+  return out;
+}"""
+
+_CONFIGURATOR_JS_1591R44 = """(root) => {
+  const scope = root || document.body;
+  const vis = el => { try { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (_) { return false; } };
+  const options = [];
+  const sel = '[role=radio],[role=checkbox],[role=option],[role=tab],[role=switch],input[type=radio],input[type=checkbox],input[type=range],button,label,[aria-checked],[aria-selected],[aria-pressed]';
+  for (const el of scope.querySelectorAll(sel)) {
+    if (options.length >= 60 || !vis(el)) continue;
+    const label = (el.tagName === 'INPUT' && el.labels && el.labels[0]) ? el.labels[0].innerText : '';
+    const text = ((el.innerText || label || el.getAttribute('aria-label') || el.value || '') + '').replace(/\\\\s+/g, ' ').trim().slice(0, 80);
+    const state = el.getAttribute('aria-checked') || el.getAttribute('aria-selected') || el.getAttribute('aria-pressed')
+      || (el.checked === true ? 'true' : (el.checked === false ? 'false' : ''));
+    const cls = (el.className && typeof el.className === 'string') ? el.className.slice(0, 60) : '';
+    options.push({tag: el.tagName.toLowerCase(), role: el.getAttribute('role') || '', text: text, state: state,
+                  value: el.value != null ? String(el.value).slice(0, 20) : '', cls: cls});
+  }
+  return {text: (scope.innerText || '').slice(0, 2500), options: options};
+}"""
+
+
+# BASKET_SUMMARY_1591R43
+def _basket_summary_1591r43(page, diagnostic=None):
+'''
+OLD_CONFIG_SCOPE_R44 = '''    candidates = []
+    try:
+        dialogs = page.locator('[role="dialog"], [aria-modal="true"]')
+        for index in range(min(dialogs.count(), 6)):
+            dialog = dialogs.nth(index)
+            try:
+                if not dialog.is_visible():
+                    continue
+                buttons = dialog.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+                if buttons.count() == 1 and buttons.first.is_visible():
+                    candidates.append(buttons.first)
+            except Exception:
+                continue
+    except Exception:
+        pass
+'''
+NEW_CONFIG_SCOPE_R44 = '''    candidates = []
+    scope = None  # CONFIGURATOR_DUMP_1591R44: the dialog that holds the button, for the dump
+    try:
+        dialogs = page.locator('[role="dialog"], [aria-modal="true"]')
+        for index in range(min(dialogs.count(), 6)):
+            dialog = dialogs.nth(index)
+            try:
+                if not dialog.is_visible():
+                    continue
+                buttons = dialog.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+                if buttons.count() == 1 and buttons.first.is_visible():
+                    candidates.append(buttons.first)
+                    scope = dialog
+            except Exception:
+                continue
+    except Exception:
+        pass
+'''
+OLD_CONFIG_PRINT_R44 = '''    print("Тариф с окном параметров: подтверждаю выбор с настройками по умолчанию...", flush=True)
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_configurator_confirm", tariff=TARIFF_NAME)
+        except Exception:
+            pass
+'''
+NEW_CONFIG_PRINT_R44 = '''    print("Тариф с окном параметров: подтверждаю выбор с настройками по умолчанию...", flush=True)
+    _dump_configurator_1591r44(page, scope, diagnostic)  # CONFIGURATOR_DUMP_1591R44: what is preselected
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_configurator_confirm", tariff=TARIFF_NAME)
+        except Exception:
+            pass
+'''
+OLD_CONFIG_DEF_R44 = '# TARIFF_CONFIG_1591R41\ndef _confirm_tariff_configurator_1591r41(page, diagnostic=None, timeout=8000):\n'
+NEW_CONFIG_DEF_R44 = '''# CONFIGURATOR_DUMP_1591R44
+def _dump_configurator_1591r44(page, scope=None, diagnostic=None):
+    """The configurator as the site shows it before the bot confirms it: its text and every option
+    with its state. One journal line (the checked options and the ₽ lines) and the full dump in
+    the diagnostic (event tariff_configurator_dump). Read-only; never raises."""
+    try:
+        handle = scope.element_handle(timeout=2000) if scope is not None else None
+        got = page.evaluate(_CONFIGURATOR_JS_1591R44, handle)
+    except Exception as exc:
+        print(f"Окно параметров тарифа не прочитано: {type(exc).__name__}", flush=True)
+        return None
+    if not isinstance(got, dict):
+        return None
+    options = [o for o in (got.get("options") or []) if isinstance(o, dict)]
+    text = str(got.get("text") or "")
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    prices = [line[:60] for line in lines if "₽" in line][:6]
+    checked = [f"{o.get('text') or o.get('value') or o.get('tag')}" for o in options if str(o.get("state")) == "true"][:8]
+    print(
+        f"Окно параметров тарифа «{TARIFF_NAME}»: вариантов {len(options)}; выбрано: {', '.join(checked) or '—'}; "
+        f"цены: {', '.join(prices) or '—'}",
+        flush=True,
+    )
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_configurator_dump", tariff=TARIFF_NAME, text=text[:2500], options=options[:60])
+        except Exception:
+            pass
+    return {"text": text, "options": options, "prices": prices, "checked": checked}
+
+
+''' + OLD_CONFIG_DEF_R44
+README_NOTE_R44 = ('\n\nРЕВИЗИЯ 44 (fix_package_1591.py)\nЧужой тариф не оформляется: при заданном BEELINE_TARIFF строка, в корзине которой нет этого названия,\n'
+                   'перезапускается (RECOVERABLE_RESTART_ROW), а не идёт дальше с тем, что подставил сайт (bee HIT за 800 ₽ уходил как\n'
+                   '«для смарт часов»); BEELINE_TARIFF_STRICT=0 отключает. Окно параметров тарифа распознаётся и как панель\n'
+                   'по тексту «гигабайты и минуты» с одной кнопкой «выбрать…»; нераспознанное окно пишется в диагностику.\n'
+                   'Честные цены. В r43 ценой тарифа считалась первая строка с «₽» на всей странице корзины (пуш писал\n'
+                   '700 ₽ для тарифа за 300). Теперь цена берётся из карточки с названием тарифа (ближайший блок вокруг\n'
+                   'названия, где есть ₽), остальные цены страницы — отдельно (page_prices). Перед подтверждением окна\n'
+                   'параметров тарифа («для смарт часов») его текст и все варианты с состоянием пишутся в журнал\n'
+                   '(«Окно параметров тарифа …: выбрано: …; цены: …») и в диагностику (tariff_configurator_dump), чтобы\n'
+                   'видеть, какой набор сайт подставляет по умолчанию. Маркер: CONFIGURATOR_DUMP_1591R44.\n')
+OLD_BASKET_DIAG_R44 = '            diagnostic.write("basket_summary", **summary)\n'
+NEW_BASKET_DIAG_R44 = '            diagnostic.write("basket_summary", text=str(text)[:3000], **summary)  # CONFIGURATOR_DUMP_1591R44: the page as seen\n'
+
+# r44, part two: the row never continues with a basket that lacks the configured tariff, and the
+# configurator is recognised by its own text («гигабайты и минуты») when it is not a dialog.
+OLD_STRICT_CALL_R44 = '        _basket_summary_1591r43(page, diagnostic)  # BASKET_SUMMARY_1591R43: what the basket holds\n'
+NEW_STRICT_CALL_R44 = ('        basket_1591r43 = _basket_summary_1591r43(page, diagnostic)  # BASKET_SUMMARY_1591R43: what the basket holds\n'
+                       '        _require_tariff_in_basket_1591r44(basket_1591r43, diagnostic)  # CONFIGURATOR_DUMP_1591R44: not another tariff\n')
+OLD_STRICT_DEF_R44 = '# CONFIGURATOR_DUMP_1591R44\ndef _dump_configurator_1591r44(page, scope=None, diagnostic=None):\n'
+NEW_STRICT_DEF_R44 = '''# CONFIGURATOR_DUMP_1591R44: with BEELINE_TARIFF set, a basket without that tariff stops the row.
+# The site started to prefill the basket with «подписка bee HIT» (800 ₽ start payment); when the
+# card's configurator was not recognised the row went on with that basket, because the eSIM form
+# was already there. BEELINE_TARIFF_STRICT=0 restores the old behaviour.
+TARIFF_STRICT_1591R44 = str(os.environ.get("BEELINE_TARIFF_STRICT") or "1").strip().lower() not in {"0", "off", "no", "false"}
+
+
+def _require_tariff_in_basket_1591r44(summary, diagnostic=None):
+    """RECOVERABLE_RESTART_ROW when the basket summary shows no line with TARIFF_NAME while the
+    tariff was set explicitly (BEELINE_TARIFF). An unreadable page is not a verdict."""
+    if not TARIFF_STRICT_1591R44 or not (os.environ.get("BEELINE_TARIFF") or "").strip():
+        return
+    if summary is None or summary.get("tariff"):
+        return
+    seen = list(summary.get("other_titles") or [])
+    print(
+        f"В корзине нет тарифа «{TARIFF_NAME}» (видно: {', '.join(seen) or 'ничего похожего'}; "
+        f"цены: {', '.join(summary.get('page_prices') or []) or '—'}). Строку с чужим тарифом не оформляю.",
+        flush=True,
+    )
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_missing_in_basket", tariff=TARIFF_NAME, seen=seen, prices=summary.get("page_prices") or [])
+        except Exception:
+            pass
+    raise RuntimeError(f"RECOVERABLE_RESTART_ROW: в корзине нет тарифа «{TARIFF_NAME}» (видно: {', '.join(seen) or '—'}).")
+
+
+''' + OLD_STRICT_DEF_R44
+OLD_CONFIG_SECOND_R44 = '''    if not candidates:
+        try:
+            buttons = page.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+            visible = [buttons.nth(i) for i in range(min(buttons.count(), 30)) if buttons.nth(i).is_visible()]
+            if len(visible) == 1:
+                candidates.append(visible[0])
+        except Exception:
+            pass
+    if not candidates:
+        return False
+'''
+NEW_CONFIG_SECOND_R44 = '''    if not candidates:
+        # CONFIGURATOR_DUMP_1591R44: the site's configurator is a panel, not a dialog: the block
+        # around «гигабайты и минуты» with one button starting with «выбрать» (its price follows).
+        try:
+            panel = page.get_by_text(_CONFIGURATOR_HEADER_RE_1591R44).first
+            if panel.count() > 0 and panel.is_visible():
+                box = panel.locator("xpath=ancestor::*[.//button[starts-with(normalize-space(.), 'выбрать')]][1]")
+                buttons = box.get_by_role("button", name=_CHOOSE_PREFIX_RE_1591R44)
+                visible = [buttons.nth(i) for i in range(min(buttons.count(), 10)) if buttons.nth(i).is_visible()]
+                if len(visible) == 1:
+                    candidates.append(visible[0])
+                    scope = box
+        except Exception:
+            pass
+    if not candidates:
+        try:
+            buttons = page.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+            visible = [buttons.nth(i) for i in range(min(buttons.count(), 30)) if buttons.nth(i).is_visible()]
+            if len(visible) == 1:
+                candidates.append(visible[0])
+        except Exception:
+            pass
+    if not candidates:
+        try:
+            header = page.get_by_text(_CONFIGURATOR_HEADER_RE_1591R44).first
+            if header.count() > 0 and header.is_visible():   # the panel is there, its button is not recognised
+                print("Окно параметров тарифа видно, но его кнопка «выбрать» не распознана; записываю его в диагностику.", flush=True)
+                _dump_configurator_1591r44(page, None, diagnostic)
+        except Exception:
+            pass
+        return False
+'''
+OLD_CONFIG_RE_R44 = '# CONFIGURATOR_DUMP_1591R44\ndef _dump_configurator_1591r44(page, scope=None, diagnostic=None):\n'
+NEW_CONFIG_RE_R44 = ('_CONFIGURATOR_HEADER_RE_1591R44 = re.compile(r"^\\s*гигабайты и минуты\\s*$", re.I)  # CONFIGURATOR_DUMP_1591R44\n'
+                     '_CHOOSE_PREFIX_RE_1591R44 = re.compile(r"^\\s*выбрать(\\s|$)", re.I)  # «выбрать», «выбрать за 300 ₽»… (no \\b: JS has no Cyrillic word boundary)\n\n\n' + OLD_CONFIG_RE_R44)
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -4091,12 +4377,14 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
         out_s = change["start"] + delta
         out_e = out_s + len(change["replacement"])
         if out_s <= out_start and out_end <= out_e:
-            joined = "".join(change["replacement"])
-            if joined.count(old_block) != 1:
-                raise SystemExit("edits.json: block ambiguous inside an earlier edit; source unchanged")
             target = change.get("_orig") or next((c for c in edits if c is change), None)
             if target is None:
                 raise SystemExit("edits.json: earlier edit not found; source unchanged")
+            # The live entry, not the snapshot: a second change inside the same earlier edit during
+            # an upgrade run must keep the first one (r44: three blocks of the r41 configurator entry).
+            joined = "".join(target["replacement"])
+            if joined.count(old_block) != 1:
+                raise SystemExit("edits.json: block ambiguous inside an earlier edit; source unchanged")
             target["replacement"] = joined.replace(old_block, new_block, 1).splitlines(keepends=True)
             return
         delta += len(change["replacement"]) - (change["end"] - change["start"])
@@ -4126,8 +4414,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if CONFIGURATOR_DUMP_MARKER in source:
+        return 44   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if BASKET_SUMMARY_MARKER in source:
-        return 43   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 43
     if TARIFF_LOG_MARKER in source:
         return 42
     if TARIFF_CONFIG_MARKER in source:
@@ -4188,6 +4478,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 41 or TARIFF_CONFIG_MARKER in source)\
             and (MAX_REVISION < 42 or TARIFF_LOG_MARKER in source)\
             and (MAX_REVISION < 43 or BASKET_SUMMARY_MARKER in source)\
+            and (MAX_REVISION < 44 or CONFIGURATOR_DUMP_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -4938,6 +5229,31 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 45 (r44). Prices from the tariff's card; the configurator dumped before it is confirmed.
+    if CONFIGURATOR_DUMP_MARKER not in source and MAX_REVISION >= 44:
+        for old, new, what in ((OLD_BASKET_DEF_HEAD_R44, NEW_BASKET_DEF_HEAD_R44, "basket/configurator JS"),
+                               (OLD_BASKET_EVAL_R44, NEW_BASKET_EVAL_R44, "basket: card prices"),
+                               (OLD_BASKET_PRINT_R44, NEW_BASKET_PRINT_R44, "basket: journal line"),
+                               (OLD_BASKET_DIAG_R44, NEW_BASKET_DIAG_R44, "basket: page text in the diagnostic"),
+                               (OLD_CONFIG_DEF_R44, NEW_CONFIG_DEF_R44, "configurator dump helper"),
+                               (OLD_CONFIG_SCOPE_R44, NEW_CONFIG_SCOPE_R44, "configurator: remember the dialog"),
+                               (OLD_CONFIG_PRINT_R44, NEW_CONFIG_PRINT_R44, "configurator: dump before confirming"),
+                               (OLD_STRICT_CALL_R44, NEW_STRICT_CALL_R44, "basket: require the tariff"),
+                               (OLD_STRICT_DEF_R44, NEW_STRICT_DEF_R44, "basket: strict helper"),
+                               (OLD_CONFIG_RE_R44, NEW_CONFIG_RE_R44, "configurator: header/prefix regexes"),
+                               (OLD_CONFIG_SECOND_R44, NEW_CONFIG_SECOND_R44, "configurator: panel recognised by its text")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -5024,6 +5340,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 41", README_NOTE_R41),) if built_revision >= 41 else ()),
                           *((("РЕВИЗИЯ 42", README_NOTE_R42),) if built_revision >= 42 else ()),
                           *((("РЕВИЗИЯ 43", README_NOTE_R43),) if built_revision >= 43 else ()),
+                          *((("РЕВИЗИЯ 44", README_NOTE_R44),) if built_revision >= 44 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
