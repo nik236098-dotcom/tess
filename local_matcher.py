@@ -44,10 +44,28 @@ def matcher_progress(stage):
 CAPTCHA_SYMBOL_COUNT = 6
 CAPTCHA_MAX_ATTEMPTS = 5
 CAPTCHA_FRAME_SELECTOR = '[data-testid="advanced-iframe"]'
+# Язык виджета SmartCaptcha выбирается по локали браузера (hl=ru / hl=en),
+# поэтому подписи кнопок и текст сообщений проверяются сразу на двух языках:
+# смена локали Chromium больше не должна ломать решение капчи.
+SUBMIT_BUTTON_NAME = re.compile(
+    r'^\s*(?:отправить(?:\s+снова)?|подтвердить|проверить|готово'
+    r'|submit|send(?:\s+again)?|confirm|check|verify|done)\s*$', re.I)
+REFRESH_BUTTON_NAME = re.compile(
+    r'обнов\w*'
+    r'|нов(?:ое|ую|ая|ый)\s+(?:задани\w+|картин\w*|изображени\w*)'
+    r'|попробовать\s+(?:ещ[её]|снова)'
+    r'|повторить'
+    r'|refresh|reload|update'
+    r'|new\s+(?:task|image|captcha)'
+    r'|try\s+again|retry', re.I)
 RETRY_MESSAGE = re.compile(
     r'(?:нужна|требуется|необходима)\s+дополнительная\s+проверка'
     r'|(?:ответ|решение)\s+неверн|неверн\w*\s+(?:ответ|решение)'
-    r'|попробуйте\s+(?:ещ[её]\s+раз|снова)', re.I)
+    r'|попробуйте\s+(?:ещ[её]\s+раз|снова)'
+    r'|incorrect|wrong\s+(?:answer|solution)'
+    r'|something\s+went\s+wrong|try\s+again'
+    r'|additional\s+(?:check|verification)|verification\s+required', re.I)
+CAPTCHA_SUBMIT_TIMEOUT = 15
 
 def normalize(mask, size=64):
     ys, xs = np.where(mask > 0)
@@ -389,6 +407,125 @@ def capture_captcha(frame_box):
                 picture=crop(image, pic_roi), strip=crop(image, ref_roi))
 
 
+def captcha_button(frame_box, name):
+    """Первая кнопка окна задания, чьё доступное имя совпало."""
+    try:
+        locator = frame_box.content_frame.get_by_role('button', name=name)
+        if locator.count():
+            return locator.first
+    except (PlaywrightError, RuntimeError):
+        pass
+    return None
+
+
+def captcha_submit_button(frame_box):
+    """Кнопка отправки ответа: подпись зависит от языка виджета."""
+    button = captcha_button(frame_box, SUBMIT_BUTTON_NAME)
+    if button is not None:
+        return button
+    try:
+        fallback = frame_box.content_frame.locator('button[type="submit"]')
+        if fallback.count():
+            return fallback.first
+    except (PlaywrightError, RuntimeError):
+        pass
+    return None
+
+
+def captcha_button_labels(frame_box, limit=12):
+    """Видимые подписи кнопок окна задания — для диагностики сбоя отправки."""
+    labels = []
+    try:
+        buttons = frame_box.content_frame.locator('button')
+        for i in range(min(buttons.count(), limit)):
+            button = buttons.nth(i)
+            try:
+                if not button.is_visible():
+                    continue
+                label = (button.inner_text() or '').strip()
+                if not label:
+                    label = button.get_attribute('aria-label') or ''
+                labels.append(label.strip()[:40])
+            except PlaywrightError:
+                continue
+    except (PlaywrightError, RuntimeError):
+        pass
+    return labels
+
+
+def click_captcha_submit(page, frame_box, snapshot, timeout=CAPTCHA_SUBMIT_TIMEOUT):
+    """Нажать «отправить», не считая смену задания ошибкой.
+
+    Виджет может отправить ответ сам: тогда кнопка исчезает, а задание
+    сменяется. Это не сбой — фактический результат проверяет вызывающий код.
+    """
+    deadline = monotonic() + timeout
+    while monotonic() < deadline:
+        if page.is_closed():
+            raise RuntimeError('Браузер закрыт.')
+        try:
+            if captcha_task_key(frame_box) != snapshot['key']:
+                return False
+        except PlaywrightError:
+            return False
+        button = captcha_submit_button(frame_box)
+        if button is not None:
+            try:
+                if button.is_visible() and button.is_enabled():
+                    button.click(timeout=5000)
+                    return True
+            except PlaywrightError:
+                pass
+        page.wait_for_timeout(250)
+    labels = captcha_button_labels(frame_box)
+    raise RuntimeError(
+        f'Кнопка «отправить» недоступна за {timeout:g} секунд '
+        f'(кнопки окна задания: {labels or "нет"}).')
+
+
+def current_captcha_key(page):
+    """Ключ текущего задания или None, если окна капчи на странице уже нет."""
+    try:
+        frame_box = active_captcha_frame(page)
+    except (RuntimeError, PlaywrightError):
+        return None
+    if frame_box is None:
+        return None
+    try:
+        return captcha_task_key(frame_box)
+    except (PlaywrightError, RuntimeError):
+        return None
+
+
+def observe_captcha(page, previous_key, timeout=12, clock=None):
+    """Состояние капчи без новых кликов: passed/changed/same/closed."""
+    clock = clock or monotonic
+    deadline = clock() + timeout
+    hidden_since = None
+    while clock() < deadline:
+        if page.is_closed():
+            return 'closed'
+        try:
+            frame_box = active_captcha_frame(page)
+        except (RuntimeError, PlaywrightError):
+            frame_box = None
+        if frame_box is None:
+            if hidden_since is None:
+                hidden_since = clock()
+            # Короткое исчезновение iframe возможно при перерисовке ответа.
+            if previous_key is not None and clock() - hidden_since >= 1:
+                return 'passed'
+        else:
+            hidden_since = None
+            try:
+                if previous_key is None or captcha_task_key(frame_box) != previous_key:
+                    return 'changed'
+            except PlaywrightError:
+                pass
+        page.wait_for_timeout(250)
+    return 'same'
+
+
 def submit_captcha_points(page, frame_box, snapshot, points):
     if len(points) != CAPTCHA_SYMBOL_COUNT:
         raise ValueError('Для отправки нужны ровно шесть точек.')
@@ -414,8 +551,7 @@ def submit_captcha_points(page, frame_box, snapshot, points):
         page.wait_for_timeout(300)
     if captcha_task_key(frame_box) != snapshot['key']:
         raise RuntimeError('Задание сменилось перед отправкой.')
-    frame_box.content_frame.get_by_role(
-        'button', name=re.compile(r'^\s*отправить\s*$', re.I)).click(timeout=10000)
+    click_captcha_submit(page, frame_box, snapshot)
     print('Нажаты все 6 символов и кнопка «отправить».', flush=True)
 
 
@@ -462,7 +598,7 @@ def wait_captcha_result(page, previous_key, timeout=25, clock=None):
                     return 'retry'
                 text = frame_box.content_frame.locator('body').inner_text(timeout=1500)
                 button = frame_box.content_frame.get_by_role(
-                    'button', name=re.compile(r'^\s*отправить\s*$', re.I))
+                    'button', name=SUBMIT_BUTTON_NAME)
                 # Give submission time to enter its loading state before reading
                 # a message that may already have been visible above the task.
                 if (clock() - started >= 2 and RETRY_MESSAGE.search(text)
@@ -477,38 +613,63 @@ def wait_captcha_result(page, previous_key, timeout=25, clock=None):
 
 
 def refresh_captcha(page, previous_key, timeout=20, clock=None):
-    """Use a fresh task; never click an unchanged, partly selected image again."""
+    """Взять новое задание; неизменённую частично решённую картинку не трогаем.
+
+    True  — новое задание получено (или окна капчи уже нет);
+    False — обновить задание не удалось: кнопка не найдена или недоступна.
+    Исключение не бросается: решение принимает вызывающий код, поэтому
+    отсутствие кнопки не превращается сразу в перезапуск строки.
+    """
     clock = clock or monotonic
-    frame_box = active_captcha_frame(page)
-    if frame_box is None or captcha_task_key(frame_box) != previous_key:
-        return
-    buttons = frame_box.content_frame.get_by_role(
-        'button', name=re.compile(r'обнов|нов(?:ое|ую|ая)\s+(?:задание|картин)'
-                                  r'|попробовать\s+(?:ещ[её]|снова)|повторить', re.I))
-    for i in range(buttons.count()):
-        button = buttons.nth(i)
-        if button.is_visible() and button.is_enabled():
-            button.click(timeout=5000)
-            break
-    else:
-        raise RuntimeError('Капча запросила повтор, но кнопка нового задания недоступна.')
+    try:
+        frame_box = active_captcha_frame(page)
+    except (RuntimeError, PlaywrightError):
+        return True
+    if frame_box is None:
+        return True
+    try:
+        if captcha_task_key(frame_box) != previous_key:
+            return True
+    except PlaywrightError:
+        return True
+    clicked = False
+    click_deadline = clock() + min(timeout, 10)
+    while clock() < click_deadline and not clicked:
+        button = captcha_button(frame_box, REFRESH_BUTTON_NAME)
+        if button is not None:
+            try:
+                if button.is_visible() and button.is_enabled():
+                    button.click(timeout=5000)
+                    clicked = True
+                    break
+            except (PlaywrightError, RuntimeError):
+                break
+        page.wait_for_timeout(500)
+    if not clicked:
+        print('Кнопка нового задания капчи недоступна; кнопки окна задания: '
+              f'{captcha_button_labels(frame_box) or "нет"}.', flush=True)
+        return False
     deadline = clock() + timeout
     while clock() < deadline:
         if page.is_closed():
-            return
-        frame_box = active_captcha_frame(page)
+            return True
+        try:
+            frame_box = active_captcha_frame(page)
+        except (RuntimeError, PlaywrightError):
+            frame_box = None
         if frame_box is None:
-            # Do not interpret this transient disappearance as a fresh task.
+            # Краткое исчезновение iframe не считаем новым заданием.
             page.wait_for_timeout(250)
             continue
         try:
             if captcha_task_key(frame_box) != previous_key:
                 page.wait_for_timeout(400)
-                return
+                return True
         except PlaywrightError:
             pass
         page.wait_for_timeout(250)
-    raise RuntimeError('После обновления новая картинка капчи не загрузилась.')
+    print('После обновления новая картинка капчи не загрузилась.', flush=True)
+    return False
 
 
 def try_local_captcha(page, frame_box=None):
@@ -533,10 +694,26 @@ def try_local_captcha(page, frame_box=None):
         except (ValueError, RuntimeError, cv2.error, PlaywrightError) as exc:
             if page.is_closed():
                 return False
-            if attempt == CAPTCHA_MAX_ATTEMPTS:
-                raise RuntimeError(f'Капча: исчерпаны {CAPTCHA_MAX_ATTEMPTS} попыток: {exc}') from exc
+            if previous_key is None:
+                previous_key = current_captcha_key(page)
             print(f'Повтор с новым заданием: {exc}', flush=True)
-            refresh_captcha(page, previous_key)
+            # Сначала выясняем фактическое состояние: виджет мог отправить
+            # ответ сам, тогда задание уже сменилось или капча закрылась.
+            state = observe_captcha(page, previous_key)
+            if state == 'closed':
+                return False
+            if state == 'passed':
+                print('Капча закрылась. Продолжаю основной сценарий.', flush=True)
+                return True
+            if attempt == CAPTCHA_MAX_ATTEMPTS:
+                raise RuntimeError(
+                    f'Капча: исчерпаны {CAPTCHA_MAX_ATTEMPTS} попыток: {exc}') from exc
+            if state == 'changed':
+                continue
+            # Ту же самую картинку повторно не разбираем: нужно новое задание.
+            if not refresh_captcha(page, previous_key):
+                raise RuntimeError(
+                    f'Капча не обновилась после ошибки: {exc}') from exc
             continue
         outcome = wait_captcha_result(page, previous_key)
         if outcome == 'passed':
@@ -547,5 +724,7 @@ def try_local_captcha(page, frame_box=None):
         if attempt == CAPTCHA_MAX_ATTEMPTS:
             raise RuntimeError(f'Капча не пройдена за {CAPTCHA_MAX_ATTEMPTS} попыток.')
         print('Сайт запросил дополнительную проверку. Повторяю...', flush=True)
-        refresh_captcha(page, previous_key)
+        if not refresh_captcha(page, previous_key):
+            raise RuntimeError(
+                'Сайт запросил новое задание, но обновить капчу не удалось.')
     raise RuntimeError('Капча не завершена.')

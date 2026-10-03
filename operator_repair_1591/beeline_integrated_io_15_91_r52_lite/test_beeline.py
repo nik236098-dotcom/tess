@@ -26,11 +26,15 @@ from console_wait import console_input
 from local_matcher import try_local_captcha, configure_matcher_runtime
 from time import monotonic
 from pathlib import Path
+import operator_runtime_io as _io1591
+
+IO_BUILD_VERSION = "15.91-io"
 from batch_support import load_clients, wait_confirmation, save_result
 
 
 RUNTIME_LOG_DIR = Path(__file__).resolve().parent / "runtime_logs"
 RUNTIME_CONSOLE_FILE = RUNTIME_LOG_DIR / "console.log"
+RUNTIME_SESSION_MARKER_V1584 = f"=== CURRENT SERVICE SESSION START {time.time():.3f} ==="
 
 
 class _RuntimeConsoleTee:
@@ -106,6 +110,16 @@ def _runtime_console_tail(max_lines=180, max_chars=32000):
         lines = RUNTIME_CONSOLE_FILE.read_text(
             encoding="utf-8", errors="replace"
         ).splitlines()
+        # SESSION_FILTER_1585
+        _marker1585 = "=== CURRENT SERVICE SESSION START "
+        _last1585 = -1
+        for _i1585 in range(len(lines) - 1, -1, -1):
+            if _marker1585 in lines[_i1585]:
+                _last1585 = _i1585
+                break
+        if _last1585 < 0:
+            return "(граница текущей сессии отсутствует; исторический лог не подставлен)"
+        lines = lines[_last1585:]
         text = "\n".join(lines[-max(1, int(max_lines)):])
         if len(text) > max_chars:
             text = text[-max_chars:]
@@ -177,7 +191,7 @@ class Diagnostics:
 
 DIAGNOSTICS_DIR = Path(__file__).resolve().parent / "diagnostics"
 
-DIAGNOSTIC_SESSIONS_TO_KEEP = 5
+DIAGNOSTIC_SESSIONS_TO_KEEP = 40  # FINAL_PAGE_1591R23: restarts every 20 min made 5 sessions a few hours
 
 
 def create_diagnostic_session():
@@ -214,7 +228,9 @@ from playwright.sync_api import sync_playwright, expect, TimeoutError as Playwri
 
 REGION_HOST = "saratov.beeline.ru"
 START_URL = f"https://{REGION_HOST}/basket/"
-TARIFF_NAME = "подписка bee START"
+# TARIFF_CONFIG_1591R41: BEELINE_TARIFF in the systemd unit picks another card of the picker
+# («для смарт часов», «подписка bee HIT»…), spelled exactly as on the site; default bee START.
+TARIFF_NAME = (os.environ.get("BEELINE_TARIFF") or "").strip() or "подписка bee START"
 TELEGRAM_CONFIG_FILE = Path(__file__).resolve().parent / "telegram_config.json"
 ROW_START_STALL_SECONDS = 120
 DEFAULT_EXTERNAL_STALL_SECONDS = 90
@@ -439,6 +455,9 @@ def load_telegram_config():
 TELEGRAM_DEFAULT_PROXY = ""  # PROXY_FROM_CONFIG_1591R3: set "proxy" in telegram_config.json (or TELEGRAM_PROXY)
 
 
+TELEGRAM_DIRECT_PROXY_VALUES = {"direct", "none", "off", "no", "-"}  # PROXY_DIRECT_1591R20: server outside RU
+
+
 def telegram_http_proxies(cfg):
     # Config/env override wins. This keeps all Telegram consumers on one transport.
     proxy = str(
@@ -447,7 +466,7 @@ def telegram_http_proxies(cfg):
         or TELEGRAM_DEFAULT_PROXY
         or ""
     ).strip()
-    if not proxy:
+    if not proxy or proxy.lower() in TELEGRAM_DIRECT_PROXY_VALUES:  # PROXY_DIRECT_1591R20
         return None
     if "://" not in proxy:
         proxy = "socks5h://" + proxy
@@ -484,14 +503,87 @@ def telegram_api(cfg, method, payload):
             return None, f"HTTP {r.status_code}: {r.text[:300]}"
         if r.ok and obj.get("ok"):
             return obj, None
-        return None, f"Telegram API: {obj.get('error_code', r.status_code)} {obj.get('description', r.text[:200])}"
+        return None, _io1591.TelegramFailure(
+            f"Telegram API: {obj.get('error_code', r.status_code)} {obj.get('description', '')}",
+            code=obj.get("error_code", r.status_code),
+            retry_after=(obj.get("parameters") or {}).get("retry_after"),
+        )
     except Exception as exc:
-        return None, f"{type(exc).__name__}: {exc}"
+        return None, _io1591.TelegramFailure(f"{type(exc).__name__}: {exc}")
+
+# TG_RATE_1591R27
+TG_MIN_CALL_GAP_1591R27 = 1.5
+TG_STATUS_MIN_EDIT_GAP_1591R27 = 6.0
+
+
+def _tg_status_file_1591r27():
+    return TELEGRAM_CONFIG_FILE.with_name("telegram_status_messages.json")
+
+
+def _tg_call_1591r27(cfg, method, payload, state):
+    """One rate-limited Bot API call of the status logger: a global gap between calls and a
+    full stop for retry_after when Telegram answers 429 (retrying every second grew the ban)."""
+    now = time.time()
+    if now < float(state.get("pause_until") or 0):
+        return None, "paused"
+    gap = TG_MIN_CALL_GAP_1591R27 - (now - float(state.get("last_call") or 0))
+    if gap > 0:
+        time.sleep(gap)
+    state["last_call"] = time.time()
+    r, err = telegram_api(cfg, method, payload)
+    retry_after = getattr(err, "retry_after", None)
+    if isinstance(retry_after, (int, float)) and retry_after > 0:
+        state["pause_until"] = time.time() + float(retry_after) + 1
+        print(f"[Telegram] 429: Telegram просит паузу {int(retry_after)} с — статусы не трогаю до её конца.", flush=True)
+    return r, err
+
+
+def _tg_status_messages_load_1591r27(chat):
+    try:
+        data = json.loads(_tg_status_file_1591r27().read_text("utf-8"))
+        if str(data.get("chat")) == str(chat):
+            return {int(k): int(v) for k, v in (data.get("mids") or {}).items()}
+    except Exception:
+        pass
+    return {}
+
+
+def _tg_status_messages_save_1591r27(chat, mids):
+    try:
+        _tg_status_file_1591r27().write_text(
+            json.dumps({"chat": str(chat), "mids": {str(k): v for k, v in mids.items()}}), "utf-8"
+        )
+    except Exception:
+        pass
+
+
+def _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at):
+    """TELEGRAM_MENU_1591R38: the tab statuses go to status_snapshot.json for the bot's menu
+    (its «Статус» view edits one panel while it is open). The eight status messages and their
+    background edits of revision 27 are gone, so nothing is sent to Telegram here."""
+    tabs = {}
+    for i in range(1, TAB_COUNT + 1):
+        info = status_map.get(str(i))
+        if info:
+            tabs[str(i)] = {"text": str(info.get("text", ""))[:1500], "time": float(info.get("time") or 0)}
+    key = json.dumps(tabs, ensure_ascii=False, sort_keys=True)
+    if key == last.get("_snapshot"):
+        return
+    last["_snapshot"] = key
+    path = _tg_status_file_1591r27().with_name("status_snapshot.json")
+    try:
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"updated": time.time(), "tabs": tabs}, ensure_ascii=False), "utf-8")
+        tmp.replace(path)
+    except Exception as exc:
+        print(f"[Telegram] status_snapshot.json не записан: {type(exc).__name__}: {exc}", flush=True)
+
 
 def telegram_logger_process(status_map, success_queue, stop_event):
     cfg = load_telegram_config()
     chat = str(cfg.get("chat_id", "")).strip()
     mids, last = {}, {}
+    state, edited_at = {"pause_until": 0.0, "last_call": 0.0}, {}  # TG_RATE_1591R27
 
     print("[Telegram] Логгер запущен.", flush=True)
     if not chat:
@@ -506,26 +598,10 @@ def telegram_logger_process(status_map, success_queue, stop_event):
     bot_name = (test.get("result") or {}).get("username", "?")
     print(f"[Telegram] SOCKS5 подключён. Бот: @{bot_name}", flush=True)
 
-    for i in range(1, TAB_COUNT + 1):
-        t = f"⏳ Вкладка {i}\nСтатус: запуск..."
-        r, err = telegram_api(
-            cfg, "sendMessage",
-            {"chat_id": chat, "text": t, "disable_web_page_preview": "true"},
-        )
-        if r:
-            mids[i] = r["result"]["message_id"]
-            last[i] = t
-            print(f"[Telegram] Сообщение вкладки {i} создано.", flush=True)
-        else:
-            print(f"[Telegram] ОШИБКА отправки вкладки {i}: {err}", flush=True)
-
-    if not mids:
-        print(
-            "[Telegram] Не удалось создать ни одного сообщения. "
-            "Основной сценарий продолжит работать без Telegram.",
-            flush=True,
-        )
-        return
+    # TELEGRAM_MENU_1591R38: statuses are written to status_snapshot.json and shown by the
+    # bot's menu on request; no status messages are created or edited here any more.
+    print("[Telegram] Статус вкладок пишется в status_snapshot.json; показ — через меню бота.", flush=True)
+    _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at)
 
     while not stop_event.is_set():
         # Успехи отправляются ОТДЕЛЬНЫМИ сообщениями и никогда не редактируются.
@@ -534,35 +610,34 @@ def telegram_logger_process(status_map, success_queue, stop_event):
                 success_text = success_queue.get_nowait()
             except Exception:
                 break
-            r, err = telegram_api(
-                cfg,
-                "sendMessage",
-                {
-                    "chat_id": chat,
-                    "text": str(success_text)[:4000],
-                    "disable_web_page_preview": "true",
-                },
-            )
-            if not r:
-                print(f"[Telegram] ОШИБКА отдельного SUCCESS push: {err}", flush=True)
-
-        for i, mid in list(mids.items()):
-            info = status_map.get(str(i))
-            t = str((info or {}).get("text", ""))
-            if t and t != last.get(i):
+            # SUCCESS_PUSH_DURABLE_1591R2: the whole text is queued and delivered in
+            # confirmed parts by the durable sender; it is never cut to 4000 characters.
+            success_text = str(success_text)
+            if not success_text.strip():
+                continue
+            try:
+                _io1591.enqueue_notice(globals(), chat, success_text)
+                continue
+            except Exception as exc:
+                print(
+                    "[Telegram] SUCCESS push не поставлен в очередь, отправляю напрямую: "
+                    f"{_io1591.redact(exc)}",
+                    flush=True,
+                )
+            for piece in _io1591.split_text(success_text):
                 r, err = telegram_api(
-                    cfg, "editMessageText",
+                    cfg,
+                    "sendMessage",
                     {
                         "chat_id": chat,
-                        "message_id": mid,
-                        "text": t[:4000],
+                        "text": piece,
                         "disable_web_page_preview": "true",
                     },
                 )
-                if r:
-                    last[i] = t
-                elif err and "message is not modified" not in err.lower():
-                    print(f"[Telegram] ОШИБКА обновления вкладки {i}: {err}", flush=True)
+                if not r:
+                    print(f"[Telegram] ОШИБКА отдельного SUCCESS push: {err}", flush=True)
+
+        _tg_status_sync_1591r27(cfg, chat, status_map, mids, last, state, edited_at)  # TG_RATE_1591R27
         time.sleep(1)
 
 
@@ -594,7 +669,11 @@ def _ai_message_lane(body):
         "обнови код", "измени код", "добавь", "доработ", "передел",
         "рефактор", "убери из кода", "замени в коде", "патч",
     )
-    return "dev" if any(x in low for x in code_triggers) else "fast"
+    if any(x in low for x in code_triggers):
+        return "dev"
+    if str(os.environ.get("TG_EXTERNAL_CONTROLLER", "")).strip() == "1" and not _operator_needs_tools(body):
+        return "chat"
+    return "fast"
 
 
 def _ai_message_priority(body):
@@ -674,7 +753,9 @@ def _ai_db_init():
             conn.execute("ALTER TABLE inbox ADD COLUMN claim_until REAL")
 
         rows = conn.execute(
-            "SELECT update_id, body FROM inbox WHERE done_at IS NULL"
+            "SELECT update_id, body FROM inbox WHERE done_at IS NULL AND update_id > 0 "
+            "AND (claimed_by IS NULL OR claim_until < ?)",
+            (time.time(),),
         ).fetchall()
         for update_id, body in rows:
             conn.execute(
@@ -682,11 +763,7 @@ def _ai_db_init():
                 (_ai_message_lane(body), _ai_message_priority(body), int(update_id)),
             )
 
-        conn.execute(
-            """UPDATE inbox
-               SET claimed_by=NULL, claim_until=NULL
-               WHERE done_at IS NULL"""
-        )
+        # Never clear leases belonging to a still-running AI consumer.
         conn.commit()
     finally:
         conn.close()
@@ -741,6 +818,214 @@ def _ai_db_store_telegram_update(update, allowed_chat):
     finally:
         conn.close()
 
+
+
+
+def _ai_db_enqueue_internal(body, lane="fast", priority=100):
+    """Queue an autonomous Operator task without pretending it came from Telegram."""
+    cfg = load_telegram_config()
+    chat_id = str(cfg.get("chat_id", "")).strip()
+    if not chat_id:
+        return None
+
+    # Negative IDs cannot collide with normal positive Telegram update_ids.
+    update_id = -int(time.time_ns())
+    conn = _ai_db_connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            """INSERT INTO inbox
+               (update_id, chat_id, body, received_at, next_attempt_at,
+                lane, priority)
+               VALUES (?, ?, ?, ?, 0, ?, ?)""",
+            (
+                update_id,
+                chat_id,
+                str(body),
+                time.time(),
+                str(lane),
+                int(priority),
+            ),
+        )
+        conn.commit()
+        return update_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# AUTO_ASSIST_BUDGET_1591R4
+AUTO_ASSIST_MIN_GAP_SECONDS = 45
+AUTO_ASSIST_REPORTS_PER_STATE = 2
+AUTO_ASSIST_REPEAT_SECONDS = 1800
+
+
+def _auto_assist_pending(kind, tab_id):
+    """True while an unanswered [AUTO_<kind>_ASSIST TAB n] job is still in the inbox."""
+    conn = _ai_db_connect()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM inbox WHERE done_at IS NULL AND body LIKE ? LIMIT 1",
+            (f"[AUTO_{kind}_ASSIST TAB {int(tab_id)}]%",),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+# RESIGN_LIMIT_1591R48: BEELINE_AI=0 in the systemd unit switches the DeepSeek operator off: no automatic
+# jobs, idle lanes, «DeepSeek выключен» to a menu question. Rows that cannot confirm the signature
+# go to the user as unverified after the usual hold. AI_DEFAULT is "0" in the experiment build.
+AI_DEFAULT_1591R48 = "1"
+AI_ENABLED_1591R48 = str(os.environ.get("BEELINE_AI") or AI_DEFAULT_1591R48).strip().lower() not in {"0", "off", "no", "false"}
+
+
+def _auto_assist_allowed(worker, kind, force=False):
+    """Budget for autonomous assist requests: the page state, not the clock, decides.
+
+    Per unchanged page URL at most AUTO_ASSIST_REPORTS_PER_STATE requests (the second
+    one no sooner than AUTO_ASSIST_MIN_GAP_SECONDS after the first), then one every
+    AUTO_ASSIST_REPEAT_SECONDS. A new URL starts a new budget. A request is never
+    queued while the previous one for this tab has not been answered yet. `force`
+    only waives the minimum gap.
+    """
+    if not AI_ENABLED_1591R48:
+        return False  # RESIGN_LIMIT_1591R48: nothing is asked of DeepSeek
+    now = monotonic()
+    try:
+        url = str(worker.get("page").url or "")
+    except Exception:
+        url = ""
+    states = worker.setdefault("auto_assist_state", {})
+    state = states.get(kind)
+    if not state or state.get("url") != url:
+        state = {"url": url, "count": 0, "last": 0.0}
+        states[kind] = state
+    try:
+        if _auto_assist_pending(kind, worker.get("id") or 0):
+            return False
+    except Exception:
+        pass
+    since_last = now - float(state.get("last") or 0)
+    if state["count"] >= AUTO_ASSIST_REPORTS_PER_STATE:
+        if since_last < AUTO_ASSIST_REPEAT_SECONDS:
+            return False
+    elif state["count"] > 0 and not force and since_last < AUTO_ASSIST_MIN_GAP_SECONDS:
+        return False
+    state["count"] += 1
+    state["last"] = now
+    worker[f"{kind.lower()}_ai_last_at"] = now
+    return True
+
+
+def queue_error_assist(worker, reason, force=False):
+    """Analyze /registration/error before any retry/recovery decision."""
+    if not _auto_assist_allowed(worker, "ERROR", force):
+        return False
+
+    tab_id = int(worker.get("id") or 0)
+    url = ""
+    try:
+        url = worker.get("page").url
+    except Exception:
+        pass
+
+    text = (
+        f"[AUTO_ERROR_ASSIST TAB {tab_id}] "
+        "После mobile-id-auth открылась /registration/error. Это НЕ success. "
+        "Сначала автономно проанализируй текущую physical-вкладку: DOM, видимый текст "
+        "ошибки, DevTools console и network, последние запросы/ответы и состояние формы. "
+        "Определи конкретную причину и, если это безопасно, попробуй исправить её на этой "
+        "странице. Затем ОБЯЗАТЕЛЬНО отправь мини-отчёт: причина, что проверил, что "
+        "попробовал, результат, URL. Сразу после твоего отчёта runtime автоматически, без "
+        "отдельного подтверждения, закроет эту error-вкладку, откроет новую и пропустит строку без повтора. "
+        "Worker при этом не теряется. "
+        "Сам вкладку не закрывай: это сделает runtime после отчёта. "
+        f"Причина вызова: {reason}. URL: {url}"
+    )
+    try:
+        _ai_db_enqueue_internal(text, lane="fast", priority=125)
+        print(
+            f"[AI AUTO] TAB {tab_id}: ERROR_ASSIST поставлен в очередь: {reason}",
+            flush=True,
+        )
+        return True
+    except Exception as exc:
+        print(
+            f"[AI AUTO] TAB {tab_id}: ERROR_ASSIST queue failed: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return False
+
+
+def queue_success_assist(worker, reason, force=False):
+    """Ask DeepSeek to inspect/help a confirmed post-auth page.
+
+    Rate limited so a stubborn form cannot create an AI-request storm.
+    """
+    if not _auto_assist_allowed(worker, "SUCCESS", force):
+        return False
+    tab_id = int(worker.get("id") or 0)
+    url = ""
+    try:
+        url = worker.get("page").url
+    except Exception:
+        pass
+
+    text = (
+        f"[AUTO_SUCCESS_ASSIST TAB {tab_id}] "
+        "Это твоя главная автономная обязанность после успешного mobile-id подтверждения. "
+        "Работай БЕЗ участия пользователя. СНАЧАЛА наблюдай текущую physical-вкладку: "
+        "прочитай DOM/видимые ошибки/состояние кнопок и DevTools console/network. "
+        "Не вмешивайся, пока сайт сам нормально продвигается. "
+        "Если прогресс остановился или форма невалидна — сам найди причину и исправь её: "
+        "заполни все реально отсутствующие обязательные поля, выбери корректные autocomplete "
+        "подсказки, проверь город/область/адрес и остальные поля. Уже корректно заполненные "
+        "значения не перезаписывай. Для текущего сценария город при отсутствии — Саратов, "
+        "область при отсутствии — Саратовская область. "
+        "УЛИЦА (STREET_RULE_1591R47): если поле улицы пустое или помечено ошибкой, НЕ останавливайся и не "
+        "спрашивай пользователя — впиши по очереди «Центральная», «Ленина», «Советская», «Школьная», "
+        "«Молодёжная» и выбери ПЕРВУЮ подсказку сайта для этого населённого пункта; если подсказок нет "
+        "ни на одно из названий, возьми любую подсказку, которую сайт предлагает на одну букву. Район, "
+        "если сайт его требует, — так же первой подсказкой. Пустой контактный номер — номер этой строки. "
+        "У ТЕБЯ ЕСТЬ ИНСТРУМЕНТЫ browser_fill, browser_type, browser_press, browser_click, browser_evaluate_js — "
+        "действуй ими; не пиши, что инструментов ввода нет. Руки опускай только когда сайт сам отверг все "
+        "варианты — тогда перечисли их в отчёте. "
+        "Затем правильно заполни поле подписи, дождись активной кнопки и нажми "
+        "«Подписать договор». После клика снова наблюдай DOM/console/network и убедись, "
+        "что подписание действительно завершилось либо точно определи оставшуюся ошибку. "
+        "ЖЁСТКО ЗАПРЕЩЕНО на SUCCESS GUARD: close, restart worker, reload, navigate, "
+        "back/forward и любое действие, способное потерять успешную страницу. "
+        "В конце ОБЯЗАТЕЛЬНО отправь пользователю короткий мини-отчёт: что было не так; "
+        "что ты изменил; какие значения поставил; стала ли кнопка активна; нажал ли её; "
+        "чем закончилось подписание; на каком URL/экране осталась вкладка. "
+        "Пример формата: «Не был указан город, поэтому подтверждение договора не проходило. "
+        "Поставил город — Саратов. Кнопка стала активна, нажал “Подписать договор”. "
+        "Подписание прошло успешно. Вкладка осталась на …». "
+        "ЕСЛИ RUNTIME УЖЕ НАЖАЛ «Подписать договор», а страница не изменилась или кнопка осталась: "  # AI_VERDICT_1591R30
+        "сними всплывающие окна, перерисуй подпись, нажми кнопку ОДИН раз и проверь в network ответ "
+        "/checksignature/. Пока статус вкладки ✍️ (runtime сам рисует и нажимает) — не кликай. "
+        "ПОСЛЕДНЯЯ СТРОКА ОТЧЁТА СТРОГО одна из: «VERDICT: SIGNED» (checksignature 200 или экран после "
+        "подписи), «VERDICT: PAYMENT» (экран «пора оплатить eSIM»), «VERDICT: NOT_SIGNED — причина». "
+        f"Причина вызова: {reason}. Текущий URL: {url}"
+    )
+    try:
+        _ai_db_enqueue_internal(text, lane="fast", priority=120)
+        print(
+            f"[AI AUTO] TAB {tab_id}: SUCCESS_ASSIST поставлен в очередь: {reason}",
+            flush=True,
+        )
+        return True
+    except Exception as exc:
+        print(
+            f"[AI AUTO] TAB {tab_id}: не удалось поставить задачу: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return False
 
 
 def _ai_effect_key(update_id, tool_name, args):
@@ -881,14 +1166,7 @@ def _ai_db_complete(update_id, chat_id, response_text):
             """INSERT INTO outbox
                (update_id, chat_id, body, created_at, next_attempt_at)
                VALUES (?, ?, ?, ?, 0)
-               ON CONFLICT(update_id) DO UPDATE SET
-                   body=excluded.body,
-                   chat_id=excluded.chat_id,
-                   created_at=excluded.created_at,
-                   attempts=0,
-                   next_attempt_at=0,
-                   last_error=NULL,
-                   sent_at=NULL""",
+               ON CONFLICT(update_id) DO NOTHING""",
             (int(update_id), str(chat_id), str(response_text), time.time()),
         )
         conn.commit()
@@ -925,14 +1203,7 @@ def _ai_db_fail(update_id, error, attempts):
                     """INSERT INTO outbox
                        (update_id, chat_id, body, created_at, next_attempt_at)
                        VALUES (?, ?, ?, ?, 0)
-                       ON CONFLICT(update_id) DO UPDATE SET
-                           body=excluded.body,
-                           chat_id=excluded.chat_id,
-                           created_at=excluded.created_at,
-                           attempts=0,
-                           next_attempt_at=0,
-                           last_error=NULL,
-                           sent_at=NULL""",
+                       ON CONFLICT(update_id) DO NOTHING""",
                     (int(update_id), chat_id, body, time.time()),
                 )
             conn.commit()
@@ -962,7 +1233,7 @@ def _ai_db_next_outbox():
             """SELECT update_id, chat_id, body, attempts
                FROM outbox
                WHERE sent_at IS NULL AND next_attempt_at <= ?
-               ORDER BY update_id ASC
+               ORDER BY created_at ASC, update_id ASC
                LIMIT 1""",
             (now,),
         ).fetchone()
@@ -1030,6 +1301,7 @@ def ai_telegram_receiver_process(stop_event, receiver_health):
         print("[AI RX] Нет Telegram chat_id; receiver отключён.", flush=True)
         return
 
+    _io1591.start_sender(globals(), tg_cfg, stop_event=stop_event)
     try:
         _, webhook_err = telegram_api(
             tg_cfg, "deleteWebhook", {"drop_pending_updates": "false"}
@@ -1094,33 +1366,7 @@ def ai_telegram_receiver_process(stop_event, receiver_health):
                         offset = _ai_db_offset()
                         break
 
-            # Send completed AI responses independently from AI processing.
-            out = _ai_db_next_outbox()
-            if out:
-                _, send_err = telegram_api(
-                    tg_cfg,
-                    "sendMessage",
-                    {
-                        "chat_id": out["chat_id"],
-                        "text": out["body"][:4000],
-                        "disable_web_page_preview": "true",
-                    },
-                )
-                if send_err:
-                    _ai_db_outbox_fail(
-                        out["update_id"], send_err, out.get("attempts", 0)
-                    )
-                    print(
-                        f"[AI TX] sendMessage error: {send_err}",
-                        flush=True,
-                    )
-                else:
-                    _ai_db_outbox_sent(out["update_id"])
-                    print(
-                        f"[AI TX] Ответ на update {out['update_id']} доставлен.",
-                        flush=True,
-                    )
-
+            # Responses are sent by the independent durable sender thread.
             _ai_health_touch(receiver_health, "polling")
     finally:
         pass
@@ -1530,6 +1776,14 @@ def _agent_runtime_status(status_map, pages):
     return "\n".join(statuses), "\n".join(page_lines)
 
 
+OPERATOR_API_MISSION_V1584 = """ТВОЯ ПОСТОЯННАЯ ГЛАВНАЯ ЗАДАЧА — автономно сопровождать SUCCESS/ERROR-вкладки и контролировать корректность завершения процесса. После выхода из mobile-id-auth на post-auth страницу сначала наблюдай живую physical-вкладку: DOM, validation, состояние элементов, console/network. Если процесс остановился, самостоятельно установи фактическую причину по странице; недостающим или невалидным может быть любое поле. Уже корректные значения не меняй. SUCCESS_GUARD и ERROR_GUARD запрещают destructive close/restart/reload/back/navigation. После автономного вмешательства отправляй краткий фактический отчёт: блокер, проверки, изменения/значения, состояние действия, результат и текущий URL. Мониторинг воркеров, Telegram, прокси и кода — второстепенная задача. Если спрашивают о твоей задаче, первым делом называй эту постоянную миссию. Для состояния «сейчас» используй текущий heartbeat, текущие вкладки и только текущую service/runtime session; старые proxy/Telegram ошибки не выдавай за текущие без свежего подтверждения."""
+
+OPERATOR_MISSION_1586 = """У ТЕБЯ ЕСТЬ ПОСТОЯННОЕ АКТИВНОЕ ПОРУЧЕНИЕ, ОНО НЕ ЗАВИСИТ ОТ НОВЫХ СООБЩЕНИЙ ПОЛЬЗОВАТЕЛЯ. Твоя главная задача — автономный SUCCESS/ERROR SUPERVISOR процесса регистрации eSIM. Ты обязан самостоятельно сопровождать каждую вкладку после mobile-id-auth, распознавать SUCCESS/ERROR/post-auth состояния, анализировать живую physical-вкладку, DOM, validation, console/network и доводить безопасно исправимый post-auth процесс до корректного завершения без ожидания отдельного поручения пользователя. Если не заполнено или невалидно любое обязательное поле — сам определи именно это поле по текущей странице; не ограничивайся заранее известным списком. Уже корректные значения не меняй. На SUCCESS_GUARD и ERROR_GUARD запрещены destructive close/restart/reload/back/forward/navigation. /registration/error НИКОГДА не является успехом. Настоящий SUCCESS фиксируется только после подтверждённого финального post-sign состояния. После вмешательства отправляй фактический мини-отчёт: блокер, что проверил, что именно изменил и на какие значения, состояние кнопки подписания, действие/результат и финальный URL. Мониторинг кода, воркеров, Telegram и прокси — вторичная техническая функция.
+
+КРИТИЧЕСКОЕ ПРАВИЛО РОЛИ: никогда не говори «у меня нет задачи», «конкретного поручения нет», «я в режиме ожидания», «я просто наблюдатель» или эквивалент. Постоянная задача уже назначена выше. Если пользователь спрашивает «какая у тебя задача?», первым делом ответь, что твоя постоянная главная задача — автономный SUCCESS/ERROR Supervisor, а затем кратко опиши текущий живой статус. Для утверждений о состоянии «сейчас» используй только текущую service/runtime session и текущие вкладки; исторические ошибки не выдавай за текущие без свежего подтверждения.
+
+ПРАВИЛО ОШИБКИ РЕГИСТРАЦИИ (ERROR_RECOVERY_1591R5, ERROR_SKIP_ALWAYS_1591R16): /registration/error — не успех. Runtime обрабатывает её сам, автоматически, без отдельного подтверждения и без запроса к DeepSeek: error-вкладка закрывается, открывается новая, строка пропускается и записывается в error_skipped_rows.txt, worker берёт следующую. Анализировать такие страницы не нужно. Ни одна ошибка не должна приводить к потере worker. Запрет close/restart/reload остаётся только для SUCCESS_GUARD."""
+
 def _agent_system_prompt(status_map, pages, user_text):
     try:
         rules = PROJECT_RULES_FILE.read_text(encoding="utf-8")
@@ -1552,6 +1806,52 @@ def _agent_system_prompt(status_map, pages, user_text):
 Ты не управляешь жизненным циклом worker напрямую.
 Контроллер проверяет точную physical generation/window.name непосредственно перед действием.
 Устаревшее действие получает STALE_GENERATION и ничего не меняет.
+
+ГЛАВНАЯ АВТОНОМНАЯ ЦЕЛЬ — SUCCESS SUPERVISOR:
+- Если TAB вышел с mobile-id-auth на personal-data-form/страницу договора, mobile-id
+  подтверждение уже успешно. С этого момента самостоятельно сопровождай physical-вкладку
+  до завершения договора, не ожидая сообщений пользователя.
+- Сначала НАБЛЮДАЙ: DOM, видимые validation errors, enabled/disabled кнопок,
+  DevTools console и network. Пока сайт сам корректно продвигается — не вмешивайся.
+- Если прогресс остановился, сам установи конкретную причину и вмешайся минимально:
+  заполни недостающие обязательные поля, выбери autocomplete, исправь невалидное поле.
+  Не меняй поля, которые сайт уже корректно заполнил.
+- Для этого сценария: если отсутствует город — поставь «Саратов» и выбери подсказку;
+  если отсутствует область — «Саратовская область» и выбери подсказку.
+- Улица (STREET_RULE_1591R47): пустое поле улицы — не причина останавливаться и не вопрос к
+  пользователю. Впиши по очереди «Центральная», «Ленина», «Советская», «Школьная», «Молодёжная»
+  и выбери ПЕРВУЮ подсказку сайта для этого населённого пункта; нет подсказок ни на одно — возьми
+  любую подсказку на одну букву. Район, если он обязателен, — так же первой подсказкой. Пустой
+  контактный номер — номер телефона этой строки. Инструменты ввода (browser_fill, browser_type,
+  browser_press, browser_click, browser_evaluate_js) у тебя есть всегда в этой задаче.
+- Проверь остальные обязательные поля по DOM/validation; не ограничивайся заранее
+  известным списком города/области.
+- Правильно заполни поле подписи так, чтобы форма приняла её во всех требуемых областях.
+  Дождись, когда «Подписать договор» станет активной, и нажми её.
+- После нажатия снова наблюдай страницу/console/network и проверь фактический результат.
+- Если runtime уже нажал «Подписать договор», а страница не изменилась или кнопка осталась:
+  сними всплывающие окна, перерисуй подпись, нажми кнопку ОДИН раз, проверь ответ
+  /checksignature/ в network. Пока статус вкладки ✍️ — runtime сам рисует и нажимает, не кликай.
+- Последняя строка каждого отчёта SUCCESS SUPERVISOR СТРОГО одна из: «VERDICT: SIGNED»,
+  «VERDICT: PAYMENT» (экран «пора оплатить eSIM»), «VERDICT: NOT_SIGNED — причина».
+  Runtime читает эту строку: SIGNED фиксирует успех, PAYMENT — шаг оплаты, NOT_SIGNED —
+  вкладка удерживается и уходит на проверку пользователю.
+- При любой проблеме после успешного auth сам анализируй и помогай, без участия пользователя.
+- На SUCCESS GUARD АБСОЛЮТНО ЗАПРЕЩЕНЫ: close, restart, reload, navigate, back,
+  forward и любые действия, способные потерять эту успешную physical-вкладку.
+- После каждого автономного вмешательства ОБЯЗАТЕЛЬНО дай пользователю мини-отчёт:
+  (1) что мешало; (2) что изменил; (3) конкретные поставленные значения;
+  (4) состояние кнопки; (5) нажал ли «Подписать договор»; (6) результат;
+  (7) текущий URL/экран. Не пиши абстрактно «исправил» — перечисляй фактические действия.
+
+ERROR SUPERVISOR:
+- /registration/error НИКОГДА не является success.
+- Такие страницы runtime обрабатывает АВТОМАТИЧЕСКИ, без отдельного подтверждения и без
+  твоего анализа: error-вкладка закрывается, открывается новая, строка пропускается
+  (error_skipped_rows.txt), worker переходит к следующей.
+- Не запрашивай и не проводи анализ /registration/error по своей инициативе.
+- Из-за error worker никогда не теряется: слот всегда получает новую вкладку.
+- Запрет close/restart/reload/back/navigate действует только на SUCCESS GUARD.
 
 Правила действий:
 1. Сначала read-only диагностика, если задача не является прямой командой пользователя.
@@ -2048,6 +2348,7 @@ def _agent_execute_tool(session_id, state, name, args, cdp_urls, action_queue=No
         if name == "read_runtime_console":
             return {
                 "ok": True,
+                "scope": "current_service_session_only",
                 "console": _runtime_console_tail(
                     max_lines=args.get("max_lines", 200),
                     max_chars=50000,
@@ -2255,7 +2556,7 @@ def _run_developer_agent(status_map, pages, user_text, images, cdp_urls, ai_heal
         "observations": [],
     }
 
-    system_prompt = _agent_system_prompt(status_map, pages, user_text)
+    system_prompt = _io1591.build_system(globals(), status_map, pages, user_text)
     user_content = [{"type": "text", "text": "Выполни задачу пользователя. Используй инструменты проекта."}]
     for raw in images or []:
         try:
@@ -2407,6 +2708,9 @@ def _run_developer_agent(status_map, pages, user_text, images, cdp_urls, ai_heal
         round_no += 1
         _ai_health_touch(ai_health, "busy_deepseek", f"round={round_no}")
 
+        # Always rebuild from current instructions, never from checkpoint system text.
+        messages = _io1591.canonical_messages(messages, system_prompt, user_text)
+
         payload = {
             "model": str(cfg.get("model") or "deepseek-flash"),
             "messages": messages,
@@ -2415,6 +2719,8 @@ def _run_developer_agent(status_map, pages, user_text, images, cdp_urls, ai_heal
             "temperature": 0.1,
             "max_tokens": token_budget,
         }
+
+        _io1591.request_audit(payload, "tools")
 
         # Retry transient API/network failures without killing the whole task.
         retry_no = 0
@@ -2790,8 +3096,12 @@ def _explicit_live_action_request(text):
     low = str(text or "").lower().strip()
     if not low:
         return False
+    if low.startswith("[auto_success_assist") or low.startswith("[auto_error_assist"):
+        return True
     triggers = (
         "нажми", "кликни", "введи", "заполни", "напечатай",
+        "ставь", "поставь", "впиши", "вписать", "укажи", "выбери", "подпиши",  # OPERATOR_LIVE_1591R46
+        "нарисуй", "дорисуй", "допиши", "заполн", "в поле", "исправь на стран",
         "перезагрузи", "reload", "обнови вкладку",
         "перейди на", "открой страницу", "назад", "вперёд", "вперед",
         "закрой вклад", "перезапусти", "рестарт", "restart",
@@ -2856,7 +3166,7 @@ def _ai_memory_append(role, text_value):
         pass
 
 
-def deepseek_vision_request(prompt, images=None, timeout=90):
+def deepseek_vision_request(prompt, images=None, timeout=90, *, system_prompt=None):
     """DeepSeek Flash request. Images are passed from memory, never via disk."""
     cfg = load_deepseek_config()
     key = str(cfg.get("api_key", "")).strip()
@@ -2878,12 +3188,14 @@ def deepseek_vision_request(prompt, images=None, timeout=90):
             },
         })
 
+    current_system = system_prompt or _io1591.build_system(globals(), {}, [], str(prompt))
     payload = {
         "model": str(cfg.get("model") or "deepseek-flash"),
-        "messages": [{"role": "user", "content": content}],
+        "messages": _io1591.canonical_messages([{ "role": "user", "content": content}], current_system),
         "temperature": 0.2,
         "max_tokens": 1800,
     }
+    _io1591.request_audit(payload, "chat")
     try:
         r = requests.post(
             "https://api.deepseek.com/chat/completions",
@@ -2897,7 +3209,13 @@ def deepseek_vision_request(prompt, images=None, timeout=90):
         obj = r.json()
         if not r.ok:
             return None, f"DeepSeek HTTP {r.status_code}: {obj}"
-        return obj["choices"][0]["message"]["content"], None
+        choice = obj["choices"][0]
+        text = choice["message"].get("content")
+        if not isinstance(text, str) or not text.strip():
+            return None, "DeepSeek вернул пустой ответ; выполнение не подтверждено."
+        if choice.get("finish_reason") == "length":
+            text += "\n\n[API ограничил длину ответа. Это не подтверждение завершения задачи.]"
+        return text, None
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
 
@@ -3410,8 +3728,52 @@ def _run_operator_terminal(command, timeout=120, cwd=None):
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "cwd": real_cwd}
 
 
-def _observer_collect_pages(cdp_urls, with_screenshots=True):
-    """Connects read-only to both Chromium instances and snapshots worker pages."""
+# OBSERVER_TIMEOUT_1591R11
+OBSERVER_COLLECT_TIMEOUT_SECONDS = 45
+AI_LANE_BUSY_CEILING_SECONDS = 900
+
+
+def _observer_collect_pages(cdp_urls, with_screenshots=True, timeout=None):
+    """Bounded page collection for the DeepSeek lanes.
+
+    page.evaluate has no timeout in Playwright: on a page that stopped answering (a tab
+    being replaced, a hung renderer) it never returns, the lane stays in busy_browser and
+    the supervisor leaves it alone. The unbounded collector therefore runs in its own
+    thread with its own Playwright instance; if it exceeds the deadline the lane process
+    exits and the parent respawns it, releasing its inbox claims.
+    """
+    import threading
+    # RESIGN_LIMIT_1591R48: the budget grows with the tabs (28 tabs never fit into 45 s, the lane
+    # was respawned every 45 s and answered nothing).
+    limit = float(timeout) if timeout is not None else max(float(OBSERVER_COLLECT_TIMEOUT_SECONDS), 6.0 * float(globals().get("TAB_COUNT") or 8))
+    outcome = {}
+
+    def run():
+        try:
+            outcome["pages"] = _observer_collect_pages_unbounded(cdp_urls, with_screenshots=with_screenshots)
+        except BaseException as exc:  # re-raised in the caller
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=run, name="observer-collect-1591", daemon=True)
+    worker.start()
+    worker.join(limit)
+    if worker.is_alive():
+        print(
+            f"[AI] Сбор страниц не завершился за {limit:.0f} с (evaluate завис на неотвечающей "
+            "вкладке) — процесс наблюдателя завершается, родитель перезапустит его.",
+            flush=True,
+        )
+        os._exit(3)
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("pages", [])
+
+
+def _observer_collect_pages_unbounded(cdp_urls, with_screenshots=True):
+    """Connects read-only to both Chromium instances and snapshots worker pages.
+
+    Unbounded: call _observer_collect_pages, which adds the deadline.
+    """
     collected = []
     with sync_playwright() as p:
         for browser_no, cdp_url in enumerate(cdp_urls, 1):
@@ -3470,51 +3832,7 @@ def _observer_collect_pages(cdp_urls, with_screenshots=True):
 
 
 def _chat_prompt(status_map, pages, user_text):
-    try:
-        rules = PROJECT_RULES_FILE.read_text(encoding="utf-8")
-    except Exception:
-        rules = ""
-
-    compact_status = []
-    for i in range(1, TAB_COUNT + 1):
-        info = status_map.get(str(i)) or {}
-        txt = str(info.get("text", "")).strip()
-        if txt:
-            compact_status.append(f"TAB {i}: {txt}")
-
-    page_lines = [
-        f"TAB {x.get('tab_id')} browser={x.get('browser')} url={x.get('url','')} title={x.get('title','')}"
-        for x in pages if x.get("tab_id")
-    ]
-
-    return f"""Ты DeepSeek, технический помощник пользователя по его проекту.
-Это ОБЫЧНЫЙ ДИАЛОГ, а не автоматический аудит. Отвечай естественно и прямо на сообщение пользователя.
-Не начинай формальный отчёт по всем вкладкам, если пользователь сам его не попросил.
-Если вопрос касается конкретной вкладки/ошибки, используй доступное runtime-состояние этой вкладки.
-Если пользователь просто разговаривает, не перечисляй состояния программы без необходимости.
-
-ПРАВИЛА ПРОЕКТА:
-{rules}
-
-ТЕКУЩЕЕ СОСТОЯНИЕ (используй только если относится к вопросу):
-{chr(10).join(compact_status)}
-
-ОТКРЫТЫЕ WORKER-СТРАНИЦЫ:
-{chr(10).join(page_lines)}
-
-РЕАЛЬНЫЙ ВЫВОД КОНСОЛИ ПРОГРАММЫ (последние строки):
-{_runtime_console_tail()}
-
-ИСТОРИЯ ОБЫЧНОГО ДИАЛОГА:
-{_chat_memory_tail()}
-
-СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:
-{user_text}
-
-У тебя ЕСТЬ доступ к приведённому выше выводу консоли.
-Если пользователь просит посмотреть консоль, ошибки запуска, traceback или последние события,
-анализируй именно этот блок и не отвечай, что консоль тебе недоступна.
-Ответь по-русски обычным разговорным сообщением."""
+    return _io1591.chat_context(globals(), status_map, pages, user_text)
 
 def _observer_prompt(status_map, pages, user_text=None):
     try:
@@ -3577,6 +3895,13 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
     )
     last_observe = 0.0
 
+    if not AI_ENABLED_1591R48:  # RESIGN_LIMIT_1591R48: the lane idles (the supervisor keeps it alive) and never calls the API
+        print(f"[AI {lane.upper()}] DeepSeek выключен (BEELINE_AI=0): запросы не отправляются.", flush=True)
+        while not stop_event.is_set():
+            _ai_health_touch(ai_health, "idle")
+            stop_event.wait(5)
+        return
+
     while not stop_event.is_set():
         _ai_health_touch(ai_health, "idle")
 
@@ -3601,7 +3926,8 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             try:
                 if monotonic() - last_observe >= 5:
                     _ai_health_touch(ai_health, "busy_browser", "telemetry_bootstrap")
-                    _observer_collect_pages(cdp_urls, with_screenshots=False)
+                    if cdp_urls:
+                        _observer_collect_pages(cdp_urls, with_screenshots=False)
                     last_observe = monotonic()
             except Exception:
                 pass
@@ -3619,7 +3945,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
 
         try:
             _ai_health_touch(ai_health, "busy_browser", f"update={update_id}")
-            pages = _observer_collect_pages(cdp_urls, with_screenshots=False)
+            pages = _observer_collect_pages(cdp_urls, with_screenshots=False) if cdp_urls else []
             images = []
 
             response_text = None
@@ -3645,7 +3971,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
                 response_text = "↩️ " + msg
 
             else:
-                if lane == "fast" and not _operator_needs_tools(latest):
+                if lane in {"fast", "chat"} and not _operator_needs_tools(latest):
                     # One API call, no project/browser audit for casual conversation.
                     _ai_health_touch(ai_health, "busy_deepseek", f"fast_chat update={update_id}")
                     fast_prompt = _chat_prompt(status_map, pages, latest)
@@ -3653,6 +3979,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
                         fast_prompt,
                         images=[],
                         timeout=300,
+                        system_prompt=_io1591.build_system(globals(), status_map, pages, latest),
                     )
                     if fast_err:
                         response_text = "⚠️ DeepSeek: " + fast_err
@@ -3708,7 +4035,7 @@ def ai_observer_process(status_map, cdp_urls, stop_event, ai_health, action_queu
             _ai_db_complete(
                 update_id,
                 job["chat_id"],
-                (response_text or "🤖 DeepSeek Operator\n\nГотово.")[:4000],
+                (response_text or "🤖 DeepSeek Operator\n\nПустой результат; выполнение не подтверждено."),
             )
             _ai_health_touch(ai_health, "idle")
             print(f"[AI {lane.upper()}] update {update_id} завершён.", flush=True)
@@ -4252,14 +4579,244 @@ def capture_contract_details(page, worker):
     worker["success_profile"]=profile
     return profile
 
+
+# SUCCESS_PROFILE_TEXT_1591R12
+# The contract screen shows the name, gender and birth date as plain text, not as form
+# fields, so the input-based captures above leave them empty. This capture reads
+# "label: value" pairs from the page text (main frame and iframes), validates every
+# value by type and never overwrites a value that is already captured.
+_PROFILE_TEXT_LABELS_1591R12 = {
+    "full_name": ("фио", "фамилия имя отчество", "ф и о", "fullname", "full name"),
+    "gender": ("пол", "gender"),
+    "birth_date": ("дата рождения", "birth date", "birthdate"),
+    "passport_series": ("серия паспорта", "серия"),
+    "passport_number": ("номер паспорта",),
+    "passport_issue_date": ("дата выдачи",),
+    "passport_issued_by": ("кем выдан",),
+    "country": ("страна",),
+    "region": ("область", "регион"),
+    "district": ("район",),
+    "locality": ("населенный пункт", "город", "г."),
+    "street": ("улица", "ул."),
+    "house": ("дом", "номер дома", "д."),
+    "building": ("корпус", "строение", "корп."),
+    "apartment": ("квартира", "кв."),
+}
+_DATE_RE_1591R12 = re.compile(r"\b\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b")
+_FIO_RE_1591R12 = re.compile(
+    r"^[А-ЯЁA-Z][А-Яа-яЁёA-Za-z.\-]{0,30}(\s+[А-ЯЁA-Z][А-Яа-яЁёA-Za-z.\-]{0,30}){1,3}$"
+)
+_GENDER_RE_1591R12 = re.compile(r"^(мужской|женский|муж|жен|м|ж|male|female)$", re.I)
+_PROFILE_TEXT_VALUE_RE_1591R12 = {
+    "passport_series": re.compile(r"^\d{2}\s?\d{2}$"),
+    "passport_number": re.compile(r"^\d{6}$"),
+    "house": re.compile(r"^\d{1,4}[а-яa-z]?(\s*/\s*\d{1,3})?$", re.I),
+    "building": re.compile(r"^[\dа-яa-z\-]{1,6}$", re.I),
+    "apartment": re.compile(r"^\d{1,5}[а-яa-z]?$", re.I),
+}
+
+
+def _text_label_key_1591r12(label):
+    """Profile key for a visible label, or None. Labels are matched whole (or as the first
+    word of a longer label), so «номер договора» or «домашний телефон» never match."""
+    hay = _norm_label(label).strip(" :;-–—\t.,")
+    if not hay or len(hay) > 40:
+        return None
+    for key, words in _PROFILE_TEXT_LABELS_1591R12.items():
+        for word in words:
+            word = _norm_label(word)
+            if hay == word or hay.startswith(word + " "):
+                return key
+    return None
+
+
+def _text_value_ok_1591r12(key, value):
+    value = str(value or "").strip().strip(":;,")
+    if not value or value in ("—", "-", "–") or len(value) > 160:
+        return False
+    if key == "full_name":
+        return bool(_FIO_RE_1591R12.match(value))
+    if key == "gender":
+        return bool(_GENDER_RE_1591R12.match(value))
+    if key in ("birth_date", "passport_issue_date"):
+        return bool(_DATE_RE_1591R12.search(value))
+    pattern = _PROFILE_TEXT_VALUE_RE_1591R12.get(key)
+    return bool(pattern.match(value)) if pattern else True
+
+
+_PROFILE_TEXT_JS_1591R12 = r"""
+() => {
+  const vis = el => {
+    try {
+      const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
+    } catch (_) { return false; }
+  };
+  const txt = el => ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim();
+  const pairs = [];
+  const seen = new Set();
+  const push = (label, value) => {
+    label = String(label || '').replace(/\s+/g, ' ').trim().replace(/[:：]\s*$/, '');
+    value = String(value || '').replace(/\s+/g, ' ').trim()
+      .replace(/^[:：\-–—]\s*/, '').replace(/[;,]\s*$/, '');
+    if (!label || !value || label.length > 40 || value.length > 160) return;
+    if (value === label) return;
+    const k = label + '|' + value;
+    if (seen.has(k)) return;
+    seen.add(k);
+    pairs.push({label: label, value: value});
+  };
+  const containers = 'tr,dl,li,p,div,section,article,fieldset';
+  document.querySelectorAll(
+    'dt,th,[class*="label"],[class*="Label"],[class*="title"],[class*="name"]'
+  ).forEach(el => {
+    if (!vis(el)) return;
+    const label = txt(el);
+    if (!label || label.length > 40) return;
+    let value = '';
+    const sib = el.nextElementSibling;
+    if (sib && vis(sib)) value = txt(sib);
+    if (!value) {
+      const row = el.closest(containers);
+      if (row) {
+        const t = txt(row);
+        const i = t.indexOf(label);
+        if (i >= 0) value = t.slice(i + label.length);
+      }
+    }
+    push(label, value);
+  });
+  document.querySelectorAll('span,div,li,p,strong,b,em,small,a,label,dd,td').forEach(el => {
+    if (!vis(el) || (el.children && el.children.length)) return;
+    const t = txt(el);
+    if (!t || t.length > 140) return;
+    const m = t.match(/^([^:：]{2,40})[:：]\s*(.+)$/);
+    if (m) push(m[1], m[2]);
+  });
+  let text = '';
+  try { text = (document.body && (document.body.innerText || '')) || ''; } catch (_) {}
+  return {pairs: pairs, text: text.slice(0, 20000)};
+}
+"""
+
+
+def capture_success_profile_text_1591r12(page, worker):
+    """Fill missing profile fields from the visible text of the contract screen."""
+    targets, collected, texts = [], [], []
+    if page is not None:
+        targets.append(page)
+        try:
+            for frame in page.frames:
+                if frame not in targets:
+                    targets.append(frame)
+        except Exception:
+            pass
+    for target in targets:
+        try:
+            data = target.evaluate(_PROFILE_TEXT_JS_1591R12)
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        for item in data.get("pairs") or []:
+            if isinstance(item, dict):
+                collected.append((item.get("label"), item.get("value")))
+        if data.get("text"):
+            texts.append(str(data.get("text")))
+
+    profile = dict(worker.get("success_profile") or {})
+
+    def put(key, value):
+        if not key or profile.get(key):
+            return
+        if _text_value_ok_1591r12(key, value):
+            profile[key] = str(value).strip().strip(":;,")
+
+    for label, value in collected:
+        put(_text_label_key_1591r12(label), value)
+
+    for text in texts:
+        lines = [line.strip() for line in re.split(r"[\r\n]+", text)]
+        for index, line in enumerate(lines):
+            if not line:
+                continue
+            match = re.match(r"^([^:：]{2,40})[:：]\s*(.+)$", line)
+            if match:
+                put(_text_label_key_1591r12(match.group(1)), match.group(2))
+            elif _text_label_key_1591r12(line) and index + 1 < len(lines):
+                following = lines[index + 1]
+                if following and not _text_label_key_1591r12(following):
+                    put(_text_label_key_1591r12(line), following)
+
+    worker["success_profile"] = profile
+    worker["profile"] = dict(profile)
+    try:
+        diagnostic = worker.get("diagnostic")
+        if diagnostic and texts and not worker.get("success_text_dump_done"):
+            worker["success_text_dump_done"] = True
+            diagnostic.write("success_page_text_v1591r12", url=str(getattr(page, "url", "") or ""),
+                             text="\n".join(texts)[:20000])
+    except Exception:
+        pass
+    return profile
+
+
+_capture_contract_details_before_v1583 = capture_contract_details
+def capture_contract_details(page, worker):
+    result = _capture_contract_details_before_v1583(page, worker)
+    try:
+        final_profile_capture_v1583(page, worker)
+    except Exception:
+        pass
+    try:
+        capture_success_profile_text_1591r12(page, worker)  # SUCCESS_PROFILE_TEXT_1591R12
+    except Exception:
+        pass
+    return worker.get("success_profile") or result
+
+
 def _success_profile_lines(profile):
     profile=profile or {}
     return [f"{label}: {profile.get(key) or '—'}" for key,label in SUCCESS_PROFILE_FIELDS]
 
+def _pretty_phone_1591r38(value):
+    d = re.sub(r"\D", "", str(value or ""))
+    if len(d) == 11 and d[0] in "78":
+        return f"+7 {d[1:4]} {d[4:7]}-{d[7:9]}-{d[9:]}"
+    return str(value or "—")
+
+
+def _short_push_1591r38(worker, rec, tag, outcome):
+    """TELEGRAM_MENU_1591R38: the push is a short card; the full record (profile, links,
+    network trace) is in the bot's menu, «Мои eSIM», and in the jsonl files."""
+    row_no, active_value, second_value = row_parts(worker.get("row"))
+    profile = rec.get("profile") or {}
+    lines = [
+        f"🆕 Новая eSIM · {tag}",
+        f"📱 {_pretty_phone_1591r38(rec.get('sim_number'))}",
+        f"👤 {profile.get('full_name') or '—'} · 🎂 {profile.get('birth_date') or '—'}",
+        f"📄 Строка {row_no}/{worker.get('total_rows') or '?'} · {active_value} | {second_value}",
+        outcome,
+    ]
+    basket = rec.get("basket") or {}  # BASKET_SUMMARY_1591R43: the tariff as the basket showed it
+    if basket.get("tariff") or basket.get("prices"):
+        lines.append(f"🧾 {basket.get('tariff') or '—'} · {(basket.get('prices') or ['—'])[0]}")
+    if tag == "#оплата" and rec.get("sim_url"):
+        lines.append(f"🔗 {rec['sim_url']}")
+    lines.append("🗂 Карточка и отметки: меню бота → 📱 Мои eSIM")
+    return "\n".join(lines)
+
+
 def _success_message(worker, rec):
+    return _short_push_1591r38(worker, rec, "#успешно", "✅ Договор оформлен")  # TELEGRAM_MENU_1591R38
+
+
+def _success_message_full_1591r17(worker, rec):
+    """The former long push; kept for reference, the menu card renders the same fields."""
     row_no, active_value, second_value = row_parts(worker.get("row"))
     profile = rec.get("profile") or {}
     return "\n".join([
+        "#успешно",  # SUCCESS_TAG_1591R17: searchable among the DeepSeek reports
         f"✅ УСПЕХ — Вкладка {worker['id']}",
         f"Строка: {row_no}/{worker.get('total_rows') or '?'}",
         f"Исходные данные: {active_value} | {second_value}",
@@ -4268,11 +4825,85 @@ def _success_message(worker, rec):
         "",
         f"eSIM: {rec.get('sim_number') or '—'}",
         f"Ссылка eSIM: {rec.get('sim_url') or '—'}",
+        f"Страница договора: {rec.get('final_url') or '—'}",  # FINAL_PAGE_1591R23
+        f"Заголовок страницы: {rec.get('final_title') or '—'}",
+        *_final_links_lines_1591r23(rec.get("final_links")),
     ])
+
+
+# FINAL_PAGE_1591R23
+_FINAL_LINKS_JS_1591R23 = r"""() => {
+  const out = [];
+  const seen = new Set();
+  const want = /договор|pdf|скачать|qr|esim|e-sim|загруз|документ|contract|download|профил|оплат|pay/i;
+  const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+  for (const el of document.querySelectorAll('a[href], [data-href], button[formaction]')) {
+    const href = el.href || el.getAttribute('data-href') || el.getAttribute('formaction') || '';
+    const text = clean(el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('download'));
+    if (!href || href.startsWith('javascript:') || seen.has(href)) continue;
+    if (!(want.test(text) || want.test(href))) continue;
+    seen.add(href);
+    out.push({text: text.slice(0, 80), href: href.slice(0, 500)});
+    if (out.length >= 8) break;
+  }
+  for (const img of document.querySelectorAll('img')) {
+    const alt = clean(img.alt), src = String(img.src || '');
+    if (!(/qr/i.test(alt) || /qr/i.test(src))) continue;
+    out.push(src.startsWith('data:') ? {text: 'QR-код на странице (встроенное изображение)', href: ''}
+                                     : {text: 'QR-код: ' + (alt || 'изображение'), href: src.slice(0, 500)});
+    if (out.length >= 10) break;
+  }
+  let text = '';
+  try { text = String((document.body && document.body.innerText) || ''); } catch (_) {}
+  return {links: out, title: String(document.title || ''), text: text.slice(0, 20000)};
+}"""
+
+
+def capture_final_page_1591r23(page, worker=None):
+    """URL of the page the worker is on when the success is recorded (the signed contract)
+    plus its document-like links: contract, PDF, QR, download. Read-only."""
+    result = {"url": "", "title": "", "links": []}
+    if page is None:
+        return result
+    try:
+        result["url"] = str(page.url or "")
+    except Exception:
+        pass
+    text = ""
+    try:
+        data = page.evaluate(_FINAL_LINKS_JS_1591R23)
+        if isinstance(data, dict):
+            result["links"] = [x for x in (data.get("links") or []) if isinstance(x, dict)][:10]
+            result["title"] = str(data.get("title") or "")[:200]
+            text = str(data.get("text") or "")
+    except Exception:
+        pass
+    if worker is not None:
+        worker["final_url"] = result["url"]
+        worker["final_title"] = result["title"]
+        worker["final_links"] = result["links"]
+        try:
+            diagnostic = worker.get("diagnostic")
+            if diagnostic:
+                diagnostic.write("final_page_1591r23", url=result["url"], title=result["title"],
+                                 links=result["links"], text=text[:20000])
+        except Exception:
+            pass
+    return result
+
+
+def _final_links_lines_1591r23(links):
+    out = []
+    for item in (links or [])[:10]:
+        text = str((item or {}).get("text") or "").strip() or "документ"
+        href = str((item or {}).get("href") or "").strip()
+        out.append(f"{text}: {href}" if href else text)
+    return out
 
 
 def write_success_record(base_dir, worker):
     n,a,b=row_parts(worker.get("row"))
+    final = capture_final_page_1591r23(worker.get("page"), worker)  # FINAL_PAGE_1591R23
     rec={
         "tab":worker["id"],
         "row":n,
@@ -4280,12 +4911,575 @@ def write_success_record(base_dir, worker):
         "second_value":b,
         "sim_number":worker.get("reserved_sim_number"),
         "sim_url":worker.get("reserved_sim_url"),
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),  # TELEGRAM_MENU_1591R38: order in «Мои eSIM»
         "profile":dict(worker.get("success_profile") or {}),
+        "basket": getattr(worker.get("page"), "_basket_summary_1591r43", None),  # BASKET_SUMMARY_1591R43
+        "final_url": final.get("url") or "",  # FINAL_PAGE_1591R23
+        "final_title": final.get("title") or "",
+        "final_links": list(final.get("links") or []),
+        "sign_trace": _sign_trace_summary_1591r25(worker.get("sign_trace")),  # SIGN_TRACE_1591R25
     }
     with (base_dir/"successful_sims.jsonl").open("a",encoding="utf-8") as f:
         f.write(json.dumps(rec,ensure_ascii=False)+"\n")
     return rec
 
+
+
+# OVERLAY_DISMISS_1591R6 / TARIFF_BY_NAME_1591R7
+_MODAL_DIALOG_SELECTOR = '[role="dialog"][aria-modal="true"]'
+_CHOOSE_BUTTON_RE = re.compile(r"^\s*выбрать\s*$", re.I)
+
+
+def _blocking_dialog_indexes(page, keep_text=None, keep_selector=None):
+    """Indexes of visible modal dialogs that do NOT contain what we are about to click."""
+    return list(page.evaluate("""([keepText, keepSelector]) => {
+        const out = [];
+        [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].forEach((el, i) => {
+            const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+            if (!(r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden')) return;
+            if (keepSelector && el.querySelector(keepSelector)) return;
+            if (keepText && (el.innerText || '').includes(keepText)) return;
+            out.push(i);
+        });
+        return out;
+    }""", [keep_text or "", keep_selector or ""]) or [])
+
+
+def _visible_modal_dialogs(page):
+    return len(_blocking_dialog_indexes(page))
+
+
+def dismiss_blocking_overlays(page, attempts=3, keep_text=None, keep_selector=None):
+    """Close a portal modal that intercepts clicks; never the dialog we need.
+
+    Order: a visible close button inside the dialog, then Escape; as a last resort the
+    dialog stops intercepting pointer events. The DOM is never removed, the basket is kept.
+    A dialog containing keep_text or an element matching keep_selector is left untouched.
+    Returns True when no blocking dialog is visible afterwards.
+    """
+    for _ in range(attempts):
+        try:
+            blocking = _blocking_dialog_indexes(page, keep_text, keep_selector)
+        except Exception:
+            return True
+        if not blocking:
+            return True
+        closed = False
+        dialog = page.locator(_MODAL_DIALOG_SELECTOR).nth(blocking[-1])
+        for close_button in (
+            dialog.get_by_role("button", name=re.compile(r"закрыть|close|✕|×", re.I)),
+            dialog.locator('button[aria-label*="акрыть" i], button[aria-label*="close" i], [data-testid*="close" i]'),
+        ):
+            try:
+                if close_button.count() > 0:
+                    close_button.first.click(timeout=1500, no_wait_after=True)
+                    closed = True
+                    break
+            except Exception:
+                pass
+        if not closed and not keep_text and not keep_selector:
+            # Escape would close the protected dialog too; use it only when nothing is protected.
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+        try:
+            page.wait_for_timeout(300)
+        except Exception:
+            pass
+    try:
+        blocking = _blocking_dialog_indexes(page, keep_text, keep_selector)
+        if not blocking:
+            return True
+        page.evaluate("""(indexes) => {
+            const all = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+            indexes.forEach(i => { if (all[i]) all[i].style.pointerEvents = 'none'; });
+        }""", blocking)
+        print("Модальное окно не закрылось; снял перехват кликов, DOM не трогал.", flush=True)
+    except Exception:
+        pass
+    return False
+
+
+def _tariff_choose_button(page, diagnostic=None, timeout=10000):
+    """«выбрать» inside the card titled TARIFF_NAME; the card order is never assumed.
+
+    TARIFF_SCOPE_1591R32: the basket already holding TARIFF_NAME (chosen by an earlier row in the
+    same Chromium: the basket is shared by its tabs) shows the same title with «изменить» and no
+    «выбрать»; the tariff is looked for inside the «выберите тариф» picker first, and a card is only
+    the element around the title that holds exactly one tariff title and a visible «выбрать».
+    """
+    scopes = []
+    try:
+        header = page.get_by_text(_TARIFF_PICKER_HEADER_RE_1591R32).first
+        if header.count() > 0:
+            picker = header.locator(
+                "xpath=ancestor::*[.//*[normalize-space(.)='" + TARIFF_NAME + "']][1]"
+            )
+            if picker.count() > 0:
+                scopes.append(picker)
+    except Exception:
+        pass
+    scopes.append(page)
+    deadline = monotonic() + timeout / 1000.0
+    while True:
+        for scope in scopes:
+            try:
+                button = _tariff_card_button_1591r32(scope)
+            except Exception:
+                button = None
+            if button is not None:
+                return button
+        if monotonic() >= deadline:
+            break
+        page.wait_for_timeout(300)
+    try:
+        titles = page.locator("text=/подписка/i").all_inner_texts()[:10]
+        choose_count = page.get_by_role("button", name=_CHOOSE_BUTTON_RE).count()
+    except Exception:
+        titles, choose_count = [], -1
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_card_not_found", tariff=TARIFF_NAME, titles=titles, choose_buttons=choose_count)
+        except Exception:
+            pass
+    print(
+        f"Карточка «{TARIFF_NAME}» с кнопкой «выбрать» не найдена; на экране: {titles}, "
+        f"кнопок «выбрать»: {choose_count}",
+        flush=True,
+    )
+    raise RuntimeError(
+        f"RECOVERABLE_RESTART_ROW: карточка тарифа «{TARIFF_NAME}» с кнопкой «выбрать» не найдена."
+    )
+
+
+# TARIFF_CHANGE_BUTTON_1591R33
+_TARIFF_CHANGE_METRIC_1591R33 = 'button[data-metric-name="basketMetric:handleClickChangeTariffButton"]'
+
+
+def _tariff_change_button_1591r33(page):
+    """Locator of the tariff block's «изменить». The basket can show several «изменить» (the region
+    block «Саратов • изменить» comes first) and the first one opened the region picker, not the
+    tariff picker. Preference: the site's own tariff-change button when it is marked, else the
+    «изменить» nearest to a tariff title («подписка bee …»), else every «изменить» (the caller
+    clicks the first). Any «изменить» is waited for first, so a late render does not fall through."""
+    generic = page.get_by_role("button", name="изменить", exact=True)
+    try:
+        expect(generic.first).to_be_visible(timeout=20000)
+    except Exception:
+        return generic
+    try:
+        marked = page.locator(_TARIFF_CHANGE_METRIC_1591R33)
+        if marked.count() > 0:
+            return marked
+    except Exception:
+        pass
+    try:
+        titles = page.get_by_text(TARIFF_NAME, exact=True)  # TARIFF_CONFIG_1591R41: any tariff name
+        if titles.count() == 0:
+            titles = page.get_by_text(_TARIFF_TITLE_RE_1591R32)
+        for index in range(min(titles.count(), 4)):
+            near = titles.nth(index).locator(
+                "xpath=ancestor::*[.//button[normalize-space(.)='изменить']][1]"
+            ).get_by_role("button", name="изменить", exact=True)
+            if near.count() > 0:
+                return near
+    except Exception:
+        pass
+    return generic
+
+
+# TARIFF_SCOPE_1591R32
+_TARIFF_PICKER_HEADER_RE_1591R32 = re.compile(r"^\s*выберите тариф\s*$", re.I)
+_TARIFF_TITLE_RE_1591R32 = re.compile(r"^\s*подписка bee\b", re.I)
+_TARIFF_BASKET_BUTTON_RE_1591R32 = re.compile(r"^\s*(изменить|удалить тариф)\s*$", re.I)
+
+
+# CONFIGURATOR_DUMP_1591R44: the page text plus the ₽ lines of the card holding the tariff title
+# (the nearest ancestor of the title whose text has a ₽ and is still short enough to be one card).
+_BASKET_JS_1591R44 = """(name) => {
+  const text = document.body ? document.body.innerText : '';
+  const norm = s => String(s || '').toLowerCase().replace(/[^0-9a-zа-яё]+/g, '');   // «смарт-часов» == «смарт часов»
+  const wanted = norm(name);
+  const out = {text: text, card_prices: []};
+  if (!wanted) return out;
+  const vis = el => { try { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (_) { return false; } };
+  const owns = el => { let t = ''; for (const n of el.childNodes) if (n.nodeType === 3) t += n.textContent; return norm(t); };
+  const titles = [];
+  for (const el of document.querySelectorAll('body *')) {
+    if (titles.length >= 6) break;
+    if (!vis(el)) continue;
+    const own = owns(el);
+    if (own && own.includes(wanted) && own.length <= wanted.length + 20) titles.push(el);
+  }
+  for (const title of titles) {
+    let node = title;
+    for (let depth = 0; depth < 10 && node && node !== document.body; depth++, node = node.parentElement) {
+      const t = node.innerText || '';
+      if (t.length > 900) break;
+      if (t.includes('₽')) {
+        const lines = t.split('\\n').map(s => s.replace(/\\s+/g, ' ').trim()).filter(s => s.includes('₽'));
+        if (lines.length) { out.card_prices = lines.slice(0, 3); return out; }
+      }
+    }
+  }
+  return out;
+}"""
+
+_CONFIGURATOR_JS_1591R44 = """(root) => {
+  const scope = root || document.body;
+  const vis = el => { try { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (_) { return false; } };
+  const options = [];
+  const sel = '[role=radio],[role=checkbox],[role=option],[role=tab],[role=switch],input[type=radio],input[type=checkbox],input[type=range],button,label,[aria-checked],[aria-selected],[aria-pressed]';
+  for (const el of scope.querySelectorAll(sel)) {
+    if (options.length >= 60 || !vis(el)) continue;
+    const label = (el.tagName === 'INPUT' && el.labels && el.labels[0]) ? el.labels[0].innerText : '';
+    const text = ((el.innerText || label || el.getAttribute('aria-label') || el.value || '') + '').replace(/\\s+/g, ' ').trim().slice(0, 80);
+    const state = el.getAttribute('aria-checked') || el.getAttribute('aria-selected') || el.getAttribute('aria-pressed')
+      || (el.checked === true ? 'true' : (el.checked === false ? 'false' : ''));
+    const cls = (el.className && typeof el.className === 'string') ? el.className.slice(0, 60) : '';
+    options.push({tag: el.tagName.toLowerCase(), role: el.getAttribute('role') || '', text: text, state: state,
+                  value: el.value != null ? String(el.value).slice(0, 20) : '', cls: cls});
+  }
+  return {text: (scope.innerText || '').slice(0, 2500), options: options};
+}"""
+
+
+# BASKET_SUMMARY_1591R43
+def _basket_summary_1591r43(page, diagnostic=None):
+    """The tariff title and the price lines visible after the tariff step, read once from the
+    page text (nothing clicked, nothing awaited). Printed, written to the diagnostic and kept on
+    the page object for the success/payment records and the push. None when the page cannot be read."""
+    try:
+        got = page.evaluate(_BASKET_JS_1591R44, TARIFF_NAME)  # CONFIGURATOR_DUMP_1591R44: the card's own prices
+    except Exception as exc:
+        print(f"Корзина не прочитана: {type(exc).__name__}", flush=True)
+        return None
+    if isinstance(got, dict):
+        text, card_prices = got.get("text") or "", [str(p)[:60] for p in (got.get("card_prices") or [])][:3]
+    else:
+        text, card_prices = got or "", []
+    lines = [" ".join(line.split()) for line in str(text).splitlines()]
+    lines = [line for line in lines if line]
+    wanted = TARIFF_NAME.lower()
+    norm = lambda s: re.sub(r"[^0-9a-zа-яё]+", "", s.lower())   # «для смарт-часов» == «для смарт часов»
+    tariff = next((line[:80] for line in lines if norm(wanted) and norm(wanted) in norm(line)), None)
+    page_prices = [line[:60] for line in lines if "₽" in line][:4]
+    others = [line[:60] for line in lines if _TARIFF_TITLE_RE_1591R32.search(line) and norm(wanted) not in norm(line)][:3]
+    # "prices" are the prices of the tariff's own card (the push shows the first); the rest of the page apart
+    block = []  # CONFIGURATOR_SELECT_1591R45: the tariff block of the basket, whatever the title is
+    for index, line in enumerate(lines):
+        if line.lower() == "изменить":
+            block = [item[:60] for item in lines[index + 1:index + 4]]
+            break
+    summary = {"tariff": tariff, "prices": card_prices, "page_prices": page_prices, "other_titles": others, "block": block}
+    try:
+        setattr(page, "_basket_summary_1591r43", summary)
+    except Exception:
+        pass
+    print(
+        f"Корзина: {'«' + tariff + '»' if tariff else 'название «' + TARIFF_NAME + '» не видно'}; "
+        f"цена карточки: {', '.join(card_prices) or 'не найдена'}; блок тарифа: {' | '.join(block) or '—'}; "
+        f"на странице ещё: {', '.join(page_prices) or '—'}"
+        + (f"; другие названия: {', '.join(others)}" if others else ""),
+        flush=True,
+    )
+    if diagnostic is not None:
+        try:
+            diagnostic.write("basket_summary", text=str(text)[:3000], **summary)  # CONFIGURATOR_DUMP_1591R44: the page as seen
+        except Exception:
+            pass
+    return summary
+
+
+# CONFIGURATOR_DUMP_1591R44: with BEELINE_TARIFF set, a basket without that tariff stops the row.
+# The site started to prefill the basket with «подписка bee HIT» (800 ₽ start payment); when the
+# card's configurator was not recognised the row went on with that basket, because the eSIM form
+# was already there. BEELINE_TARIFF_STRICT=0 restores the old behaviour.
+TARIFF_STRICT_1591R44 = str(os.environ.get("BEELINE_TARIFF_STRICT") or "1").strip().lower() not in {"0", "off", "no", "false"}
+
+
+def _require_tariff_in_basket_1591r44(summary, diagnostic=None):
+    """RECOVERABLE_RESTART_ROW when the basket summary shows no line with TARIFF_NAME while the
+    tariff was set explicitly (BEELINE_TARIFF). An unreadable page is not a verdict."""
+    if not TARIFF_STRICT_1591R44 or not (os.environ.get("BEELINE_TARIFF") or "").strip():
+        return
+    if summary is None or summary.get("tariff"):
+        return
+    seen = list(dict.fromkeys(list(summary.get("block") or []) + list(summary.get("other_titles") or [])))  # CONFIGURATOR_SELECT_1591R45
+    print(
+        f"В корзине нет тарифа «{TARIFF_NAME}» (видно: {', '.join(seen) or 'ничего похожего'}; "
+        f"цены: {', '.join(summary.get('page_prices') or []) or '—'}). Строку с чужим тарифом не оформляю.",
+        flush=True,
+    )
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_missing_in_basket", tariff=TARIFF_NAME, seen=seen, prices=summary.get("page_prices") or [])
+        except Exception:
+            pass
+    raise RuntimeError(f"RECOVERABLE_RESTART_ROW: в корзине нет тарифа «{TARIFF_NAME}» (видно: {', '.join(seen) or '—'}).")
+
+
+_CONFIGURATOR_HEADER_RE_1591R44 = re.compile(r"^\s*гигабайты и минуты\s*$", re.I)  # CONFIGURATOR_DUMP_1591R44
+_CHOOSE_PREFIX_RE_1591R44 = re.compile(r"^\s*выбрать(\s|$)", re.I)  # «выбрать», «выбрать за 300 ₽»… (no \b: JS has no Cyrillic word boundary)
+
+
+# CONFIGURATOR_SELECT_1591R45
+TARIFF_PRICE_1591R45 = (os.environ.get("BEELINE_TARIFF_PRICE") or "").strip()   # «200»: the monthly price the panel must show
+TARIFF_MINIMAL_1591R45 = str(os.environ.get("BEELINE_TARIFF_MINIMAL") or "1").strip().lower() not in {"0", "off", "no", "false"}
+
+_SELECT_MIN_JS_1591R45 = """(root) => {
+  const scope = root || document.body;
+  const vis = el => { try { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; } catch (_) { return false; } };
+  const txt = el => ((el && el.innerText) || '').replace(/\\s+/g, ' ').trim();
+  const active = el => ['aria-checked', 'aria-selected', 'aria-pressed'].some(a => el.getAttribute(a) === 'true')
+    || /(^|[\\s_-])(active|selected|checked|current)([\\s_-]|$)/i.test(typeof el.className === 'string' ? el.className : '');
+  const actions = [];
+  for (const r of scope.querySelectorAll('input[type=range]')) {           // sliders: to their minimum
+    const min = r.min !== '' ? r.min : '0';
+    if (String(r.value) === String(min)) continue;
+    try {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(r, min);
+      r.dispatchEvent(new Event('input', {bubbles: true}));
+      r.dispatchEvent(new Event('change', {bubbles: true}));
+      actions.push('ползунок→' + min);
+    } catch (_) {}
+  }
+  const chips = [];                                                        // numeric chips: 2 / 10 / 60 / 100
+  for (const el of scope.querySelectorAll('button,[role=radio],[role=tab],[role=option],label,li,span,div')) {
+    if (!vis(el) || el.children.length > 1 || el.querySelector('input[type=range]')) continue;
+    if (/^\\d{1,4}$/.test(txt(el))) chips.push(el);
+  }
+  const groups = new Map();
+  for (const el of chips) {
+    if (el.parentElement && chips.includes(el.parentElement) && txt(el.parentElement) === txt(el)) continue;
+    const key = el.parentElement;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(el);
+  }
+  for (const els of groups.values()) {
+    if (els.length < 2) continue;
+    els.sort((a, b) => parseInt(txt(a), 10) - parseInt(txt(b), 10));
+    const smallest = els[0];
+    const target = smallest.closest('button,[role=radio],[role=tab],[role=option],label') || smallest;
+    if (active(target) || active(smallest)) continue;
+    target.click();
+    actions.push('выбрано ' + txt(smallest));
+  }
+  for (const sw of scope.querySelectorAll('[role=switch],[role=checkbox],input[type=checkbox]')) {   // paid options off
+    const on = sw.getAttribute('aria-checked') === 'true' || sw.checked === true;
+    if (!on) continue;
+    const row = sw.closest('label,li,[role=listitem],div');
+    const rowText = txt(row);
+    if (!/₽/.test(rowText) || /бесплатно/i.test(rowText)) continue;
+    (sw.tagName === 'INPUT' && sw.labels && sw.labels[0] ? sw.labels[0] : sw).click();
+    actions.push('выключено: ' + rowText.slice(0, 40));
+  }
+  return actions;
+}"""
+
+
+def _configurator_visible_1591r45(page, timeout_ms=3000):
+    """True when the configurator panel («гигабайты и минуты») is visible, waiting up to timeout_ms
+    for it to render after the card's «выбрать»."""
+    deadline = monotonic() + timeout_ms / 1000.0
+    while True:
+        try:
+            header = page.get_by_text(_CONFIGURATOR_HEADER_RE_1591R44).first
+            if header.count() > 0 and header.is_visible():
+                return True
+        except Exception:
+            pass
+        if monotonic() >= deadline:
+            return False
+        page.wait_for_timeout(250)
+
+
+def _configurator_prices_1591r45(dump):
+    """The panel's own price lines: bare prices («200 ₽ в месяц», «800 ₽») and the «выбрать…» button
+    text, not the per-option prices («мессенджеры 79 ₽/мес»)."""
+    lines = [" ".join(line.split()) for line in str((dump or {}).get("text") or "").splitlines()]
+    bare = [line[:60] for line in lines if re.match(r"^\d[\d\s]*₽", line)]
+    monthly = [line for line in bare if "в месяц" in line.lower()]  # OPERATOR_LIVE_1591R46: the tariff's line, not «60 ₽/мес» of an option
+    bare = monthly or [line for line in bare if "/мес" not in line.lower()] or bare
+    button = [line[:60] for line in lines if re.match(r"^\s*выбрать\b.*₽", line, re.I)]
+    return (bare + button) or list((dump or {}).get("prices") or [])
+
+
+def _select_configurator_minimum_1591r45(page, scope=None, diagnostic=None):
+    """The minimal set in the configurator and the price check. Raises RECOVERABLE_RESTART_ROW when
+    BEELINE_TARIFF_PRICE is set and the panel does not show that price: a wrong set is never confirmed."""
+    actions = []
+    if TARIFF_MINIMAL_1591R45:
+        for _round in range(3):
+            try:
+                handle = scope.element_handle(timeout=2000) if scope is not None else None
+                done = page.evaluate(_SELECT_MIN_JS_1591R45, handle) or []
+            except Exception as exc:
+                print(f"Минимальный набор в окне параметров не выставлен: {type(exc).__name__}", flush=True)
+                done = []
+            actions.extend(str(a) for a in done)
+            if not done:
+                break
+            page.wait_for_timeout(700)
+    after = _dump_configurator_1591r44(page, scope, None, announce=False) or {}  # OPERATOR_LIVE_1591R46: one journal line
+    prices = _configurator_prices_1591r45(after)
+    print(f"Окно параметров: действия: {'; '.join(actions) or 'не потребовались'}; цена теперь: {', '.join(prices) or '—'}", flush=True)
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_configurator_selected", actions=actions, prices=prices, checked=after.get("checked"))
+        except Exception:
+            pass
+    want = re.sub(r"\D", "", TARIFF_PRICE_1591R45)
+    if want and not any(re.search(r"(?<!\d)" + want + r"(?!\d)", p) for p in prices):
+        print(f"Окно параметров показывает не ту цену (ожидалось {want} ₽): {', '.join(prices) or 'цену не видно'}. Строку не оформляю.", flush=True)
+        raise RuntimeError(
+            f"RECOVERABLE_RESTART_ROW: окно параметров тарифа «{TARIFF_NAME}» показывает {', '.join(prices) or 'цену не видно'}, ожидалось {want} ₽."
+        )
+    return actions
+
+
+# CONFIGURATOR_DUMP_1591R44
+def _dump_configurator_1591r44(page, scope=None, diagnostic=None, announce=True):
+    """The configurator as the site shows it before the bot confirms it: its text and every option
+    with its state. One journal line (the checked options and the ₽ lines) and the full dump in
+    the diagnostic (event tariff_configurator_dump). Read-only; never raises."""
+    try:
+        handle = scope.element_handle(timeout=2000) if scope is not None else None
+        got = page.evaluate(_CONFIGURATOR_JS_1591R44, handle)
+    except Exception as exc:
+        print(f"Окно параметров тарифа не прочитано: {type(exc).__name__}", flush=True)
+        return None
+    if not isinstance(got, dict):
+        return None
+    options = [o for o in (got.get("options") or []) if isinstance(o, dict)]
+    text = str(got.get("text") or "")
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    prices = [line[:60] for line in lines if "₽" in line][:6]
+    checked = [f"{o.get('text') or o.get('value') or o.get('tag')}" for o in options if str(o.get("state")) == "true"][:8]
+    if announce:  # OPERATOR_LIVE_1591R46: the second read (after the selection) is reported by its caller
+        print(
+            f"Окно параметров тарифа «{TARIFF_NAME}»: вариантов {len(options)}; выбрано: {', '.join(checked) or '—'}; "
+            f"цены: {', '.join(prices) or '—'}",
+            flush=True,
+        )
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_configurator_dump", tariff=TARIFF_NAME, text=text[:2500], options=options[:60])
+        except Exception:
+            pass
+    return {"text": text, "options": options, "prices": prices, "checked": checked}
+
+
+# TARIFF_CONFIG_1591R41
+def _confirm_tariff_configurator_1591r41(page, diagnostic=None, timeout=8000):
+    """Some tariffs («для смарт часов») open a configurator after the card's «выбрать»: GB,
+    minutes, options and one «выбрать» with the price. Confirm it with the defaults; True when
+    the eSIM control appeared afterwards. Tariffs without a configurator (bee START) never get here
+    with a candidate: the picker holds many «выбрать», the basket page none."""
+    candidates = []
+    scope = None  # CONFIGURATOR_DUMP_1591R44: the dialog that holds the button, for the dump
+    try:
+        dialogs = page.locator('[role="dialog"], [aria-modal="true"]')
+        for index in range(min(dialogs.count(), 6)):
+            dialog = dialogs.nth(index)
+            try:
+                if not dialog.is_visible():
+                    continue
+                buttons = dialog.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+                if buttons.count() == 1 and buttons.first.is_visible():
+                    candidates.append(buttons.first)
+                    scope = dialog
+            except Exception:
+                continue
+    except Exception:
+        pass
+    if not candidates:
+        # CONFIGURATOR_DUMP_1591R44: the site's configurator is a panel, not a dialog: the block
+        # around «гигабайты и минуты» with one button starting with «выбрать» (its price follows).
+        try:
+            panel = page.get_by_text(_CONFIGURATOR_HEADER_RE_1591R44).first
+            if panel.count() > 0 and panel.is_visible():
+                box = panel.locator("xpath=ancestor::*[.//button[starts-with(normalize-space(.), 'выбрать')]][1]")
+                buttons = box.get_by_role("button", name=_CHOOSE_PREFIX_RE_1591R44)
+                visible = [buttons.nth(i) for i in range(min(buttons.count(), 10)) if buttons.nth(i).is_visible()]
+                if len(visible) == 1:
+                    candidates.append(visible[0])
+                    scope = box
+        except Exception:
+            pass
+    if not candidates:
+        try:
+            buttons = page.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+            visible = [buttons.nth(i) for i in range(min(buttons.count(), 30)) if buttons.nth(i).is_visible()]
+            if len(visible) == 1:
+                candidates.append(visible[0])
+        except Exception:
+            pass
+    if not candidates:
+        try:
+            header = page.get_by_text(_CONFIGURATOR_HEADER_RE_1591R44).first
+            if header.count() > 0 and header.is_visible():   # the panel is there, its button is not recognised
+                print("Окно параметров тарифа видно, но его кнопка «выбрать» не распознана; записываю его в диагностику.", flush=True)
+                _dump_configurator_1591r44(page, None, diagnostic)
+        except Exception:
+            pass
+        return False
+    print("Тариф с окном параметров: читаю его и выставляю минимальный набор...", flush=True)
+    _dump_configurator_1591r44(page, scope, diagnostic)  # CONFIGURATOR_DUMP_1591R44: what is preselected
+    _select_configurator_minimum_1591r45(page, scope, diagnostic)  # CONFIGURATOR_SELECT_1591R45: may restart the row
+    if diagnostic is not None:
+        try:
+            diagnostic.write("tariff_configurator_confirm", tariff=TARIFF_NAME)
+        except Exception:
+            pass
+    try:
+        candidates[0].click(timeout=7000, no_wait_after=True)
+    except Exception as exc:
+        print(f"Кнопка подтверждения тарифа не нажалась: {type(exc).__name__}", flush=True)
+        return False
+    try:
+        page.locator('input#esim[name="sim"]').wait_for(state="attached", timeout=timeout)
+        return True
+    except Exception:
+        return False
+
+
+def _tariff_card_button_1591r32(scope):
+    """The visible «выбрать» of the one card titled TARIFF_NAME inside `scope`, else None."""
+    titles = scope.get_by_text(TARIFF_NAME, exact=True)
+    for index in range(min(titles.count(), 8)):
+        title = titles.nth(index)
+        try:
+            if not title.is_visible():
+                continue
+            card = title.locator(
+                "xpath=ancestor::*[.//button[normalize-space(.)='выбрать' or normalize-space(.)='Выбрать']][1]"
+            )
+            if card.count() == 0:
+                continue
+            if card.get_by_role("button", name=_CHOOSE_BUTTON_RE).count() != 1:
+                continue  # a container of several cards (or the basket plus the picker), not a card (TARIFF_CONFIG_1591R41: any title)
+            if card.get_by_role("button", name=_TARIFF_BASKET_BUTTON_RE_1591R32).count() > 0:
+                continue  # the basket card («изменить» / «Удалить тариф»): its «выбрать» belong to options
+            button = card.get_by_role("button", name=_CHOOSE_BUTTON_RE)
+            if button.count() > 0 and button.first.is_visible():
+                return button.first
+        except Exception:
+            continue
+    return None
+
+
+# ROW_START_ACTIVITY_1591R8
+def _row_progress(page, note):
+    """Refresh the worker heartbeat from inside a long registration step."""
+    publisher = getattr(page, "_publish_worker_phase", None)
+    if publisher is None:
+        return
+    try:
+        publisher("ROW_START", note)
+    except Exception:
+        pass
 
 
 def esim_state(page):
@@ -4319,6 +5513,7 @@ def select_esim(page):
         if esim_state(page)["selected"] and wait_esim_stable(page, timeout=2):
             return
         print(f"Выбор eSIM: попытка {attempt}/3...", flush=True)
+        dismiss_blocking_overlays(page, keep_selector='input#esim[name="sim"]')  # OVERLAY_DISMISS_1591R6
         radio = page.locator('input#esim[name="sim"]')
         try:
             radio.wait_for(state="visible", timeout=10000)
@@ -4328,6 +5523,26 @@ def select_esim(page):
                 radio.click(timeout=5000)
         except PlaywrightTimeoutError:
             print("Нажатие не подтверждено; проверяю состояние переключателя.")
+        if not esim_state(page)["selected"]:
+            # The pointer may still be intercepted by a portal layer: click through it.
+            try:
+                radio.click(timeout=3000, force=True, no_wait_after=True)
+            except Exception:
+                pass
+        if not esim_state(page)["selected"]:
+            try:
+                page.evaluate("""() => {
+                    const el = document.querySelector('input#esim[name="sim"]');
+                    if (!el) return;
+                    const label = el.closest('label');
+                    if (label) label.click(); else el.click();
+                    if (!el.checked) {
+                        el.checked = true;
+                        for (const t of ['input', 'change']) el.dispatchEvent(new Event(t, {bubbles: true}));
+                    }
+                }""")
+            except Exception:
+                pass
         if wait_esim_stable(page):
             print("Выбор eSIM устойчиво подтверждён.")
             return
@@ -4729,17 +5944,25 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
 
         # При пяти одновременных вкладках корзина может дорисовываться заметно
         # дольше. Не используем фиксированные 5 секунд: ждём именно готовую кнопку.
+        _row_progress(page, "открываю выбор тарифа")  # ROW_START_ACTIVITY_1591R8
         print("Открываю выбор тарифа...")
         def click_tariff_change():
-            candidates = [
+            candidates = [  # TARIFF_CHANGE_BUTTON_1591R33: the tariff «изменить», not the region one
+                _tariff_change_button_1591r33(page),
                 page.get_by_role("button", name="изменить", exact=True),
                 page.locator("button").filter(has_text=re.compile(r"^\s*изменить\s*$", re.I)),
             ]
             last_error = None
+            dismiss_blocking_overlays(page)  # OVERLAY_DISMISS_1591R6
             for candidate in candidates:
                 try:
                     expect(candidate.first).to_be_visible(timeout=20000)
-                    candidate.first.click(timeout=15000, no_wait_after=True)
+                    try:
+                        candidate.first.click(timeout=15000, no_wait_after=True)
+                    except PlaywrightTimeoutError:
+                        # The button is ready; a portal modal intercepts the pointer.
+                        dismiss_blocking_overlays(page)
+                        candidate.first.click(timeout=15000, no_wait_after=True, force=True)
                     return
                 except (PlaywrightTimeoutError, AssertionError) as exc:
                     last_error = exc
@@ -4749,16 +5972,23 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
             click_tariff_change()
         except (PlaywrightTimeoutError, AssertionError):
             diagnostic.snapshot("tariff_change_button_not_ready")
-            print("Кнопка «изменить» не найдена с первой попытки. Обновляю только эту вкладку...", flush=True)
-            page.reload(wait_until="domcontentloaded", timeout=60000)
-            click_tariff_change()
+            # ROW_START_ACTIVITY_1591R8: a reload resets the basket; retry in place first.
+            print("Кнопка «изменить» не нажалась с первой попытки. Повторяю без перезагрузки...", flush=True)
+            _row_progress(page, "повтор «изменить» без перезагрузки")
+            page.wait_for_timeout(3000)
+            try:
+                click_tariff_change()
+            except (PlaywrightTimeoutError, AssertionError):
+                print("Кнопка «изменить» не нажалась повторно. Обновляю только эту вкладку...", flush=True)
+                page.reload(wait_until="domcontentloaded", timeout=60000)
+                click_tariff_change()
 
-        print("Нажимаю вторую кнопку «выбрать», как в записи...")
+        _row_progress(page, "нажимаю «выбрать» в карточке тарифа")  # ROW_START_ACTIVITY_1591R8
+        print("Нажимаю «выбрать» в карточке тарифа...")
         choose_clicked = False
         for choose_attempt in range(1, 4):
-            choose_button = page.get_by_role(
-                "button", name="выбрать", exact=True
-            ).nth(1)
+            dismiss_blocking_overlays(page, keep_text=TARIFF_NAME)  # OVERLAY_DISMISS_1591R6
+            choose_button = _tariff_choose_button(page, diagnostic)  # TARIFF_BY_NAME_1591R7
             try:
                 choose_button.click(timeout=7000, no_wait_after=True)
                 choose_clicked = True
@@ -4783,6 +6013,12 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
                     pass
                 page.wait_for_timeout(250)
 
+            if choose_clicked and (page.locator('input#esim[name="sim"]').count() == 0
+                                   or _configurator_visible_1591r45(page)):
+                # TARIFF_CONFIG_1591R41: some tariffs open a configurator (GB, minutes, options)
+                # after the card's «выбрать». CONFIGURATOR_SELECT_1591R45: the prefilled basket already
+                # shows an eSIM form, so the visible panel decides, not the form.
+                _confirm_tariff_configurator_1591r41(page, diagnostic)
             if choose_clicked:
                 break
 
@@ -4811,7 +6047,7 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
                 note="continue_by_actual_controls",
             )
             print(
-                "Точный текст bee START пока не появился; "
+                f"Точный текст «{TARIFF_NAME}» пока не появился; "  # TARIFF_LOG_1591R42
                 "проверяю фактические элементы оформления.",
                 flush=True,
             )
@@ -4826,9 +6062,12 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
             ) from exc
 
         if tariff_title_seen:
-            print("На странице найдено название bee START. Выбираю eSIM...")
+            print(f"На странице найдено название «{TARIFF_NAME}». Выбираю eSIM...")  # TARIFF_LOG_1591R42
         else:
             print("Форма eSIM уже доступна. Продолжаю без ожидания заголовка тарифа...")
+        basket_1591r43 = _basket_summary_1591r43(page, diagnostic)  # BASKET_SUMMARY_1591R43: what the basket holds
+        _require_tariff_in_basket_1591r44(basket_1591r43, diagnostic)  # CONFIGURATOR_DUMP_1591R44: not another tariff
+        _row_progress(page, "выбор eSIM")  # ROW_START_ACTIVITY_1591R8
         select_esim(page)
         field = page.get_by_placeholder("+7 999 999 99")
         expect(field).to_be_visible(timeout=15000)
@@ -5182,8 +6421,63 @@ def return_to_clean_registration_form(page, diagnostic, timeout=20):
     return False
 
 
-BROWSER_COUNT = 1
-TABS_PER_BROWSER = 3
+# TWO_BROWSERS_1591R28
+CAPTCHA_PARALLEL_MAX = 2            # captchas solved at the same time across all tabs
+CAPTCHA_GATE_WAIT_SECONDS = 180     # longest wait for a slot; then the tab solves anyway
+_CAPTCHA_GATE = None                # multiprocessing semaphore, set in each worker process
+
+_try_local_captcha_unlocked = try_local_captcha
+
+
+def try_local_captcha(page, frame_box=None):
+    """Captchas of different tabs overlap at most CAPTCHA_PARALLEL_MAX at a time: a tab waits
+    for a slot and reports CAPTCHA_WAIT to the watchdog meanwhile."""
+    gate = _CAPTCHA_GATE
+    if gate is None:
+        return _try_local_captcha_unlocked(page, frame_box)
+    from local_matcher import matcher_progress as _matcher_progress
+    acquired = False
+    deadline = monotonic() + CAPTCHA_GATE_WAIT_SECONDS
+    try:
+        while not acquired and monotonic() < deadline:
+            acquired = bool(gate.acquire(timeout=5))
+            if not acquired:
+                try:
+                    _matcher_progress("CAPTCHA_WAIT")
+                except Exception:
+                    pass
+        return _try_local_captcha_unlocked(page, frame_box)
+    finally:
+        if acquired:
+            try:
+                gate.release()
+            except Exception:
+                pass
+
+
+# BROWSER_COUNT_ENV_1591R34: BEELINE_BROWSERS=1 in the systemd unit runs one Chromium on a small
+# server (4 vCPU / 8 GB ran two at load average 20: every click and wait timed out). Default 2 (r28).
+def _browser_count_1591r34(default=2):
+    try:
+        value = int(str(os.environ.get("BEELINE_BROWSERS") or default).strip())
+    except ValueError:
+        value = default
+    return min(max(value, 1), 4)
+
+
+BROWSER_COUNT = _browser_count_1591r34()  # TWO_BROWSERS_1591R28: Chromium instances, TABS_PER_BROWSER tabs each
+# SIGN_REJECTED_1591R39: BEELINE_TABS_PER_BROWSER=1 with BEELINE_BROWSERS=8 gives every tab its
+# own Chromium (own cookies, basket and mobile-id token: tabs of one Chromium overwrote each
+# other's personal token, 412 PERSONAL_TOKEN_ERROR on the passport data). Default 4 (r17).
+def _tabs_per_browser_1591r39(default=4):
+    try:
+        value = int(str(os.environ.get("BEELINE_TABS_PER_BROWSER") or default).strip())
+    except ValueError:
+        value = default
+    return min(max(value, 1), 4)
+
+
+TABS_PER_BROWSER = _tabs_per_browser_1591r39()  # SUCCESS_TAG_1591R17: worker tabs per Chromium
 TAB_COUNT = BROWSER_COUNT * TABS_PER_BROWSER
 
 
@@ -5291,6 +6585,11 @@ def make_worker(tab_id, page, heartbeat=None, status_map=None):
         "reserved_sim_number": None,
         "reserved_sim_url": None,
         "completed_confirm_cycle": False,
+        "success_guard": False,
+        "success_ai_last_at": 0.0,
+        "region_fix_last_at": 0.0,
+        "error_guard": False,
+        "error_ai_last_at": 0.0,
     }
 
     def remember_auth(frame):
@@ -5322,9 +6621,100 @@ def save_worker_result(base_dir, worker, status):
     print(f"[Вкладка {worker['id']}] Результат строки {line_number}: {status}", flush=True)
 
 
+# ROW_SKIP_PERSIST_1591R22
+INVALID_ROW_MAX_ATTEMPTS = 2
+
+
+def _invalid_row_retry_1591r22(worker):
+    """A grey «Продолжить» can be the form's stale state rather than the row's data (the same
+    aggregateId was seen across many rows). Retry the row once in a fresh tab."""
+    key = _error_row_key(worker)
+    counts = worker.setdefault("invalid_row_counts", {})
+    counts[key] = int(counts.get(key) or 0) + 1
+    if counts[key] >= INVALID_ROW_MAX_ATTEMPTS:
+        return False
+    print(
+        f"[Вкладка {worker['id']}] Строка {key}: «Продолжить» серая — повторяю её один раз в новой вкладке.",
+        flush=True,
+    )
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        return False
+    set_tab_status(worker, "♻️", f"Строка {key}: форма не приняла данные; повтор в новой вкладке.")
+    external_heartbeat(worker, "invalid_row_retry")
+    return True
+
+
+def _fresh_tab_for_next_row_1591r22(worker):
+    """Skip the row; the next one starts in a fresh tab, never in the used form."""
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        return False
+    reset_runtime_state(worker)
+    worker["form_ready"] = False
+    worker["phase"] = "IDLE"
+    external_heartbeat(worker, "invalid_row_skipped")
+    return True
+
+
+# ROW_RESTART_LIMIT_1591R32
+ROW_RESTART_MAX = 3            # same-row restarts (new tab, same row) before the row is put back
+ROW_DEFER_MAX_PER_RUN = 2      # a row is put back at most this many times per process launch
+DEFERRED_ROWS_FILE_NAME = "deferred_rows.jsonl"
+
+
+def _row_restart_exhausted_1591r32(worker, row, rows):
+    """Count same-row restarts; past ROW_RESTART_MAX the row goes to the back of the queue
+    and the slot (already on a fresh page) takes the next one. The number is not marked
+    processed, so the row is tried again later in this run or at the next launch."""
+    key = _row_number_value(row) if row is not None else ""
+    counter = worker.get("row_restarts_1591r32") or {}
+    attempts = int(counter.get(key) or 0) + 1
+    worker["row_restarts_1591r32"] = {key: attempts}
+    if attempts <= ROW_RESTART_MAX:
+        return False
+    tab_id = worker.get("id")
+    line_number, active_digits, _ = row_parts(row)
+    deferred = int(row.get("_deferred_1591r32") or 0) + 1 if isinstance(row, dict) else 1
+    requeued = False
+    if isinstance(row, dict) and deferred <= ROW_DEFER_MAX_PER_RUN and rows is not None:
+        row["_deferred_1591r32"] = deferred
+        try:
+            rows.put(row)
+            requeued = True
+        except Exception as exc:
+            print(f"[Вкладка {tab_id}] Строка {line_number} не вернулась в очередь: {type(exc).__name__}: {exc}", flush=True)
+    note = ("вернул в конец очереди" if requeued
+            else "оставил до следующего запуска (номер не помечен обработанным)")
+    print(
+        f"[Вкладка {tab_id}] Строка {line_number}: {ROW_RESTART_MAX} перезапуска подряд не помогли; "
+        f"{note}, беру следующую.",
+        flush=True,
+    )
+    try:
+        base_dir = worker.get("base_dir")
+        if base_dir:
+            with open(Path(base_dir) / DEFERRED_ROWS_FILE_NAME, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "tab": tab_id,
+                                         "row": line_number, "number": active_digits,
+                                         "restarts": attempts - 1, "requeued": requeued},
+                                        ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    worker["row_restarts_1591r32"] = {}
+    set_tab_status(worker, "⏭", f"Строка {line_number}: перезапуски исчерпаны, {note}")
+    reset_runtime_state(worker)
+    worker["form_ready"] = False
+    worker["phase"] = "IDLE"
+    external_heartbeat(worker, "row_deferred")
+    return True
+
+
 def reset_runtime_state(worker):
     worker["row"] = None
     worker["diagnostic"] = None
+    worker["reserved_sim_url"] = None     # SIM_URL_PER_ROW_1591R36: a row never inherits the
+    worker["reserved_sim_number"] = None  # previous row's order link or reserved number
     worker["post_retry_deadline"] = None
     worker["post_retries"] = 0
     worker["auth_deadline"] = None
@@ -5333,14 +6723,23 @@ def reset_runtime_state(worker):
     worker["confirm_deadline"] = None
     worker["resend_deadline"] = None
     worker["completed_confirm_cycle"] = False
+    worker["success_guard"] = False
+    worker["success_ai_last_at"] = 0.0
+    worker["region_fix_last_at"] = 0.0
+    worker["error_guard"] = False
+    worker["error_ai_last_at"] = 0.0
 
 
 def finish_worker_row(base_dir, worker, status):
     """Фиксирует результат и решает, можно ли этой вкладке брать следующую строку."""
+    if status == "INVALID_ROW" and _invalid_row_retry_1591r22(worker):  # ROW_SKIP_PERSIST_1591R22
+        return
     save_worker_result(base_dir, worker, status)
 
     if status == "INVALID_ROW":
         remember_processed_number(base_dir, worker.get("row"))
+        if _fresh_tab_for_next_row_1591r22(worker):
+            return
         worker["form_ready"] = True
         reset_runtime_state(worker)
         worker["phase"] = "IDLE"
@@ -5523,7 +6922,10 @@ def start_row_in_worker(base_dir, browser_version, worker, row):
     if status == "PENDING_CONFIRM":
         cached_url = getattr(page, "_reserved_sim_url", None)
         cached_number = getattr(page, "_reserved_sim_number", None)
-        if cached_url and not worker.get("reserved_sim_url"):
+        # SIM_URL_PER_ROW_1591R36: the offer URL captured for THIS row (locked by
+        # capture_esim_offer_page) replaces whatever the worker remembered; the old rule
+        # "only when empty" kept the first row's link for every later row of the tab.
+        if cached_url and (getattr(page, "_reserved_sim_url_locked", False) or not worker.get("reserved_sim_url")):
             worker["reserved_sim_url"] = cached_url
         if cached_number:
             worker["reserved_sim_number"] = cached_number
@@ -5777,7 +7179,238 @@ def _signature_page_hint(page):
     return False
 
 
+def capture_all_form_fields_v1583(page):
+    """Read-only snapshot of all form controls and their label metadata."""
+    try:
+        return page.evaluate("""() => {
+          const out = [];
+          for (const el of document.querySelectorAll('input,select,textarea')) {
+            let label = '';
+            try {
+              if (el.id) {
+                const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+                if (l) label = (l.innerText || l.textContent || '').trim();
+              }
+              if (!label) {
+                const l = el.closest('label');
+                if (l) label = (l.innerText || l.textContent || '').trim();
+              }
+            } catch (_) {}
+            let value = '';
+            try {
+              value = (el.type === 'checkbox' || el.type === 'radio')
+                ? (el.checked ? 'true' : 'false')
+                : String(el.value == null ? '' : el.value);
+            } catch (_) {}
+            out.push({
+              tag: (el.tagName || '').toLowerCase(),
+              type: el.type || '',
+              name: el.name || '',
+              id: el.id || '',
+              value,
+              label,
+              placeholder: el.placeholder || '',
+              ariaLabel: el.getAttribute('aria-label') || '',
+              disabled: !!el.disabled,
+              readOnly: !!el.readOnly
+            });
+          }
+          return out;
+        }""")
+    except Exception:
+        return []
+
+
+# PROFILE_LABELS_1591R19
+_FORM_FIELDS_JS_1591R19 = r"""() => {
+  const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+  const hasControl = el => !!(el && el.querySelector && el.querySelector('input,select,textarea'));
+  const shortText = el => { const t = clean(el && (el.innerText || el.textContent)); return t && t.length <= 80 ? t : ''; };
+  const out = [];
+  for (const el of document.querySelectorAll('input,select,textarea')) {
+    let near = '';
+    try {
+      // 1. the wrapper of exactly this control that carries a short caption (floating labels)
+      let node = el.parentElement;
+      for (let depth = 0; depth < 5 && !near && node; depth++) {
+        if (node.querySelectorAll('input,select,textarea').length !== 1) break;
+        near = shortText(node);
+        node = node.parentElement;
+      }
+      // 2. the caption rendered just before the control or its wrapper; another control
+      //    in between means the caption belongs to that other field
+      node = el;
+      for (let depth = 0; depth < 3 && !near && node; depth++) {
+        let sib = node.previousElementSibling;
+        while (sib && !near) {
+          if (sib.matches('input,select,textarea') || hasControl(sib)) break;
+          near = shortText(sib);
+          sib = sib.previousElementSibling;
+        }
+        node = node.parentElement;
+      }
+    } catch (_) {}
+    const attrs = [];
+    try {
+      for (const a of el.attributes) {
+        if (/^(data-|aria-|autocomplete$|title$|role$)/.test(a.name) && a.value) attrs.push(a.name + '=' + a.value);
+      }
+      const by = el.getAttribute('aria-labelledby');
+      if (by) for (const id of by.split(/\s+/)) { const l = document.getElementById(id); if (l) attrs.push('labelledby=' + clean(l.textContent)); }
+    } catch (_) {}
+    let value = '';
+    try {
+      value = (el.type === 'checkbox' || el.type === 'radio') ? (el.checked ? 'true' : 'false')
+                                                              : String(el.value == null ? '' : el.value);
+    } catch (_) {}
+    let label = '';
+    try {
+      if (el.id) { const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) label = clean(l.textContent); }
+      if (!label) { const l = el.closest('label'); if (l) label = clean(l.textContent); }
+    } catch (_) {}
+    out.push({tag: (el.tagName || '').toLowerCase(), type: el.type || '', name: el.name || '', id: el.id || '',
+              value, label, placeholder: el.placeholder || '', ariaLabel: el.getAttribute('aria-label') || '',
+              near, attrs: attrs.join(' ')});
+  }
+  return out;
+}"""
+
+
+def capture_form_fields_1591r19(page):
+    """capture_all_form_fields_v1583 plus `near` (the closest label-like text around the
+    control) and `attrs` (data-/aria-/autocomplete attributes). Read-only."""
+    try:
+        data = page.evaluate(_FORM_FIELDS_JS_1591R19)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _alias_hit_1591r19(hay, word):
+    """Short aliases («пол», «дом», «край», «ул.») must be whole words: «поле», «домашний»
+    and «крайний» in a hint next to the field are not labels."""
+    word = word.replace("ё", "е")
+    if len(word) <= 4:
+        return re.search(r"(?<![а-яa-z0-9])" + re.escape(word) + r"(?![а-яa-z0-9])", hay) is not None
+    return word in hay
+
+
+_DATE_FIELD_RE_1591R19 = re.compile(r"^\d{2}[.\-/]\d{2}[.\-/]\d{4}$")
+_SKIP_FIELD_TYPES_1591R19 = {"checkbox", "radio", "hidden", "submit", "button", "password", "file"}
+
+
+def _profile_fallback_1591r19(profile, fields, consumed):
+    """Fields with no caption anywhere: the full name and the birth date by value shape, the
+    four address inputs between «страна» and «дом» by their position on the form."""
+    text_inputs = [(i, f) for i, f in enumerate(fields)
+                   if str(f.get("tag") or "input").lower() == "input"
+                   and str(f.get("type") or "text").lower() not in _SKIP_FIELD_TYPES_1591R19]
+    issue_date = str(profile.get("passport_issue_date") or "").strip()
+    for i, f in text_inputs:
+        value = str(f.get("value") or "").strip()
+        if i in consumed or not value:
+            continue
+        if not profile.get("full_name") and " " in value and _FIO_RE_1591R12.match(value):
+            profile["full_name"] = value
+            consumed.add(i)
+            continue
+        if (not profile.get("birth_date") and _DATE_FIELD_RE_1591R19.match(value) and value != issue_date
+                and (_DATE_FIELD_RE_1591R19.match(str(f.get("placeholder") or "").strip())
+                     or "рожд" in str(f.get("near") or "").lower())):
+            profile["birth_date"] = value
+            consumed.add(i)
+    ids = [str(f.get("id") or "").lower() for f in fields]
+    if "country" in ids and "house" in ids and ids.index("country") < ids.index("house"):
+        a, b = ids.index("country"), ids.index("house")
+        between = [(i, f) for i, f in text_inputs if a < i < b]
+        if len(between) == 4:
+            for (i, f), key in zip(between, ("region", "district", "locality", "street")):
+                value = str(f.get("value") or "").strip()
+                if i not in consumed and len(value) >= 2 and not profile.get(key):
+                    profile[key] = value
+                    consumed.add(i)
+    return profile
+
+
+def final_profile_capture_v1583(page, worker):
+    fields = capture_all_form_fields_v1583(page)
+    worker["final_form_fields"] = fields
+    try:
+        d = worker.get("diagnostic")
+        if d:
+            d.write("final_form_capture_v1583", fields=fields, url=page.url)
+    except Exception:
+        pass
+
+    profile = _io1591.merge_capture(worker.get("success_profile"), worker.get("profile"))
+    aliases = {
+        "full_name": ("фио", "фамилия имя отчество", "фамилия", "ф.и.о", "ф. и. о", "fullname", "full_name",
+                      "autocomplete=name"),  # PROFILE_LABELS_1591R19
+        "gender": ("пол", "gender"),
+        "birth_date": ("дата рождения", "дата рожд", "рождения", "birth", "birthday", "bday"),
+        "passport_series": ("серия паспорта", "passport series", "series"),
+        "passport_number": ("номер паспорта", "passport number", "passportnumber"),
+        "passport_issue_date": ("дата выдачи", "issue date", "issuedate"),
+        "passport_issued_by": ("кем выдан", "issuer", "issued by"),
+        "country": ("страна", "country"),
+        "region": ("область", "регион", "край", "республика", "region", "address-level1"),
+        "district": ("район", "р-н", "district"),
+        "locality": ("населённый пункт", "населенный пункт", "населённый", "населенный", "город", "city",
+                     "locality", "address-level2"),
+        "street": ("улица", "ул.", "street", "address-line1"),
+        "house": ("дом", "house"),
+        "building": ("корпус", "building"),
+        "apartment": ("квартира", "apartment", "flat"),
+    }
+    extended = capture_form_fields_1591r19(page)  # PROFILE_LABELS_1591R19
+    if extended:
+        try:
+            d = worker.get("diagnostic")
+            if d:
+                d.write("form_fields_1591r19", fields=extended, url=page.url)
+        except Exception:
+            pass
+    matched = extended or fields
+    consumed = set()
+    for index, f in enumerate(matched):
+        value = str(f.get("value") or "").strip()
+        if not value or str(f.get("type") or "").lower() in _SKIP_FIELD_TYPES_1591R19:
+            continue
+        if not re.search(r"[0-9a-zа-яё]", value.lower()):  # SIGN_TRACE_1591R25: a lone «.» is not a value
+            continue
+        hay = " ".join(str(f.get(k) or "") for k in
+                       ("label", "name", "id", "placeholder", "ariaLabel", "near", "attrs")).lower().replace("ё", "е")
+        for key, words in aliases.items():
+            if profile.get(key):
+                continue
+            if any(_alias_hit_1591r19(hay, word) for word in words):
+                profile[key] = value
+                consumed.add(index)
+                break
+    _profile_fallback_1591r19(profile, matched, consumed)
+    worker["success_profile"] = profile
+    worker["profile"] = dict(profile)
+    return profile, fields
+
+
 def finalize_success(base_dir, worker):
+
+    # FINAL_SUCCESS_GUARD_V1583
+    page = worker.get("page")
+    if page is not None and _post_auth_error_page(page):
+        print(
+            f"[Вкладка {worker.get('id')}] FALSE SUCCESS BLOCKED: /registration/error",
+            flush=True,
+        )
+        try:
+            capture_blackbox(worker, "blocked_false_success_registration_error")
+        except Exception:
+            pass
+        enter_error_guard(worker, "finalize_success blocked on registration/error")
+        return False
+
+    if page is not None:
+        final_profile_capture_v1583(page, worker)
     page = worker["page"]
     row_no, _, _ = row_parts(worker.get("row"))
 
@@ -5832,11 +7465,433 @@ def finalize_success(base_dir, worker):
     worker["stopped"] = True
 
 
+
+# PERSDATA_SKIP_1591R15
+ERROR_FINAL_NEEDLES_1591R15 = (
+    ("данные не прошли проверку", "данные не прошли проверку у оператора"),
+    ("укажите другой свой номер", "оператор просит указать другой номер"),
+    ("persdata_not_match", "PERSDATA_NOT_MATCH"),
+    ("не совпадают с данными", "данные не совпадают с базой оператора"),
+)
+
+
+def _error_page_final_reason(page):
+    """Reason text when the error page is a deterministic operator refusal, else None."""
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "").lower()
+    except Exception:
+        return None
+    for needle, reason in ERROR_FINAL_NEEDLES_1591R15:
+        if needle in body:
+            return reason
+    return None
+
+
+def _error_skip_final(worker, reason):
+    """Skip the row at once: a retry cannot change the operator's answer.
+
+    Same steps as the second-error skip of ERROR_RECOVERY_1591R5, minus the analysis
+    and the retry: fresh page, record in error_skipped_rows.txt, Telegram notice, IDLE.
+    """
+    key = _error_row_key(worker)
+    base_dir = worker.get("base_dir") or Path(__file__).resolve().parent
+    try:
+        capture_blackbox(worker, "error_final_skip")
+    except Exception:
+        pass
+    print(
+        f"[Вкладка {worker['id']}] registration/error: {reason}. Повтор бессмыслен — "
+        f"строка {key} пропускается без анализа.",
+        flush=True,
+    )
+    worker["error_guard"] = False
+    worker["success_guard"] = False
+    worker["error_assist_entered_at"] = None
+    worker["auto_assist_state"] = {}
+    worker["phase"] = "ERROR_RECOVERY"
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        print(f"[Вкладка {worker['id']}] Новая вкладка не создана; строка {key} будет повторена.", flush=True)
+        return False
+    try:
+        with (Path(base_dir) / "error_skipped_rows.txt").open("a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{key}\t{reason}\n")
+    except Exception:
+        pass
+    try:
+        chat = str(load_telegram_config().get("chat_id") or "")
+        if chat:
+            _io1591.enqueue_notice(
+                globals(), chat,
+                f"⏭ Вкладка {worker['id']}: строка {key} пропущена без повтора: {reason}. "
+                "Worker продолжает со следующей строкой.",
+            )
+    except Exception:
+        pass
+    remember_processed_number(base_dir, worker.get("row"))  # ROW_SKIP_PERSIST_1591R22: not back after a restart
+    worker["row"] = None
+    worker["phase"] = "IDLE"
+    set_tab_status(worker, "⏭", f"Строка {key} пропущена: {reason}. Беру следующую.")
+    external_heartbeat(worker, "error_row_skipped_final")
+    return True
+
+
+def enter_error_guard(worker, note):
+    # ERROR_SKIP_ALWAYS_1591R16: every /registration/error after the confirmation is handled
+    # without DeepSeek: the tab is replaced and the row is skipped at once. A page that names
+    # the cause (PERSDATA_SKIP_1591R15) supplies the precise reason for the record.
+    reason = _error_page_final_reason(worker.get("page")) or "registration/error после подтверждения"
+    if _error_skip_final(worker, reason):
+        return
+    # No fresh page yet: the error tick repeats the skip after a short dwell, still without
+    # an analysis request (the repeat-error branch of ERROR_RECOVERY_1591R5).
+    worker.setdefault("error_retry_counts", {})[_error_row_key(worker)] = ERROR_ROW_MAX_ATTEMPTS - 1
+    worker["error_guard"] = True
+    worker["success_guard"] = False
+    worker["phase"] = "ERROR_ASSIST"
+    set_tab_status(
+        worker, "♻️",
+        "Registration error — вкладка будет перезапущена, строка пропущена. DeepSeek не вызывается."
+    )
+    external_heartbeat(worker, note)
+
+
+# ERROR_RECOVERY_1591R5
+ERROR_ASSIST_MAX_SECONDS = 300
+ERROR_SKIP_DWELL_SECONDS = 15
+ERROR_ROW_MAX_ATTEMPTS = 2
+
+
+def _error_row_key(worker):
+    row = worker.get("row")
+    try:
+        return _row_number_value(row) or str(row)
+    except Exception:
+        return str(row)
+
+
+def _error_analysis_delivered(worker):
+    state = (worker.get("auto_assist_state") or {}).get("ERROR") or {}
+    if int(state.get("count") or 0) < 1:
+        return False
+    try:
+        return not _auto_assist_pending("ERROR", worker.get("id") or 0)
+    except Exception:
+        return True
+
+
+def _error_recover(base_dir, worker, reason):
+    """Close the error page, open a fresh one; retry the row once, then skip it.
+
+    Runs without user permission. A worker slot is never stopped because of an error.
+    """
+    key = _error_row_key(worker)
+    counts = worker.setdefault("error_retry_counts", {})
+    counts[key] = int(counts.get(key) or 0) + 1
+    attempt = counts[key]
+    try:
+        capture_blackbox(worker, "error_recovery")
+    except Exception:
+        pass
+    worker["error_guard"] = False
+    worker["success_guard"] = False
+    worker["error_assist_entered_at"] = None
+    worker["auto_assist_state"] = {}
+    worker["phase"] = "ERROR_RECOVERY"
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        print(f"[Вкладка {worker['id']}] ERROR RECOVERY: новая вкладка не создана ({reason}).", flush=True)
+        return False
+    if attempt < ERROR_ROW_MAX_ATTEMPTS:
+        set_tab_status(
+            worker, "♻️",
+            f"registration/error: {reason}. Вкладка закрыта, открыта новая; "
+            f"повторяю строку (попытка {attempt + 1}).",
+        )
+        external_heartbeat(worker, "error_retry_same_row")
+        return True
+    # Second error on the same row: skip it; the next row starts on the fresh page.
+    try:
+        with (Path(base_dir) / "error_skipped_rows.txt").open("a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{key}\t{reason}\n")
+    except Exception:
+        pass
+    try:
+        chat = str(load_telegram_config().get("chat_id") or "")
+        if chat:
+            _io1591.enqueue_notice(
+                globals(), chat,
+                f"⏭ Вкладка {worker['id']}: строка {key} пропущена после повторной "
+                f"registration/error ({reason}). Worker продолжает со следующей строкой.",
+            )
+    except Exception:
+        pass
+    remember_processed_number(base_dir, worker.get("row"))  # ROW_SKIP_PERSIST_1591R22: not back after a restart
+    worker["row"] = None
+    worker["phase"] = "IDLE"
+    set_tab_status(worker, "⏭", f"Строка {key} пропущена после повторной registration/error. Беру следующую.")
+    external_heartbeat(worker, "error_row_skipped")
+    return True
+
+
+def tick_error_assist(base_dir, worker):
+    page = worker["page"]
+    worker["error_guard"] = True
+    now = monotonic()
+    if not worker.get("error_assist_entered_at"):
+        worker["error_assist_entered_at"] = now
+    entered = float(worker["error_assist_entered_at"])
+
+    if page.is_closed():
+        # A closed error page never costs the worker slot: open a fresh page and go on.
+        _error_recover(base_dir, worker, "error-страница закрыта извне")
+        return
+
+    # If Operator safely repaired the page and it becomes a real contract page,
+    # promote it into the immutable SUCCESS GUARD.
+    if _post_auth_contract_page(page) and not _post_auth_error_page(page):
+        worker["error_guard"] = False
+        worker["error_assist_entered_at"] = None
+        enter_success_guard(
+            worker,
+            "DeepSeek/сайт вывел error-state на страницу договора",
+        )
+        return
+
+    key = _error_row_key(worker)
+    if int((worker.get("error_retry_counts") or {}).get(key) or 0) >= ERROR_ROW_MAX_ATTEMPTS - 1:
+        # Repeated error on the same row: no second analysis; skip after a short dwell.
+        external_heartbeat(worker, "error_repeat_skip_pending")
+        if now - entered >= ERROR_SKIP_DWELL_SECONDS:
+            _error_recover(base_dir, worker, "повторная ошибка регистрации на той же строке")
+        return
+
+    queue_error_assist(
+        worker,
+        "registration/error открыта; проанализируй DOM/console/network и отправь отчёт",
+    )
+    external_heartbeat(worker, "error_assist_observing")
+    if _error_analysis_delivered(worker):
+        _error_recover(base_dir, worker, "детальный анализ завершён")
+    elif now - entered >= ERROR_ASSIST_MAX_SECONDS:
+        _error_recover(base_dir, worker, "анализ не получен за отведённое время")
+
+
+def _post_auth_error_page(page):
+    try:
+        low = str(page.url or "").lower()
+        if "/registration/error" in low:
+            return True
+    except Exception:
+        pass
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "").lower()
+        needles = (
+            "что-то пошло не так",
+            "произошла ошибка",
+            "не удалось продолжить",
+        )
+        return any(x in body for x in needles)
+    except Exception:
+        return False
+
+
+def _post_auth_contract_page(page):
+    try:
+        low = str(page.url or "").lower()
+        if "personal-data-form" in low:
+            return True
+    except Exception:
+        pass
+    try:
+        return bool(_signature_page_hint(page) or _signature_button_locator(page))
+    except Exception:
+        return False
+
+
+def _region_input_candidates(page):
+    # Prefer semantic attributes and only then nearby label text.
+    rx = re.compile(r"(область|регион|region)", re.I)
+    return [
+        page.locator(
+            'input[name*="region" i], input[id*="region" i], '
+            'input[name*="area" i], input[id*="area" i], '
+            'input[placeholder*="область" i], input[aria-label*="область" i], '
+            'input[placeholder*="регион" i], input[aria-label*="регион" i]'
+        ),
+        page.get_by_label(rx),
+    ]
+
+
+def ensure_region_if_missing(page, diagnostic=None):
+    """Fill Saratov region only when the region field is actually empty/invalid."""
+    needs_region = False
+    try:
+        err = page.get_by_text(re.compile(r"^\s*укажите\s+область\s*$", re.I))
+        needs_region = bool(err.count() and err.first.is_visible())
+    except Exception:
+        pass
+
+    target = None
+    for group in _region_input_candidates(page):
+        try:
+            for i in range(group.count()):
+                loc = group.nth(i)
+                if not loc.is_visible():
+                    continue
+                value = (loc.input_value(timeout=1200) or "").strip()
+                if value:
+                    # Normally the site fills it itself. Never overwrite a value.
+                    return True
+                target = loc
+                needs_region = True
+                break
+        except Exception:
+            continue
+        if target is not None:
+            break
+
+    if not needs_region or target is None:
+        return not needs_region
+
+    try:
+        target.fill("Саратовская область", timeout=4000)
+        page.wait_for_timeout(450)
+
+        # Autocomplete variants. Select only Saratov region.
+        options = [
+            page.get_by_role(
+                "option",
+                name=re.compile(r"Саратовск(ая|ой)\s+област", re.I),
+            ),
+            page.locator('[role="listbox"] *').filter(
+                has_text=re.compile(r"Саратовск(ая|ой)\s+област", re.I)
+            ),
+            page.get_by_text(
+                re.compile(r"^\s*Саратовская\s+область\s*$", re.I),
+                exact=True,
+            ),
+        ]
+        for group in options:
+            try:
+                if group.count() and group.first.is_visible():
+                    group.first.click(timeout=3000, no_wait_after=True)
+                    page.wait_for_timeout(350)
+                    break
+            except Exception:
+                continue
+
+        value = (target.input_value(timeout=1500) or "").strip()
+        ok = bool(value)
+        if diagnostic is not None:
+            try:
+                diagnostic.write(
+                    "region_autofill_if_missing",
+                    value=value,
+                    ok=ok,
+                )
+            except Exception:
+                pass
+        print(
+            f"[Договор] Область была пустой — "
+            f"{'заполнена: '+value if ok else 'попытка заполнения выполнена'}",
+            flush=True,
+        )
+        return ok
+    except Exception as exc:
+        if diagnostic is not None:
+            try:
+                diagnostic.write(
+                    "region_autofill_failed",
+                    error_type=type(exc).__name__,
+                    message=str(exc)[:500],
+                )
+            except Exception:
+                pass
+        return False
+
+
+# AI_ON_SIGN_FAIL_1591R37
+SIGN_OK_RE_1591R37 = re.compile(r"checksignature|/sign\b", re.I)
+
+
+def _sign_went_through_1591r37(worker):
+    """True when the site accepted the WHOLE signing step: a 2xx/3xx answer to the signing
+    request and no 4xx/5xx on any selfreg request of the click (SIGN_REJECTED_1591R39: a
+    checksignature 200 followed by sendpassportdata 412 is a rejection, not a success)."""
+    trace = (worker or {}).get("sign_trace") or {}
+    accepted = False
+    for response in trace.get("responses") or []:
+        url = str(response.get("url") or "")
+        try:
+            status = int(response.get("status") or 0)
+        except (TypeError, ValueError):
+            status = 0
+        if SELFREG_RE_1591R39.search(url) and status >= 400:
+            return False
+        if SIGN_OK_RE_1591R37.search(url) and 200 <= status < 400:
+            accepted = True
+    return accepted
+
+
+# SIGN_REJECTED_1591R39
+SELFREG_RE_1591R39 = re.compile(r"esim-selfreg|checksignature|sendpassportdata|/sign\b", re.I)
+
+
+def _sign_rejected_1591r39(worker):
+    """The site's refusal after the click, as «412 PERSONAL_TOKEN_ERROR», or "" when none:
+    the first 4xx/5xx answer to a selfreg request in the trace of the sign click."""
+    trace = (worker or {}).get("sign_trace") or {}
+    for response in trace.get("responses") or []:
+        url = str(response.get("url") or "")
+        try:
+            status = int(response.get("status") or 0)
+        except (TypeError, ValueError):
+            status = 0
+        if status < 400 or not SELFREG_RE_1591R39.search(url):
+            continue
+        code = ""
+        m = re.search(r'"codeValue"\s*:\s*"([A-Z_0-9]+)"', str(response.get("body") or ""))
+        if m:
+            code = m.group(1)
+        step = "паспортные данные" if "sendpassportdata" in url.lower() else ("подпись" if SIGN_OK_RE_1591R37.search(url) else url.rsplit("/", 2)[-2][:30])
+        return f"{status} {code}".strip() + f" ({step})"
+    return ""
+
+
+def enter_success_guard(worker, note):
+    if not worker.get("success_guard"):
+        worker["success_guard"] = True
+        print(
+            f"[Вкладка {worker['id']}] 🔒 SUCCESS GUARD: {note}. "
+            "Close/reload/restart/back/navigation запрещены.",
+            flush=True,
+        )
+    publish_worker_phase(worker, "POST_AUTH_REVIEW", note)
+    # AI_ON_SIGN_FAIL_1591R37: DeepSeek is no longer summoned on every confirmed row. The runtime
+    # signs by itself; DeepSeek is asked only when the signature does not go through (disabled
+    # button, missing region, signing error, request not seen in the network, error page,
+    # unverified page). The push with the network trace is the report for the rest.
+    print(
+        f"[Вкладка {worker['id']}] DeepSeek на подпись не вызываю: runtime подписывает сам; "
+        "вызов только при сбое подписи.",
+        flush=True,
+    )
+
+
 def tick_post_auth_review(base_dir, worker):
     page = worker["page"]
-    now = monotonic()
+
+    # Once mobile-id succeeded, this physical page is sacred. Never recover it.
+    worker["success_guard"] = True
+
     if page.is_closed():
-        restart_same_row_in_new_page(worker)
+        worker["phase"] = "SUCCESS_STOP"
+        worker["stopped"] = True
+        set_tab_status(
+            worker, "🔴",
+            "Успешная post-auth вкладка была закрыта извне. Автоповтор ЗАПРЕЩЁН."
+        )
         return
 
     try:
@@ -5844,55 +7899,552 @@ def tick_post_auth_review(base_dir, worker):
     except Exception:
         pass
 
+    # POST_AUTH_ERROR_ROUTE_1591R14: /registration/error after auth is an ERROR under the
+    # registration/error policy (revision 5): DeepSeek analyses, then the runtime closes
+    # the tab, opens a new one and retries the row once; a repeat skips the row. This
+    # used to become SUCCESS_ASSIST, which has no recovery, and the worker waited for ever.
+    if _post_auth_error_page(page):
+        capture_blackbox(worker, "registration_error_after_auth")
+        print(
+            f"[Вкладка {worker['id']}] На post-auth странице открылась /registration/error. "
+            "Это НЕ success. Сначала DeepSeek анализирует страницу; затем runtime повторит "
+            "строку по правилу registration/error.",
+            flush=True,
+        )
+        enter_error_guard(
+            worker,
+            "после mobile-id-auth открылась /registration/error (post-auth review)",
+        )
+        return
+
+    # Site normally fills region itself. Touch it only when it is genuinely empty.
+    now = monotonic()
+    if now - float(worker.get("region_fix_last_at") or 0) >= 4:
+        worker["region_fix_last_at"] = now
+        region_ok = ensure_region_if_missing(page, worker.get("diagnostic"))
+        if not region_ok:
+            queue_success_assist(worker, "область отсутствует или не принялась")
+
     button = _signature_button_locator(page)
     if button is not None:
         try:
-            set_tab_status(worker, "✍️", "Заполняю поле подписи и нажимаю «Подписать договор»")
+            enabled = button.is_enabled()
+        except Exception:
+            enabled = False
+
+        if not enabled:
+            worker["phase"] = "SUCCESS_ASSIST"
+            set_tab_status(
+                worker, "🧠",
+                "Подтверждение успешно. Кнопка договора пока неактивна — DeepSeek наблюдает/исправляет."
+            )
+            external_heartbeat(worker, "signature_button_disabled")
+            queue_success_assist(worker, "кнопка «Подписать договор» неактивна")
+            return
+
+        try:
+            set_tab_status(
+                worker, "✍️",
+                "Подтверждение успешно. Заполняю подпись и подписываю договор."
+            )
             capture_contract_details(page, worker)
-            fill_signature_and_submit(page, worker.get("diagnostic"))
+            _sign_trace_begin_1591r25(page, worker)  # SIGN_TRACE_1591R25
+            try:
+                fill_signature_and_submit(page, worker.get("diagnostic"))
+            finally:
+                _sign_trace_end_1591r25(page, worker)
             worker["phase"] = "SIGN_WAIT"
             worker["sign_submit_url"] = page.url
-            worker["sign_submit_deadline"] = monotonic() + 25
             worker["sign_button_gone_since"] = None
-            external_heartbeat(worker, "signature_submitted")
+            external_heartbeat(worker, "signature_submitted_success_guard")
+            rejected = _sign_rejected_1591r39(worker)  # SIGN_REJECTED_1591R39
+            if rejected:
+                print(
+                    f"[Вкладка {worker['id']}] Сайт отверг данные после подписи ({rejected}); "
+                    "строка не подтверждена, DeepSeek не вызываю.",
+                    flush=True,
+                )
+                _finish_unverified_1591r24(base_dir, worker, f"сайт отверг данные после подписи: {rejected}")
+                return
+            if _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37
+                print(
+                    f"[Вкладка {worker['id']}] Запрос подписи ушёл и принят сайтом (след сети); "
+                    "DeepSeek не вызываю.",
+                    flush=True,
+                )
+            else:
+                queue_success_assist(
+                    worker,
+                    "подпись нажата, но запроса подписи в сети не видно; проверь ошибки/обязательные поля",
+                    force=True,
+                )
             return
         except Exception as exc:
             capture_blackbox(worker, "signature_submit_failed", exc)
+            worker["phase"] = "SUCCESS_ASSIST"
+            set_tab_status(
+                worker, "🧠",
+                "Подтверждение успешно. Ошибка при подписи — DeepSeek помогает, страницу не трогаю."
+            )
             print(
-                f"[Вкладка {worker['id']}] Подпись/кнопка не сработала: "
-                f"{type(exc).__name__}: {exc}. Повторяю ту же строку.",
+                f"[Вкладка {worker['id']}] Ошибка подписи: "
+                f"{type(exc).__name__}: {exc}. SUCCESS GUARD — без restart/reload.",
                 flush=True,
             )
-            restart_same_row_in_new_page(worker)
+            queue_success_assist(
+                worker,
+                f"ошибка подписи {type(exc).__name__}: {str(exc)[:300]}",
+                force=True,
+            )
             return
 
-    # If the contract UI is still rendering, give it time.
-    if _signature_page_hint(page):
-        if now < worker.get("post_auth_review_deadline", now):
-            external_heartbeat(worker, "waiting_signature_ui")
-            return
-        capture_blackbox(worker, "signature_ui_timeout")
-        restart_same_row_in_new_page(worker)
+    # Contract UI may render indefinitely; there is deliberately NO destructive timeout.
+    if _signature_page_hint(page) or _post_auth_contract_page(page):
+        worker["phase"] = "SUCCESS_ASSIST"
+        set_tab_status(
+            worker, "🧠",
+            "Подтверждение успешно. Жду/проверяю интерфейс договора; DeepSeek наблюдает."
+        )
+        external_heartbeat(worker, "success_waiting_contract_ui")
+        queue_success_assist(worker, "интерфейс договора требует наблюдения")
         return
 
-    # A plain post-confirmation page with no contract UI is treated as success
-    # only after a short settle period, avoiding the previous instant false success.
-    if now - worker.get("post_auth_review_started", now) < 5:
-        return
-    finalize_success(base_dir, worker)
+    # If we are post-auth and no contract controls remain, settle as success — only with
+    # positive evidence of the signed contract (SIGNED_EVIDENCE_1591R24).
+    settle_success_1591r24(base_dir, worker)
+
+
+def tick_success_assist(base_dir, worker):
+    # Same guarded logic, but never adds a destructive timeout.
+    tick_post_auth_review(base_dir, worker)
+
+
+# SIGN_TRACE_1591R25
+SIGN_TRACE_SECONDS = 8
+_SIGN_TRACE_SKIP_RE_1591R25 = re.compile(
+    r"\.(png|jpe?g|gif|svg|webp|css|js|woff2?|ttf|ico)(\?|$)|metrika|analytics|google|flocktory|yandex|gtm",
+    re.I,
+)
+
+
+def _sign_trace_begin_1591r25(page, worker):
+    """Start collecting what the page does right after «Подписать договор» is clicked."""
+    trace = {"started": time.time(), "url_before": "", "responses": [], "failed": [], "console": [],
+             "_pending": [], "_handlers": {}}
+    try:
+        trace["url_before"] = str(page.url or "")
+    except Exception:
+        pass
+
+    def on_response(resp):
+        try:
+            url = str(resp.url or "")
+            if _SIGN_TRACE_SKIP_RE_1591R25.search(url) or len(trace["responses"]) >= 40:
+                return
+            item = {"t": round(time.time() - trace["started"], 2), "method": str(resp.request.method),
+                    "status": int(resp.status), "url": url[:300]}
+            trace["responses"].append(item)
+            ctype = str(resp.headers.get("content-type", "") or "")
+            if "json" in ctype or item["status"] >= 400 or item["method"] in ("POST", "PUT", "PATCH"):
+                trace["_pending"].append((resp, item))
+        except Exception:
+            pass
+
+    def on_failed(req):
+        try:
+            if len(trace["failed"]) < 20 and not _SIGN_TRACE_SKIP_RE_1591R25.search(str(req.url or "")):
+                trace["failed"].append({"t": round(time.time() - trace["started"], 2), "url": str(req.url)[:300],
+                                        "error": str(req.failure or "")[:200]})
+        except Exception:
+            pass
+
+    def on_console(msg):
+        try:
+            if msg.type in ("error", "warning") and len(trace["console"]) < 30:
+                trace["console"].append({"t": round(time.time() - trace["started"], 2), "type": str(msg.type),
+                                         "text": str(msg.text)[:300]})
+        except Exception:
+            pass
+
+    for event, fn in (("response", on_response), ("requestfailed", on_failed), ("console", on_console)):
+        try:
+            page.on(event, fn)
+            trace["_handlers"][event] = fn
+        except Exception:
+            pass
+    worker["sign_trace"] = trace
+    return trace
+
+
+def _sign_trace_end_1591r25(page, worker, note=""):
+    """Wait SIGN_TRACE_SECONDS after the click, read the bodies, record the trace."""
+    trace = worker.get("sign_trace")
+    if not trace or "_handlers" not in trace:
+        return trace
+    deadline = monotonic() + SIGN_TRACE_SECONDS
+    while monotonic() < deadline:
+        try:
+            page.wait_for_timeout(250)
+        except Exception:
+            break
+    for event, fn in (trace.pop("_handlers", None) or {}).items():
+        try:
+            page.remove_listener(event, fn)
+        except Exception:
+            pass
+    for resp, item in trace.pop("_pending", None) or []:
+        try:
+            item["body"] = re.sub(r"\s+", " ", str(resp.text() or ""))[:1500]
+        except Exception as exc:
+            item["body_error"] = f"{type(exc).__name__}"
+    try:
+        trace["url_after"] = str(page.url or "")
+    except Exception:
+        trace["url_after"] = ""
+    trace["note"] = str(note or "")
+    try:
+        diagnostic = worker.get("diagnostic")
+        if diagnostic:
+            diagnostic.write("sign_click_trace_1591r25", **{k: v for k, v in trace.items() if not k.startswith("_")})
+    except Exception:
+        pass
+    try:
+        capture_blackbox(worker, "after_sign_click")
+    except Exception:
+        pass
+    print(
+        f"[Вкладка {worker.get('id')}] SIGN TRACE: {trace['url_before']} -> {trace['url_after']}; "
+        f"ответов {len(trace['responses'])}, сбоев сети {len(trace['failed'])}, console {len(trace['console'])}",
+        flush=True,
+    )
+    return trace
+
+
+def _sign_trace_summary_1591r25(trace):
+    if not trace:
+        return None
+    keep = [r for r in trace.get("responses") or []
+            if int(r.get("status") or 0) >= 400 or "body" in r or r.get("method") in ("POST", "PUT", "PATCH")]
+    return {"url_before": trace.get("url_before") or "", "url_after": trace.get("url_after") or "",
+            "responses": keep[:12], "failed": (trace.get("failed") or [])[:10], "console": (trace.get("console") or [])[:10]}
+
+
+def _sign_trace_lines_1591r25(summary):
+    """TRACE_COMPACT_1591R35: one line in Telegram (the full trace stays in the jsonl record and
+    the journal); HTTP errors, network failures and console errors are still listed."""
+    if not summary:
+        return []
+    responses = summary.get("responses") or []
+
+    def _status(response):
+        try:
+            return int(response.get("status") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    signed = [r for r in responses if "checksignature" in str(r.get("url") or "").lower()]
+    passport = [r for r in responses if "sendpassportdata" in str(r.get("url") or "").lower()]
+    parts = []
+    if signed:
+        parts.append(f"подпись → {_status(signed[-1])}")
+    if passport:
+        parts.append(f"паспортные данные → {_status(passport[-1])}")
+    if not parts:
+        parts.append("запрос подписи в сети не замечен" if not responses else f"ответов {len(responses)}")
+    out = ["Подпись (сеть): " + ", ".join(parts)]
+    for r in [r for r in responses if _status(r) >= 400][:3]:
+        line = f"  {r.get('method')} {r.get('url')} → {r.get('status')}"
+        if r.get("body"):
+            line += " " + str(r["body"])[:160]
+        out.append(line)
+    for f in (summary.get("failed") or [])[:3]:
+        out.append(f"  сеть: {f.get('url')} — {f.get('error')}")
+    for c in (summary.get("console") or [])[:3]:
+        out.append(f"  console {c.get('type')}: {c.get('text')}")
+    return out
+
+
+# SIGNED_EVIDENCE_1591R24
+SIGNED_URL_HINTS_1591R24 = ("success", "complete", "done", "thank", "activation", "signed", "esim/ready")
+SIGNED_TEXT_NEEDLES_1591R24 = (
+    "договор подписан", "успешно подписан", "подписание завершено", "договор успешно",
+    "договор отправлен", "спасибо за", "esim готова", "esim активирована", "qr-код", "скачать договор",
+)
+UNVERIFIED_HOLD_SECONDS = 180
+
+
+def _signed_evidence_1591r24(page):
+    """A positive sign of a signed contract on the page; a vanished button is not one."""
+    try:
+        url = str(page.url or "").lower()
+    except Exception:
+        url = ""
+    if "personal-data" in url or "mobile-id" in url:
+        return ""
+    for hint in SIGNED_URL_HINTS_1591R24:
+        if hint in url:
+            return f"url:{hint}"
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "").lower()
+    except Exception:
+        body = ""
+    for needle in SIGNED_TEXT_NEEDLES_1591R24:
+        if needle in body:
+            return f"text:{needle}"
+    try:
+        if page.locator("a[href$='.pdf'], a[download]").count():
+            return "link:document"
+    except Exception:
+        pass
+    return ""
+
+
+def _unverified_message_1591r24(worker, rec):
+    row_no, active_value, second_value = row_parts(worker.get("row"))
+    return "\n".join([
+        "#неподтверждено",
+        f"⚠️ ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА — Вкладка {worker['id']}",
+        f"Строка: {row_no}/{worker.get('total_rows') or '?'}",
+        f"Исходные данные: {active_value} | {second_value}",
+        f"Причина: {rec.get('reason') or '—'}",
+        f"Страница: {rec.get('final_url') or '—'}",
+        f"Заголовок страницы: {rec.get('final_title') or '—'}",
+        *_final_links_lines_1591r23(rec.get("final_links")),
+        *_sign_trace_lines_1591r25(rec.get("sign_trace")),  # SIGN_TRACE_1591R25
+        "",
+        *_success_profile_lines(rec.get("profile")),
+        "",
+        f"eSIM: {rec.get('sim_number') or '—'}",
+        f"Ссылка eSIM: {rec.get('sim_url') or '—'}",
+        "Номер НЕ помечен обработанным; вкладка оставлена открытой для проверки.",
+    ])
+
+
+def _finish_unverified_1591r24(base_dir, worker, reason):
+    """The signing could not be confirmed: record it apart from the successes and stop the tab."""
+    n, a, b = row_parts(worker.get("row"))
+    final = capture_final_page_1591r23(worker.get("page"), worker)
+    rec = {
+        "tab": worker["id"], "row": n, "active_digits": a, "second_value": b,
+        "sim_number": worker.get("reserved_sim_number"), "sim_url": worker.get("reserved_sim_url"),
+        "profile": dict(worker.get("success_profile") or {}),
+        "final_url": final.get("url") or "", "final_title": final.get("title") or "",
+        "final_links": list(final.get("links") or []), "reason": str(reason or ""),
+        "basket": getattr(worker.get("page"), "_basket_summary_1591r43", None),  # BASKET_SUMMARY_1591R43
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "sign_trace": _sign_trace_summary_1591r25(worker.get("sign_trace")),  # SIGN_TRACE_1591R25
+    }
+    try:
+        with (Path(base_dir) / "unverified_signatures.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        print(f"[Вкладка {worker['id']}] unverified_signatures.jsonl не записан: {type(exc).__name__}: {exc}", flush=True)
+    worker["phase"] = "SUCCESS_STOP"
+    success_queue = worker.get("success_queue")
+    if success_queue is not None:
+        try:
+            success_queue.put(_unverified_message_1591r24(worker, rec))
+        except Exception as exc:
+            print(f"[Telegram] Не удалось поставить UNVERIFIED в очередь: {type(exc).__name__}: {exc}", flush=True)
+    set_tab_status(
+        worker, "⚠️",
+        f"ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА\n{reason}\nСтраница: {rec['final_url'] or '—'}\n"
+        "Вкладка оставлена открытой. Для очереди будет создана новая.",
+    )
+    external_heartbeat(worker, "success_unverified_stop")
+    print(
+        f"\n[Вкладка {worker['id']}] ⚠️ ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА. Строка {n}: {reason}. "
+        "Номер не помечен обработанным; вкладка оставлена открытой.\n",
+        flush=True,
+    )
+    worker["stopped"] = True
+    return rec
+
+
+# PAYMENT_STEP_1591R26
+PAYMENT_NEEDLES_1591R26 = (
+    "пора оплатить", "оплатить картой", "оплатите картой", "дождитесь регистрации договора",
+    "оплата esim", "оплатить esim", "к оплате",
+)
+
+
+def _payment_page_1591r26(page):
+    """Text of the payment step when the site asks to pay for the eSIM after the signature."""
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "")
+    except Exception:
+        return ""
+    low = body.lower()
+    # PAYMENT_STRICT_1591R51: the registration start page lists the steps («подтвердите данные → оплатите
+    # картой → дождитесь регистрации договора») next to «выбрать способ регистрации»; only the real payment
+    # screen («теперь пора оплатить eSIM») counts.
+    if "способ регистрации" in low or "пора оплатить" not in low:
+        return ""
+    for needle in PAYMENT_NEEDLES_1591R26:
+        if needle in low:
+            start = max(0, low.index(needle) - 120)
+            return re.sub(r"\s+", " ", body[start:start + 360]).strip()
+    return ""
+
+
+def _payment_message_1591r26(worker, rec):
+    return _short_push_1591r38(worker, rec, "#оплата", "💳 Подпись принята, нужна оплата картой; номер помечен обработанным")  # TELEGRAM_MENU_1591R38
+
+
+def _payment_message_full_1591r26(worker, rec):
+    row_no, active_value, second_value = row_parts(worker.get("row"))
+    return "\n".join([
+        "#оплата",
+        f"💳 ТРЕБУЕТСЯ ОПЛАТА eSIM — Вкладка {worker['id']}",
+        f"Строка: {row_no}/{worker.get('total_rows') or '?'}",
+        f"Исходные данные: {active_value} | {second_value}",
+        "Подпись принята сайтом; договор регистрируется только после оплаты картой.",
+        f"Текст шага: {rec.get('payment_text') or '—'}",
+        f"Страница: {rec.get('final_url') or '—'}",
+        *_final_links_lines_1591r23(rec.get("final_links")),
+        *_sign_trace_lines_1591r25(rec.get("sign_trace")),
+        "",
+        *_success_profile_lines(rec.get("profile")),
+        "",
+        f"eSIM: {rec.get('sim_number') or '—'}",
+        f"Ссылка eSIM: {rec.get('sim_url') or '—'}",
+        "Номер помечен обработанным (повтор создал бы второй заказ); вкладка оставлена открытой.",
+    ])
+
+
+def _finish_payment_required_1591r26(base_dir, worker, payment_text):
+    """The site wants the eSIM paid: record it apart from the successes and stop the tab."""
+    n, a, b = row_parts(worker.get("row"))
+    final = capture_final_page_1591r23(worker.get("page"), worker)
+    rec = {
+        "tab": worker["id"], "row": n, "active_digits": a, "second_value": b,
+        "sim_number": worker.get("reserved_sim_number"), "sim_url": worker.get("reserved_sim_url"),
+        "profile": dict(worker.get("success_profile") or {}),
+        "final_url": final.get("url") or "", "final_title": final.get("title") or "",
+        "final_links": list(final.get("links") or []), "payment_text": str(payment_text or ""),
+        "basket": getattr(worker.get("page"), "_basket_summary_1591r43", None),  # BASKET_SUMMARY_1591R43
+        "sign_trace": _sign_trace_summary_1591r25(worker.get("sign_trace")),
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    try:
+        with (Path(base_dir) / "payment_required.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        print(f"[Вкладка {worker['id']}] payment_required.jsonl не записан: {type(exc).__name__}: {exc}", flush=True)
+    remember_processed_number(base_dir, worker.get("row"))
+    worker["phase"] = "SUCCESS_STOP"
+    success_queue = worker.get("success_queue")
+    if success_queue is not None:
+        try:
+            success_queue.put(_payment_message_1591r26(worker, rec))
+        except Exception as exc:
+            print(f"[Telegram] Не удалось поставить PAYMENT в очередь: {type(exc).__name__}: {exc}", flush=True)
+    set_tab_status(
+        worker, "💳",
+        f"ТРЕБУЕТСЯ ОПЛАТА eSIM\n{rec['payment_text'][:160]}\nСтраница: {rec['final_url'] or '—'}\n"
+        "Вкладка оставлена открытой. Для очереди будет создана новая.",
+    )
+    external_heartbeat(worker, "payment_required_stop")
+    print(
+        f"\n[Вкладка {worker['id']}] 💳 ТРЕБУЕТСЯ ОПЛАТА. Строка {n}: подпись принята, договор регистрируется "
+        "после оплаты картой. Номер помечен обработанным; вкладка оставлена открытой.\n",
+        flush=True,
+    )
+    worker["stopped"] = True
+    return rec
+
+
+def settle_success_1591r24(base_dir, worker):
+    """Called where the code used to declare success because no contract controls remained.
+
+    With positive evidence the success is final (finalize_success). Without it the tab is
+    held in SUCCESS_ASSIST for UNVERIFIED_HOLD_SECONDS (DeepSeek inspects, the button may
+    reappear and be signed again), then the row is recorded as UNVERIFIED.
+    """
+    page = worker.get("page")
+    rejected = _sign_rejected_1591r39(worker)  # SIGN_REJECTED_1591R39: the site refused the data
+    if rejected:
+        _finish_unverified_1591r24(base_dir, worker, f"сайт отверг данные после подписи: {rejected}")
+        return False
+    payment_text = _payment_page_1591r26(page) if page is not None else ""  # PAYMENT_STEP_1591R26
+    if payment_text:
+        _finish_payment_required_1591r26(base_dir, worker, payment_text)
+        return False
+    evidence = _signed_evidence_1591r24(page) if page is not None else ""
+    if not evidence and _sign_went_through_1591r37(worker):  # AI_ON_SIGN_FAIL_1591R37
+        evidence = "network:signature_accepted"  # the site answered the signing request with 2xx
+    if evidence:
+        worker["success_evidence"] = evidence
+        finalize_success(base_dir, worker)
+        return True
+    now = monotonic()
+    since = worker.get("success_unverified_since")
+    url = ""
+    try:
+        url = str(page.url or "") if page is not None else ""
+    except Exception:
+        pass
+    if since is None:
+        worker["success_unverified_since"] = now
+        try:
+            capture_blackbox(worker, "success_unverified")
+        except Exception:
+            pass
+        worker["phase"] = "SUCCESS_ASSIST"
+        set_tab_status(
+            worker, "⚠️",
+            "Кнопка «Подписать договор» пропала, но признаков подписанного договора нет. "
+            f"Держу вкладку {UNVERIFIED_HOLD_SECONDS // 60} мин, " + ("DeepSeek проверяет." if AI_ENABLED_1591R48 else "затем отметка «не подтверждено» (DeepSeek выключен)."),  # EXHAUSTED_UNVERIFIED_1591R49
+        )
+        external_heartbeat(worker, "success_unverified_hold")
+        queue_success_assist(
+            worker,
+            "кнопка «Подписать договор» исчезла, но страница не похожа на подписанный договор: "
+            f"проверь, подписан ли он, и что показано вместо кнопки (URL: {url})",
+            force=True,
+        )
+        return False
+    if now - since < UNVERIFIED_HOLD_SECONDS:
+        worker["phase"] = "SUCCESS_ASSIST"
+        return False
+    _finish_unverified_1591r24(
+        base_dir, worker,
+        f"после «Подписать договор» страница {UNVERIFIED_HOLD_SECONDS // 60} мин не показала признаков подписания (URL: {url or '—'})",
+    )
+    return False
 
 
 def tick_sign_wait(base_dir, worker):
     page = worker["page"]
     now = monotonic()
+    worker["success_guard"] = True
+
     if page.is_closed():
-        restart_same_row_in_new_page(worker)
+        worker["phase"] = "SUCCESS_STOP"
+        worker["stopped"] = True
+        set_tab_status(
+            worker, "🔴",
+            "Успешная вкладка закрыта извне после подписи. Автоповтор запрещён."
+        )
         return
 
     try:
         capture_contract_details(page, worker)
     except Exception:
         pass
+
+    if _post_auth_error_page(page):
+        # AI_ON_SIGN_FAIL_1591R37: registration/error after the click has no field DeepSeek could
+        # fill; the row is recorded as unverified (number not processed, tab kept open) at once.
+        external_heartbeat(worker, "success_sign_error")
+        rejected = _sign_rejected_1591r39(worker)  # SIGN_REJECTED_1591R39
+        accepted = _sign_went_through_1591r37(worker)
+        _finish_unverified_1591r24(
+            base_dir, worker,
+            "после «Подписать договор» сайт показал registration/error"
+            + (f": {rejected}" if rejected else (" (запрос подписи при этом был принят сайтом)" if accepted else "")),
+        )
+        return
 
     button = _signature_button_locator(page)
     current_url = ""
@@ -5909,18 +8461,21 @@ def tick_sign_wait(base_dir, worker):
             worker["sign_button_gone_since"] = now
             return
         if now - gone_since >= 1.2:
-            finalize_success(base_dir, worker)
+            settle_success_1591r24(base_dir, worker)  # SIGNED_EVIDENCE_1591R24
         return
 
     worker["sign_button_gone_since"] = None
-    if now >= worker.get("sign_submit_deadline", now + 1):
-        capture_blackbox(worker, "signature_submit_timeout")
-        print(
-            f"[Вкладка {worker['id']}] После «Подписать договор» страница "
-            "не перешла дальше. Повторяю ту же строку.",
-            flush=True,
-        )
-        restart_same_row_in_new_page(worker)
+
+    # NO sign_submit_deadline. A successful post-auth page is never timed out,
+    # restarted, reloaded or closed. Ask DeepSeek to inspect if it stays here.
+    worker["phase"] = "SUCCESS_ASSIST"
+    set_tab_status(
+        worker, "🧠",
+        "Подтверждение успешно. Подпись ещё не завершилась — DeepSeek наблюдает и помогает."
+    )
+    external_heartbeat(worker, "success_signature_still_pending")
+    queue_success_assist(worker, "подпись остаётся на странице; проверь ошибки/обязательные поля")
+
 
 
 def tick_confirmation(base_dir, worker):
@@ -5937,11 +8492,35 @@ def tick_confirmation(base_dir, worker):
         return
 
     if not _is_auth_url(page.url):
+        if _post_auth_error_page(page):
+            capture_blackbox(worker, "registration_error_after_auth")
+            print(
+                f"[Вкладка {worker['id']}] После auth открылась /registration/error. "
+                "Это НЕ success. Сначала DeepSeek анализирует страницу; "
+                "никакого автоматического retry/restart.",
+                flush=True,
+            )
+            enter_error_guard(
+                worker,
+                "после mobile-id-auth открылась /registration/error",
+            )
+            return
+
+        # personal-data-form / contract page means the user confirmation itself
+        # succeeded. From this exact point destructive recovery is forbidden.
+        if _post_auth_contract_page(page):
+            worker["post_auth_review_started"] = now
+            enter_success_guard(
+                worker,
+                "mobile-id подтверждение прошло; открыта страница персональных данных/договора",
+            )
+            return
+
+        # Unknown non-auth transition: inspect without declaring success.
         worker["phase"] = "POST_AUTH_REVIEW"
         worker["post_auth_review_started"] = now
-        worker["post_auth_review_deadline"] = now + 15
-        set_tab_status(worker, "🔎", "Подтверждение прошло — проверяю страницу договора/успеха")
-        external_heartbeat(worker, "post_auth_review")
+        set_tab_status(worker, "🔎", "Вышли из auth — проверяю новую страницу")
+        external_heartbeat(worker, "post_auth_review_unknown")
         return
 
     if now < worker["confirm_deadline"]:
@@ -5978,11 +8557,35 @@ def tick_resend(base_dir, worker):
         return
 
     if not _is_auth_url(page.url):
+        if _post_auth_error_page(page):
+            capture_blackbox(worker, "registration_error_after_auth")
+            print(
+                f"[Вкладка {worker['id']}] После auth открылась /registration/error. "
+                "Это НЕ success. Сначала DeepSeek анализирует страницу; "
+                "никакого автоматического retry/restart.",
+                flush=True,
+            )
+            enter_error_guard(
+                worker,
+                "после mobile-id-auth открылась /registration/error",
+            )
+            return
+
+        # personal-data-form / contract page means the user confirmation itself
+        # succeeded. From this exact point destructive recovery is forbidden.
+        if _post_auth_contract_page(page):
+            worker["post_auth_review_started"] = now
+            enter_success_guard(
+                worker,
+                "mobile-id подтверждение прошло; открыта страница персональных данных/договора",
+            )
+            return
+
+        # Unknown non-auth transition: inspect without declaring success.
         worker["phase"] = "POST_AUTH_REVIEW"
         worker["post_auth_review_started"] = now
-        worker["post_auth_review_deadline"] = now + 15
-        set_tab_status(worker, "🔎", "Подтверждение прошло — проверяю страницу договора/успеха")
-        external_heartbeat(worker, "post_auth_review")
+        set_tab_status(worker, "🔎", "Вышли из auth — проверяю новую страницу")
+        external_heartbeat(worker, "post_auth_review_unknown")
         return
 
     clicked = try_click_resend_once(page, worker["id"])
@@ -6020,6 +8623,8 @@ def worker_generation_alive(worker, generation=None):
 
 def begin_worker_cancel(worker, reason):
     """Invalidate all delayed work from the old page before closing it."""
+    if _io1591.guarded(worker or {}):
+        return False
     if worker.get("cancelling"):
         return False
     worker["cancelling"]=True
@@ -6031,6 +8636,8 @@ def begin_worker_cancel(worker, reason):
 
 def restart_same_row_in_new_page(worker):
     """Close old working page completely before creating generation+1 page."""
+    if _io1591.guarded(worker or {}):
+        return False
     old_page=worker.get("page")
     row=worker.get("row")
     begin_worker_cancel(worker,"same-row recovery")
@@ -6076,6 +8683,8 @@ def restart_same_row_in_new_page(worker):
 
 def tick_restart_close_retry(worker):
     """Повторно закрывает старую зависшую вкладку; не плодит новые."""
+    if _io1591.guarded(worker or {}):
+        return False
     page = worker["page"]
     if page.is_closed():
         restart_same_row_in_new_page(worker)
@@ -6117,6 +8726,8 @@ def publish_worker_phase(worker, phase, note="", matcher_stage=None):
                 "row": list(worker.get("row")) if isinstance(worker.get("row"), (tuple, list)) else worker.get("row"),
                 "confirm_attempt": worker.get("confirm_attempt", 0),
                 "completed_confirm_cycle": worker.get("completed_confirm_cycle", False),
+                "success_guard": bool(worker.get("success_guard")),
+                "error_guard": bool(worker.get("error_guard")),
                 "page_url": (
                     worker.get("page").url
                     if worker.get("page") and not worker.get("page").is_closed()
@@ -6151,6 +8762,10 @@ def external_heartbeat(worker, label):
                 "time": monotonic(),
                 "label": label,
                 "phase": worker.get("phase"),
+                "success_guard": bool(worker.get("success_guard")),
+                "error_guard": bool(worker.get("error_guard")),
+                "matcher_time": (hb.get(str(worker["id"])) or {}).get("matcher_time"),
+                "matcher_stage": worker.get("matcher_stage"),
                 "activity_time": worker.get("last_page_activity_at"),
                 "activity_kind": worker.get("last_page_activity_kind"),
                 "row": list(worker.get("row")) if isinstance(worker.get("row"), (tuple, list)) else worker.get("row"),
@@ -6216,6 +8831,10 @@ def tick_worker(base_dir, worker):
         tick_post_auth_review(base_dir, worker)
     elif worker["phase"] == "SIGN_WAIT":
         tick_sign_wait(base_dir, worker)
+    elif worker["phase"] == "SUCCESS_ASSIST":
+        tick_success_assist(base_dir, worker)
+    elif worker["phase"] == "ERROR_ASSIST":
+        tick_error_assist(base_dir, worker)
     elif worker["phase"] == "RESTART_ROW":
         if not worker.get("restart_in_progress"):
             worker["restart_in_progress"] = True
@@ -6243,50 +8862,149 @@ def _wait_cdp(port, timeout=25):
     return False
 
 
+# BROWSER_HANG_1591R18: a Chromium whose CDP socket accepts the connection but never
+# answers (connect_over_cdp timeout) blocks every tab of that browser. The watchdog can
+# only replace tabs, so after BROWSER_HANG_RESTART_SECONDS of continuous refusals the
+# whole browser process is replaced on the same port and its workers are respawned.
+BROWSER_HANG_RESTART_SECONDS = 120
+_CDP_UNREACHABLE_SINCE = {}
 
-def _close_cdp_page_for_worker(cdp_url, info, timeout=8):
-    """Close only the exact physical worker page from heartbeat identity."""
-    expected_name = str((info or {}).get("window_name") or "").strip()
-    if not expected_name:
-        print(
-            "[WATCHDOG] У worker нет точного window_name — чужие вкладки не закрываю.",
-            flush=True,
-        )
-        return False
 
+def _note_cdp_result(cdp_url, exc, now=None):
+    """Remember since when `cdp_url` refuses CDP commands; `exc=None` means it answered."""
+    key = str(cdp_url)
+    if exc is None:
+        _CDP_UNREACHABLE_SINCE.pop(key, None)
+        return
+    text = f"{type(exc).__name__}: {exc}"
+    if "connect_over_cdp" in text and "Timeout" in text:
+        _CDP_UNREACHABLE_SINCE.setdefault(key, now if now is not None else monotonic())
+
+
+def cdp_unreachable_seconds(cdp_url, now=None):
+    since = _CDP_UNREACHABLE_SINCE.get(str(cdp_url))
+    if since is None:
+        return 0.0
+    return (now if now is not None else monotonic()) - since
+
+
+def _chromium_launch_args(chromium_exe, port, profile):
+    """Same flags as args_i in main() (test_update checks that literal list stays there)."""
+    return [
+        chromium_exe,
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={profile}",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-popup-blocking",
+        "about:blank",
+    ]
+
+
+def _terminate_chromium(instance):
+    proc = instance.get("proc")
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.connect_over_cdp(
-                cdp_url, timeout=int(timeout * 1000)
-            )
-            for context in browser.contexts:
-                for page in context.pages:
-                    try:
-                        name = str(page.evaluate("() => window.name || ''"))
-                    except Exception:
-                        continue
-                    if name != expected_name:
-                        continue
-                    page.close(run_before_unload=False)
-                    print(
-                        f"[WATCHDOG] Закрыта точная worker-вкладка {expected_name}.",
-                        flush=True,
-                    )
-                    return True
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+    except Exception:
+        pass
+    if instance.get("profile"):
+        shutil.rmtree(str(instance["profile"]), ignore_errors=True)
 
-        # Page already absent is safe: there is nothing left to close.
-        print(
-            f"[WATCHDOG] {expected_name} уже отсутствует. Чужие вкладки не трогаю.",
-            flush=True,
-        )
-        return True
-    except Exception as exc:
-        print(
-            f"[WATCHDOG] Не удалось закрыть {expected_name}: "
-            f"{type(exc).__name__}: {exc}",
-            flush=True,
-        )
-        return False
+
+def _relaunch_chromium(instance, chromium_exe, popen=None, wait_cdp=None, free_port=None):
+    """Start a fresh Chromium for `instance`: the old port first (cdp_url stays valid for
+    the observers), a free port as the fallback. Returns False when neither came up."""
+    popen = popen or subprocess.Popen
+    wait_cdp = wait_cdp or _wait_cdp
+    free_port = free_port or _free_local_port
+    for attempt in range(2):
+        port = instance["port"] if attempt == 0 else free_port()
+        profile = tempfile.mkdtemp(prefix=f"esim_pw_browser{instance['id']}_")
+        instance["proc"] = popen(_chromium_launch_args(chromium_exe, port, profile))
+        instance["profile"] = profile
+        if wait_cdp(port):
+            _CDP_UNREACHABLE_SINCE.pop(str(instance.get("cdp_url")), None)
+            instance["port"] = port
+            instance["cdp_url"] = f"http://127.0.0.1:{port}"
+            _CDP_UNREACHABLE_SINCE.pop(instance["cdp_url"], None)
+            return True
+        _terminate_chromium(instance)
+    return False
+
+
+
+def _close_cdp_page_for_worker(cdp_url, info, timeout=20, attempts=2):
+    """OVERLAY_DISMISS_1591R6: a Chromium busy with orphan pages needs more than 8 s;
+    one real close attempt is retried once. Refusals (guard, no window_name) are final.
+    The caller already refuses to create a replacement while the old page is open."""
+    def _once(cdp_url, info, timeout=20):
+        """Close only the exact physical worker page from heartbeat identity."""
+        if _io1591.guarded(info or {}):
+            return False
+        expected_name = str((info or {}).get("window_name") or "").strip()
+        if not expected_name:
+            print(
+                "[WATCHDOG] У worker нет точного window_name — чужие вкладки не закрываю.",
+                flush=True,
+            )
+            return False
+
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.connect_over_cdp(
+                    cdp_url, timeout=int(timeout * 1000)
+                )
+                _note_cdp_result(cdp_url, None)  # BROWSER_HANG_1591R18: the browser answered
+                for context in browser.contexts:
+                    for page in context.pages:
+                        try:
+                            name = str(page.evaluate("() => window.name || ''"))
+                        except Exception:
+                            continue
+                        if name != expected_name:
+                            continue
+                        page.close(run_before_unload=False)
+                        print(
+                            f"[WATCHDOG] Закрыта точная worker-вкладка {expected_name}.",
+                            flush=True,
+                        )
+                        return True
+
+            # Page already absent is safe: there is nothing left to close.
+            print(
+                f"[WATCHDOG] {expected_name} уже отсутствует. Чужие вкладки не трогаю.",
+                flush=True,
+            )
+            return True
+        except Exception as exc:
+            _note_cdp_result(cdp_url, exc)  # BROWSER_HANG_1591R18
+            print(
+                f"[WATCHDOG] Не удалось закрыть {expected_name}: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return False
+
+    if _io1591.guarded(info or {}) or not str((info or {}).get("window_name") or "").strip():
+        return _once(cdp_url, info, timeout=timeout)
+    import time as _time
+    for attempt in range(1, attempts + 1):
+        try:
+            if _once(cdp_url, info, timeout=timeout):
+                return True
+        except Exception:
+            pass
+        if attempt < attempts:
+            _time.sleep(2)
+    return False
 
 
 
@@ -6312,7 +9030,29 @@ def _worker_page_exists(cdp_url, info, timeout=5):
 
 
 
-def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heartbeat=None, status_map=None, initial_row=None, total_rows=None, diagnostic_session_dir=None, success_queue=None):
+# ISOLATED_CONTEXT_1591R40
+ISOLATED_CONTEXTS = str(os.environ.get("BEELINE_ISOLATED_CONTEXTS") or "1").strip().lower() not in {"0", "off", "no", "false"}
+
+
+def _isolated_context_1591r40(browser, tab_id):
+    """A browser context of this worker's own (no viewport emulation: the real window size, as
+    the shared context had); the shared context when disabled or when Chromium refuses."""
+    if not ISOLATED_CONTEXTS:
+        return browser.contexts[0]
+    try:
+        context = browser.new_context(no_viewport=True)
+        print(f"[Вкладка {tab_id}] Отдельный контекст браузера создан (свои cookies и хранилище).", flush=True)
+        return context
+    except Exception as exc:
+        print(
+            f"[Вкладка {tab_id}] Отдельный контекст не создан ({type(exc).__name__}: {exc}); "
+            "работаю в общем контексте.",
+            flush=True,
+        )
+        return browser.contexts[0]
+
+
+def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heartbeat=None, status_map=None, initial_row=None, total_rows=None, diagnostic_session_dir=None, success_queue=None, captcha_gate=None):  # TWO_BROWSERS_1591R28
     """One independent worker process for one managed browser slot."""
     base_dir = Path(base_dir_text)
     with sync_playwright() as p:
@@ -6320,7 +9060,12 @@ def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heart
         if not browser.contexts:
             raise RuntimeError("Chromium не вернул общий контекст через CDP.")
 
-        context = browser.contexts[0]
+        # ISOLATED_CONTEXT_1591R40: every worker gets its own browser context inside the shared
+        # Chromium: own cookies, localStorage, basket and mobile-id personal token, like a
+        # separate browser at the memory cost of one tab (tabs of one context overwrote each
+        # other's token: 412 PERSONAL_TOKEN_ERROR). Chromium disposes the context when this
+        # process ends; the parent still sees and closes its pages over CDP.
+        context = _isolated_context_1591r40(browser, tab_id)
         page = context.new_page()
         page.set_default_timeout(8000)
         try:
@@ -6346,6 +9091,8 @@ def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heart
 
         install_page_activity_tracker(page, worker)
         configure_matcher_runtime(tab_id=tab_id, heartbeat=heartbeat)
+        global _CAPTCHA_GATE
+        _CAPTCHA_GATE = captcha_gate  # TWO_BROWSERS_1591R28
 
         tickable_phases = {
             "POST_CONTINUE",
@@ -6354,6 +9101,8 @@ def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heart
             "RESEND",
             "POST_AUTH_REVIEW",
             "SIGN_WAIT",
+            "SUCCESS_ASSIST",
+            "ERROR_ASSIST",
             "RESTART_ROW",
             "RESTART_CLOSE_RETRY",
         }
@@ -6366,6 +9115,13 @@ def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heart
                 row = pending_initial_row
                 pending_initial_row = None
             else:
+                if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13
+                    # The current row was finished to the end above; do not take a new one.
+                    worker["phase"] = "RESTART_WAIT"
+                    external_heartbeat(worker, "restart_wait")
+                    set_tab_status(worker, "♻️", "Строка завершена; жду плановый перезапуск")
+                    print(f"[Вкладка {tab_id}] Плановый перезапуск: строка завершена, новую не беру.", flush=True)
+                    break
                 try:
                     row = rows.get_nowait()
                 except Exception:
@@ -6392,6 +9148,8 @@ def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heart
                     break
 
                 if worker["phase"] == "RESTART_ROW_READY":
+                    if _row_restart_exhausted_1591r32(worker, row, rows):  # ROW_RESTART_LIMIT_1591R32
+                        break
                     print(
                         f"[Вкладка {tab_id}] Новая physical-вкладка готова. "
                         "Повторяю ту же строку с начала.",
@@ -6429,6 +9187,145 @@ def _tab_process(tab_id, cdp_url, rows, base_dir_text, launch_ready_event, heart
 
 
 
+# MATCHER_HEARTBEAT_1591R9
+MATCHER_CPU_MIN_RATIO = 0.05  # share of one CPU below which the matcher is not computing
+_MATCHER_CPU_STATE = {}
+
+
+def _process_tree_cpu_seconds(pid):
+    """CPU time of a process plus its live children (a native solver may be a child)."""
+    try:
+        ticks = os.sysconf("SC_CLK_TCK")
+    except (AttributeError, ValueError, OSError):
+        ticks = 100
+    total = 0.0
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return None
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/stat", "r") as f:
+                fields = f.read().rsplit(")", 1)[1].split()
+            if int(entry) == int(pid) or int(fields[1]) == int(pid):
+                total += (int(fields[11]) + int(fields[12])) / ticks
+        except (OSError, IndexError, ValueError):
+            continue
+    return total
+
+
+def _matcher_cpu_age(proc, now):
+    """Seconds since the worker process (or its child solver) was last seen computing.
+
+    Sampled by the parent between watchdog runs. A matcher busy with SHAPE/MATCH work
+    keeps this near zero without any stage report; a matcher blocked on the page, a lock
+    or the network burns no CPU, so this grows and the 75-second rule applies as before.
+    """
+    pid = getattr(proc, "pid", None)
+    if not pid:
+        return float("inf")
+    cpu = _process_tree_cpu_seconds(pid)
+    if cpu is None:
+        return float("inf")
+    state = _MATCHER_CPU_STATE.get(pid)
+    if state is None:
+        _MATCHER_CPU_STATE[pid] = {"cpu": cpu, "time": now, "progress_at": now}
+        return 0.0
+    wall = now - state["time"]
+    if wall > 0 and (cpu - state["cpu"]) / wall >= MATCHER_CPU_MIN_RATIO:
+        state["progress_at"] = now
+    state["cpu"], state["time"] = cpu, now
+    return now - state["progress_at"]
+
+
+# SCHEDULED_RESTART_1591R13
+RESTART_POLICY_FILE_NAME = "restart_policy.json"
+RESTART_DRAIN_FILE_NAME = "restart_drain.json"
+RESTART_EXIT_CODE = 75
+_RESTART_SETTING_RE = re.compile(r"^(\d+)\s*(m|min|мин|h|ч|hour|час)?$")
+
+
+def parse_restart_setting(text):
+    """'off' -> 0, '20m'/'20' -> 20, '1h' -> 60, otherwise None (1 minute .. 24 hours)."""
+    low = str(text or "").strip().lower()
+    if low in {"off", "выкл", "0", "stop", "none"}:
+        return 0
+    match = _RESTART_SETTING_RE.match(low)
+    if not match:
+        return None
+    value = int(match.group(1))
+    minutes = value * 60 if (match.group(2) or "m") in {"h", "ч", "hour", "час"} else value
+    return minutes if 1 <= minutes <= 24 * 60 else None
+
+
+def restart_policy_minutes(base_dir):
+    try:
+        data = json.loads((Path(base_dir) / RESTART_POLICY_FILE_NAME).read_text(encoding="utf-8"))
+        return max(0, int(data.get("interval_minutes") or 0))
+    except Exception:
+        return 0
+
+
+def write_restart_policy(base_dir, minutes):
+    path = Path(base_dir) / RESTART_POLICY_FILE_NAME
+    path.write_text(json.dumps({"interval_minutes": int(minutes), "updated_at": time.time()},
+                               ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def restart_drain_requested(base_dir):
+    return (Path(base_dir) / RESTART_DRAIN_FILE_NAME).is_file()
+
+
+def request_restart_drain(base_dir, reason=""):
+    path = Path(base_dir) / RESTART_DRAIN_FILE_NAME
+    if not path.is_file():
+        path.write_text(json.dumps({"requested_at": time.time(), "reason": str(reason)}, ensure_ascii=False),
+                        encoding="utf-8")
+
+
+def clear_restart_drain(base_dir):
+    try:
+        (Path(base_dir) / RESTART_DRAIN_FILE_NAME).unlink()
+    except FileNotFoundError:
+        pass
+
+
+# RESTART_RELAUNCH_1591R21
+RESTART_RELAUNCH_FILE_NAME = "restart_relaunch.json"
+RESTART_EXIT_FORCE_SECONDS = 90
+
+
+def request_relaunch(base_dir, reason=""):
+    """Ask the controller to start the automation again after this process exits.
+
+    xvfb-run does not always pass RESTART_EXIT_CODE through, so the controller also looks at
+    this marker. The timer forces the exit if the normal shutdown hangs on a child process.
+    """
+    try:
+        (Path(base_dir) / RESTART_RELAUNCH_FILE_NAME).write_text(
+            json.dumps({"time": time.time(), "reason": str(reason)}, ensure_ascii=False), "utf-8"
+        )
+    except Exception as exc:
+        print(f"[RESTART] Маркер перезапуска не записан: {type(exc).__name__}: {exc}", flush=True)
+    import threading
+    timer = threading.Timer(RESTART_EXIT_FORCE_SECONDS, lambda: os._exit(RESTART_EXIT_CODE))
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
+def _restart_notify(text):
+    """Durable Telegram notice; delivered by the controller's sender even across the restart."""
+    try:
+        chat = str(load_telegram_config().get("chat_id") or "").strip()
+        if chat:
+            _io1591.enqueue_notice(globals(), chat, str(text))
+    except Exception as exc:
+        print(f"[RESTART] Уведомление не поставлено в очередь: {type(exc).__name__}: {exc}", flush=True)
+
+
 def parent_watchdog(processes, heartbeat):
     """Parent recovery is phase-aware and must never kill normal ROW_START work."""
     now = monotonic()
@@ -6440,6 +9337,10 @@ def parent_watchdog(processes, heartbeat):
         "CONFIRM",
         "RESEND",
         "SUCCESS_STOP",
+        "POST_AUTH_REVIEW",
+        "SIGN_WAIT",
+        "SUCCESS_ASSIST",
+        "ERROR_ASSIST",
         "DONE",
         "CANCELLING",
         "RESTART_ROW",
@@ -6456,7 +9357,7 @@ def parent_watchdog(processes, heartbeat):
             continue
 
         phase = str(info.get("phase") or "")
-        if phase in skip_phases:
+        if _io1591.guarded(info) or phase in skip_phases:
             continue
 
         logical_age = now - float(info.get("time") or now)
@@ -6468,6 +9369,10 @@ def parent_watchdog(processes, heartbeat):
                 or info.get("time")
                 or now
             )
+            # MATCHER_HEARTBEAT_1591R9: a matcher still computing (the worker process or
+            # its child solver keeps consuming CPU) is alive between stage reports; a
+            # blocked or hung matcher burns no CPU and is caught by the same 75 s rule.
+            matcher_age = min(matcher_age, _matcher_cpu_age(proc, now))
             if matcher_age >= PROTECTED_MATCHER_STALL_SECONDS:
                 stalled.append((tab_id, proc, info, matcher_age))
             continue
@@ -6476,8 +9381,11 @@ def parent_watchdog(processes, heartbeat):
         # tariff/eSIM transitions and can legitimately take tens of seconds.
         # The old 18-second parent watchdog was closing healthy pages mid-action.
         if phase == "ROW_START":
-            if logical_age >= ROW_START_STALL_SECONDS:
-                stalled.append((tab_id, proc, info, logical_age))
+            # ROW_START_ACTIVITY_1591R8: real page activity (requests, navigation) is
+            # progress too; only a row that is silent on BOTH clocks is stalled.
+            activity_age = now - float(info.get("activity_time") or info.get("time") or now)
+            if min(logical_age, activity_age) >= ROW_START_STALL_SECONDS:
+                stalled.append((tab_id, proc, info, min(logical_age, activity_age)))
             continue
 
         # Other blocking phases still get a watchdog, but not the destructive
@@ -6488,6 +9396,10 @@ def parent_watchdog(processes, heartbeat):
     return stalled
 
 
+# CLEAR_SAFE_1591R52: the controller's /clear check tolerates a message without text (a document, a
+# sticker); r50's text.split()[0] on an empty text made the controller retry one update for ever.
+# CLEAR_BASE_1591R50: /clear in the controller archives and removes processed_numbers.txt and
+# deferred_rows.jsonl (base_archive/) and starts the worker again: the same base from the start.
 PROGRESS_FILE_NAME = "processed_numbers.txt"
 
 
@@ -6495,6 +9407,100 @@ def _row_number_value(row):
     """Возвращает номер клиента из поддерживаемых форматов строки."""
     _, active, _ = row_parts(row)
     return "".join(c for c in str(active) if c.isdigit())
+
+
+# ROW_RESTART_LIMIT_1591R32 (parent side)
+ROW_RESPAWN_MAX = 3            # replacements of a worker with the same row per launch
+_ROW_RESPAWNS_1591R32 = {}
+
+
+def _row_for_respawn_1591r32(saved_row, tab_id, base_dir, why):
+    """The row a replacement worker starts with: the same row up to ROW_RESPAWN_MAX times per
+    launch (DEAD RECOVERY and the watchdog together), then None: the row stays unprocessed for
+    the next launch and the new worker takes the next one. Without this a row that always
+    hangs the tab (CANCELLING -> watchdog -> same row) looped forever."""
+    if saved_row is None:
+        return None
+    try:
+        key = _row_number_value(saved_row)
+    except Exception:
+        key = str(saved_row)
+    count = _ROW_RESPAWNS_1591R32.get(key, 0) + 1
+    _ROW_RESPAWNS_1591R32[key] = count
+    if count <= ROW_RESPAWN_MAX:
+        return saved_row
+    line_number, active_digits, _ = row_parts(saved_row)
+    print(
+        f"[Вкладка {tab_id}] Строка {line_number}: worker заменялся с этой строкой уже {count - 1} раз "
+        f"({why}); оставляю её до следующего запуска (номер не помечен обработанным), "
+        "новый worker берёт следующую.",
+        flush=True,
+    )
+    try:
+        with open(Path(base_dir) / DEFERRED_ROWS_FILE_NAME, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "tab": tab_id,
+                                     "row": line_number, "number": active_digits,
+                                     "respawns": count - 1, "requeued": False, "why": why},
+                                    ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    return None
+
+
+# DRAIN_DEADLINE_1591R32
+DRAIN_SOFT_MAX_SECONDS = 15 * 60   # then workers still at the start of a row are stopped
+DRAIN_HARD_MAX_SECONDS = 40 * 60   # then every remaining worker is stopped
+DRAIN_PROTECTED_PHASES = {
+    "POST_CONTINUE", "AUTH_WAIT", "CONFIRM", "RESEND", "PROTECTED_CHECK",
+    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST",
+}
+
+
+def _drain_age_1591r32(base_dir):
+    try:
+        data = json.loads((Path(base_dir) / RESTART_DRAIN_FILE_NAME).read_text(encoding="utf-8"))
+        return max(0.0, time.time() - float(data.get("requested_at") or 0.0))
+    except Exception:
+        return 0.0
+
+
+def _drain_deadline_1591r32(base_dir, processes, heartbeat):
+    """A drain must end. After DRAIN_SOFT_MAX_SECONDS a worker that is still at the start of
+    a row (tariff, eSIM, form: nothing sent to the subscriber yet) is stopped; its row is not
+    marked processed and is taken again at the next launch. Confirmation, signing and DeepSeek
+    review are waited for until DRAIN_HARD_MAX_SECONDS. Returns the stopped tab ids."""
+    age = _drain_age_1591r32(base_dir)
+    if age < DRAIN_SOFT_MAX_SECONDS:
+        return []
+    stopped = []
+    for tab_id, proc in list(processes.items()):
+        if proc is None or not proc.is_alive():
+            continue
+        info = dict(heartbeat.get(str(tab_id)) or {})
+        phase = str(info.get("phase") or "")
+        protected = (phase in DRAIN_PROTECTED_PHASES or bool(info.get("success_guard"))
+                     or bool(info.get("error_guard")))
+        if protected and age < DRAIN_HARD_MAX_SECONDS:
+            continue
+        line_number = row_parts(info.get("row"))[0] if info.get("row") is not None else "?"
+        print(
+            f"[RESTART] Дренаж идёт {int(age // 60)} мин: вкладка {tab_id} на этапе {phase or 'unknown'} "
+            f"(строка {line_number}) остановлена; номер не помечен обработанным и вернётся в очередь "
+            "при новом запуске.",
+            flush=True,
+        )
+        try:
+            proc.terminate()
+            proc.join(timeout=5)
+        except Exception:
+            pass
+        info["phase"] = "RESTART_WAIT"   # neither DEAD RECOVERY nor the watchdog replaces it
+        try:
+            heartbeat[str(tab_id)] = info
+        except Exception:
+            pass
+        stopped.append(tab_id)
+    return stopped
 
 
 def load_processed_numbers(base_dir):
@@ -6544,8 +9550,22 @@ def remember_processed_number(base_dir, row):
 
 
 def main():
-    print("Версия 15.75 EXP-3: Telegram control menu + isolated AI routing")
+    print("Версия 15.86 EXP-3: authoritative Operator mission")
     base_dir = Path(__file__).resolve().parent
+    try:
+        RUNTIME_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        if RUNTIME_CONSOLE_FILE.exists() and RUNTIME_CONSOLE_FILE.stat().st_size:
+            _history1584 = RUNTIME_LOG_DIR / "console.previous.log"
+            try:
+                shutil.copy2(RUNTIME_CONSOLE_FILE, _history1584)
+            except Exception:
+                pass
+        RUNTIME_CONSOLE_FILE.write_text(
+            RUNTIME_SESSION_MARKER_V1584 + "\n",
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
     external_tg_controller = (
         str(os.environ.get("TG_EXTERNAL_CONTROLLER", "")).strip() == "1"
     )
@@ -6583,7 +9603,9 @@ def main():
             flush=True,
         )
     print(f"Загружено новых записей: {len(clients)} (в исходном файле: {total_source_rows})")
-    print("ЭКСПЕРИМЕНТ: запускаю 1 Chromium и 3 рабочие вкладки. Общая очередь строк.")
+    print(f"Запускаю {BROWSER_COUNT} Chromium и {TAB_COUNT} рабочие вкладки. Общая очередь строк.")  # BROWSER_HANG_1591R18
+    print("DeepSeek: " + ("включён" if AI_ENABLED_1591R48 else "выключен (BEELINE_AI=0)"), flush=True)  # RESIGN_LIMIT_1591R48
+    print(f"Тариф: «{TARIFF_NAME}»" + (" (BEELINE_TARIFF из окружения службы)" if (os.environ.get("BEELINE_TARIFF") or "").strip() else " (по умолчанию)"), flush=True)  # TARIFF_LOG_1591R42
 
     # Два полностью независимых Chromium: отдельный процесс, CDP-порт и профиль.
     # Общими остаются только очередь строк, Telegram status_map и persistent progress.
@@ -6598,6 +9620,8 @@ def main():
             chromium_exe,
             f"--remote-debugging-port={port_i}",
             f"--user-data-dir={profile_i}",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-popup-blocking",
@@ -6743,9 +9767,11 @@ def main():
             # Do not kill legitimate long work because of elapsed time.
             # A busy process is controlled by per-request socket timeout/retry and
             # tool completion. Only an IDLE process with a dead heartbeat is stale.
+            # OBSERVER_TIMEOUT_1591R11: a lane stuck in busy_* beyond the hard ceiling is
+            # restarted as well; a hung evaluate never comes back on its own.
             stale = (
-                not state.startswith("busy_")
-                and (now - last) > idle_limit
+                (not state.startswith("busy_") and (now - last) > idle_limit)
+                or (state.startswith("busy_") and (now - last) > AI_LANE_BUSY_CEILING_SECONDS)
             )
 
             if not dead and not stale:
@@ -6797,6 +9823,7 @@ def main():
 
         processes = {}
         launch_events = [ctx.Event() for _ in range(TAB_COUNT)]
+        captcha_gate = ctx.Semaphore(CAPTCHA_PARALLEL_MAX)  # TWO_BROWSERS_1591R28
 
         def spawn_worker(tab_id, initial_row=None):
             ready_event = launch_events[tab_id - 1]
@@ -6817,12 +9844,82 @@ def main():
                     "total_rows": total_source_rows,
                     "diagnostic_session_dir": str(diagnostic_session_dir),
                     "success_queue": success_queue,
+                    "captcha_gate": captcha_gate,  # TWO_BROWSERS_1591R28
                 },
                 name=f"esim-tab-{tab_id}",
             )
             proc.start()
             processes[tab_id] = proc
             return proc, ready_event
+
+        def restart_browser_instance(browser_idx, reason):  # BROWSER_HANG_1591R18
+            """Chromium stopped answering CDP: replace the browser process and its worker tabs.
+
+            A tab still working a row gets the same row again. A tab under success/error
+            guard, or one that already completed its confirm cycle, takes the next row so
+            nothing is submitted twice. DONE / MANUAL_STOP / RESTART_WAIT slots stay as they are.
+            When no Chromium comes up, the process exits with RESTART_EXIT_CODE and the
+            controller relaunches everything.
+            """
+            instance = browser_instances[browser_idx]
+            first_tab = browser_idx * TABS_PER_BROWSER + 1
+            tab_ids = [t for t in range(first_tab, first_tab + TABS_PER_BROWSER) if t in processes]
+            print(
+                f"[BROWSER RESTART] Chromium #{instance['id']}: {reason} "
+                f"Перезапускаю браузер и вкладки {tab_ids}.",
+                flush=True,
+            )
+            plans = []
+            for tab_id in tab_ids:
+                proc = processes.get(tab_id)
+                info = dict(heartbeat.get(str(tab_id)) or {})
+                phase = str(info.get("phase") or "")
+                if phase in {"DONE", "MANUAL_STOP", "RESTART_WAIT"}:
+                    continue
+                guarded = bool(info.get("success_guard")) or bool(info.get("error_guard")) or phase in {
+                    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "SUCCESS_STOP", "ERROR_ASSIST",
+                }
+                row = None if (guarded or bool(info.get("completed_confirm_cycle"))) else info.get("row")
+                plans.append((tab_id, row))
+                try:
+                    if proc is not None and proc.is_alive():
+                        proc.terminate()
+                        proc.join(timeout=5)
+                        if proc.is_alive():
+                            proc.kill()
+                            proc.join(timeout=3)
+                except Exception:
+                    pass
+                heartbeat.pop(str(tab_id), None)
+                status_map[str(tab_id)] = {
+                    "text": (
+                        f"♻️ Вкладка {tab_id}\nChromium перестал отвечать — браузер перезапущен.\n"
+                        + ("Повторяю эту же строку." if row is not None else "Беру следующую строку.")
+                    ),
+                    "time": time.time(),
+                }
+            _terminate_chromium(instance)
+            if not _relaunch_chromium(instance, chromium_exe):
+                print(
+                    f"[BROWSER RESTART] Chromium #{instance['id']} не поднял CDP-порт; "
+                    "выхожу для перезапуска процесса контроллером.",
+                    flush=True,
+                )
+                _restart_notify(
+                    f"⚠️ Chromium #{instance['id']} перестал отвечать ({reason}) и не запустился заново. "
+                    "Перезапускаю весь процесс."
+                )
+                request_relaunch(base_dir, "chromium relaunch failed")  # RESTART_RELAUNCH_1591R21
+                raise SystemExit(RESTART_EXIT_CODE)
+            print(f"[BROWSER RESTART] Chromium #{instance['id']} готов: {instance['cdp_url']}", flush=True)
+            _restart_notify(
+                f"♻️ Chromium #{instance['id']} перестал отвечать ({reason}) Браузер перезапущен, "
+                f"вкладки {[t for t, _ in plans]} пересозданы: строки в работе повторяются, "
+                "завершённые берут следующую."
+            )
+            for tab_id, row in plans:
+                new_proc, _ = spawn_worker(tab_id, row)
+                processes[tab_id] = new_proc
 
         def recover_dead_workers():
             """Restore capacity when a worker process died unexpectedly."""
@@ -6833,7 +9930,15 @@ def main():
 
                 info = heartbeat.get(str(tab_id)) or {}
                 phase = str(info.get("phase") or "")
-                if phase in {"DONE", "SUCCESS_STOP", "MANUAL_STOP"}:
+                if phase in {
+                    "DONE", "SUCCESS_STOP", "MANUAL_STOP", "RESTART_WAIT",
+                    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST",
+                } or bool(info.get("success_guard")) or bool(info.get("error_guard")):
+                    print(
+                        f"[DEAD RECOVERY] TAB {tab_id}: success_guard активен — "
+                        "страницу не закрываю и worker автоматически не заменяю.",
+                        flush=True,
+                    )
                     continue
 
                 saved_row = info.get("row")
@@ -6862,7 +9967,7 @@ def main():
                 heartbeat.pop(str(tab_id), None)
                 new_proc, _ = spawn_worker(
                     tab_id,
-                    None if completed else saved_row,
+                    None if completed else _row_for_respawn_1591r32(saved_row, tab_id, base_dir, "dead recovery"),  # ROW_RESTART_LIMIT_1591R32
                 )
                 processes[tab_id] = new_proc
                 recovered = True
@@ -6878,6 +9983,15 @@ def main():
             """
             recovered = False
             for tab_id, proc, info, age in parent_watchdog(processes, heartbeat):
+                if bool(info.get("success_guard")) or str(info.get("phase") or "") in {
+                    "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST",
+                    "SUCCESS_STOP", "ERROR_ASSIST"
+                } or bool(info.get("error_guard")):
+                    print(
+                        f"[WATCHDOG] TAB {tab_id}: SUCCESS GUARD — recovery запрещён.",
+                        flush=True,
+                    )
+                    continue
                 saved_row = info.get("row")
                 completed = bool(info.get("completed_confirm_cycle"))
                 phase = str(info.get("phase") or "")
@@ -6902,7 +10016,7 @@ def main():
 
                 status_map[str(tab_id)] = {
                     "text": (
-                        f"♻️ Вкладка {tab_id}\\n{reason}\\n"
+                        f"♻️ Вкладка {tab_id}\n{reason}\n"  # BROWSER_HANG_1591R18: real line break
                         + (
                             "Цикл завершён — беру следующую строку."
                             if completed
@@ -6918,6 +10032,13 @@ def main():
                     browser_instances[browser_idx]["cdp_url"], info
                 )
                 if not closed_old_tab:
+                    hang = cdp_unreachable_seconds(browser_instances[browser_idx]["cdp_url"])  # BROWSER_HANG_1591R18
+                    if hang >= BROWSER_HANG_RESTART_SECONDS:
+                        restart_browser_instance(
+                            browser_idx,
+                            f"CDP не отвечает {int(hang)} сек (вкладка {tab_id}: {reason})",
+                        )
+                        return True
                     print(
                         f"[WATCHDOG] TAB {tab_id}: старую вкладку закрыть не удалось; "
                         "replacement пока не создаю.",
@@ -6937,7 +10058,7 @@ def main():
                 heartbeat.pop(str(tab_id), None)
                 new_proc, _ = spawn_worker(
                     tab_id,
-                    None if completed else saved_row,
+                    None if completed else _row_for_respawn_1591r32(saved_row, tab_id, base_dir, "watchdog"),  # ROW_RESTART_LIMIT_1591R32
                 )
                 processes[tab_id] = new_proc
                 recovered = True
@@ -6965,6 +10086,8 @@ def main():
                 or (info or {}).get("time")
                 or now
             )
+            if phase == "PROTECTED_CHECK" and proc is not None:
+                matcher_age = min(matcher_age, _matcher_cpu_age(proc, now))  # MATCHER_HEARTBEAT_1591R9
             return phase, logical_age, matcher_age, bool(proc and proc.is_alive())
 
         def execute_ai_runtime_actions():
@@ -7026,6 +10149,31 @@ def main():
 
                 phase, logical_age, matcher_age, proc_alive = _host_worker_health(info, proc)
                 user_directed = bool(action.get("user_directed"))
+
+                lifecycle = kind in {
+                    "RESTART_TAB", "CLOSE_TAB", "RELOAD", "NAVIGATE", "BACK", "FORWARD"
+                }
+
+                if lifecycle and (
+                    bool(info.get("success_guard"))
+                    or bool(info.get("error_guard"))
+                    or phase in {
+                        "POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST",
+                        "SUCCESS_STOP", "ERROR_ASSIST"
+                    }
+                ):
+                    result = {
+                        "ok": False,
+                        "error": "SUCCESS_GUARD_LIFECYCLE_FORBIDDEN",
+                        "phase": phase,
+                        "note": (
+                            "Эта physical-вкладка находится под SUCCESS/ERROR GUARD. "
+                            "Нельзя закрывать, перезапускать, reload/navigate/back/forward "
+                            "до завершения автономного анализа."
+                        ),
+                    }
+                    _finish_ai_action(action_id, result)
+                    return False
 
                 lifecycle = kind in {
                     "RESTART_TAB", "CLOSE_TAB", "RELOAD", "NAVIGATE", "BACK", "FORWARD"
@@ -7229,8 +10377,36 @@ def main():
                 flush=True,
             )
 
+        # SCHEDULED_RESTART_1591R13: the timer opens a drain; while draining no new slot
+        # or replacement worker is started, workers finish their rows and exit, and the
+        # runtime then leaves with RESTART_EXIT_CODE for the controller to relaunch it.
+        restart_started_at = monotonic()
+        restart_notified = False
+        if restart_drain_requested(base_dir):  # STALE_DRAIN_RESET_1591R29
+            clear_restart_drain(base_dir)
+            print("[RESTART] Найден незавершённый drain прошлого запуска — сброшен, работаю как обычно.", flush=True)
+
+        def _restart_tick():
+            nonlocal restart_notified
+            if not restart_drain_requested(base_dir):
+                minutes = restart_policy_minutes(base_dir)
+                if minutes <= 0 or monotonic() - restart_started_at < minutes * 60:
+                    return False
+                request_restart_drain(base_dir, f"every {minutes} min")
+                print(f"[RESTART] Прошло {minutes} мин: worker дорабатывают строки, новые не берут.", flush=True)
+            if not restart_notified:
+                restart_notified = True
+                _restart_notify(
+                    "♻️ Плановый перезапуск: worker дорабатывают текущие строки "
+                    "(подтверждение, подпись, разбор DeepSeek), новые не берут; "
+                    "когда все закончат, процесс перезапустится."
+                )
+            return True
+
         # Для каждого Chromium свой последовательный cascade.
         while any(front in cascade_next for front in cascade_front.values()):
+            if _restart_tick():
+                break
             ensure_ai_receiver_alive()
             ensure_ai_observers_alive()
             execute_ai_runtime_actions()
@@ -7274,6 +10450,9 @@ def main():
             ensure_ai_observers_alive()
             execute_ai_runtime_actions()
             recover_dead_workers()
+            draining = _restart_tick()  # SCHEDULED_RESTART_1591R13
+            if draining:
+                _drain_deadline_1591r32(base_dir, processes, heartbeat)  # DRAIN_DEADLINE_1591R32
 
             # Успешная страница принадлежит общему Chromium и остаётся открытой.
             # Завершившийся SUCCESS_STOP-процесс заменяем новым процессом/вкладкой,
@@ -7283,7 +10462,7 @@ def main():
                 if proc.is_alive():
                     continue
                 info = heartbeat.get(str(tab_id)) or {}
-                if info.get("phase") == "SUCCESS_STOP":
+                if info.get("phase") == "SUCCESS_STOP" and not draining:
                     print(
                         f"[Запуск] Вкладка {tab_id} успешна и оставлена открытой. "
                         "Создаю новую рабочую вкладку для следующей строки.",
@@ -7304,6 +10483,13 @@ def main():
 
         for proc in processes.values():
             proc.join(timeout=1)
+
+        if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13
+            clear_restart_drain(base_dir)
+            print("[RESTART] Все worker завершили строки; выхожу для планового перезапуска.", flush=True)
+            _restart_notify("♻️ Все worker завершили строки. Перезапускаю процесс.")
+            request_relaunch(base_dir, "drain complete")  # RESTART_RELAUNCH_1591R21
+            raise SystemExit(RESTART_EXIT_CODE)
 
         print(f"Все {TAB_COUNT} worker-слота завершили обработку очереди.")
         try:
