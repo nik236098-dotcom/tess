@@ -130,7 +130,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "6c75c1fa45f918bc0bc00a97f0109e7f6f6fa609b57055b4e3d088824324de5e",  # r50 exp8 output
                          "2ed7d9c9460bc48883655306b22c9b6a48e724515ca48544d574bfaa10754d14",  # r51 lite output
                          "446432dd4e2761eb47123d967a25f9a89cc8160e512abf750e1b51cc3098ae2d",  # r51 output
-                         "c22583a4e01233102cdb04ed6e6a7ba7228a7774705844c62e85376a85b6efc8"}  # r51 exp8 output
+                         "c22583a4e01233102cdb04ed6e6a7ba7228a7774705844c62e85376a85b6efc8",  # r51 exp8 output
+                         "5eb2f6d56fdcde85f9f18b573e55735a3ad1c7767dc622d0cc3a012cda51bb25",  # r52 lite output
+                         "93a30ea7eccbc66eaef0f1a0423f91193af3f01a515f28a7d11f36ac23b8c72f",  # r52 output
+                         "ab50bf0d0987d25005f469ae606ee1ed91f9b7a9f81bfba26a6e5ba5aedcc8ef"}  # r52 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -677,7 +680,8 @@ CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13
                             CONTROLLER_OUTPUT_SHA_R36_R37,
                             "d561621ddacaa0c4e602a5da75842207a9b76f563f2d26202e75e9e7eeb6012b",  # controller of r38..r45 (menu)
                             "c700c997e758c55001e598e10b0386cd009bc7def04b89ee234aacda704484cd",  # controller of r46..r47 (/op)
-                            "b008baad1551e6574389743c1b2810a39f03e198a5af4c3a823fe4296386c25c"}  # controller of r48..r49 (BEELINE_AI)
+                            "b008baad1551e6574389743c1b2810a39f03e198a5af4c3a823fe4296386c25c",  # controller of r48..r49 (BEELINE_AI)
+                            "738c0f281ac6e59b6b0a62f07fc27217a73e817b45ceb9b93e1e681c00e21a4b"}  # controller of r50..r51 (/clear)
 RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
 RESTART_POLICY_FILE_NAME = "restart_policy.json"
 RESTART_DRAIN_FILE_NAME = "restart_drain.json"
@@ -4114,6 +4118,23 @@ README_NOTE_R51 = ('\n\nРЕВИЗИЯ 51 (fix_package_1591.py)\nЭкран оп
                    'регистрации договора», и по этим словам вкладка на стартовой странице уходила в пуш #оплата с заказом без\n'
                    'регистрации. Страница, предлагающая способ регистрации, оплатой не считается. Маркер: PAYMENT_STRICT_1591R51.\n')
 
+
+# Revision 52: a message without text no longer stops the controller. r50's /clear check did
+# text.split()[0] on the message text; a document, a sticker or a photo has an empty text, the
+# IndexError made the update fail, the controller retried the same update every 3 s for ever and
+# the bot went silent. The check now tolerates an empty text.
+CONTROLLER_OUTPUT_SHA_R50_R51 = "738c0f281ac6e59b6b0a62f07fc27217a73e817b45ceb9b93e1e681c00e21a4b"  # controller of r50..r51 (/clear)
+CLEAR_SAFE_MARKER = "CLEAR_SAFE_1591R52"
+OLD_CLEAR_SAFE_MARK_R52 = '# CLEAR_BASE_1591R50: /clear in the controller archives and removes processed_numbers.txt and\n'
+NEW_CLEAR_SAFE_MARK_R52 = ('# CLEAR_SAFE_1591R52: the controller\'s /clear check tolerates a message without text (a document, a\n'
+                           '# sticker); r50\'s text.split()[0] on an empty text made the controller retry one update for ever.\n'
+                           '# CLEAR_BASE_1591R50: /clear in the controller archives and removes processed_numbers.txt and\n')
+OLD_C_CLEAR_SAFE_R52 = '                    if text.split()[0].lower().split("@")[0] == "/clear":  # CLEAR_BASE_1591R50\n'
+NEW_C_CLEAR_SAFE_R52 = '                    if (text.split() or [""])[0].lower().split("@")[0] == "/clear":  # CLEAR_BASE_1591R50 / CLEAR_SAFE_1591R52: a document has no text\n'
+README_NOTE_R52 = ('\n\nРЕВИЗИЯ 52 (fix_package_1591.py)\nСообщение без текста больше не останавливает контроллер. Проверка команды /clear из r50 делала\n'
+                   'text.split()[0]; у документа, стикера или фото текст пустой, ошибка IndexError роняла обработку, контроллер\n'
+                   'повторял одно и то же сообщение каждые 3 с без конца, и бот молчал. Маркер: CLEAR_SAFE_1591R52.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -4955,8 +4976,10 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if CLEAR_SAFE_MARKER in source:
+        return 52   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if PAYMENT_STRICT_MARKER in source:
-        return 51   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
+        return 51
     if CLEAR_BASE_MARKER in source:
         return 50
     if EXHAUSTED_UNVERIFIED_MARKER in source:
@@ -5041,6 +5064,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 49 or EXHAUSTED_UNVERIFIED_MARKER in source)\
             and (MAX_REVISION < 50 or CLEAR_BASE_MARKER in source)\
             and (MAX_REVISION < 51 or PAYMENT_STRICT_MARKER in source)\
+            and (MAX_REVISION < 52 or CLEAR_SAFE_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -5984,6 +6008,30 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 53 (r52). The /clear check tolerates a message without text.
+    if CLEAR_SAFE_MARKER not in source and MAX_REVISION >= 52:
+        for old, new, what in ((OLD_CLEAR_SAFE_MARK_R52, NEW_CLEAR_SAFE_MARK_R52, "clear safe: marker"),):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        if CLEAR_SAFE_MARKER not in ctrl_source:
+            new_ctrl = replace_once(new_ctrl, OLD_C_CLEAR_SAFE_R52, NEW_C_CLEAR_SAFE_R52, "controller: /clear with an empty text")
+            for change in edits["server_controller.py"]:
+                joined = "".join(change["replacement"])
+                if OLD_C_CLEAR_SAFE_R52 in joined:
+                    change["replacement"] = joined.replace(OLD_C_CLEAR_SAFE_R52, NEW_C_CLEAR_SAFE_R52, 1).splitlines(keepends=True)
+                    break
+            else:
+                raise SystemExit("edits.json: earlier controller entry for /clear not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -6090,6 +6138,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 49", README_NOTE_R49),) if built_revision >= 49 else ()),
                           *((("РЕВИЗИЯ 50", README_NOTE_R50),) if built_revision >= 50 else ()),
                           *((("РЕВИЗИЯ 51", README_NOTE_R51),) if built_revision >= 51 else ()),
+                          *((("РЕВИЗИЯ 52", README_NOTE_R52),) if built_revision >= 52 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

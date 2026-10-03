@@ -561,7 +561,7 @@ def main():
                         _send(_restart_command(text[len("/restart"):]))
                         continue
 
-                    if text.split()[0].lower().split("@")[0] == "/clear":  # CLEAR_BASE_1591R50
+                    if (text.split() or [""])[0].lower().split("@")[0] == "/clear":  # CLEAR_BASE_1591R50 / CLEAR_SAFE_1591R52: a document has no text
                         waiting_upload = False
                         _send(_clear_base_command(proc))
                         continue

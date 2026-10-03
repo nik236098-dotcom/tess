@@ -3444,6 +3444,8 @@
       "start": 7159,
       "end": 7160,
       "replacement": [
+        "# CLEAR_SAFE_1591R52: the controller's /clear check tolerates a message without text (a document, a\n",
+        "# sticker); r50's text.split()[0] on an empty text made the controller retry one update for ever.\n",
         "# CLEAR_BASE_1591R50: /clear in the controller archives and removes processed_numbers.txt and\n",
         "# deferred_rows.jsonl (base_archive/) and starts the worker again: the same base from the start.\n",
         "PROGRESS_FILE_NAME = \"processed_numbers.txt\"\n"
@@ -4198,7 +4200,7 @@
         "                        _send(_restart_command(text[len(\"/restart\"):]))\n",
         "                        continue\n",
         "\n",
-        "                    if text.split()[0].lower().split(\"@\")[0] == \"/clear\":  # CLEAR_BASE_1591R50\n",
+        "                    if (text.split() or [\"\"])[0].lower().split(\"@\")[0] == \"/clear\":  # CLEAR_BASE_1591R50 / CLEAR_SAFE_1591R52: a document has no text\n",
         "                        waiting_upload = False\n",
         "                        _send(_clear_base_command(proc))\n",
         "                        continue\n",

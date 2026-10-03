@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 41 лежит в `beeline_integrated_io_15_91_r51/` (включает ревизии 30–40); рядом
-`beeline_integrated_io_15_91_r51_lite/` — та же ревизия 41 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 41 лежит в `beeline_integrated_io_15_91_r52/` (включает ревизии 30–40); рядом
+`beeline_integrated_io_15_91_r52_lite/` — та же ревизия 41 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -69,7 +69,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r51
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r52
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -374,7 +374,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r51_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r52_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -446,6 +446,11 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    этим словам вкладка, стоявшая на стартовой странице, ушла в пуш «#оплата» с заказом без регистрации (ссылка
    открывала начало оформления). Теперь оплатой считается только экран с заголовком «пора оплатить», а страница,
    предлагающая способ регистрации, никогда. Маркер: `PAYMENT_STRICT_1591R51`.
+
+56. **Сообщение без текста не останавливает контроллер (ревизия 52).** Проверка команды `/clear` из r50 делала
+   `text.split()[0]`; у документа, стикера или фото текст пустой, ошибка роняла обработку, контроллер повторял одно
+   и то же сообщение каждые 3 с без конца («[CTRL RX] … list index out of range»), и бот молчал. Контроллер r50–r51
+   принят установщиком как исходник. Маркер: `CLEAR_SAFE_1591R52`.
 
 ## Использование
 
