@@ -1,12 +1,23 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 41 лежит в `beeline_integrated_io_15_91_r52/` (включает ревизии 30–40); рядом
-`beeline_integrated_io_15_91_r52_lite/` — та же ревизия 41 без кода подписи ревизии 31 (собирается
-`FIX_1591_WITHOUT_R31=1`, обновляется до полной r32 обычной установкой) и `beeline_integrated_io_15_91_r30/` —
+Готовый пакет ревизии 53 лежит в `beeline_integrated_io_15_91_r53/`; рядом
+`beeline_integrated_io_15_91_r53_lite/` — та же ревизия 53 без кода подписи ревизии 31 (собирается
+`FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
 `telegram_config.json` (ключ `"proxy"`), как код 15.91 и делал в первую очередь.
 `fix_package_1591.py` — скрипт, которым пакет получен из исходного zip коллеги.
+
+Ревизия 53 исправляет поиск контактного телефона в корзине: сайт заменил placeholder
+на `+7`, а код продолжал ждать `+7 999 999 99`. Теперь обе точки ввода (включая восстановление
+после reload) используют `input#phone-input`, сохраняя поддержку старого placeholder.
+Скрытые копии формы исключены; несколько видимых совпадений вызывают строгую ошибку
+Playwright. Это исправление поиска поля, общий механизм повторов строки не меняется.
+Обновление выбирает последнюю ревизию установленного варианта full/lite/exp8:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nik236098-dotcom/tess/codex/operator-observer-15.87/operator_repair_1591/update.sh | sudo bash
+```
 
 ## Новый сервер или переезд одной командой
 
@@ -69,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r52
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r53
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -374,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r52_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r53_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».

@@ -133,7 +133,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "c22583a4e01233102cdb04ed6e6a7ba7228a7774705844c62e85376a85b6efc8",  # r51 exp8 output
                          "5eb2f6d56fdcde85f9f18b573e55735a3ad1c7767dc622d0cc3a012cda51bb25",  # r52 lite output
                          "93a30ea7eccbc66eaef0f1a0423f91193af3f01a515f28a7d11f36ac23b8c72f",  # r52 output
-                         "ab50bf0d0987d25005f469ae606ee1ed91f9b7a9f81bfba26a6e5ba5aedcc8ef"}  # r52 exp8 output
+                         "ab50bf0d0987d25005f469ae606ee1ed91f9b7a9f81bfba26a6e5ba5aedcc8ef",  # r52 exp8 output
+                         "01e027e9ef8c9bb9b50306e94c2a94904454afebb718f945a9cd1f8f9ef9ad2b",  # r53 lite output
+                         "2c7e6633bcb373ad787d57944fdd9514bce121420d5173b3af41cafe570b5b99",  # r53 output
+                         "9cda561640d602f6f96671ed08fe3fccdf48d79321d38927f991f25153105ae7"}  # r53 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -4135,6 +4138,26 @@ README_NOTE_R52 = ('\n\nРЕВИЗИЯ 52 (fix_package_1591.py)\nСообщен�
                    'text.split()[0]; у документа, стикера или фото текст пустой, ошибка IndexError роняла обработку, контроллер\n'
                    'повторял одно и то же сообщение каждые 3 с без конца, и бот молчал. Маркер: CLEAR_SAFE_1591R52.\n')
 
+# Revision 53: the basket phone placeholder changed to +7. Use the stable input ID and
+# keep the exact legacy placeholder, ignoring hidden form copies. Do not select .first
+# or a generic telephone input: the existing Playwright assertions must stay strict.
+CONTACT_PHONE_MARKER = "CONTACT_PHONE_FIELD_1591R53"
+CONTACT_PHONE_SOURCE_R53 = '''
+# CONTACT_PHONE_FIELD_1591R53
+def _contact_phone_field(page):
+    """Locate the visible basket phone input in the current or legacy form."""
+    return page.locator(
+        'input#phone-input:visible, input[placeholder="+7 999 999 99"]:visible'
+    )
+
+
+'''
+README_NOTE_R53 = ('\n\nРЕВИЗИЯ 53 (fix_package_1591.py)\n'
+                  'Поле контактного телефона ищется по id phone-input, с поддержкой старого placeholder.\n'
+                  'Исправлены первоначальный ввод и восстановление после reload. Скрытые копии формы\n'
+                  'не выбираются; при нескольких видимых совпадениях сохраняется строгая проверка Playwright.\n'
+                  'Маркер: CONTACT_PHONE_FIELD_1591R53.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -4976,6 +4999,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if CONTACT_PHONE_MARKER in source:
+        return 53
     if CLEAR_SAFE_MARKER in source:
         return 52   # the lite build (FIX_1591_WITHOUT_R31=1) is the same revision without the r31 signing code
     if PAYMENT_STRICT_MARKER in source:
@@ -5065,6 +5090,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 50 or CLEAR_BASE_MARKER in source)\
             and (MAX_REVISION < 51 or PAYMENT_STRICT_MARKER in source)\
             and (MAX_REVISION < 52 or CLEAR_SAFE_MARKER in source)\
+            and (MAX_REVISION < 53 or CONTACT_PHONE_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -6032,6 +6058,29 @@ def main(argv: list[str]) -> int:
             else:
                 raise SystemExit("edits.json: earlier controller entry for /clear not found")
 
+    # 54 (r53). Current and legacy contact phone forms use one strict locator.
+    if CONTACT_PHONE_MARKER not in source and MAX_REVISION >= 53:
+        anchor = 'def run_registration(page, diagnostic, phone, digits, active_digits, second_value, form_ready=False, launch_ready_event=None):\n'
+        replacements = (
+            (anchor, CONTACT_PHONE_SOURCE_R53 + anchor),
+            ('        field = page.get_by_placeholder("+7 999 999 99")\n',
+             '        field = _contact_phone_field(page)\n'),
+            ('            contact = page.get_by_placeholder("+7 999 999 99")\n',
+             '            contact = _contact_phone_field(page)\n'),
+        )
+        for old, new in replacements:
+            new_source = replace_once(new_source, old, new, "contact phone locator")
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = replace_once(joined, old, new, "contact phone edit").splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit("edits.json: contact phone entry not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -6139,6 +6188,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 50", README_NOTE_R50),) if built_revision >= 50 else ()),
                           *((("РЕВИЗИЯ 51", README_NOTE_R51),) if built_revision >= 51 else ()),
                           *((("РЕВИЗИЯ 52", README_NOTE_R52),) if built_revision >= 52 else ()),
+                          *((("РЕВИЗИЯ 53", README_NOTE_R53),) if built_revision >= 53 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
