@@ -145,7 +145,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "1693ccaa9bbb671b5d7d1efd3c10a3826e3c2228674109c68e22a5fcf0a5d752",  # r55 exp8 output
                          "5e2e8e59ebd81dcc07c1f3bd8261a571306cec2df192e906ae41cee6ec050368",  # r56 lite output
                          "d583db4fc8115f85ed7ff71a7191597972d8749c79372b1489ab6b1d1f520583",  # r56 output
-                         "09d64476b286c2e5abe00d108c75b1782a503069aec05c2c69b8e5e6ad062447"}  # r56 exp8 output
+                         "09d64476b286c2e5abe00d108c75b1782a503069aec05c2c69b8e5e6ad062447",  # r56 exp8 output
+                         "fb306c7114479fcbbdd42aa6353e8fde7c75c08f5b91a7d1b6092749a04d7e7b",  # r57 lite output
+                         "d680e48b2bb236d504ac8b5ab9222307051e1b2de0416cbf066bb0d2c921a5ee",  # r57 output
+                         "cd1d831520b17257409fde5abc0d3bcf773cdc7009a6b1b9990b8ff22da12f05"}  # r57 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -4429,6 +4432,182 @@ README_NOTE_R56 = ('\n\nРЕВИЗИЯ 56 (fix_package_1591.py)\nDeepSeek бол
                    'уходили с каждым запросом. Строку VERDICT бот никогда не читал. Теперь ответ на автозадание — одна\n'
                    'короткая строка: что поставил (поле = значение) и VERDICT. Маркер: SHORT_REPORT_1591R56.\n')
 
+# Revision 57: DeepSeek stays quiet in the normal flow. On every ordinary success the contract page
+# loads with the button disabled or not yet rendered, and the button stays a few seconds after a
+# good click; each of these queued a DeepSeek job at once, DeepSeek found nothing to do and still
+# answered in Telegram (two messages). Now (1) these three triggers wait QUIET_WAIT_SECONDS on the
+# same row and URL first; (2) a job whose tab already left the page it was queued for is closed
+# without calling DeepSeek; (3) the answer is one line «Вкладка N: …», and «-» (nothing was needed)
+# is not sent at all.
+QUIET_AUTO_MARKER = "QUIET_AUTO_1591R57"
+QUIET_HELPERS_R57 = r'''# QUIET_AUTO_1591R57: no DeepSeek job, and no Telegram line, when its help is not needed.
+QUIET_REPLY_1591R57 = "\x00quiet"
+QUIET_WAIT_SECONDS_1591R57 = 45
+_AUTO_JOB_RE_1591R57 = re.compile(r"^\[AUTO_(?:SUCCESS|ERROR)_ASSIST TAB (\d+)\]")
+_AUTO_URL_RE_1591R57 = re.compile(r"URL: (\S+)\s*$")
+
+
+def _is_auto_job_1591r57(body):
+    return bool(_AUTO_JOB_RE_1591R57.match(str(body or "").strip()))
+
+
+def _auto_job_outdated_1591r57(body, pages):
+    """True when the job's tab is listed and none of its pages is still on the URL the job was queued for."""
+    text = str(body or "").strip()
+    m = _AUTO_JOB_RE_1591R57.match(text)
+    u = _AUTO_URL_RE_1591R57.search(text)
+    if not m or not u:
+        return False
+    def norm(url):
+        return str(url or "").split("#")[0].split("?")[0].rstrip("/")
+    want = norm(u.group(1))
+    urls = [norm(p.get("url")) for p in (pages or []) if p.get("tab_id") == int(m.group(1))]
+    return bool(want) and bool(urls) and want not in urls
+
+
+def _auto_error_reply_1591r57(body, text):
+    """QUIET_ERRORS_1591R57: an auto job's own error is printed to the journal and not sent to Telegram."""
+    if _is_auto_job_1591r57(body):
+        print("[AI AUTO] " + str(text)[:500], flush=True)
+        return QUIET_REPLY_1591R57
+    return text
+
+
+def _ai_db_complete_silent_1591r57(update_id):
+    conn = _ai_db_connect()
+    try:
+        conn.execute(
+            "UPDATE inbox SET done_at=?, last_error=NULL, claimed_by=NULL, claim_until=NULL WHERE update_id=?",
+            (time.time(), int(update_id)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _ai_db_complete(update_id, chat_id, response_text):
+'''
+QUIET_WAIT_HELPER_R57 = '''def _quiet_wait_1591r57(worker, key):
+    """QUIET_AUTO_1591R57: True once the same condition has lasted QUIET_WAIT_SECONDS_1591R57 on this row and URL
+    (a contract page that is still loading, or a button that stays a few seconds after a good click)."""
+    try:
+        url = str(worker.get("page").url or "")
+    except Exception:
+        url = ""
+    mark = [str(worker.get("row")), url]
+    state = worker.get(key)
+    now = monotonic()
+    if not state or state.get("mark") != mark:
+        state = {"mark": mark, "since": now}
+        worker[key] = state
+    return now - float(state["since"]) >= QUIET_WAIT_SECONDS_1591R57
+
+
+def queue_success_assist(worker, reason, force=False):
+'''
+QUIET_PAIRS_R57 = (
+    ('def _ai_db_complete(update_id, chat_id, response_text):\n', QUIET_HELPERS_R57),
+    ('    """Finish the AI job and durably queue its Telegram response."""\n',
+     '    """Finish the AI job and durably queue its Telegram response."""\n'
+     '    if response_text == globals().get("QUIET_REPLY_1591R57"):  # QUIET_AUTO_1591R57: an auto job with nothing to tell\n'
+     '        _ai_db_complete_silent_1591r57(update_id)\n'
+     '        return\n'
+     '    import re as _re_1591r57  # QUIET_AUTO_1591R57: the VERDICT tag is for the bot, not for the chat\n'
+     '    response_text = _re_1591r57.sub(r"\\s*VERDICT:\\s*(?:SIGNED|PAYMENT|NOT_SIGNED)\\b[^\\n]*", "", str(response_text)).strip() or str(response_text)\n'),
+    ('def queue_success_assist(worker, reason, force=False):\n', QUIET_WAIT_HELPER_R57),
+    ('            queue_success_assist(worker, "кнопка «Подписать договор» неактивна")\n',
+     '            if _quiet_wait_1591r57(worker, "quiet_button_1591r57"):  # QUIET_AUTO_1591R57: the site may still be filling the form\n'
+     '                queue_success_assist(worker, "кнопка «Подписать договор» неактивна")\n'),
+    ('        queue_success_assist(worker, "интерфейс договора требует наблюдения")\n',
+     '        if _quiet_wait_1591r57(worker, "quiet_contract_ui_1591r57"):  # QUIET_AUTO_1591R57: the page may still be loading\n'
+     '            queue_success_assist(worker, "интерфейс договора требует наблюдения")\n'),
+    ('    queue_success_assist(worker, "подпись остаётся на странице; проверь ошибки/обязательные поля")\n',
+     '    if _quiet_wait_1591r57(worker, "quiet_sign_wait_1591r57"):  # QUIET_AUTO_1591R57: the site may still be answering\n'
+     '        queue_success_assist(worker, "подпись остаётся на странице; проверь ошибки/обязательные поля")\n'),
+    ('            pages = _observer_collect_pages(cdp_urls, with_screenshots=False) if cdp_urls else []\n',
+     '            pages = _observer_collect_pages(cdp_urls, with_screenshots=False) if cdp_urls else []\n'
+     '            if _auto_job_outdated_1591r57(latest, pages):  # QUIET_AUTO_1591R57: the tab already left that page\n'
+     '                (globals().get("_ai_success_verdict_1591r30") or (lambda *a: None))(status_map, latest, "")  # full build: busy flag off\n'
+     '                _ai_db_complete_silent_1591r57(update_id)\n'
+     '                print(f"[AI {lane.upper()}] update {update_id}: вкладка уже ушла с этой страницы — DeepSeek не вызываю.", flush=True)\n'
+     '                _ai_health_touch(ai_health, "idle")\n'
+     '                continue\n'),
+    ('                            + str(plan.get("summary") or "Готово.")\n',
+     '                            + str(plan.get("summary") or "Готово.")\n'
+     '                        ) if not _is_auto_job_1591r57(latest) else (  # QUIET_AUTO_1591R57: one line, «-» stays silent\n'
+     '                            QUIET_REPLY_1591R57 if str(plan.get("summary") or "").strip() in {"", "-", "—", "–"}\n'
+     '                            else "🤖 " + str(plan.get("summary") or "").strip()\n'),
+    ('        "ОТЧЁТ НЕ ПИШИ (SHORT_REPORT_1591R56): весь ответ — ОДНА короткая строка: что поставил "\n',
+     '        "ОТЧЁТ НЕ ПИШИ (SHORT_REPORT_1591R56, QUIET_AUTO_1591R57). Если ты что-то изменил или нажал — ответ "\n'
+     '        f"2–3 коротких предложения по факту, например: «Вкладка {tab_id}: не было области. Заполнил "\n'
+     '        "«Саратовская область». Подпись прошла.» Без технических подробностей: никаких селекторов, DOM, "\n'
+     '        "кода, URL, network и рассуждений. Если вмешиваться не понадобилось (сайт сам продвинулся, уже "\n'
+     '        "подписано, ничего не менял) — ответь ровно «-». "\n'),
+    ('        "VERDICT строго одно из: «VERDICT: SIGNED» (checksignature 200 или экран после "\n',
+     '        "Последнее предложение — итог: «Подпись прошла», «Дошло до оплаты» или «Не подписано — причина». "\n'),
+    ('        "подписи), «VERDICT: PAYMENT» (экран «пора оплатить eSIM»), «VERDICT: NOT_SIGNED — причина». "\n',
+     '        "Последней отдельной строкой — служебная метка для бота, в чат она не уходит: «VERDICT: SIGNED», "\n'
+     '        "«VERDICT: PAYMENT» или «VERDICT: NOT_SIGNED». "\n'),
+    ('        "(поле = значение) или «ничего не менял», затем VERDICT. "\n', ''),
+    ('- Ответ на автозадание SUCCESS SUPERVISOR — ОДНА короткая строка: что изменил (поле = значение)\n',
+     '- Ответ на автозадание SUCCESS SUPERVISOR — 2–3 коротких предложения по факту: чего не хватало,\n'),
+    ('  и VERDICT: «VERDICT: SIGNED», «VERDICT: PAYMENT» (экран «пора оплатить eSIM») или\n',
+     '  что заполнил (значение) и итог: «Подпись прошла», «Дошло до оплаты» или «Не подписано — причина».\n'),
+    ('  «VERDICT: NOT_SIGNED — причина». Подробных отчётов не пиши (SHORT_REPORT_1591R56).\n',
+     '  Последней строкой — служебная метка для бота: «VERDICT: SIGNED», «VERDICT: PAYMENT» или «VERDICT: NOT_SIGNED».\n'
+     '  Подробных отчётов не пиши (SHORT_REPORT_1591R56): без селекторов, DOM, кода и URL. Если вмешиваться\n'
+     '  не понадобилось — ответь ровно «-» (QUIET_AUTO_1591R57).\n'),
+    # QUIET_ERRORS_1591R57: a skipped error row and an auto job's own error go to the journal, not to Telegram.
+    ('            _io1591.enqueue_notice(\n'
+     '                globals(), chat,\n'
+     '                f"⏭ Вкладка {worker[\'id\']}: строка {key} пропущена без повтора: {reason}. "\n'
+     '                "Worker продолжает со следующей строкой.",\n'
+     '            )\n',
+     '            print(  # QUIET_ERRORS_1591R57: journal only, no Telegram push\n'
+     '                f"⏭ Вкладка {worker[\'id\']}: строка {key} пропущена без повтора: {reason}. "\n'
+     '                "Worker продолжает со следующей строкой.",\n'
+     '                flush=True,\n'
+     '            )\n'),
+    ('            _io1591.enqueue_notice(\n'
+     '                globals(), chat,\n'
+     '                f"⏭ Вкладка {worker[\'id\']}: строка {key} пропущена после повторной "\n'
+     '                f"registration/error ({reason}). Worker продолжает со следующей строкой.",\n'
+     '            )\n',
+     '            print(  # QUIET_ERRORS_1591R57: journal only, no Telegram push\n'
+     '                f"⏭ Вкладка {worker[\'id\']}: строка {key} пропущена после повторной "\n'
+     '                f"registration/error ({reason}). Worker продолжает со следующей строкой.",\n'
+     '                flush=True,\n'
+     '            )\n'),
+    ('                    response_text = "⚠️ Developer: " + dev_err\n',
+     '                    response_text = _auto_error_reply_1591r57(latest, "⚠️ Developer: " + dev_err)  # QUIET_ERRORS_1591R57\n'),
+    ('                "SELECT chat_id FROM inbox WHERE update_id=?",\n',
+     '                "SELECT chat_id, body FROM inbox WHERE update_id=?",  # QUIET_ERRORS_1591R57\n'),
+    ('            chat_id = str(row[0]) if row else ""\n',
+     '            quiet_auto = globals().get("_is_auto_job_1591r57") or (lambda body: False)  # QUIET_ERRORS_1591R57\n'
+     '            chat_id = str(row[0]) if row and not quiet_auto(row[1]) else ""  # auto job errors stay in the journal\n'),
+)
+# a line of its own before the r48 switch: the lite → full step still finds «'AI_ENABLED_1591R48':True,'_ai_db_fail'»
+OLD_TEST_QUIET_NS_R57 = "            'AI_ENABLED_1591R48':True,"
+NEW_TEST_QUIET_NS_R57 = ("            '_auto_job_outdated_1591r57':lambda *a:False,'_is_auto_job_1591r57':lambda *a:False,"
+                         "'QUIET_REPLY_1591R57':'quiet','_auto_error_reply_1591r57':lambda b,t:t,\n"
+                         "            'AI_ENABLED_1591R48':True,")
+QUIET_SENTENCES_R57 = (
+    ("После автономного вмешательства отчёт не пиши: одна короткая строка с изменёнными значениями.",
+     "После автономного вмешательства отчёт не пиши: 2–3 коротких предложения по факту, без технических подробностей."),
+    ("После вмешательства отчёт не пиши: одна короткая строка — что изменил и VERDICT.",
+     "После вмешательства отчёт не пиши: 2–3 коротких предложения — чего не хватало, что заполнил и итог."),
+)
+README_NOTE_R57 = ('\n\nРЕВИЗИЯ 57 (fix_package_1591.py)\nDeepSeek молчит в обычном потоке. При каждом обычном успехе страница договора открывается с\n'
+                   'неактивной или ещё не появившейся кнопкой, а после удачного клика кнопка держится несколько секунд; в\n'
+                   'каждом из этих случаев бот сразу ставил задание, DeepSeek ничего не делал и всё равно писал в Telegram.\n'
+                   'Теперь эти три повода ждут 45 с на той же строке и странице; задание, чья вкладка уже ушла с той\n'
+                   'страницы, закрывается без вызова DeepSeek; ответ — одна строка «Вкладка N: …», а «-» (помощь не\n'
+                   'понадобилась) в Telegram не отправляется. Ответ DeepSeek — 2–3 предложения по факту, без технических\n'
+                   'подробностей. Пуши «строка пропущена после registration/error» и ошибки DeepSeek по автозаданиям\n'
+                   'уходят только в журнал. В «Мои eSIM» кнопки 🗑 (одну, отмеченные ✅/❌, все с подтверждением) убирают\n'
+                   'eSIM из списка, файлы результатов остаются; в меню строка «Новых eSIM за сегодня».\n'
+                   'Маркеры: QUIET_AUTO_1591R57, QUIET_ERRORS_1591R57, MENU_DELETE_1591R57.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -5270,6 +5449,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if QUIET_AUTO_MARKER in source:
+        return 57
     if SHORT_REPORT_MARKER in source:
         return 56
     if SUCCESS_PAGE_MARKER in source:
@@ -5371,6 +5552,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 54 or AUTO_TOOLS_MARKER in source)\
             and (MAX_REVISION < 55 or SUCCESS_PAGE_MARKER in source)\
             and (MAX_REVISION < 56 or SHORT_REPORT_MARKER in source)\
+            and (MAX_REVISION < 57 or QUIET_AUTO_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -6422,6 +6604,39 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 58 (r57). DeepSeek quiet in the normal flow: grace before three triggers, outdated jobs skipped, «-» not sent.
+    if QUIET_AUTO_MARKER not in source and MAX_REVISION >= 57:
+        pairs = list(QUIET_PAIRS_R57)
+        for old_sent, new_sent in QUIET_SENTENCES_R57:
+            lines = [l for l in new_source.splitlines(keepends=True) if old_sent in l]
+            if len(lines) != 1:
+                raise SystemExit(f"quiet auto: {len(lines)} lines carry {old_sent[:40]!r}")
+            pairs.append((lines[0], lines[0].replace(old_sent, new_sent, 1)))
+        for old, new in pairs:
+            what = "quiet auto: " + old.strip()[:40]
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        if "_auto_job_outdated_1591r57" not in test_src:
+            test_src = replace_once(test_src, OLD_TEST_QUIET_NS_R57, NEW_TEST_QUIET_NS_R57, "test_update.py observer fixture (quiet auto)")
+        # MENU_DELETE_1591R57: the menu module ships again (🗑 delete from «Мои eSIM», new eSIMs today).
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if "MENU_DELETE_1591R57" not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 57 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -6533,6 +6748,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 54", README_NOTE_R54),) if built_revision >= 54 else ()),
                           *((("РЕВИЗИЯ 55", README_NOTE_R55),) if built_revision >= 55 else ()),
                           *((("РЕВИЗИЯ 56", README_NOTE_R56),) if built_revision >= 56 else ()),
+                          *((("РЕВИЗИЯ 57", README_NOTE_R57),) if built_revision >= 57 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
