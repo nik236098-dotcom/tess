@@ -198,7 +198,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_54(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_55(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -206,12 +206,12 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("REGION_FIELD_1591R55", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertIn("Already revision 30", run.stdout)
-            # a server on the prompt-only build is accepted by the full (r54) installer
+            # a server on the prompt-only build is accepted by the full (r55) installer
             self.assertIn(hashlib.sha256((r30 / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             app = Path(d) / "app"; app.mkdir()
             for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "install.py", "test_update.py"):
@@ -382,18 +382,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 54 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 55 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 54", run.stdout)
+            self.assertIn("Already revision 55", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 54 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 55 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -1021,7 +1021,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 54", run.stdout)
+            self.assertIn("Already revision 55", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1055,7 +1055,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 54)
+        self.assertEqual(manifest["revision"], 55)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1407,10 +1407,10 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("(experiment browsers8)", run.stdout)
             src = (pkg / "test_beeline.py").read_text("utf-8")
-            self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
+            self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("REGION_FIELD_1591R55", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 54); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 55); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1420,7 +1420,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 54", run.stdout)
+            self.assertIn("Already revision 55", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -1472,6 +1472,112 @@ class PackageTests(unittest.TestCase):
                              "_confirm_tariff_configurator_1591r41", "_configurator_visible_1591r45", "_configurator_prices_1591r45",
                              "_select_configurator_minimum_1591r45"], ns)
         return ns
+
+    def test_r55_region_by_caption_in_chromium(self):
+        """REGION_FIELD_1591R55: an input with only the caption «область» is filled; «район», a filled region and a hidden copy are not."""
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("playwright not installed")
+        src = (self.pkg / "test_beeline.py").read_text("utf-8")
+        ns = {"re": re, "time": time}
+        names = {"_REGION_MARK_JS_1591R55"}
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id in names for x in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(src, ["_mark_region_input_1591r55", "_region_input_candidates", "ensure_region_if_missing"], ns)
+        form = ('<form><div><span>страна</span><input value="Россия"></div>'
+                '<div><div>область</div><div><input aria-invalid="true"></div><div>укажите область</div></div>'
+                '<div><span>район</span><input></div><div><span>улица</span><input value="Гоголя"></div>'
+                '<div style="display:none"><span>область</span><input></div></form>')
+        values = "els => els.map(e => e.value)"
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch(headless=True)
+            except Exception:
+                browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+            try:
+                page = browser.new_page(); page.set_content(form)
+                self.assertTrue(ns["ensure_region_if_missing"](page))
+                self.assertEqual(page.eval_on_selector_all("input", values), ["Россия", "Саратовская область", "", "Гоголя", ""])
+                page.set_content(form.replace('<input aria-invalid="true">', '<input value="Пензенская область">'))
+                self.assertTrue(ns["ensure_region_if_missing"](page))
+                self.assertEqual(page.eval_on_selector_all("input", values)[1], "Пензенская область", "a value is never overwritten")
+                page.set_content(form.replace(">область</div>", ">регион</div>"))
+                self.assertEqual(ns["_mark_region_input_1591r55"](page), 1)
+                page.set_content(form.replace(">область</div>", ">районная область</div>"))
+                self.assertEqual(ns["_mark_region_input_1591r55"](page), 0)
+            finally:
+                browser.close()
+
+    def test_r55_browser_restart_spares_a_signing_tab(self):
+        """GUARD_BROWSER_1591R55: a hung Chromium holding a tab on the contract page is not restarted (nothing is
+        terminated, the slot keeps its page); without such a tab, or when Chromium has exited, it is restarted."""
+        src = (self.pkg / "test_beeline.py").read_text("utf-8")
+        node = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.FunctionDef) and n.name == "restart_browser_instance")
+        code = compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec")
+        ns = {"time": time, "monotonic": time.monotonic}
+        exec_functions(src, ["_tab_guarded_1591r55"], ns)
+        for n in ast.parse(src).body:
+            if isinstance(n, ast.Assign) and any(getattr(x, "id", "") == "GUARDED_PHASES_1591R55" for x in n.targets):
+                exec(compile(ast.Module(body=[n], type_ignores=[]), "pkg", "exec"), ns)
+
+        def run(phase, guard, chromium_exited=False):
+            events = []
+            class Proc:
+                def is_alive(self): return True
+                def terminate(self): events.append("terminate")
+                def join(self, timeout=None): pass
+                def kill(self): events.append("kill")
+            class Chrome:
+                def poll(self): return 0 if chromium_exited else None
+            env = dict(ns, TABS_PER_BROWSER=2, browser_restart_held_at={}, status_map={},
+                       browser_instances=[{"id": 1, "cdp_url": "http://x", "proc": Chrome()}],
+                       processes={1: Proc(), 2: Proc()},
+                       heartbeat={"1": {"phase": phase, "success_guard": guard, "row": "r1"}, "2": {"phase": "CONFIRM", "row": "r2"}},
+                       _terminate_chromium=lambda i: events.append("chromium"), _relaunch_chromium=lambda i, e: True,
+                       _restart_notify=lambda t: None, chromium_exe="x", RESTART_EXIT_CODE=75,
+                       request_relaunch=lambda *a: None, base_dir=".",
+                       spawn_worker=lambda t, r: (events.append(("spawn", t, r)) or (Proc(), None)))
+            exec(code, env)
+            return env["restart_browser_instance"](0, "CDP не отвечает 130 сек."), events
+
+        for phase, guard in (("SUCCESS_ASSIST", True), ("SIGN_WAIT", False), ("POST_AUTH_REVIEW", False), ("CONFIRM", True)):
+            restarted, events = run(phase, guard)
+            self.assertFalse(restarted, phase); self.assertEqual(events, [], f"{phase}: nothing terminated or spawned")
+        restarted, events = run("CONFIRM", False)
+        self.assertTrue(restarted); self.assertIn("chromium", events); self.assertIn(("spawn", 1, "r1"), events)
+        restarted, events = run("SUCCESS_ASSIST", True, chromium_exited=True)
+        self.assertTrue(restarted, "a Chromium that has exited is replaced"); self.assertIn("chromium", events)
+        self.assertIn("if hang >= BROWSER_HANG_RESTART_SECONDS and restart_browser_instance(  # GUARD_BROWSER_1591R55", src)
+
+    def test_r55_stale_auto_jobs_closed_and_statuses_with_ai_off(self):
+        """STALE_AUTO_1591R55 / AI_STATUS_1591R55."""
+        import sqlite3
+        src = (self.pkg / "test_beeline.py").read_text("utf-8")
+        with tempfile.TemporaryDirectory() as d:
+            db = Path(d) / "q.db"
+            ns = {"time": time, "_ai_db_connect": lambda: sqlite3.connect(str(db))}
+            exec_functions(src, ["_ai_db_close_stale_auto_1591r55"], ns)
+            conn = sqlite3.connect(str(db))
+            conn.execute("CREATE TABLE inbox (update_id INTEGER PRIMARY KEY, body TEXT, done_at REAL, last_error TEXT, claimed_by TEXT, claim_until REAL)")
+            conn.executemany("INSERT INTO inbox (update_id, body) VALUES (?, ?)",
+                             [(1, "[AUTO_SUCCESS_ASSIST TAB 3] x"), (2, "[AUTO_ERROR_ASSIST TAB 1] y"), (3, "/op как дела"), (4, "привет")])
+            conn.commit()
+            self.assertEqual(ns["_ai_db_close_stale_auto_1591r55"](), 2)
+            rows = conn.execute("SELECT update_id, done_at IS NOT NULL FROM inbox ORDER BY 1").fetchall()
+            self.assertEqual(rows, [(1, 1), (2, 1), (3, 0), (4, 0)], "user messages stay in the queue")
+            conn.close()
+        start = src.index("        _ai_db_init()\n        stale_auto = _ai_db_close_stale_auto_1591r55()")
+        self.assertLess(start, src.index("ai_fast_proc", start), "closed before any DeepSeek consumer starts")
+        self.assertEqual(src.count("# AI_STATUS_1591R55"), 4)
+        for text in ("Кнопка договора пока неактивна — DeepSeek", "Ошибка при подписи — DeepSeek", "интерфейс договора; DeepSeek наблюдает.\"\n",
+                     "Подпись ещё не завершилась — DeepSeek"):
+            self.assertNotIn(text, src)
+        for ai in (True, False):
+            status = eval('"Подтверждение успешно. Кнопка договора пока неактивна — " + ("DeepSeek наблюдает/исправляет." if AI_ENABLED_1591R48 else "жду (DeepSeek выключен).")',
+                          {"AI_ENABLED_1591R48": ai})
+            self.assertEqual("наблюдает" in status, ai)
 
     def test_r54_auto_jobs_get_the_live_tool_set(self):
         """AUTO_TOOLS_1591R54: the auto job says «исправь её» about the page; it must get browser_fill, not the code tools."""

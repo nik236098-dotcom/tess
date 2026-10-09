@@ -139,7 +139,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "9cda561640d602f6f96671ed08fe3fccdf48d79321d38927f991f25153105ae7",  # r53 exp8 output
                          "3e0b9e6fb9d42a3087c0bdd36390ada326297e6db5e929fc38237bffa87f0157",  # r54 lite output
                          "d85696cf3ec4ed306145280995a30aeea132ebc326f52f84c6610ae6290de499",  # r54 output
-                         "c99e25aec5b4818b37bd63c76600738d7b4395167bc90d9bb3b5bded781084a3"}  # r54 exp8 output
+                         "c99e25aec5b4818b37bd63c76600738d7b4395167bc90d9bb3b5bded781084a3",  # r54 exp8 output
+                         "3c774fb6f0987b24311f081c6a3eed057b888d9bf3cdc51fca9d80b96424f090",  # r55 lite output
+                         "6645fa2454ff34c0a1d4f8d977490307d91a4cff8f9c7d745289cac41db3f151",  # r55 output
+                         "1693ccaa9bbb671b5d7d1efd3c10a3826e3c2228674109c68e22a5fcf0a5d752"}  # r55 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -4186,6 +4189,189 @@ README_NOTE_R54 = ('\n\nРЕВИЗИЯ 54 (fix_package_1591.py)\nDeepSeek в а�
                    'присылал «🔧 DeepSeek подготовил фикс» вместо заполнения. Автозадание [AUTO_*_ASSIST] больше не считается\n'
                    'правкой кода. Маркер: AUTO_TOOLS_1591R54.\n')
 
+# Revision 55: three fixes on the successful (contract) page.
+# 1) REGION_FIELD_1591R55: the region input of the contract form can have no id, name, placeholder or
+#    linked <label>, only the caption «область» in its wrapper (row 605, tab 3: empty, aria-invalid). The
+#    runtime never found it, signed anyway, and after «укажите область» could not fill it either; only
+#    DeepSeek could, and with DeepSeek off the tab stood for ever. A visible text input whose own caption
+#    is «область»/«регион» is now a candidate as well («район» never is).
+# 2) STALE_AUTO_1591R55: unanswered [AUTO_*_ASSIST TAB n] jobs survived a restart, /clear or an update:
+#    DeepSeek then worked on «TAB n» that already held another client, and while the stale job waited no
+#    fresh job for that tab was queued. They are closed when the automation starts.
+# 3) AI_STATUS_1591R55: four tab statuses said «DeepSeek наблюдает» with BEELINE_AI=0.
+SUCCESS_PAGE_MARKER = "REGION_FIELD_1591R55"
+OLD_REGION_CAND_R55 = ('def _region_input_candidates(page):\n'
+                       '    # Prefer semantic attributes and only then nearby label text.\n'
+                       '    rx = re.compile(r"(область|регион|region)", re.I)\n'
+                       '    return [\n'
+                       '        page.locator(\n'
+                       '            \'input[name*="region" i], input[id*="region" i], \'\n'
+                       '            \'input[name*="area" i], input[id*="area" i], \'\n'
+                       '            \'input[placeholder*="область" i], input[aria-label*="область" i], \'\n'
+                       '            \'input[placeholder*="регион" i], input[aria-label*="регион" i]\'\n'
+                       '        ),\n'
+                       '        page.get_by_label(rx),\n'
+                       '    ]\n')
+NEW_REGION_CAND_R55 = ('# REGION_FIELD_1591R55: the region input may have no id/name/placeholder and no linked <label>, only\n'
+                       '# the caption «область» in its wrapper. The script marks a visible enabled text input whose own\n'
+                       '# caption (first text line of the nearest wrapper holding no other field) is «область»/«регион».\n'
+                       '_REGION_MARK_JS_1591R55 = r"""() => {\n'
+                       '  const caption = (el) => {\n'
+                       '    let node = el.parentElement;\n'
+                       '    for (let depth = 0; node && depth < 4; depth++, node = node.parentElement) {\n'
+                       '      if (node.querySelectorAll("input, textarea, select").length > 1) break;\n'
+                       '      const first = String(node.innerText || "").split("\\n").map((s) => s.trim()).filter(Boolean)[0] || "";\n'
+                       '      if (first) return first.toLowerCase();\n'
+                       '    }\n'
+                       '    return "";\n'
+                       '  };\n'
+                       '  let marked = 0;\n'
+                       '  for (const el of document.querySelectorAll("input")) {\n'
+                       '    el.removeAttribute("data-region-1591r55");\n'
+                       '    const type = String(el.getAttribute("type") || "text").toLowerCase();\n'
+                       '    if (!["text", "search"].includes(type) || el.disabled || el.readOnly) continue;\n'
+                       '    const r = el.getBoundingClientRect();\n'
+                       '    if (!r.width || !r.height) continue;\n'
+                       '    const cap = caption(el);\n'
+                       '    if (/^(область|регион)([\\s,/(].*)?$/.test(cap) && !/район/.test(cap)) {\n'
+                       '      el.setAttribute("data-region-1591r55", "1");\n'
+                       '      marked++;\n'
+                       '    }\n'
+                       '  }\n'
+                       '  return marked;\n'
+                       '}"""\n'
+                       '\n'
+                       '\n'
+                       'def _mark_region_input_1591r55(page):\n'
+                       '    try:\n'
+                       '        return int(page.evaluate(_REGION_MARK_JS_1591R55) or 0)\n'
+                       '    except Exception:\n'
+                       '        return 0\n'
+                       '\n'
+                       '\n'
+                       'def _region_input_candidates(page):\n'
+                       '    # Prefer semantic attributes and only then nearby label text.\n'
+                       '    rx = re.compile(r"(область|регион|region)", re.I)\n'
+                       '    _mark_region_input_1591r55(page)  # REGION_FIELD_1591R55\n'
+                       '    return [\n'
+                       '        page.locator(\n'
+                       '            \'input[name*="region" i], input[id*="region" i], \'\n'
+                       '            \'input[name*="area" i], input[id*="area" i], \'\n'
+                       '            \'input[placeholder*="область" i], input[aria-label*="область" i], \'\n'
+                       '            \'input[placeholder*="регион" i], input[aria-label*="регион" i]\'\n'
+                       '        ),\n'
+                       '        page.get_by_label(rx),\n'
+                       '        page.locator(\'input[data-region-1591r55="1"]\'),  # REGION_FIELD_1591R55: caption only\n'
+                       '    ]\n')
+OLD_STALE_DEF_R55 = 'def _ai_db_offset():\n'
+NEW_STALE_DEF_R55 = ('def _ai_db_close_stale_auto_1591r55():\n'
+                     '    """STALE_AUTO_1591R55: close [AUTO_*_ASSIST TAB n] jobs left unanswered by the previous run. At\n'
+                     '    start no worker exists yet, so such a job names a tab that now holds another row."""\n'
+                     '    conn = _ai_db_connect()\n'
+                     '    try:\n'
+                     '        cur = conn.execute(\n'
+                     '            "UPDATE inbox SET done_at=?, last_error=?, claimed_by=NULL, claim_until=NULL "\n'
+                     '            "WHERE done_at IS NULL AND (body LIKE \'[AUTO_SUCCESS_ASSIST TAB %\' OR body LIKE \'[AUTO_ERROR_ASSIST TAB %\')",\n'
+                     '            (time.time(), "STALE_AFTER_RESTART_1591R55"),\n'
+                     '        )\n'
+                     '        conn.commit()\n'
+                     '        return int(cur.rowcount or 0)\n'
+                     '    finally:\n'
+                     '        conn.close()\n'
+                     '\n'
+                     '\n'
+                     'def _ai_db_offset():\n')
+OLD_STALE_CALL_R55 = ('        _ai_db_init()\n'
+                      '        print(f"[AI] Durable queue ready: {AI_TELEGRAM_DB.name}", flush=True)\n')
+NEW_STALE_CALL_R55 = ('        _ai_db_init()\n'
+                      '        stale_auto = _ai_db_close_stale_auto_1591r55()  # STALE_AUTO_1591R55\n'
+                      '        if stale_auto:\n'
+                      '            print(f"[AI] Закрыто старых автозаданий DeepSeek от прошлого запуска: {stale_auto}", flush=True)\n'
+                      '        print(f"[AI] Durable queue ready: {AI_TELEGRAM_DB.name}", flush=True)\n')
+AI_STATUS_R55 = (
+    ('                "Подтверждение успешно. Кнопка договора пока неактивна — DeepSeek наблюдает/исправляет."\n',
+     '                "Подтверждение успешно. Кнопка договора пока неактивна — "\n'
+     '                + ("DeepSeek наблюдает/исправляет." if AI_ENABLED_1591R48 else "жду (DeepSeek выключен).")  # AI_STATUS_1591R55\n'),
+    ('                "Подтверждение успешно. Ошибка при подписи — DeepSeek помогает, страницу не трогаю."\n',
+     '                "Подтверждение успешно. Ошибка при подписи — "\n'
+     '                + ("DeepSeek помогает, страницу не трогаю." if AI_ENABLED_1591R48 else "страницу не трогаю (DeepSeek выключен).")  # AI_STATUS_1591R55\n'),
+    ('            "Подтверждение успешно. Жду/проверяю интерфейс договора; DeepSeek наблюдает."\n',
+     '            "Подтверждение успешно. Жду/проверяю интерфейс договора"\n'
+     '            + ("; DeepSeek наблюдает." if AI_ENABLED_1591R48 else " (DeepSeek выключен).")  # AI_STATUS_1591R55\n'),
+    ('        "Подтверждение успешно. Подпись ещё не завершилась — DeepSeek наблюдает и помогает."\n',
+     '        "Подтверждение успешно. Подпись ещё не завершилась — "\n'
+     '        + ("DeepSeek наблюдает и помогает." if AI_ENABLED_1591R48 else "жду (DeepSeek выключен).")  # AI_STATUS_1591R55\n'),
+)
+# 4) GUARD_BROWSER_1591R55: when a Chromium stopped answering CDP for BROWSER_HANG_RESTART_SECONDS the
+#    watchdog restarted the whole browser and killed every tab in it, the tab on the contract page too
+#    (tab 6, row on personal-data-form while DeepSeek was filling the region: the slot took the next
+#    row). While a tab of that Chromium is under success/error guard the browser is not restarted; a
+#    Chromium whose process has exited is still replaced (its pages are gone anyway).
+GUARD_BROWSER_HELPER_R55 = ('# GUARD_BROWSER_1591R55: a tab on the contract page (success/error guard) is never killed by a restart.\n'
+                            'GUARDED_PHASES_1591R55 = {"POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "SUCCESS_STOP", "ERROR_ASSIST"}\n'
+                            '\n'
+                            '\n'
+                            'def _tab_guarded_1591r55(info):\n'
+                            '    info = info or {}\n'
+                            '    return (bool(info.get("success_guard")) or bool(info.get("error_guard"))\n'
+                            '            or str(info.get("phase") or "") in GUARDED_PHASES_1591R55)\n'
+                            '\n'
+                            '\n'
+                            'def _drain_deadline_1591r32(base_dir, processes, heartbeat):\n')
+OLD_GUARD_HELPER_R55 = 'def _drain_deadline_1591r32(base_dir, processes, heartbeat):\n'
+OLD_GUARD_DEF_R55 = '        def restart_browser_instance(browser_idx, reason):  # BROWSER_HANG_1591R18\n'
+NEW_GUARD_DEF_R55 = ('        browser_restart_held_at = {}  # GUARD_BROWSER_1591R55: last «not restarting» notice per Chromium\n'
+                     '\n'
+                     '        def restart_browser_instance(browser_idx, reason):  # BROWSER_HANG_1591R18\n')
+OLD_GUARD_HEAD_R55 = ('            instance = browser_instances[browser_idx]\n'
+                      '            first_tab = browser_idx * TABS_PER_BROWSER + 1\n'
+                      '            tab_ids = [t for t in range(first_tab, first_tab + TABS_PER_BROWSER) if t in processes]\n')
+NEW_GUARD_HEAD_R55 = (OLD_GUARD_HEAD_R55 +
+                      '            # GUARD_BROWSER_1591R55: never kill a tab on the contract page. While one is there the hung\n'
+                      '            # Chromium is left alone (False); only a Chromium whose process has exited is replaced.\n'
+                      '            guarded_tabs = [t for t in tab_ids if _tab_guarded_1591r55(heartbeat.get(str(t)))]\n'
+                      '            chromium_proc = instance.get("proc")\n'
+                      '            chromium_alive = chromium_proc is None or chromium_proc.poll() is None\n'
+                      '            if guarded_tabs and chromium_alive:\n'
+                      '                if monotonic() - float(browser_restart_held_at.get(browser_idx) or 0) >= 60:\n'
+                      '                    browser_restart_held_at[browser_idx] = monotonic()\n'
+                      '                    print(\n'
+                      '                        f"[BROWSER RESTART] Chromium #{instance[\'id\']}: {reason} Не перезапускаю: "\n'
+                      '                        f"вкладки {guarded_tabs} на странице договора (SUCCESS GUARD).",\n'
+                      '                        flush=True,\n'
+                      '                    )\n'
+                      '                return False\n')
+OLD_GUARD_TAIL_R55 = ('            for tab_id, row in plans:\n'
+                      '                new_proc, _ = spawn_worker(tab_id, row)\n'
+                      '                processes[tab_id] = new_proc\n')
+NEW_GUARD_TAIL_R55 = OLD_GUARD_TAIL_R55 + '            return True  # GUARD_BROWSER_1591R55\n'
+OLD_GUARD_CALL_R55 = ('                    if hang >= BROWSER_HANG_RESTART_SECONDS:\n'
+                      '                        restart_browser_instance(\n'
+                      '                            browser_idx,\n'
+                      '                            f"CDP не отвечает {int(hang)} сек (вкладка {tab_id}: {reason})",\n'
+                      '                        )\n'
+                      '                        return True\n')
+NEW_GUARD_CALL_R55 = ('                    if hang >= BROWSER_HANG_RESTART_SECONDS and restart_browser_instance(  # GUARD_BROWSER_1591R55\n'
+                      '                        browser_idx,\n'
+                      '                        f"CDP не отвечает {int(hang)} сек (вкладка {tab_id}: {reason})",\n'
+                      '                    ):\n'
+                      '                        return True\n')
+GUARD_BROWSER_R55 = ((OLD_GUARD_HELPER_R55, GUARD_BROWSER_HELPER_R55), (OLD_GUARD_DEF_R55, NEW_GUARD_DEF_R55),
+                     (OLD_GUARD_HEAD_R55, NEW_GUARD_HEAD_R55), (OLD_GUARD_TAIL_R55, NEW_GUARD_TAIL_R55),
+                     (OLD_GUARD_CALL_R55, NEW_GUARD_CALL_R55))
+README_NOTE_R55 = ('\n\nРЕВИЗИЯ 55 (fix_package_1591.py)\nТри исправления на успешной странице.\n'
+                   '1) Поле «область» без id, name, placeholder и связанной подписи (только надпись «область» рядом) теперь\n'
+                   'находится: бот впишет «Саратовская область» сам, если поле пустое. Раньше его находил только DeepSeek, а при\n'
+                   'выключенном DeepSeek вкладка стояла бесконечно. Поле «район» не трогается.\n'
+                   '2) Незавершённые автозадания DeepSeek прошлого запуска закрываются при старте: после рестарта, /clear или\n'
+                   'обновления DeepSeek больше не работает по старому заданию с вкладкой, где уже другой клиент, и новые задания\n'
+                   'для этой вкладки не блокируются.\n'
+                   '3) При BEELINE_AI=0 статусы вкладки больше не пишут «DeepSeek наблюдает».\n'
+                   '4) Браузер с вкладкой на странице договора больше не перезапускается, когда другая его вкладка зависла:\n'
+                   'раньше перезапуск убивал и вкладку на подписании, а слот брал следующую строку. Chromium, процесс\n'
+                   'которого уже завершился, по-прежнему перезапускается.\n'
+                   'Маркеры: REGION_FIELD_1591R55, STALE_AUTO_1591R55, AI_STATUS_1591R55, GUARD_BROWSER_1591R55.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -5027,6 +5213,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if SUCCESS_PAGE_MARKER in source:
+        return 55
     if AUTO_TOOLS_MARKER in source:
         return 54
     if CONTACT_PHONE_MARKER in source:
@@ -5122,6 +5310,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 52 or CLEAR_SAFE_MARKER in source)\
             and (MAX_REVISION < 53 or CONTACT_PHONE_MARKER in source)\
             and (MAX_REVISION < 54 or AUTO_TOOLS_MARKER in source)\
+            and (MAX_REVISION < 55 or SUCCESS_PAGE_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -6127,6 +6316,25 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 56 (r55). The success page: region by caption, stale auto jobs closed at start, statuses with DeepSeek off.
+    if SUCCESS_PAGE_MARKER not in source and MAX_REVISION >= 55:
+        for old, new, what in ((OLD_REGION_CAND_R55, NEW_REGION_CAND_R55, "success page: region by caption"),
+                               (OLD_STALE_DEF_R55, NEW_STALE_DEF_R55, "success page: stale auto jobs helper"),
+                               (OLD_STALE_CALL_R55, NEW_STALE_CALL_R55, "success page: stale auto jobs at start"),
+                               *((o, n, "success page: status with DeepSeek off") for o, n in AI_STATUS_R55),
+                               *((o, n, "success page: no browser restart over a signing tab") for o, n in GUARD_BROWSER_R55)):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -6236,6 +6444,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 52", README_NOTE_R52),) if built_revision >= 52 else ()),
                           *((("РЕВИЗИЯ 53", README_NOTE_R53),) if built_revision >= 53 else ()),
                           *((("РЕВИЗИЯ 54", README_NOTE_R54),) if built_revision >= 54 else ()),
+                          *((("РЕВИЗИЯ 55", README_NOTE_R55),) if built_revision >= 55 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
