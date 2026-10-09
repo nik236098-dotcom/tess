@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 53 лежит в `beeline_integrated_io_15_91_r53/`; рядом
-`beeline_integrated_io_15_91_r53_lite/` — та же ревизия 53 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 54 лежит в `beeline_integrated_io_15_91_r54/`; рядом
+`beeline_integrated_io_15_91_r54_lite/` — та же ревизия 54 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r53
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r54
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r53_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r54_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -462,6 +462,16 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    `text.split()[0]`; у документа, стикера или фото текст пустой, ошибка роняла обработку, контроллер повторял одно
    и то же сообщение каждые 3 с без конца («[CTRL RX] … list index out of range»), и бот молчал. Контроллер r50–r51
    принят установщиком как исходник. Маркер: `CLEAR_SAFE_1591R52`.
+
+57. **Поле контактного телефона в корзине (ревизия 53).** Placeholder поля сменился на «+7»; поле ищется по
+   `id=phone-input` и по старому placeholder, скрытые копии формы не выбираются. Маркер: `CONTACT_PHONE_FIELD_1591R53`.
+
+58. **DeepSeek в автозадании получает инструменты ввода (ревизия 54).** Текст автозадания просит «найди причину и
+   исправь её» на странице, а проверка «просьба изменить код» видела слово «исправь» и отдавала набор для правки
+   кода без `browser_fill`/`browser_click`. DeepSeek видел пустую область и контактный номер, но ввести их не мог и
+   присылал «🔧 DeepSeek подготовил фикс» с кандидатом правки вместо заполнения поля. Автозадание
+   `[AUTO_*_ASSIST]` больше не считается правкой кода; просьбы пользователя «/op исправь код …» идут как раньше.
+   Контроллер r52–r53 принят установщиком как исходник. Маркер: `AUTO_TOOLS_1591R54`.
 
 ## Использование
 

@@ -136,7 +136,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "ab50bf0d0987d25005f469ae606ee1ed91f9b7a9f81bfba26a6e5ba5aedcc8ef",  # r52 exp8 output
                          "01e027e9ef8c9bb9b50306e94c2a94904454afebb718f945a9cd1f8f9ef9ad2b",  # r53 lite output
                          "2c7e6633bcb373ad787d57944fdd9514bce121420d5173b3af41cafe570b5b99",  # r53 output
-                         "9cda561640d602f6f96671ed08fe3fccdf48d79321d38927f991f25153105ae7"}  # r53 exp8 output
+                         "9cda561640d602f6f96671ed08fe3fccdf48d79321d38927f991f25153105ae7",  # r53 exp8 output
+                         "3e0b9e6fb9d42a3087c0bdd36390ada326297e6db5e929fc38237bffa87f0157",  # r54 lite output
+                         "d85696cf3ec4ed306145280995a30aeea132ebc326f52f84c6610ae6290de499",  # r54 output
+                         "c99e25aec5b4818b37bd63c76600738d7b4395167bc90d9bb3b5bded781084a3"}  # r54 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -684,7 +687,8 @@ CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13
                             "d561621ddacaa0c4e602a5da75842207a9b76f563f2d26202e75e9e7eeb6012b",  # controller of r38..r45 (menu)
                             "c700c997e758c55001e598e10b0386cd009bc7def04b89ee234aacda704484cd",  # controller of r46..r47 (/op)
                             "b008baad1551e6574389743c1b2810a39f03e198a5af4c3a823fe4296386c25c",  # controller of r48..r49 (BEELINE_AI)
-                            "738c0f281ac6e59b6b0a62f07fc27217a73e817b45ceb9b93e1e681c00e21a4b"}  # controller of r50..r51 (/clear)
+                            "738c0f281ac6e59b6b0a62f07fc27217a73e817b45ceb9b93e1e681c00e21a4b",  # controller of r50..r51 (/clear)
+                            "ab1c4088f714471f480dbe29af0e2359ad189850e386d2f53058082acf4162ae"}  # controller of r52..r54
 RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
 RESTART_POLICY_FILE_NAME = "restart_policy.json"
 RESTART_DRAIN_FILE_NAME = "restart_drain.json"
@@ -4158,6 +4162,30 @@ README_NOTE_R53 = ('\n\nРЕВИЗИЯ 53 (fix_package_1591.py)\n'
                   'не выбираются; при нескольких видимых совпадениях сохраняется строгая проверка Playwright.\n'
                   'Маркер: CONTACT_PHONE_FIELD_1591R53.\n')
 
+# Revision 54: the auto jobs get the live tool set. The job text asks DeepSeek to «найди причину и
+# исправь её» on the page; _explicit_code_change_request matched «исправь» and the code tool set
+# (read-only + candidate files, no browser_fill) won over the live one. DeepSeek then saw an empty
+# region and contact number, could not type, and answered «🔧 DeepSeek подготовил фикс» with a
+# candidate patch instead (tab 3, row 605). An [AUTO_*_ASSIST] job is never a code change request.
+AUTO_TOOLS_MARKER = "AUTO_TOOLS_1591R54"
+OLD_CODE_REQ_R54 = ('def _explicit_code_change_request(text):\n'
+                    '    low = str(text or "").lower().strip()\n'
+                    '    if not low:\n'
+                    '        return False\n')
+NEW_CODE_REQ_R54 = ('def _explicit_code_change_request(text):\n'
+                    '    low = str(text or "").lower().strip()\n'
+                    '    if not low:\n'
+                    '        return False\n'
+                    '    # AUTO_TOOLS_1591R54: an auto job asks to «исправь» the page, not the code; the code tool set has no\n'
+                    '    # browser_fill and DeepSeek answered with a candidate patch instead of typing the empty field.\n'
+                    '    if low.startswith(("[auto_success_assist", "[auto_error_assist")):\n'
+                    '        return False\n')
+README_NOTE_R54 = ('\n\nРЕВИЗИЯ 54 (fix_package_1591.py)\nDeepSeek в автозадании получает инструменты ввода. Текст автозадания просит «найди причину и исправь\n'
+                   'её» на странице, а проверка «просьба изменить код» видела слово «исправь» и выдавала набор для правки\n'
+                   'кода без browser_fill/browser_click. DeepSeek видел пустую область и контактный номер, но ввести не мог и\n'
+                   'присылал «🔧 DeepSeek подготовил фикс» вместо заполнения. Автозадание [AUTO_*_ASSIST] больше не считается\n'
+                   'правкой кода. Маркер: AUTO_TOOLS_1591R54.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -4999,6 +5027,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if AUTO_TOOLS_MARKER in source:
+        return 54
     if CONTACT_PHONE_MARKER in source:
         return 53
     if CLEAR_SAFE_MARKER in source:
@@ -5091,6 +5121,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 51 or PAYMENT_STRICT_MARKER in source)\
             and (MAX_REVISION < 52 or CLEAR_SAFE_MARKER in source)\
             and (MAX_REVISION < 53 or CONTACT_PHONE_MARKER in source)\
+            and (MAX_REVISION < 54 or AUTO_TOOLS_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -6081,6 +6112,21 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit("edits.json: contact phone entry not found")
 
+    # 55 (r54). An auto job is never a code change request: it gets the live tool set.
+    if AUTO_TOOLS_MARKER not in source and MAX_REVISION >= 54:
+        for old, new, what in ((OLD_CODE_REQ_R54, NEW_CODE_REQ_R54, "auto jobs: live tools"),):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -6189,6 +6235,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 51", README_NOTE_R51),) if built_revision >= 51 else ()),
                           *((("РЕВИЗИЯ 52", README_NOTE_R52),) if built_revision >= 52 else ()),
                           *((("РЕВИЗИЯ 53", README_NOTE_R53),) if built_revision >= 53 else ()),
+                          *((("РЕВИЗИЯ 54", README_NOTE_R54),) if built_revision >= 54 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
