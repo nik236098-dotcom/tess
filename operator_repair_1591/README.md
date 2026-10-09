@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 55 лежит в `beeline_integrated_io_15_91_r55/`; рядом
-`beeline_integrated_io_15_91_r55_lite/` — та же ревизия 55 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 56 лежит в `beeline_integrated_io_15_91_r56/`; рядом
+`beeline_integrated_io_15_91_r56_lite/` — та же ревизия 56 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r55
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r56
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r55_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r56_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -484,6 +484,12 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    убивал и вкладку на подписании, а слот брал следующую строку (вкладка 6, DeepSeek как раз вписал область).
    Chromium, процесс которого уже завершился, по-прежнему перезапускается. Маркеры: `REGION_FIELD_1591R55`,
    `STALE_AUTO_1591R55`, `AI_STATUS_1591R55`, `GUARD_BROWSER_1591R55`.
+
+60. **DeepSeek не пишет отчёты (ревизия 56).** Автозадания и системная подсказка требовали подробный мини-отчёт
+   после каждого вмешательства: 7 пунктов, пример формата, URL. Это тратило токены на каждом задании, а сами
+   правила уходили с каждым запросом. Строку VERDICT бот никогда не читал, хотя подсказка утверждала обратное.
+   Теперь ответ на автозадание — одна короткая строка: что поставил (поле = значение) и VERDICT.
+   Маркер: `SHORT_REPORT_1591R56`.
 
 ## Использование
 

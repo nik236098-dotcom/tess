@@ -142,7 +142,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "c99e25aec5b4818b37bd63c76600738d7b4395167bc90d9bb3b5bded781084a3",  # r54 exp8 output
                          "3c774fb6f0987b24311f081c6a3eed057b888d9bf3cdc51fca9d80b96424f090",  # r55 lite output
                          "6645fa2454ff34c0a1d4f8d977490307d91a4cff8f9c7d745289cac41db3f151",  # r55 output
-                         "1693ccaa9bbb671b5d7d1efd3c10a3826e3c2228674109c68e22a5fcf0a5d752"}  # r55 exp8 output
+                         "1693ccaa9bbb671b5d7d1efd3c10a3826e3c2228674109c68e22a5fcf0a5d752",  # r55 exp8 output
+                         "5e2e8e59ebd81dcc07c1f3bd8261a571306cec2df192e906ae41cee6ec050368",  # r56 lite output
+                         "d583db4fc8115f85ed7ff71a7191597972d8749c79372b1489ab6b1d1f520583",  # r56 output
+                         "09d64476b286c2e5abe00d108c75b1782a503069aec05c2c69b8e5e6ad062447"}  # r56 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -4372,6 +4375,60 @@ README_NOTE_R55 = ('\n\nРЕВИЗИЯ 55 (fix_package_1591.py)\nТри испр
                    'которого уже завершился, по-прежнему перезапускается.\n'
                    'Маркеры: REGION_FIELD_1591R55, STALE_AUTO_1591R55, AI_STATUS_1591R55, GUARD_BROWSER_1591R55.\n')
 
+# Revision 56: DeepSeek no longer writes reports. The auto jobs and the system prompt demanded a
+# detailed mini-report after every intervention (7 points, an example, the URL), sent to Telegram;
+# it cost output tokens on every job and input tokens on every request (the rules travel in the
+# system prompt). The runtime never parsed the VERDICT line (the prompt said it did). The answer to
+# an auto job is now ONE short line: what was set (field = value) and the VERDICT.
+SHORT_REPORT_MARKER = "SHORT_REPORT_1591R56"
+SHORT_REPORT_LINES_R56 = (
+    ('        "В конце ОБЯЗАТЕЛЬНО отправь пользователю короткий мини-отчёт: что было не так; "\n'
+     '        "что ты изменил; какие значения поставил; стала ли кнопка активна; нажал ли её; "\n'
+     '        "чем закончилось подписание; на каком URL/экране осталась вкладка. "\n'
+     '        "Пример формата: «Не был указан город, поэтому подтверждение договора не проходило. "\n'
+     '        "Поставил город — Саратов. Кнопка стала активна, нажал “Подписать договор”. "\n'
+     '        "Подписание прошло успешно. Вкладка осталась на …». "\n',
+     '        "ОТЧЁТ НЕ ПИШИ (SHORT_REPORT_1591R56): весь ответ — ОДНА короткая строка: что поставил "\n'
+     '        "(поле = значение) или «ничего не менял», затем VERDICT. "\n'),
+    ('        "ПОСЛЕДНЯЯ СТРОКА ОТЧЁТА СТРОГО одна из: «VERDICT: SIGNED» (checksignature 200 или экран после "\n',
+     '        "VERDICT строго одно из: «VERDICT: SIGNED» (checksignature 200 или экран после "\n'),
+    ('        "странице. Затем ОБЯЗАТЕЛЬНО отправь мини-отчёт: причина, что проверил, что "\n'
+     '        "попробовал, результат, URL. Сразу после твоего отчёта runtime автоматически, без "\n',
+     '        "странице. Отчёт не пиши (SHORT_REPORT_1591R56): ответь ОДНОЙ короткой строкой — причина. "\n'
+     '        "Сразу после твоего ответа runtime автоматически, без "\n'),
+    ('- Последняя строка каждого отчёта SUCCESS SUPERVISOR СТРОГО одна из: «VERDICT: SIGNED»,\n'
+     '  «VERDICT: PAYMENT» (экран «пора оплатить eSIM»), «VERDICT: NOT_SIGNED — причина».\n'
+     '  Runtime читает эту строку: SIGNED фиксирует успех, PAYMENT — шаг оплаты, NOT_SIGNED —\n'
+     '  вкладка удерживается и уходит на проверку пользователю.\n',
+     '- Ответ на автозадание SUCCESS SUPERVISOR — ОДНА короткая строка: что изменил (поле = значение)\n'
+     '  и VERDICT: «VERDICT: SIGNED», «VERDICT: PAYMENT» (экран «пора оплатить eSIM») или\n'
+     '  «VERDICT: NOT_SIGNED — причина». Подробных отчётов не пиши (SHORT_REPORT_1591R56).\n'),
+    ('- После каждого автономного вмешательства ОБЯЗАТЕЛЬНО дай пользователю мини-отчёт:\n'
+     '  (1) что мешало; (2) что изменил; (3) конкретные поставленные значения;\n'
+     '  (4) состояние кнопки; (5) нажал ли «Подписать договор»; (6) результат;\n'
+     '  (7) текущий URL/экран. Не пиши абстрактно «исправил» — перечисляй фактические действия.\n',
+     '- Мини-отчётов после вмешательства не пиши: только одна строка итога (см. выше).\n'),
+)
+SHORT_REPORT_LINES_R56 += (
+    ('        "варианты — тогда перечисли их в отчёте. "\n',
+     '        "варианты — тогда перечисли их в ответе одной строкой. "\n'),
+    ('        "registration/error открыта; проанализируй DOM/console/network и отправь отчёт",\n',
+     '        "registration/error открыта; проанализируй DOM/console/network",\n'),
+)
+# Sentences inside the one-line mission constants: the whole line is rewritten at build time.
+SHORT_REPORT_SENTENCES_R56 = (
+    ("После автономного вмешательства отправляй краткий фактический отчёт: блокер, проверки, "
+     "изменения/значения, состояние действия, результат и текущий URL.",
+     "После автономного вмешательства отчёт не пиши: одна короткая строка с изменёнными значениями."),
+    ("После вмешательства отправляй фактический мини-отчёт: блокер, что проверил, что именно изменил "
+     "и на какие значения, состояние кнопки подписания, действие/результат и финальный URL.",
+     "После вмешательства отчёт не пиши: одна короткая строка — что изменил и VERDICT."),
+)
+README_NOTE_R56 = ('\n\nРЕВИЗИЯ 56 (fix_package_1591.py)\nDeepSeek больше не пишет отчёты. Автозадания и системная подсказка требовали подробный мини-отчёт\n'
+                   'после каждого вмешательства (7 пунктов, пример, URL); это тратило токены на каждом задании, а правила\n'
+                   'уходили с каждым запросом. Строку VERDICT бот никогда не читал. Теперь ответ на автозадание — одна\n'
+                   'короткая строка: что поставил (поле = значение) и VERDICT. Маркер: SHORT_REPORT_1591R56.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -5213,6 +5270,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if SHORT_REPORT_MARKER in source:
+        return 56
     if SUCCESS_PAGE_MARKER in source:
         return 55
     if AUTO_TOOLS_MARKER in source:
@@ -5311,6 +5370,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 53 or CONTACT_PHONE_MARKER in source)\
             and (MAX_REVISION < 54 or AUTO_TOOLS_MARKER in source)\
             and (MAX_REVISION < 55 or SUCCESS_PAGE_MARKER in source)\
+            and (MAX_REVISION < 56 or SHORT_REPORT_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -6335,6 +6395,33 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 57 (r56). No DeepSeek reports: one short line instead.
+    if SHORT_REPORT_MARKER not in source and MAX_REVISION >= 56:
+        pairs = []
+        for old_block, new_block in SHORT_REPORT_LINES_R56:
+            # line by line: a single line never cuts through an earlier edit of edits.json
+            old_lines = old_block.splitlines(keepends=True)
+            pairs.append((old_lines[0], new_block))
+            pairs.extend((line, "") for line in old_lines[1:])
+        for old_sent, new_sent in SHORT_REPORT_SENTENCES_R56:
+            lines = [l for l in new_source.splitlines(keepends=True) if old_sent in l]
+            if len(lines) != 1:
+                raise SystemExit(f"short report: {len(lines)} lines carry {old_sent[:40]!r}")
+            pairs.append((lines[0], lines[0].replace(old_sent, new_sent, 1)))
+        for old, new in pairs:
+            what = "short report: " + old.strip()[:40]
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -6445,6 +6532,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 53", README_NOTE_R53),) if built_revision >= 53 else ()),
                           *((("РЕВИЗИЯ 54", README_NOTE_R54),) if built_revision >= 54 else ()),
                           *((("РЕВИЗИЯ 55", README_NOTE_R55),) if built_revision >= 55 else ()),
+                          *((("РЕВИЗИЯ 56", README_NOTE_R56),) if built_revision >= 56 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
