@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 65 лежит в `beeline_integrated_io_15_91_r65/`; рядом
-`beeline_integrated_io_15_91_r65_lite/` — та же ревизия 65 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 66 лежит в `beeline_integrated_io_15_91_r66/`; рядом
+`beeline_integrated_io_15_91_r66_lite/` — та же ревизия 66 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r65
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r66
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r65_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r66_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -579,6 +579,12 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    снова — бесконечные «⚙️ Применено: тариф …». Теперь перезапуск идёт из `tick()` через пару секунд, когда кнопка
    уже отмечена, а если выбранное значение уже стоит в окружении службы — «✅ Уже стоит», без перезапуска.
    Маркер: `SETTING_RESTART_1591R65`.
+
+69. **eSIM старше 5 дней уходят из списка сами (ревизия 66, только меню).** «📱 Мои eSIM» показывает eSIM за последние
+   5 дней (`ESIM_KEEP_DAYS` в `telegram_menu.py`); старые не входят в счётчики «Ждут оплаты / Готово», в выгрузку и
+   проверку ссылок. Файлы результатов (`payment_required.jsonl`, `successful_sims.jsonl`) на сервере не меняются;
+   запись без времени остаётся в списке. «↩️ Вернуть удалённые» считает только то, что ещё может вернуть.
+   Маркер: `AUTO_EXPIRE_1591R66`.
 
 ## Использование
 

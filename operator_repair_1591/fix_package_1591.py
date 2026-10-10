@@ -171,7 +171,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "ea4aaaa8157252598256a9bd397970456eb7a349ecd09abc491e05826427a0d6",  # r64 exp8 output
                          "516921257f41362a6179514e22b29e4ca2be3b3d889fc8a5f64f8daad4516247",  # r65 lite output
                          "c9b8c5f977cf171e809668cee372f1d1a29819ab84a85c8ff7441891ac672770",  # r65 output
-                         "31af9d9eceeb010627922c94a228fe2ce4df4d0091251a9301763822aded203a"}  # r65 exp8 output
+                         "31af9d9eceeb010627922c94a228fe2ce4df4d0091251a9301763822aded203a",  # r65 exp8 output
+                         "2acb9788c8ca15faf5964b156551a64aa5d52302fb139547b699914902c00e7c",  # r66 lite output
+                         "32176b20666a07c335720ba68ec72bfd12ca004509e24333386c49bc4deff50a",  # r66 output
+                         "f8d6f305e207cc35d2ef37215d76c5fa904642bc82ce8270c891dc28af0a6568"}  # r66 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -5004,6 +5007,15 @@ README_NOTE_R65 = ('\n\nРЕВИЗИЯ 65 (fix_package_1591.py)\nТолько м
                    'запуска Telegram присылал ту же кнопку снова. Теперь перезапуск идёт через пару секунд, когда кнопка уже\n'
                    'отмечена, а если выбранное значение уже стоит — перезапуска нет. Маркер: SETTING_RESTART_1591R65.\n')
 
+# Revision 66: the menu only. eSIMs made more than 5 days ago leave «Мои eSIM» (and the counters, export, link
+# checks) by themselves; the result files on the server stay.
+AUTO_EXPIRE_MARKER = "AUTO_EXPIRE_1591R66"
+OLD_AUTO_EXPIRE_MARK_R66 = NEW_SETTING_RESTART_MARK_R65.splitlines(keepends=True)[-1]
+NEW_AUTO_EXPIRE_MARK_R66 = (OLD_AUTO_EXPIRE_MARK_R66
+                            + '# AUTO_EXPIRE_1591R66: «Мои eSIM» keeps the last 5 days; older eSIMs leave the list by themselves.\n')
+README_NOTE_R66 = ('\n\nРЕВИЗИЯ 66 (fix_package_1591.py)\nТолько меню. eSIM старше 5 дней сами уходят из «📱 Мои eSIM», из счётчиков «Ждут оплаты / Готово»,\n'
+                   'из выгрузки и проверки ссылок. Файлы результатов на сервере остаются. Маркер: AUTO_EXPIRE_1591R66.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -5845,6 +5857,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if AUTO_EXPIRE_MARKER in source:
+        return 66
     if SETTING_RESTART_MARKER in source:
         return 65
     if BASE_TOOLS_MARKER in source:
@@ -5970,6 +5984,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 62 or ESIM_ISSUED_MARKER in source)\
             and (MAX_REVISION < 64 or BASE_TOOLS_MARKER in source)\
             and (MAX_REVISION < 65 or SETTING_RESTART_MARKER in source)\
+            and (MAX_REVISION < 66 or AUTO_EXPIRE_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -7252,6 +7267,29 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 67 (r66). The menu only: eSIMs older than 5 days leave «Мои eSIM».
+    if AUTO_EXPIRE_MARKER not in source and MAX_REVISION >= 66:
+        old, new, what = OLD_AUTO_EXPIRE_MARK_R66, NEW_AUTO_EXPIRE_MARK_R66, "auto expire: marker"
+        new_source = replace_once(new_source, old, new, what)
+        if old in source:
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        else:
+            for change in edits["test_beeline.py"]:
+                joined = "".join(change["replacement"])
+                if old in joined:
+                    change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                    break
+            else:
+                raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if AUTO_EXPIRE_MARKER not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 66 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -7371,6 +7409,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 62", README_NOTE_R62),) if built_revision >= 62 else ()),
                           *((("РЕВИЗИЯ 64", README_NOTE_R64),) if built_revision >= 64 else ()),
                           *((("РЕВИЗИЯ 65", README_NOTE_R65),) if built_revision >= 65 else ()),
+                          *((("РЕВИЗИЯ 66", README_NOTE_R66),) if built_revision >= 66 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
