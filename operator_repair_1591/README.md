@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 61 лежит в `beeline_integrated_io_15_91_r61/`; рядом
-`beeline_integrated_io_15_91_r61_lite/` — та же ревизия 61 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 62 лежит в `beeline_integrated_io_15_91_r62/`; рядом
+`beeline_integrated_io_15_91_r62_lite/` — та же ревизия 62 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r61
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r62
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r61_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r62_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -552,6 +552,11 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    сегодня»; кнопки: 📱 Мои eSIM / 📤 Выгрузка, 📥 Загрузить базу / 📜 Логи, 🖥 Сервер / ⚙️ Настройки, 🤖 Спросить
    DeepSeek / ▶️ Запустить, ⏹ Остановить / 🔄 Перезапуск / 📊 Статус, 🔄 Обновить статус / ⬆️ Обновить бота.
    Маркер: `EXPORT_CARDS_1591R61`.
+
+66. **ESIM_SUCCESS — eSIM уже выпущена (ревизия 62, только меню).** Проверка ссылки ставила ⛔ «не работает» заказу со
+   статусом сайта `selfregStatus=ESIM_SUCCESS` («срок установки eSIM истёк»), когда страница уходила на /error или
+   отвечала 4xx: эта проверка шла раньше статуса сайта. Теперь ESIM_SUCCESS всегда ✅ «eSIM уже выпущена», а
+   сохранённые ⛔ таких eSIM исправляются при запуске бота. Маркер: `ESIM_ISSUED_1591R62`.
 
 ## Использование
 

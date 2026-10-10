@@ -160,7 +160,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "93d993ccde788d83ed11f037075de1dcd05bbcfd21094fa35ec1d501ac16f538",  # r60 exp8 output
                          "216c3226f11efe4ffddeebc3b025943d9b7e073597b69d21876cf8eb3535803a",  # r61 lite output
                          "f825f27874a025b8b47918a8ed78e6ee8183cc54c8e1c2171b098963934e538f",  # r61 output
-                         "c33cdb04fe32344c93678a69e354fb7795d1d9acff1b34a7122e4e0ef4fcd7f4"}  # r61 exp8 output
+                         "c33cdb04fe32344c93678a69e354fb7795d1d9acff1b34a7122e4e0ef4fcd7f4",  # r61 exp8 output
+                         "995b045e6ecdf18c6cb8ffda39faf83114f78baab085d8af8897cdc91e861fba",  # r62 lite output
+                         "dc8975d6c6c7fab9045d29f17e61bbfec099c4cefadb1187d967f529f4c02f4e",  # r62 output
+                         "f54a72b3df9340bc1d1638d49088e8152b978c5394f06030883450811aa643b1"}  # r62 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -4701,6 +4704,16 @@ README_NOTE_R61 = ('\n\nРЕВИЗИЯ 61 (fix_package_1591.py)\nТолько м
                    'Меню переставлено по рисунку: 📱 Мои eSIM сверху, ▶️ ⏹ 🔄 и 📊 Статус ниже, ⬆️ Обновить бота внизу.\n'
                    'Маркер: EXPORT_CARDS_1591R61.\n')
 
+# Revision 62: the menu only. selfregStatus ESIM_SUCCESS («срок установки eSIM истёк») is an eSIM already issued:
+# ✅ «eSIM уже выпущена» even when the page lands on /error or answers 4xx; saved ⛔ results of it are corrected.
+ESIM_ISSUED_MARKER = "ESIM_ISSUED_1591R62"
+OLD_ESIM_ISSUED_MARK_R62 = '# EXPORT_CARDS_1591R61: «Мои eSIM» as in r59 with the status icons, export refresh as the export.\n'
+NEW_ESIM_ISSUED_MARK_R62 = ('# EXPORT_CARDS_1591R61: «Мои eSIM» as in r59 with the status icons, export refresh as the export.\n'
+                            '# ESIM_ISSUED_1591R62: the link check takes selfregStatus ESIM_SUCCESS for an issued eSIM (✅).\n')
+README_NOTE_R62 = ('\n\nРЕВИЗИЯ 62 (fix_package_1591.py)\nТолько меню. Проверка ссылки: selfregStatus=ESIM_SUCCESS («срок установки eSIM истёк») —\n'
+                   'это уже выпущенная eSIM: ✅ «eSIM уже выпущена», даже если страница ушла на /error или ответила 4xx. Старые\n'
+                   'результаты проверки с ⛔ для таких eSIM исправляются при запуске бота. Маркер: ESIM_ISSUED_1591R62.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -5542,6 +5555,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if ESIM_ISSUED_MARKER in source:
+        return 62
     if EXPORT_CARDS_MARKER in source:
         return 61
     if BOT_TOOLS_MARKER in source:
@@ -5658,6 +5673,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 59 or LINK_STATUS_MARKER in source)\
             and (MAX_REVISION < 60 or BOT_TOOLS_MARKER in source)\
             and (MAX_REVISION < 61 or EXPORT_CARDS_MARKER in source)\
+            and (MAX_REVISION < 62 or ESIM_ISSUED_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -6850,6 +6866,29 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 63 (r62). The menu only: ESIM_SUCCESS is an issued eSIM (✅), not a dead link.
+    if ESIM_ISSUED_MARKER not in source and MAX_REVISION >= 62:
+        old, new, what = OLD_ESIM_ISSUED_MARK_R62, NEW_ESIM_ISSUED_MARK_R62, "esim issued: marker"
+        new_source = replace_once(new_source, old, new, what)
+        if old in source:
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        else:
+            for change in edits["test_beeline.py"]:
+                joined = "".join(change["replacement"])
+                if old in joined:
+                    change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                    break
+            else:
+                raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if ESIM_ISSUED_MARKER not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 62 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -6966,6 +7005,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 59", README_NOTE_R59),) if built_revision >= 59 else ()),
                           *((("РЕВИЗИЯ 60", README_NOTE_R60),) if built_revision >= 60 else ()),
                           *((("РЕВИЗИЯ 61", README_NOTE_R61),) if built_revision >= 61 else ()),
+                          *((("РЕВИЗИЯ 62", README_NOTE_R62),) if built_revision >= 62 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
