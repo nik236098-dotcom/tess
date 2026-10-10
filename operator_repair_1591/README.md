@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 57 лежит в `beeline_integrated_io_15_91_r57/`; рядом
-`beeline_integrated_io_15_91_r57_lite/` — та же ревизия 57 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 58 лежит в `beeline_integrated_io_15_91_r58/`; рядом
+`beeline_integrated_io_15_91_r58_lite/` — та же ревизия 58 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r57
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r58
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r57_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r58_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -504,6 +504,14 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    В «Мои eSIM» кнопки 🗑: в карточке одна eSIM, в списке «удалить ✅ и ❌» и «удалить все» с подтверждением;
    eSIM пропадает из списка, файлы результатов на сервере остаются. В меню строка «📅 Новых eSIM за сегодня».
    Маркеры: `QUIET_AUTO_1591R57`, `QUIET_ERRORS_1591R57`, `MENU_DELETE_1591R57`.
+
+62. **Проверка ссылок и безопасное удаление (ревизия 58).** В «Мои eSIM» кнопка «🔗 Проверить ссылки» открывает
+   каждую ссылку заказа в отдельном невидимом Chromium, ничего не нажимая, и отмечает её: ❌ не работает, 💳 ждёт
+   оплаты, ✅ оплачена/готова, ❔ непонятно (со словами самой страницы и статусом из ответа сайта). Пока идёт проверка,
+   экран показывает ход и обновляется сам; итог виден в списке (🔗❌ у номера) и в карточке eSIM, хранится в
+   `link_check.json`. «🗑 Удалить ✅ и ❌» теперь спрашивает подтверждение, «↩️ Вернуть удалённые» возвращает скрытые
+   eSIM, каждое удаление пишется в журнал с именем того, кто нажал. Маркеры: `LINK_CHECK_1591R58`,
+   `MENU_SAFE_DELETE_1591R58`.
 
 ## Использование
 

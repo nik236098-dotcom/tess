@@ -148,7 +148,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "09d64476b286c2e5abe00d108c75b1782a503069aec05c2c69b8e5e6ad062447",  # r56 exp8 output
                          "fb306c7114479fcbbdd42aa6353e8fde7c75c08f5b91a7d1b6092749a04d7e7b",  # r57 lite output
                          "d680e48b2bb236d504ac8b5ab9222307051e1b2de0416cbf066bb0d2c921a5ee",  # r57 output
-                         "cd1d831520b17257409fde5abc0d3bcf773cdc7009a6b1b9990b8ff22da12f05"}  # r57 exp8 output
+                         "cd1d831520b17257409fde5abc0d3bcf773cdc7009a6b1b9990b8ff22da12f05",  # r57 exp8 output
+                         "660185c602a07efeb3dceaf577f0c0c05524fe5d304c284d09b3d57502891faa",  # r58 lite output
+                         "83efdd02f9a9ed2d80e22af45bab6264ad84c65e63adafe3a902fb2f0178abd0",  # r58 output
+                         "fd8d77257aec208ff2a2a83fe8e8ba8a957db8b20f7b40636b97f1f8b59a0b45"}  # r58 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -4608,6 +4611,22 @@ README_NOTE_R57 = ('\n\nРЕВИЗИЯ 57 (fix_package_1591.py)\nDeepSeek мол
                    'eSIM из списка, файлы результатов остаются; в меню строка «Новых eSIM за сегодня».\n'
                    'Маркеры: QUIET_AUTO_1591R57, QUIET_ERRORS_1591R57, MENU_DELETE_1591R57.\n')
 
+# Revision 58: the menu checks the order links and deletes only after a confirmation. «🔗 Проверить
+# ссылки» in «Мои eSIM» opens every order link in its own headless Chromium (read-only) and marks it
+# ❌ / 💳 / ✅ / ❔; «🗑 Удалить ✅ и ❌» asks first (42 eSIMs of a colleague's bot vanished on one
+# tap), «↩️ Вернуть удалённые» brings them back, and every deleting press goes to the journal with
+# the Telegram name of who pressed it. The runtime only carries the marker; the menu module ships.
+LINK_CHECK_MARKER = "LINK_CHECK_1591R58"
+OLD_LINK_MARK_R58 = 'SUCCESS_PROFILE_FIELDS = [\n'
+NEW_LINK_MARK_R58 = ('# LINK_CHECK_1591R58: «🔗 Проверить ссылки», the confirmation of «🗑 Удалить ✅ и ❌» and «↩️ Вернуть\n'
+                     '# удалённые» live in telegram_menu.py; the menu reads these fields for the eSIM card.\n'
+                     'SUCCESS_PROFILE_FIELDS = [\n')
+README_NOTE_R58 = ('\n\nРЕВИЗИЯ 58 (fix_package_1591.py)\nПроверка ссылок и безопасное удаление в меню. В «Мои eSIM» кнопка «🔗 Проверить ссылки»\n'
+                   'открывает каждую ссылку заказа в отдельном невидимом Chromium (ничего не нажимает) и отмечает её: ❌ не\n'
+                   'работает, 💳 ждёт оплаты, ✅ оплачена/готова, ❔ непонятно (со словами самой страницы). «🗑 Удалить ✅ и ❌»\n'
+                   'теперь спрашивает подтверждение, «↩️ Вернуть удалённые» возвращает скрытые eSIM, а каждое удаление\n'
+                   'пишется в журнал с именем того, кто нажал. Маркеры: LINK_CHECK_1591R58, MENU_SAFE_DELETE_1591R58.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -5449,6 +5468,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if LINK_CHECK_MARKER in source:
+        return 58
     if QUIET_AUTO_MARKER in source:
         return 57
     if SHORT_REPORT_MARKER in source:
@@ -5553,6 +5574,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 55 or SUCCESS_PAGE_MARKER in source)\
             and (MAX_REVISION < 56 or SHORT_REPORT_MARKER in source)\
             and (MAX_REVISION < 57 or QUIET_AUTO_MARKER in source)\
+            and (MAX_REVISION < 58 or LINK_CHECK_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -6637,6 +6659,29 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 59 (r58). Link check and safe delete in the menu: the runtime carries the marker, the menu ships.
+    if LINK_CHECK_MARKER not in source and MAX_REVISION >= 58:
+        old, new, what = OLD_LINK_MARK_R58, NEW_LINK_MARK_R58, "link check: marker"
+        new_source = replace_once(new_source, old, new, what)
+        if old in source:
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        else:
+            for change in edits["test_beeline.py"]:
+                joined = "".join(change["replacement"])
+                if old in joined:
+                    change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                    break
+            else:
+                raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if LINK_CHECK_MARKER not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 58 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -6749,6 +6794,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 55", README_NOTE_R55),) if built_revision >= 55 else ()),
                           *((("РЕВИЗИЯ 56", README_NOTE_R56),) if built_revision >= 56 else ()),
                           *((("РЕВИЗИЯ 57", README_NOTE_R57),) if built_revision >= 57 else ()),
+                          *((("РЕВИЗИЯ 58", README_NOTE_R58),) if built_revision >= 58 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
