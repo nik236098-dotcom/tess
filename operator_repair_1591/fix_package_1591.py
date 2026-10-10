@@ -168,7 +168,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "a07b58b2410652947657d27bfb1a8e0ee3f4eeb0eef3122a3653e04a673998b2",  # r63 (published by hand)
                          "de45d56906a4e1a7377c293bc5ad59035d7cc863ffa73365595eb6f4d8171c7b",  # r64 lite output
                          "568d85096d121bf2bf5d972811654f2305aebe2a6e73bfac22703d0099529fb4",  # r64 output
-                         "ea4aaaa8157252598256a9bd397970456eb7a349ecd09abc491e05826427a0d6"}  # r64 exp8 output
+                         "ea4aaaa8157252598256a9bd397970456eb7a349ecd09abc491e05826427a0d6",  # r64 exp8 output
+                         "516921257f41362a6179514e22b29e4ca2be3b3d889fc8a5f64f8daad4516247",  # r65 lite output
+                         "c9b8c5f977cf171e809668cee372f1d1a29819ab84a85c8ff7441891ac672770",  # r65 output
+                         "31af9d9eceeb010627922c94a228fe2ce4df4d0091251a9301763822aded203a"}  # r65 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -4989,6 +4992,18 @@ README_NOTE_R64 = ('\n\nРЕВИЗИЯ 64 (fix_package_1591.py)\nКнопки «
                    '«🔢 Генерация»: первые 7 цифр (+7900111****, по одному в строке) → .txt со всеми 10 000 номерами.\n'
                    'Маркер: BASE_TOOLS_1591R64.\n')
 
+# Revision 65: the menu only. A setting restarted the bot from inside the button's handler, before the controller
+# saved the update offset; Telegram delivered the same button after the start and the bot restarted forever. The
+# restart now runs from tick() a moment later, and a value already in effect restarts nothing.
+SETTING_RESTART_MARKER = "SETTING_RESTART_1591R65"
+OLD_SETTING_RESTART_MARK_R65 = NEW_BASE_TOOLS_MARK_R64.splitlines(keepends=True)[-1]
+NEW_SETTING_RESTART_MARK_R65 = (OLD_SETTING_RESTART_MARK_R65
+                                + '# SETTING_RESTART_1591R65: «⚙️ Настройки» restart the bot once, after the button is acknowledged.\n')
+README_NOTE_R65 = ('\n\nРЕВИЗИЯ 65 (fix_package_1591.py)\nТолько меню. Смена тарифа (и браузеров, вкладок, DeepSeek) в «⚙️ Настройки» перезапускала бота\n'
+                   'бесконечно: перезапуск шёл прямо из обработки кнопки, бот не успевал отметить её обработанной, и после\n'
+                   'запуска Telegram присылал ту же кнопку снова. Теперь перезапуск идёт через пару секунд, когда кнопка уже\n'
+                   'отмечена, а если выбранное значение уже стоит — перезапуска нет. Маркер: SETTING_RESTART_1591R65.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -5830,6 +5845,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if SETTING_RESTART_MARKER in source:
+        return 65
     if BASE_TOOLS_MARKER in source:
         return 64
     if ESIM_ISSUED_MARKER in source:
@@ -5952,6 +5969,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 61 or EXPORT_CARDS_MARKER in source)\
             and (MAX_REVISION < 62 or ESIM_ISSUED_MARKER in source)\
             and (MAX_REVISION < 64 or BASE_TOOLS_MARKER in source)\
+            and (MAX_REVISION < 65 or SETTING_RESTART_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -7211,6 +7229,29 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 66 (r65). The menu only: a setting restarts the bot once, from tick().
+    if SETTING_RESTART_MARKER not in source and MAX_REVISION >= 65:
+        old, new, what = OLD_SETTING_RESTART_MARK_R65, NEW_SETTING_RESTART_MARK_R65, "setting restart: marker"
+        new_source = replace_once(new_source, old, new, what)
+        if old in source:
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        else:
+            for change in edits["test_beeline.py"]:
+                joined = "".join(change["replacement"])
+                if old in joined:
+                    change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                    break
+            else:
+                raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if SETTING_RESTART_MARKER not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 65 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -7329,6 +7370,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 61", README_NOTE_R61),) if built_revision >= 61 else ()),
                           *((("РЕВИЗИЯ 62", README_NOTE_R62),) if built_revision >= 62 else ()),
                           *((("РЕВИЗИЯ 64", README_NOTE_R64),) if built_revision >= 64 else ()),
+                          *((("РЕВИЗИЯ 65", README_NOTE_R65),) if built_revision >= 65 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
