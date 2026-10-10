@@ -2925,6 +2925,16 @@ class FreshInstallTests(unittest.TestCase):
                 self.assertIn("CHECK OK", run.stdout); self.assertIn("ничего не менял", run.stdout)
                 self.assertEqual({p.name: p.read_bytes() for p in app.iterdir()}, before)
                 self.assertFalse((Path(d) / "bin").exists(), "no wrappers without root or BIN_DIR_FORCE")
+        with tempfile.TemporaryDirectory() as d:  # «⬆️ Обновить бота» runs it under systemd-run: no HOME, no REPO
+            app = Path(d) / "app"; app.mkdir()
+            for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "telegram_menu.py"):
+                shutil.copy(lite / name, app / name)
+            (app / "telegram_config.json").write_text(json.dumps({"token": "T", "chat_id": "C", "proxy": "socks5h://u:p@h:1"}))
+            env = {k: v for k, v in os.environ.items() if k not in ("HOME", "REPO", "SUDO_USER")}
+            env.update(APP_DIR=str(app), CHECK="1", NO_PULL="1")
+            run = subprocess.run(["bash", str(here / "update.sh")], env=env, capture_output=True, text=True, timeout=600)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertNotIn("unbound variable", run.stderr)
+            self.assertIn(f"Пакет: {lite.name}", run.stdout)
         with tempfile.TemporaryDirectory() as d:  # the short commands point at this clone and its tools
             app = Path(d) / "app"; app.mkdir()
             for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "telegram_menu.py"):

@@ -19,6 +19,8 @@
 #   sudo beeline-order                  — состояние последних заказов на сайте (tools/order_status.py)
 #   sudo beeline-links                  — ссылки заказов по строкам из журнала (tools/row_links.py)
 set -Eeuo pipefail
+# «⬆️ Обновить бота» запускает скрипт через systemd-run, а там нет HOME (git и поиск ~/tess его ждут).
+export HOME="${HOME:-/root}"
 
 APP_DIR="${APP_DIR:-/opt/beeline}"
 BRANCH="${BRANCH:-codex/operator-observer-15.87}"
