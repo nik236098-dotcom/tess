@@ -449,7 +449,7 @@ class ControllerTests(unittest.TestCase):
             ns={'os':os,'sys':sys,'json':json,'app':app,'_cfg':lambda:{'chat_id':'chat'},'_chat_id':lambda:'chat',
                 '_purge_control_messages_from_ai':lambda:None,'CLIENTS_FILE':Path(d)/'clients.txt',
                 'AutomationProcess':lambda:proc,'_load_offset':lambda:5,'_save_offset':lambda x:saves.append(x),
-                '_send':lambda *a:None,'_typing':lambda:None,'MENU_MARKUP':'{}','_restart_after_drain':lambda p:False,'_row_link_command':lambda a:'',
+                '_send':lambda *a:None,'_typing':lambda:None,'MENU_MARKUP':'{}','_restart_after_drain':lambda p:False,'_continue_appended_base':lambda p:False,'_row_link_command':lambda a:'',
                 '_menu_mod':types.SimpleNamespace(TelegramMenu=lambda *a,**k:types.SimpleNamespace(show_menu=lambda *a,**k:None,show_status=lambda:None,tick=lambda:None,handle_callback=lambda cb:None,text_is_for_ai=lambda:True,ai_sent=lambda:None,retire_status_messages=lambda *a:0,handle_text=lambda t:False,on_start=lambda:None)),'BASE_DIR':Path(d),
                 'BTN_START':'start','BTN_STOP':'stop','BTN_RESTART':'restart','BTN_UPLOAD':'upload',
                 'time':types.SimpleNamespace(sleep=lambda t:None if t==2 else (_ for _ in ()).throw(EndLoop()))}
