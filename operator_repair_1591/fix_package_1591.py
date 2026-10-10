@@ -154,7 +154,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "fd8d77257aec208ff2a2a83fe8e8ba8a957db8b20f7b40636b97f1f8b59a0b45",  # r58 exp8 output
                          "aefb7f0bab3bec46cc8d8c5c67103f00ab0e5dde0042c76e6632fcb8ac8c992b",  # r59 lite output
                          "6ea77c42ead267a71db4256d950aa6b203ac78ccb0ab790e33b552aeb634bece",  # r59 output
-                         "65d31f8ba6624c28f026a3dfb27ce968fd17d08349355b353b1a0b5d3826bc4e"}  # r59 exp8 output
+                         "65d31f8ba6624c28f026a3dfb27ce968fd17d08349355b353b1a0b5d3826bc4e",  # r59 exp8 output
+                         "34a5613c9f0e78425bf1b3e3df3fe961460a6025c719f38afd1f800a57fc1ada",  # r60 lite output
+                         "0755fa96e5d5a14314a03e8b5e4a2b7719c0fbb537a7a9fe1d9ee17d939b0361",  # r60 output
+                         "93d993ccde788d83ed11f037075de1dcd05bbcfd21094fa35ec1d501ac16f538"}  # r60 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -703,7 +706,8 @@ CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13
                             "c700c997e758c55001e598e10b0386cd009bc7def04b89ee234aacda704484cd",  # controller of r46..r47 (/op)
                             "b008baad1551e6574389743c1b2810a39f03e198a5af4c3a823fe4296386c25c",  # controller of r48..r49 (BEELINE_AI)
                             "738c0f281ac6e59b6b0a62f07fc27217a73e817b45ceb9b93e1e681c00e21a4b",  # controller of r50..r51 (/clear)
-                            "ab1c4088f714471f480dbe29af0e2359ad189850e386d2f53058082acf4162ae"}  # controller of r52..r54
+                            "ab1c4088f714471f480dbe29af0e2359ad189850e386d2f53058082acf4162ae",  # controller of r52..r59
+                            "6ba64b644e27ee202971a72d24b5efcfa9e5dfd7b1ce97515a17414f4b60f442"}  # controller of r60 (menu hooks)
 RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
 RESTART_POLICY_FILE_NAME = "restart_policy.json"
 RESTART_DRAIN_FILE_NAME = "restart_drain.json"
@@ -4645,6 +4649,41 @@ README_NOTE_R59 = ('\n\nРЕВИЗИЯ 59 (fix_package_1591.py)\nПроверк�
                    '(«срок установки eSIM истёк») — «📲 уже использована»; статус сайта главнее слов страницы, а сохранённые\n'
                    'результаты r58 с этой ошибкой исправляются при запуске меню. Маркер: LINK_STATUS_1591R59.\n')
 
+# Revision 60: the bot's own tools in the menu. One status per eSIM (🆕 💳 ☑️ ⛔ ❌, a manual ☑️/❌ wins over
+# the link check) plus a manual 🏦 flag; «Показать: Все ⇄ Только: 💳» in «Мои eSIM», deleting in the card only;
+# 📤 export of the 💳 ones (🟢 one message per eSIM with 🔼/🔽 and ☑️ 🏦 ↩️, ‼️ number + link lists, or a .txt)
+# with «🔄 Обновить статус ссылок» and a report; 🔁 «Обновить статусы» (💳 / все) and /recheck 24h|1d|off;
+# ⚙️ settings (tariff, browsers, tabs, DeepSeek, scheduled restart) written as a systemd drop-in; 🖥 server;
+# ⬆️ self-update through systemd-run with the result after the restart; a notice after a reboot or a crash.
+# The controller gets two hooks: menu.on_start() and menu.handle_text() before its commands.
+BOT_TOOLS_MARKER = "BOT_TOOLS_1591R60"
+OLD_BOT_TOOLS_MARK_R60 = 'SUCCESS_PROFILE_FIELDS = [\n'
+NEW_BOT_TOOLS_MARK_R60 = ('# BOT_TOOLS_1591R60: export, statuses, /recheck, settings, server and self-update live in\n'
+                          '# telegram_menu.py; the controller calls menu.on_start() and menu.handle_text().\n'
+                          'SUCCESS_PROFILE_FIELDS = [\n')
+OLD_C_MENU_START_R60 = '    menu = _menu_mod.TelegramMenu(app, BASE_DIR, proc, link_resolver=_row_link_command)\n'
+NEW_C_MENU_START_R60 = ('    menu = _menu_mod.TelegramMenu(app, BASE_DIR, proc, link_resolver=_row_link_command)\n'
+                        '    try:\n'
+                        '        menu.on_start()  # BOT_TOOLS_1591R60: notices after a reboot, a crash, an update or a setting\n'
+                        '    except Exception as exc:\n'
+                        '        print(f"[CTRL] меню on_start: {exc}", flush=True)\n')
+OLD_C_MENU_TEXT_R60 = '                    if text in {"/start", "/menu"}:\n'
+NEW_C_MENU_TEXT_R60 = ('                    if text and menu.handle_text(text):  # BOT_TOOLS_1591R60: the export count, /recheck\n'
+                       '                        waiting_upload = False\n'
+                       '                        continue\n'
+                       '\n'
+                       '                    if text in {"/start", "/menu"}:\n')
+OLD_TEST_MENU_NS_R60 = 'retire_status_messages=lambda *a:0))'
+NEW_TEST_MENU_NS_R60 = 'retire_status_messages=lambda *a:0,handle_text=lambda t:False,on_start=lambda:None))'
+README_NOTE_R60 = ('\n\nРЕВИЗИЯ 60 (fix_package_1591.py)\nИнструменты бота в меню. У каждой eSIM один статус (🆕 новая, 💳 ждёт оплаты, ☑️ готово, ⛔ ссылка не\n'
+                   'работает, ❌ брак; ручная отметка главнее проверки) и ручной значок 🏦 после него. «Мои eSIM»: переключатель\n'
+                   '«Показать: Все / Только: 💳», удаление только в карточке. 📤 Выгрузка eSIM 💳: 🟢 обычная (сообщение на каждую\n'
+                   'eSIM с 🔼/🔽 и ☑️ 🏦 ↩️) или ‼️ срочная (номер и ссылка списком), сообщением или файлом .txt, количество числом\n'
+                   'или «Все», затем «🔄 Обновить статус ссылок» с отчётом. 🔁 Обновить статусы (💳 или все) и /recheck 24h, 1d,\n'
+                   'off. ⚙️ Настройки: тариф, браузеры, вкладки, DeepSeek, плановый перезапуск. 🖥 Сервер. ⬆️ Обновить бота по\n'
+                   'кнопке с результатом после перезапуска. Сообщение после перезагрузки сервера или сбоя бота.\n'
+                   'Маркер: BOT_TOOLS_1591R60.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -5486,6 +5525,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if BOT_TOOLS_MARKER in source:
+        return 60
     if LINK_STATUS_MARKER in source:
         return 59
     if LINK_CHECK_MARKER in source:
@@ -5596,6 +5637,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 57 or QUIET_AUTO_MARKER in source)\
             and (MAX_REVISION < 58 or LINK_CHECK_MARKER in source)\
             and (MAX_REVISION < 59 or LINK_STATUS_MARKER in source)\
+            and (MAX_REVISION < 60 or BOT_TOOLS_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -6726,6 +6768,45 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 61 (r60). The bot's tools in the menu: marker, two controller hooks, the menu module ships.
+    if BOT_TOOLS_MARKER not in source and MAX_REVISION >= 60:
+        old, new, what = OLD_BOT_TOOLS_MARK_R60, NEW_BOT_TOOLS_MARK_R60, "bot tools: marker"
+        new_source = replace_once(new_source, old, new, what)
+        if old in source:
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        else:
+            for change in edits["test_beeline.py"]:
+                joined = "".join(change["replacement"])
+                if old in joined:
+                    change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                    break
+            else:
+                raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        if BOT_TOOLS_MARKER not in ctrl_source:
+            for old, new, what in ((OLD_C_MENU_START_R60, NEW_C_MENU_START_R60, "controller: menu.on_start"),
+                                   (OLD_C_MENU_TEXT_R60, NEW_C_MENU_TEXT_R60, "controller: menu.handle_text")):
+                new_ctrl = replace_once(new_ctrl, old, new, what)
+                if old in ctrl_source:
+                    add_edit(edits["server_controller.py"], ctrl_source, old, new, ctrl_reflected)
+                else:
+                    for change in edits["server_controller.py"]:
+                        joined = "".join(change["replacement"])
+                        if old in joined:
+                            change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                            break
+                    else:
+                        raise SystemExit(f"edits.json: earlier controller entry for {what} not found")
+        if "handle_text=lambda t:False" not in test_src:
+            test_src = replace_once(test_src, OLD_TEST_MENU_NS_R60, NEW_TEST_MENU_NS_R60, "test_update.py controller fixture (menu hooks)")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if BOT_TOOLS_MARKER not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 60 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -6840,6 +6921,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 57", README_NOTE_R57),) if built_revision >= 57 else ()),
                           *((("РЕВИЗИЯ 58", README_NOTE_R58),) if built_revision >= 58 else ()),
                           *((("РЕВИЗИЯ 59", README_NOTE_R59),) if built_revision >= 59 else ()),
+                          *((("РЕВИЗИЯ 60", README_NOTE_R60),) if built_revision >= 60 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

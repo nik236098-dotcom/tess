@@ -199,7 +199,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_59(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_60(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -207,12 +207,12 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("REGION_FIELD_1591R55", src); self.assertNotIn("SHORT_REPORT_1591R56", src); self.assertNotIn("QUIET_AUTO_1591R57", src); self.assertNotIn("LINK_CHECK_1591R58", src); self.assertNotIn("LINK_STATUS_1591R59", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("REGION_FIELD_1591R55", src); self.assertNotIn("SHORT_REPORT_1591R56", src); self.assertNotIn("QUIET_AUTO_1591R57", src); self.assertNotIn("LINK_CHECK_1591R58", src); self.assertNotIn("LINK_STATUS_1591R59", src); self.assertNotIn("BOT_TOOLS_1591R60", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertIn("Already revision 30", run.stdout)
-            # a server on the prompt-only build is accepted by the full (r59) installer
+            # a server on the prompt-only build is accepted by the full (r60) installer
             self.assertIn(hashlib.sha256((r30 / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             app = Path(d) / "app"; app.mkdir()
             for name in ("test_beeline.py", "server_controller.py", "symbol_matching.py", "operator_runtime_io.py", "install.py", "test_update.py"):
@@ -383,18 +383,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 59 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 60 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 59", run.stdout)
+            self.assertIn("Already revision 60", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 59 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 60 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -603,14 +603,14 @@ class PackageTests(unittest.TestCase):
             menu._status_last_edit -= 20; self.assertTrue(menu.tick()); self.assertIn("💳 Вкладка 1", last()["text"])
             menu.state["view"] = "menu"; n = len(calls); self.assertFalse(menu.tick()); self.assertEqual(len(calls), n, "a closed status view is never edited")
             menu.handle_callback(cb("m|esims|0")); e = last(); kb = json.loads(e["reply_markup"])["inline_keyboard"]
-            self.assertIn("12 шт.", e["text"]); self.assertEqual(len(kb), 14); self.assertEqual(kb[-4][0]["text"], "1/2")  # R57: + the 🗑 row; R58: + 🔗
-            self.assertEqual(kb[-2][0]["callback_data"], "m|delmarked|ask|0"); self.assertEqual(kb[-3][0]["callback_data"], "m|lcheck|start")
-            self.assertTrue(kb[0][0]["text"].startswith("🆕 +7 962 615-")); self.assertIn(" · 🕒 01.10 0", kb[0][0]["text"]); self.assertNotIn("стр.", kb[0][0]["text"]); key = kb[0][0]["callback_data"].split("|")[2]
+            self.assertIn("Мои eSIM</b> — 12", e["text"]); self.assertEqual(len(kb), 13); self.assertEqual(kb[-3][0]["text"], "1/2")  # R60: items, pages, filter, menu
+            self.assertEqual(kb[-2][0]["callback_data"], "m|eflt"); self.assertEqual(kb[-2][0]["text"], "Показать: Все")
+            self.assertTrue(kb[0][0]["text"].startswith("💳 +7 962 615-")); self.assertIn(" · 01.10", kb[0][0]["text"]); self.assertNotIn("стр.", kb[0][0]["text"]); key = kb[0][0]["callback_data"].split("|")[2]
             menu.handle_callback(cb("m|esims|1")); kb = json.loads(last()["reply_markup"])["inline_keyboard"]
-            self.assertEqual(kb[-4][0]["text"], "◀️"); self.assertEqual(kb[-5][0]["text"], "🆕 +7 962 000-00-01", "no time known: number only")
+            self.assertEqual(kb[-3][0]["text"], "◀️"); self.assertEqual(kb[-4][0]["text"], "🆕 +7 962 000-00-01", "no time known: number only")
             menu.handle_callback(cb(f"m|esim|{key}|0")); e = last()
-            self.assertIn("Требуется оплата", e["text"]); self.assertIn("ФИО: Тест &lt;Имя&gt;", e["text"]); self.assertIn("Подпись (сеть)", e["text"])
-            menu.handle_callback(cb(f"m|set|{key}|ok|0")); self.assertIn("Отметка: ✅ оформлена", last()["text"])
+            self.assertIn("Ждёт оплаты", e["text"]); self.assertIn("ФИО: Тест &lt;Имя&gt;", e["text"]); self.assertIn("🔗 https://x/?hash_order=", e["text"])
+            menu.handle_callback(cb(f"m|set|{key}|ok|0")); self.assertIn("Отметка: ☑️ готово", last()["text"])
             self.assertEqual(list(json.loads((base / "esim_status.json").read_text()).values()), ["ok"])
             menu.handle_callback(cb(f"m|link|{key}|0")); self.assertIn("🔎 Строка", last()["text"])
             menu.handle_callback(cb("m|ask")); self.assertTrue(menu.state["awaiting_ai"]); self.assertIn("Отмена", last()["reply_markup"])
@@ -1023,7 +1023,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 59", run.stdout)
+            self.assertIn("Already revision 60", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1057,7 +1057,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 59)
+        self.assertEqual(manifest["revision"], 60)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1409,10 +1409,10 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("(experiment browsers8)", run.stdout)
             src = (pkg / "test_beeline.py").read_text("utf-8")
-            self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("LINK_STATUS_1591R59", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
+            self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 59); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 60); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1422,7 +1422,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 59", run.stdout)
+            self.assertIn("Already revision 60", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -1667,8 +1667,9 @@ class PackageTests(unittest.TestCase):
                     yield url, {"kind": kinds[url.rsplit("=", 1)[1]], "text": "страница: " + url[-2:]}
             menu.link_checker = fake
             menu.show_menu(fresh=True)
-            menu.handle_callback({"id": "c", "data": "m|esims|0"}); self.assertIn("m|lcheck|start", shown()["reply_markup"])
-            menu.handle_callback({"id": "c", "data": "m|lcheck|start"})
+            self.assertIn("m|recheck", menu._menu_markup(), "R60: «🔁 Обновить статусы» in the menu")
+            menu.handle_callback({"id": "c", "data": "m|lcheck|start"}); self.assertIn("Только: 💳", shown()["reply_markup"], "an old button asks which ones")
+            menu.handle_callback({"id": "c", "data": "m|recheck|all"})
             for _ in range(100):
                 if not menu._lc["running"]:
                     break
@@ -1676,7 +1677,7 @@ class PackageTests(unittest.TestCase):
             self.assertFalse(menu._lc["running"]); self.assertEqual(menu._lc["done"], 4)
             menu._status_last_edit = 0; self.assertTrue(menu.tick(), "the finished result is shown once")
             text = shown()["text"]
-            for line in ("❌ не работает: 1", "💳 ждёт оплаты: 1", "✅ оплачена / готова: 1", "❔ непонятно: 1", "➖ без ссылки: 1"):
+            for line in ("⛔ ссылка не работает: 1", "💳 ждёт оплаты: 2", "☑️ готово: 1"):
                 self.assertIn(line, text)
             self.assertIn("+7 962 000-00-00 · стр. 0: страница: a0", text); self.assertNotIn("a1", text, "only problems are listed")
             menu._status_last_edit = 0; self.assertFalse(menu.tick(), "no edits after the result")
@@ -1685,9 +1686,10 @@ class PackageTests(unittest.TestCase):
             menu2 = tm.TelegramMenu(app, base, proc)  # results survive a controller restart
             menu2.show_menu(fresh=True)
             menu2.handle_callback({"id": "c", "data": "m|esims|0"})
-            self.assertIn("🔗❌", shown()["reply_markup"]); self.assertIn("🔗💳", shown()["reply_markup"])
+            self.assertIn("⛔ +7 962 000-00-00", shown()["reply_markup"]); self.assertIn("☑️ +7 962 000-00-02", shown()["reply_markup"])
             key = next(r["_key"] for r in menu2._esims() if r["row"] == 0)
-            menu2.handle_callback({"id": "c", "data": f"m|esim|{key}|0"}); self.assertIn("Проверка ссылки: ❌ не работает", shown()["text"])
+            menu2.handle_callback({"id": "c", "data": f"m|esim|{key}|0"}); self.assertIn("Ссылка не работает · проверено", shown()["text"])
+            self.assertIn("страница: страница: a0", shown()["text"])
             # deleting asks, is logged with the presser's name, and can be undone
             for rec in menu2._esims()[:3]:
                 menu2.marks[menu2._mark_key(rec)] = "ok"
@@ -1696,14 +1698,186 @@ class PackageTests(unittest.TestCase):
                 menu2.handle_callback({"id": "c", "data": "m|delmarked|ask|0"})
                 self.assertEqual(len(menu2._esims()), 5)
                 menu2.handle_callback({"id": "c", "data": "m|delmarked|yes|0", "from": {"id": 5, "first_name": "Ника", "username": "nik"}})
-            self.assertIn("— 2 шт.", shown()["text"]); self.assertIn("Ника @nik (id 5) нажал m|delmarked|yes|0", out.getvalue())
+            self.assertIn("Мои eSIM</b> — 2", shown()["text"]); self.assertIn("Ника @nik (id 5) нажал m|delmarked|yes|0", out.getvalue())
             self.assertIn("↩️ Вернуть удалённые (3)", shown()["reply_markup"])
             with contextlib.redirect_stdout(io.StringIO()):
                 menu2.handle_callback({"id": "c", "data": "m|restore|0"})
-            self.assertIn("— 5 шт.", shown()["text"]); self.assertIn("Возвращено в список: 3", shown()["text"])
+            self.assertIn("Мои eSIM</b> — 5", shown()["text"]); self.assertIn("Возвращено в список: 3", shown()["text"])
             self.assertNotIn("Вернуть удалённые", shown()["reply_markup"])
         src = (self.pkg / "test_beeline.py").read_text("utf-8")
         self.assertIn("# LINK_CHECK_1591R58:", src)
+        manifest = json.loads((self.pkg / "manifest.json").read_text("utf-8"))
+        self.assertEqual(manifest["files"]["telegram_menu.py"]["output_sha256"], hashlib.sha256((self.pkg / "telegram_menu.py").read_bytes()).hexdigest())
+
+    def test_r60_bot_tools_export_statuses_recheck_settings_update(self):
+        """BOT_TOOLS_1591R60 through the menu: one status with 🏦, the 💳 filter, export, /recheck, settings, server, update, notices."""
+        import types as _types, io, contextlib, signal as _signal, threading as _th
+        tm = self._menu_module_r58()
+        tm.EXPORT_SEND_GAP_SECONDS = 0
+        tm._boot_id = lambda: "boot-b"
+        calls, docs, ran, policy = [], [], [], []
+        def api(cfg, method, payload):
+            calls.append((method, dict(payload))); return {"ok": True, "result": {"message_id": 7}}, None
+        sent = lambda: [c[1] for c in calls if c[0] == "sendMessage"]
+        shown = lambda: [c for c in calls if c[0] in ("sendMessage", "editMessageText")][-1][1]
+        answers = lambda: [c[1].get("text") for c in calls if c[0] == "answerCallbackQuery"]
+        def settle():
+            for _ in range(200):
+                if not any(t.name in ("export", "link-check") and t.is_alive() for t in _th.enumerate()):
+                    return
+                time.sleep(0.02)
+            self.fail("background work did not finish")
+        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
+            base = Path(d)
+            app_file = base / "test_beeline.py"; app_file.write_text("# LINK_STATUS_1591R59\n# BOT_TOOLS_1591R60\n")
+            app = _types.SimpleNamespace(telegram_api=api, load_telegram_config=lambda: {"chat_id": "42"}, SUCCESS_PROFILE_FIELDS=[],
+                                         __file__=str(app_file), restart_policy_minutes=lambda b: 0,
+                                         write_restart_policy=lambda b, m: policy.append(m))
+            proc = _types.SimpleNamespace(status=lambda: "🟢", running=lambda: True)
+            recs = [{"row": 10 + i, "tab": 1, "sim_number": f"+7962000000{i}", "time": f"2026-10-09 10:0{i}:00",
+                     "sim_url": f"https://s.beeline.ru/registration/esim?hash_order=a{i}", "profile": {"full_name": f"Тест {i}"}}
+                    for i in range(4)]
+            (base / "payment_required.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in recs) + "\n")
+            (base / "successful_sims.jsonl").write_text(json.dumps({"row": 3, "sim_number": "+79620000009", "time": "2026-10-08 09:00:00"}) + "\n")
+            menu = tm.TelegramMenu(app, base, proc)
+            menu.document_sender = lambda name, text, caption: docs.append((name, text, caption)) or ({"ok": True}, None)
+            menu.runner = ran.append
+            menu.dropin_path = base / "zz-menu.conf"
+            menu.revision_fetcher = lambda: 61
+            cb = lambda data: menu.handle_callback({"id": "c", "data": data, "message": {"message_id": 55, "chat": {"id": 42}}})
+
+            # one status per eSIM, 🏦 after it, the 💳 filter, the menu buttons
+            menu.show_menu(fresh=True)
+            self.assertIn("💳 Ждут оплаты: 4 · ☑️ Готово: 0", shown()["text"])
+            for data in ("m|exp", "m|recheck", "m|cfg", "m|srv", "m|upd"):
+                self.assertIn(f'"{data}"', menu._menu_markup())
+            cb("m|set|p0|ok|0"); cb("m|set|p0|bank|0")
+            self.assertIn("☑️ • 🏦 <b>+7 962 000-00-00</b>", shown()["text"]); self.assertIn("m|del|p0|0", shown()["reply_markup"])
+            self.assertEqual(json.loads((base / "esim_bank.json").read_text()), {"10:79620000000": True})
+            cb("m|esims|0")
+            self.assertIn("Показать: Все", shown()["reply_markup"]); self.assertIn("☑️ • 🏦 +7 962 000-00-00", shown()["reply_markup"])
+            self.assertIn("🆕 +7 962 000-00-09", shown()["reply_markup"]); self.assertNotIn("m|delmarked", shown()["reply_markup"])
+            cb("m|eflt")
+            self.assertIn("Показаны только 💳: 3", shown()["text"]); self.assertIn("Только: 💳", shown()["reply_markup"])
+            self.assertNotIn("m|esim|p0|", shown()["reply_markup"]); self.assertNotIn("m|esim|s0|", shown()["reply_markup"])
+            cb("m|eflt"); self.assertIn("Показать: Все", shown()["reply_markup"])
+
+            # 🟢 normal export as messages: one card per eSIM with 🔼 and the marks, then «Обновить статус ссылок»
+            cb("m|exp"); self.assertIn("m|exp|mode|normal", shown()["reply_markup"]); self.assertIn("m|exp|mode|urgent", shown()["reply_markup"])
+            cb("m|exp|mode|normal"); self.assertIn("m|exp|fmt|txt", shown()["reply_markup"])
+            cb("m|exp|fmt|msg"); self.assertIn("Ждут оплаты 💳: 3", shown()["text"])
+            self.assertTrue(menu.handle_text("пять"), "a wrong count is answered, not passed on")
+            n = len(sent())
+            self.assertTrue(menu.handle_text("2")); settle()
+            new = sent()[n:]
+            cards = [m for m in new if "🔼" in str(m.get("reply_markup"))]
+            self.assertEqual([c["text"].split("\n")[0] for c in cards], ["💳 <b>+7 962 000-00-03</b>", "💳 <b>+7 962 000-00-02</b>"])
+            self.assertIn("👤 Тест 3", cards[0]["text"]); self.assertIn("🔗 https://s.beeline.ru/registration/esim?hash_order=a3", cards[0]["text"])
+            self.assertNotIn("вкладка", cards[0]["text"], "the short card")
+            for part in ("m|xo|p3", "m|xm|p3|ok|0", "m|xm|p3|bank|0", "m|xm|p3|new|0"):
+                self.assertIn(part, cards[0]["reply_markup"])
+            self.assertIn("Обновить статус ссылок", new[-1]["text"])
+            batch = re.search(r"m\|xr\|(\d+)", new[-1]["reply_markup"]).group(1)
+            self.assertEqual(json.loads((base / "esim_exports.json").read_text())[batch], ["p3", "p2"])
+            self.assertFalse(menu.handle_text("3"), "the count is asked once")
+            cb("m|xo|p3"); self.assertEqual(shown()["message_id"], 55)
+            self.assertIn("вкладка 1", shown()["text"]); self.assertIn("m|xc|p3", shown()["reply_markup"]); self.assertIn("🔽", shown()["reply_markup"])
+            cb("m|xm|p3|bank|1"); self.assertEqual(answers()[-1], "🏦 отмечено")
+            self.assertTrue(shown()["text"].startswith("💳 • 🏦 <b>+7 962 000-00-03</b>")); self.assertIn("m|xc|p3", shown()["reply_markup"])
+            cb("m|xc|p3"); self.assertIn("m|xo|p3", shown()["reply_markup"])
+
+            # «🔄 Обновить»: the report counts, what changed, then the still waiting ones with their links
+            kinds = {"a3": "ok", "a2": "pay", "a1": "pay"}
+            def fake(urls):
+                for url in urls:
+                    yield url, {"kind": kinds[url.rsplit("=", 1)[1]], "text": "страница"}
+            menu.link_checker = fake
+            n = len(sent()); cb(f"m|xr|{batch}"); settle()
+            new = [m["text"] for m in sent()[n:]]
+            self.assertIn("Проверяю 2 ссылок", new[0])
+            self.assertIn("📋 <b>Отчёт</b>", new[1]); self.assertIn("☑️ 1 — оплачены / готовы", new[1]); self.assertIn("💳 1 — ожидают оплаты", new[1])
+            self.assertIn("Изменились:\n☑️ +7 962 000-00-03 · стр. 13", new[1])
+            self.assertEqual(new[2], "💳 Ожидают оплаты:\n\n1. Номер: +79620000002\nhttps://s.beeline.ru/registration/esim?hash_order=a2")
+            self.assertEqual(menu._status_of(menu._esim_by_key("p3")), "done", "the check updates «Мои eSIM» too")
+
+            # ‼️ urgent: number and link in one message; .txt as a document
+            n = len(sent())
+            cb("m|exp|mode|urgent"); cb("m|exp|fmt|msg"); cb("m|exp|count|all"); settle()
+            self.assertIn("1. Номер: +79620000002\nhttps://s.beeline.ru/registration/esim?hash_order=a2\n\n2. Номер: +79620000001\n", "".join(m["text"] for m in sent()[n:]))
+            self.assertEqual(sum("Номер:" in m["text"] for m in sent()[n:]), 1, "one message for all")
+            cb("m|exp|mode|normal"); cb("m|exp|fmt|txt"); self.assertTrue(menu.handle_text("Все")); settle()
+            self.assertTrue(docs[-1][0].startswith("esim_обычная_") and docs[-1][0].endswith(".txt"))
+            self.assertIn("💳 +7 962 000-00-02\n👤 Тест 2", docs[-1][1]); self.assertNotIn("<b>", docs[-1][1])
+            cb("m|exp|mode|urgent"); cb("m|exp|fmt|msg")
+            self.assertFalse(menu.handle_text("/start"), "a command cancels the waiting export")
+            self.assertNotIn("export", menu.state); self.assertFalse(menu.handle_text("2"))
+
+            # /recheck: the schedule, and an automatic check reports only changes
+            self.assertTrue(menu.handle_text("/recheck 2d")); self.assertEqual(menu.state["recheck_every"], 172800)
+            self.assertIn("каждые 2 д", sent()[-1]["text"])
+            menu.handle_text("/recheck 12ч"); self.assertEqual(menu.state["recheck_every"], 43200)
+            menu.handle_text("/recheck soon"); self.assertIn("Не понял срок", sent()[-1]["text"])
+            menu.handle_text("/recheck@beeline_bot off"); self.assertNotIn("recheck_every", menu.state)
+            menu.handle_text("/recheck"); self.assertIn("выключена", sent()[-1]["text"])
+            menu.state.update({"recheck_every": 3600, "recheck_next": 0})
+            n = len(sent()); self.assertTrue(menu._recheck_tick()); settle()
+            self.assertEqual(len(sent()), n, "no changes, no message")
+            self.assertGreater(menu.state["recheck_next"], time.time() + 3000); self.assertFalse(menu._recheck_tick(), "not due yet")
+            kinds["a1"] = "dead"; menu.state["recheck_next"] = 0
+            self.assertTrue(menu._recheck_tick()); settle()
+            self.assertIn("📋 <b>Отчёт</b> автопроверки", sent()[-1]["text"]); self.assertIn("⛔ +7 962 000-00-01 · стр. 11", sent()[-1]["text"])
+            self.assertEqual(len(sent()), n + 1)
+
+            # «🔁 Обновить статусы» asks which ones
+            menu.state["view"] = "menu"; cb("m|recheck")
+            self.assertIn("m|recheck|pay", shown()["reply_markup"]); self.assertIn("m|recheck|all", shown()["reply_markup"])
+
+            # ⚙️ settings: a drop-in merged with what is there, then a restart; a scheduled restart
+            menu.dropin_path.write_text('[Service]\nEnvironment="BEELINE_BROWSERS=3"\n')
+            cb("m|cfg"); self.assertIn("⚙️ <b>Настройки</b>", shown()["text"])
+            cb("m|cfg|tariff"); self.assertIn("m|cfg|ask|tariff|watch", shown()["reply_markup"])
+            cb("m|cfg|ask|tariff|watch"); self.assertIn("Применить?", shown()["text"]); self.assertEqual(ran, [])
+            cb("m|cfg|ok|tariff|watch")
+            conf = menu.dropin_path.read_text()
+            for line in ('Environment="BEELINE_BROWSERS=3"', 'Environment="BEELINE_TARIFF=для смарт часов"', 'Environment="BEELINE_TARIFF_PRICE=200"'):
+                self.assertIn(line, conf)
+            self.assertEqual(ran, [["systemctl", "daemon-reload"], ["systemctl", "--no-block", "restart", "beeline"]])
+            cb("m|cfg|ok|browsers|99"); self.assertEqual(len(ran), 2, "an invalid value changes nothing")
+            cb("m|cfg|rs|720"); self.assertEqual(policy, [720])
+
+            # 🖥 server and ⬆️ self-update
+            cb("m|srv"); self.assertIn("Версия бота: r60 (lite)", shown()["text"])
+            cb("m|upd"); self.assertIn("На GitHub: r61", shown()["text"]); self.assertIn("m|upd|ask", shown()["reply_markup"])
+            cb("m|upd|ask"); self.assertIn("m|upd|go", shown()["reply_markup"])
+            cb("m|upd|go")
+            self.assertEqual(ran[-1][0], "systemd-run"); self.assertIn("--collect", ran[-1])
+            self.assertIn(f"curl -fsSL {tm.UPDATE_URL} | bash", ran[-1][-1])
+            self.assertEqual(json.loads((base / "self_update.json").read_text())["from"], 60)
+            menu.show_menu(); self.assertIn("Доступно обновление: r60 → r61", shown()["text"])
+
+            # after the restart: reboot, the applied setting and the update result
+            (base / "bot_alive.json").write_text(json.dumps({"boot_id": "boot-a", "time": time.time() - 300}))
+            (base / "self_update.log").write_text("...\nEXIT=0\n")
+            app_file.write_text("# BOT_TOOLS_1591R60\n# NEXT_1591R61\n")
+            old = _signal.getsignal(_signal.SIGTERM)
+            try:
+                menu2 = tm.TelegramMenu(app, base, proc)
+                notes = menu2.on_start()
+                self.assertTrue(notes[0].startswith("♻️ Сервер перезагружался."), notes)
+                self.assertEqual(notes[1:], ["⚙️ Применено: тариф «для смарт часов»", "✅ Бот обновлён: r60 → r61"])
+                self.assertFalse((base / "self_update.json").exists())
+                menu3 = tm.TelegramMenu(app, base, proc)
+                self.assertEqual([x[:43] for x in menu3.on_start()], ["♻️ Бот перезапустился после сбоя (последний"])
+                (base / "bot_clean_stop.flag").write_text("1")
+                self.assertEqual(tm.TelegramMenu(app, base, proc).on_start(), [], "a planned stop says nothing")
+                self.assertFalse((base / "bot_clean_stop.flag").exists())
+            finally:
+                _signal.signal(_signal.SIGTERM, old)
+        ctrl = (self.pkg / "server_controller.py").read_text("utf-8")
+        self.assertIn("        menu.on_start()  # BOT_TOOLS_1591R60", ctrl)
+        self.assertLess(ctrl.index("if text and menu.handle_text(text):"), ctrl.index('if text in {"/start", "/menu"}:'))
+        self.assertIn("handle_text=lambda t:False,on_start=lambda:None", (self.pkg / "test_update.py").read_text("utf-8"))
+        self.assertIn("# BOT_TOOLS_1591R60:", (self.pkg / "test_beeline.py").read_text("utf-8"))
         manifest = json.loads((self.pkg / "manifest.json").read_text("utf-8"))
         self.assertEqual(manifest["files"]["telegram_menu.py"]["output_sha256"], hashlib.sha256((self.pkg / "telegram_menu.py").read_bytes()).hexdigest())
 
@@ -1730,18 +1904,20 @@ class PackageTests(unittest.TestCase):
             text = lambda: [c for c in calls if c[0] in ("sendMessage", "editMessageText")][-1][1]["text"]
             markup = lambda: [c for c in calls if c[0] in ("sendMessage", "editMessageText")][-1][1]["reply_markup"]
             menu.show_menu(fresh=True)
-            self.assertIn("Новых eSIM за сегодня: 3", text()); self.assertIn("eSIM без отметки: 5", text())
+            self.assertIn("Новых eSIM за сегодня: 3", text()); self.assertIn("💳 Ждут оплаты: 0 · ☑️ Готово: 0", text())
             menu.handle_callback({"id": "c", "data": "m|esims|0"})
-            self.assertIn("Мои eSIM</b> — 5 шт.", text()); self.assertIn("m|delmarked|ask|0", markup()); self.assertIn("m|delall|ask|0", markup())
+            self.assertIn("Мои eSIM</b> — 5", text()); self.assertNotIn("m|delmarked", markup(), "R60: deleting lives in the card only"); self.assertNotIn("m|delall", markup())
             key = menu._esims()[0]["_key"]
             menu.handle_callback({"id": "c", "data": f"m|esim|{key}|0"}); self.assertIn(f"m|del|{key}|0", markup())
-            menu.handle_callback({"id": "c", "data": f"m|del|{key}|0"})
-            self.assertIn("— 4 шт.", text()); self.assertIn("Удалено из списка", text())
+            menu.handle_callback({"id": "c", "data": f"m|del|{key}|0"}); self.assertIn(f"Удалить {menu._phone(menu._esims()[0])} из списка?", text())
+            self.assertEqual(len(menu._esims()), 5, "the card's delete asks first")
+            menu.handle_callback({"id": "c", "data": f"m|del|{key}|0|yes"})
+            self.assertIn("Мои eSIM</b> — 4", text()); self.assertIn("Удалено из списка", text())
             for rec in menu._esims()[:2]:
                 menu.marks[menu._mark_key(rec)] = "ok"
             menu.handle_callback({"id": "c", "data": "m|delmarked|0"}); self.assertIn("Удалить из списка 2 eSIM с отметкой", text())
             self.assertEqual(len(menu._esims()), 4, "MENU_SAFE_DELETE_1591R58: an old panel's button only asks")
-            menu.handle_callback({"id": "c", "data": "m|delmarked|yes|0"}); self.assertIn("— 2 шт.", text())
+            menu.handle_callback({"id": "c", "data": "m|delmarked|yes|0"}); self.assertIn("Мои eSIM</b> — 2", text())
             menu.handle_callback({"id": "c", "data": "m|delall|ask|0"}); self.assertIn("Удалить из списка все 2 eSIM?", text())
             self.assertEqual(len(menu._esims()), 2, "nothing removed before the confirmation")
             menu.handle_callback({"id": "c", "data": "m|delall|yes|0"}); self.assertIn("Список пуст", text())
