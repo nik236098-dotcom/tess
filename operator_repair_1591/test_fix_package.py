@@ -199,7 +199,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_62(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_64(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -207,7 +207,7 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("REGION_FIELD_1591R55", src); self.assertNotIn("SHORT_REPORT_1591R56", src); self.assertNotIn("QUIET_AUTO_1591R57", src); self.assertNotIn("LINK_CHECK_1591R58", src); self.assertNotIn("LINK_STATUS_1591R59", src); self.assertNotIn("BOT_TOOLS_1591R60", src); self.assertNotIn("EXPORT_CARDS_1591R61", src); self.assertNotIn("ESIM_ISSUED_1591R62", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("REGION_FIELD_1591R55", src); self.assertNotIn("SHORT_REPORT_1591R56", src); self.assertNotIn("QUIET_AUTO_1591R57", src); self.assertNotIn("LINK_CHECK_1591R58", src); self.assertNotIn("LINK_STATUS_1591R59", src); self.assertNotIn("BOT_TOOLS_1591R60", src); self.assertNotIn("EXPORT_CARDS_1591R61", src); self.assertNotIn("ESIM_ISSUED_1591R62", src); self.assertNotIn("BASE_TOOLS_1591R64", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
@@ -383,18 +383,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 62 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 64 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 62", run.stdout)
+            self.assertIn("Already revision 64", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 62 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 64 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -616,7 +616,7 @@ class PackageTests(unittest.TestCase):
             menu.handle_callback(cb("m|ask")); self.assertTrue(menu.state["awaiting_ai"]); self.assertIn("Отмена", last()["reply_markup"])
             self.assertTrue(menu.text_is_for_ai()); self.assertFalse(menu.text_is_for_ai(), "one text per button press")
             menu.handle_callback(cb("m|ask")); menu.handle_callback(cb("m|ask_cancel")); self.assertFalse(menu.state["awaiting_ai"])
-            self.assertEqual(menu.handle_callback(cb("m|upload")), "upload")
+            self.assertEqual(menu.handle_callback(cb("m|upload")), "upload_new")
             menu.handle_callback(cb("m|stop")); self.assertIn("🔴 Процесс остановлен", last()["text"])
             menu.handle_callback(cb("m|status")); self.assertIn("🔴 Процесс остановлен", last()["text"])
             menu.handle_callback(cb("m|logs|0")); self.assertIn("Логи", last()["text"])
@@ -631,7 +631,7 @@ class PackageTests(unittest.TestCase):
         self.assertIn('json.dumps(["message", "callback_query"])', ctrl)
         main = ctrl[ctrl.index("def main():"):]
         self.assertIn("menu = _menu_mod.TelegramMenu(app, BASE_DIR, proc, link_resolver=_row_link_command)", main)
-        self.assertIn('callback = upd.get("callback_query")', main); self.assertIn('menu.handle_callback(callback) == "upload"', main)
+        self.assertIn('callback = upd.get("callback_query")', main); self.assertIn('if menu_result in ("upload", "upload_new", "upload_add"):', main)
         self.assertIn("menu.tick()", main); self.assertIn("menu.show_menu(fresh=True)", main)
         gate = main[main.index("# ---- AI PLANE ----"):]
         self.assertIn("if not menu.text_is_for_ai():", gate); self.assertLess(gate.index("menu.show_menu(fresh=True)"), gate.index("app._ai_db_store_telegram_update"))
@@ -1023,7 +1023,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 62", run.stdout)
+            self.assertIn("Already revision 64", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1057,7 +1057,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 62)
+        self.assertEqual(manifest["revision"], 64)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1412,7 +1412,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 62); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 64); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1422,7 +1422,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 62", run.stdout)
+            self.assertIn("Already revision 64", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -1645,6 +1645,112 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(menu.link_results["2:7963"]["kind"], "dead", "a real dead link stays dead")
             self.assertEqual(menu.link_results["3:7964"]["kind"], "used")
 
+    def _batch_support(self):
+        """The real batch_support.load_clients that fresh_install.sh writes on a server."""
+        script = (Path(__file__).resolve().parent / "fresh_install.sh").read_text("utf-8")
+        code = script.split("cat > \"$APP_DIR/batch_support.py\" <<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+        ns = {}
+        exec(compile(code, "batch_support.py", "exec"), ns)
+        return ns
+
+    def test_r64_base_upload_filter_append_and_generation(self):
+        """BASE_TOOLS_1591R64: the r63 base tools, with the old line formats still accepted."""
+        import types as _types, io, contextlib
+        ctrl = (self.pkg / "server_controller.py").read_text("utf-8")
+        bs = self._batch_support()
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            ns = {"re": re, "time": time, "Path": Path, "load_clients": bs["load_clients"], "BASE_DIR": base,
+                  "CLIENTS_FILE": base / "clients.txt", "PROCESSED_FILE": base / "processed_numbers.txt",
+                  "APPEND_PENDING_FILE": base / ".base_append_pending", "_send": lambda text, **k: sent.append(text)}
+            sent = []
+            exec_functions(ctrl, ["_validate_base", "_phone_digits", "_passport_digits", "_birth_years", "_normalise_upload_line",
+                                  "_prepare_uploaded_base", "_filter_note", "_merge_clean_base", "_has_unprocessed_base_rows",
+                                  "_continue_appended_base"], ns)
+            norm = lambda line: ns["_normalise_upload_line"](line)
+            # the old formats batch_support reads stay valid
+            for line in ("79001112233 4510123456", "79001112233 4510 123456", "9001112233 4510123456", "89001112233\t4510123456",
+                         "79001112233;4510 123456", "79001112233,4510123456", "79001112233|4510 123456", "+7 (900) 111-22-33\t4510 123456"):
+                self.assertEqual(norm(line), ("79001112233 4510123456", "legacy"), line)
+            self.assertEqual(norm("79001112233 12345")[1], "passport"); self.assertEqual(norm("12345 4510123456")[1], "phone")
+            self.assertEqual(norm("# комментарий")[0], None)
+            # «номер|паспорт|даты рождения»: no passport or no year 1980+ is skipped; one of two dates is enough
+            self.assertEqual(norm("79001112233|4510 123456|01.02.1985"), ("79001112233 4510123456", "pipe"))
+            self.assertEqual(norm("79001112233|4510123456|01.01.1972;02.02.1990")[0], "79001112233 4510123456")
+            self.assertEqual(norm("79001112233|4510123456|1990-02-02")[0], "79001112233 4510123456")
+            self.assertEqual(norm("79001112233|4510123456|01.01.1980")[0], "79001112233 4510123456")
+            self.assertEqual(norm("79001112233||03.03.1995")[1], "passport")
+            self.assertEqual(norm("79001112233|4510123456|01.01.1972;02.02.1979")[1], "birth")
+            self.assertEqual(norm("79001112233|4510123456|")[1], "birth")
+            self.assertEqual(norm("79001112233|4510123456|31.02.1990")[1], "birth", "not a real date")
+            raw, clean = base / "raw.txt", base / "clean.txt"
+            raw.write_text("\ufeff79001112201|4510000001|01.01.1990\n79001112202|4510000002|01.01.1970\n79001112203||01.01.1990\n"
+                           "79001112201|4510000009|01.01.1991\n9001112204 4510 000004\n\n# note\n", "utf-8")
+            stats = ns["_prepare_uploaded_base"](raw, clean)
+            self.assertEqual(clean.read_text().splitlines(), ["79001112201 4510000001", "79001112204 4510000004"])
+            self.assertEqual((stats["source"], stats["accepted"], stats["birth"], stats["passport"], stats["duplicates"]), (5, 2, 1, 1, 1))
+            self.assertEqual(ns["_filter_note"](stats), "\n⏭ Отфильтровано без паспорта: 1 · не 1980+: 1 · повторы: 1")
+            self.assertEqual(len(bs["load_clients"](clean)), 2, "the runtime reads the cleaned base")
+            raw.write_text("79001112202|4510000002|01.01.1970\n", "utf-8")
+            with self.assertRaises(ValueError):
+                ns["_prepare_uploaded_base"](raw, clean)
+            # «➕ Добавить строки»: only new numbers are appended; the added rows start after the queue
+            ns["_merge_clean_base"](clean)
+            self.assertEqual(ns["CLIENTS_FILE"].read_text().splitlines(), ["79001112201 4510000001", "79001112204 4510000004"], "an empty base")
+            ns["CLIENTS_FILE"].write_text("79001112201\t4510 000001\n79001112205 4510000005\n", "utf-8")
+            clean.write_text("79001112201 4510000001\n79001112206 4510000006\n")
+            self.assertEqual(ns["_merge_clean_base"](clean), (1, 1))
+            self.assertEqual(ns["CLIENTS_FILE"].read_text().splitlines(), ["79001112201\t4510 000001", "79001112205 4510000005", "79001112206 4510000006"])
+            ns["PROCESSED_FILE"].write_text("79001112201\n79001112205\n")
+            self.assertTrue(ns["_has_unprocessed_base_rows"]())
+            started = []
+            class Proc:
+                alive = True
+                def running(self): return self.alive
+                def reap(self): started.append("reap")
+                def start(self): started.append("start"); return True, "ok"
+            proc = Proc()
+            ns["APPEND_PENDING_FILE"].write_text("1")
+            self.assertFalse(ns["_continue_appended_base"](proc), "nothing while the work runs")
+            proc.alive = False
+            self.assertTrue(ns["_continue_appended_base"](proc)); self.assertEqual(started, ["reap", "start"])
+            self.assertFalse(ns["APPEND_PENDING_FILE"].exists()); self.assertIn("запускаю добавленные строки", sent[-1])
+            self.assertFalse(ns["_continue_appended_base"](proc), "once")
+            ns["PROCESSED_FILE"].write_text("79001112201\n79001112205\n79001112206\n"); ns["APPEND_PENDING_FILE"].write_text("1")
+            self.assertFalse(ns["_continue_appended_base"](proc), "all rows done: no start"); self.assertEqual(started.count("start"), 1)
+        # the controller wiring
+        self.assertIn('APPEND_PENDING_FILE = BASE_DIR / ".base_append_pending"', ctrl)
+        self.assertLess(ctrl.index("_restart_after_drain(proc)  # SCHEDULED"), ctrl.index("_continue_appended_base(proc)  # BASE_TOOLS_1591R64"))
+        self.assertIn('waiting_upload = "add" if menu_result == "upload_add" else "new"', ctrl)
+        self.assertEqual(ctrl.count("APPEND_PENDING_FILE.unlink(missing_ok=True)  # BASE_TOOLS_1591R64\n                        _, answer = proc."), 3)
+        self.assertIn('mode = "add" if waiting_upload == "add" else "new"', ctrl)
+        self.assertIn("'_continue_appended_base':lambda p:False", (self.pkg / "test_update.py").read_text("utf-8"))
+        self.assertIn("# BASE_TOOLS_1591R64:", (self.pkg / "test_beeline.py").read_text("utf-8"))
+        # the menu: «📂 База», «🔢 Генерация»
+        tm = self._menu_module_r58()
+        calls, docs = [], []
+        def api(cfg, method, payload):
+            calls.append((method, dict(payload))); return {"ok": True, "result": {"message_id": 7}}, None
+        shown = lambda: [c for c in calls if c[0] in ("sendMessage", "editMessageText")][-1][1]
+        with tempfile.TemporaryDirectory() as d:
+            app = _types.SimpleNamespace(telegram_api=api, load_telegram_config=lambda: {"chat_id": "42"}, SUCCESS_PROFILE_FIELDS=[])
+            menu = tm.TelegramMenu(app, Path(d), _types.SimpleNamespace(status=lambda: "🔴 Остановлен", running=lambda: False))
+            menu.document_sender = lambda name, text, caption: docs.append((name, text, caption)) or ({"ok": True}, None)
+            cb = lambda data: menu.handle_callback({"id": "c", "data": data, "message": {"message_id": 5, "chat": {"id": 42}}})
+            self.assertIn('"m|base"', menu._menu_markup()); self.assertIn('"m|gen"', menu._menu_markup()); self.assertNotIn("m|upload", menu._menu_markup())
+            menu.show_menu(fresh=True)
+            cb("m|base"); self.assertIn("m|baseadd", shown()["reply_markup"]); self.assertIn("m|basenew", shown()["reply_markup"])
+            self.assertEqual(cb("m|baseadd"), "upload_add"); self.assertEqual(cb("m|basenew"), "upload_new"); self.assertEqual(cb("m|upload"), "upload_new")
+            cb("m|gen")
+            self.assertTrue(menu.handle_text("+7 900 111 ****\n8 (900) 222-****, 7900111"))
+            self.assertEqual(len(docs), 1); lines = docs[0][1].split()
+            self.assertEqual((len(lines), lines[0], lines[9999], lines[10000], lines[-1]), (20000, "79001110000", "79001119999", "79002220000", "79002229999"))
+            self.assertIn("Сгенерировано 20000 номеров", shown()["text"]); self.assertFalse(menu.handle_text("ещё текст"), "asked once")
+            cb("m|gen"); self.assertTrue(menu.handle_text("900111****")); self.assertIn("Неверный формат", shown()["text"]); self.assertEqual(len(docs), 1)
+            cb("m|ask"); self.assertFalse(menu.handle_text("Почему вкладка 3 стоит?"), "another button ends the generation prompt")
+            cb("m|exp"); cb("m|exp|mode|normal"); cb("m|exp|fmt|msg"); cb("m|status")
+            self.assertFalse(menu.handle_text("какой-то вопрос"), "R64: another button ends the export count prompt too")
+
     def test_r62_esim_success_is_an_issued_esim(self):
         """ESIM_ISSUED_1591R62: selfregStatus ESIM_SUCCESS is ✅ «eSIM уже выпущена», also on /error or a 4xx."""
         import types as _types
@@ -1779,7 +1885,7 @@ class PackageTests(unittest.TestCase):
             menu.show_menu(fresh=True)
             self.assertIn("💳 Ждут оплаты: 4 • Готово: 0", shown()["text"]); self.assertIn("\n🟢 Процесс запущен\n📂 База: 0 • Обработано: 0\n", shown()["text"])
             rows = [[b["text"] for b in row] for row in json.loads(menu._menu_markup())["inline_keyboard"]]
-            self.assertEqual(rows, [["📱 Мои eSIM"], ["📤 Выгрузка", "📥 Загрузить базу"], ["📜 Логи", "🖥 Сервер"],
+            self.assertEqual(rows, [["📱 Мои eSIM"], ["📤 Выгрузка", "📂 База"], ["🔢 Генерация"], ["📜 Логи", "🖥 Сервер"],
                                     ["⚙️ Настройки", "🤖 Спросить DeepSeek"], ["▶️ Запустить", "⏹ Остановить"], ["🔄 Перезапуск"],
                                     ["📊 Статус", "🔄 Обновить статус"], ["⬆️ Обновить бота"]], "EXPORT_CARDS_1591R61: the menu the owner drew")
             for data in ("m|exp", "m|recheck", "m|cfg", "m|srv", "m|upd"):

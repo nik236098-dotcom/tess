@@ -163,7 +163,12 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "c33cdb04fe32344c93678a69e354fb7795d1d9acff1b34a7122e4e0ef4fcd7f4",  # r61 exp8 output
                          "995b045e6ecdf18c6cb8ffda39faf83114f78baab085d8af8897cdc91e861fba",  # r62 lite output
                          "dc8975d6c6c7fab9045d29f17e61bbfec099c4cefadb1187d967f529f4c02f4e",  # r62 output
-                         "f54a72b3df9340bc1d1638d49088e8152b978c5394f06030883450811aa643b1"}  # r62 exp8 output
+                         "f54a72b3df9340bc1d1638d49088e8152b978c5394f06030883450811aa643b1",  # r62 exp8 output
+                         "74aa6270f219a1cecc327f98f828f77327252a631bbe6aab57a406aaec6231a4",  # r63 lite (published by hand)
+                         "a07b58b2410652947657d27bfb1a8e0ee3f4eeb0eef3122a3653e04a673998b2",  # r63 (published by hand)
+                         "de45d56906a4e1a7377c293bc5ad59035d7cc863ffa73365595eb6f4d8171c7b",  # r64 lite output
+                         "568d85096d121bf2bf5d972811654f2305aebe2a6e73bfac22703d0099529fb4",  # r64 output
+                         "ea4aaaa8157252598256a9bd397970456eb7a349ecd09abc491e05826427a0d6"}  # r64 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -713,7 +718,9 @@ CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13
                             "b008baad1551e6574389743c1b2810a39f03e198a5af4c3a823fe4296386c25c",  # controller of r48..r49 (BEELINE_AI)
                             "738c0f281ac6e59b6b0a62f07fc27217a73e817b45ceb9b93e1e681c00e21a4b",  # controller of r50..r51 (/clear)
                             "ab1c4088f714471f480dbe29af0e2359ad189850e386d2f53058082acf4162ae",  # controller of r52..r59
-                            "6ba64b644e27ee202971a72d24b5efcfa9e5dfd7b1ce97515a17414f4b60f442"}  # controller of r60 (menu hooks)
+                            "6ba64b644e27ee202971a72d24b5efcfa9e5dfd7b1ce97515a17414f4b60f442",  # controller of r60 (menu hooks)
+                            "989606fee80a565e000e1a5f45de01584e955a751ec639e7ce59dcff68d9ce85",  # controller of r63 (by hand)
+                            "acfd905f16ef07a50d68e1017ff163c215119dfd5cd27f32929dbe516c22110e"}  # controller of r64 (base tools)
 RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
 RESTART_POLICY_FILE_NAME = "restart_policy.json"
 RESTART_DRAIN_FILE_NAME = "restart_drain.json"
@@ -4714,6 +4721,274 @@ README_NOTE_R62 = ('\n\nРЕВИЗИЯ 62 (fix_package_1591.py)\nТолько м
                    'это уже выпущенная eSIM: ✅ «eSIM уже выпущена», даже если страница ушла на /error или ответила 4xx. Старые\n'
                    'результаты проверки с ⛔ для таких eSIM исправляются при запуске бота. Маркер: ESIM_ISSUED_1591R62.\n')
 
+# Revision 64: «📂 База» and «🔢 Генерация» (first published by hand as r63, now built here). The upload is
+# filtered before it becomes clients.txt: «номер|паспорт|даты рождения…» lines need a 10-digit passport and a
+# birth year of 1980 or later (one of several dates is enough); other lines keep the format batch_support.load_clients
+# reads (10/11-digit number, then the passport after a tab, |, ;, , or a space) and need a 10-digit passport.
+# «➕ Добавить строки» appends to clients.txt without stopping the work; the controller starts the added rows when
+# the current queue ends. «🆕 Загрузить новую базу» stops, replaces the base and starts it.
+BASE_TOOLS_MARKER = "BASE_TOOLS_1591R64"
+OLD_BASE_TOOLS_MARK_R64 = '# ESIM_ISSUED_1591R62: the link check takes selfregStatus ESIM_SUCCESS for an issued eSIM (✅).\n'
+NEW_BASE_TOOLS_MARK_R64 = ('# ESIM_ISSUED_1591R62: the link check takes selfregStatus ESIM_SUCCESS for an issued eSIM (✅).\n'
+                           '# BASE_TOOLS_1591R64: the controller filters uploaded bases and appends rows; the menu has «📂 База» and «🔢 Генерация».\n')
+OLD_C_PENDING_R64 = 'PROCESSED_FILE = BASE_DIR / "processed_numbers.txt"\n'
+NEW_C_PENDING_R64 = ('PROCESSED_FILE = BASE_DIR / "processed_numbers.txt"\n'
+                     'APPEND_PENDING_FILE = BASE_DIR / ".base_append_pending"  # BASE_TOOLS_1591R64: added rows wait for the queue\n')
+OLD_C_FILTER_R64 = 'def _download_document(file_id, destination):\n'
+NEW_C_FILTER_R64 = '''# BASE_TOOLS_1591R64: «📂 База». An uploaded file is filtered into «номер паспорт» lines before it is used.
+def _phone_digits(value):
+    digits = re.sub(r"\\D", "", str(value or ""))
+    if len(digits) == 10:
+        digits = "7" + digits
+    if len(digits) == 11 and digits[0] == "8":
+        digits = "7" + digits[1:]
+    return digits if len(digits) == 11 and digits[0] == "7" else ""
+
+
+def _passport_digits(value):
+    digits = re.sub(r"\\D", "", str(value or ""))
+    return digits[:10] if len(digits) >= 10 else ""
+
+
+def _birth_years(value):
+    """Years of the valid dates in «01.02.1985», «1.2.1985», «1985-02-01» form."""
+    text, years = str(value or ""), []
+    found = [(d, m, y) for d, m, y in re.findall(r"(?<!\\d)(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})(?!\\d)", text)]
+    found += [(d, m, y) for y, m, d in re.findall(r"(?<!\\d)(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})(?!\\d)", text)]
+    for day, month, year in found:
+        try:
+            time.strptime(f"{int(day):02d}.{int(month):02d}.{int(year):04d}", "%d.%m.%Y")
+        except (TypeError, ValueError):
+            continue
+        years.append(int(year))
+    return years
+
+
+def _normalise_upload_line(line):
+    """(«7XXXXXXXXXX паспорт», why) or (None, why it is skipped)."""
+    text = str(line or "").strip()
+    if not text or text.startswith("#"):
+        return None, "empty"
+    if text.count("|") >= 2:  # номер|паспорт|даты рождения…
+        parts = text.split("|")
+        phone, passport = _phone_digits(parts[0]), _passport_digits(parts[1])
+        if not phone:
+            return None, "phone"
+        if not passport:
+            return None, "passport"
+        if not any(year >= 1980 for year in _birth_years("|".join(parts[2:]))):
+            return None, "birth"
+        return f"{phone} {passport}", "pipe"
+    for sep in ("\\t", "|", ";", ","):  # the separators batch_support.load_clients reads
+        if sep in text:
+            first, second = text.split(sep, 1)
+            break
+    else:
+        parts = text.split(maxsplit=1)
+        first, second = parts[0], (parts[1] if len(parts) > 1 else "")
+    phone, passport = _phone_digits(first), _passport_digits(second)
+    if not phone:
+        return None, "phone"
+    if not passport:
+        return None, "passport"
+    return f"{phone} {passport}", "legacy"
+
+
+def _prepare_uploaded_base(source, destination):
+    stats = {"source": 0, "accepted": 0, "duplicates": 0, "skipped": 0, "passport": 0, "birth": 0, "phone": 0}
+    rows, seen = [], set()
+    for raw in Path(source).read_text("utf-8-sig", errors="replace").splitlines():
+        if not raw.strip() or raw.strip().startswith("#"):
+            continue
+        stats["source"] += 1
+        pair, reason = _normalise_upload_line(raw)
+        if pair is None:
+            stats["skipped"] += 1
+            stats[reason] = stats.get(reason, 0) + 1
+            continue
+        if pair.split()[0] in seen:  # one row per number: the progress file counts numbers
+            stats["duplicates"] += 1
+            continue
+        seen.add(pair.split()[0])
+        rows.append(pair)
+    if not rows:
+        raise ValueError("После фильтрации не осталось подходящих строк.")
+    Path(destination).write_text("\\n".join(rows) + "\\n", encoding="utf-8")
+    count = _validate_base(destination)
+    if count != len(rows):
+        raise ValueError(f"Проверка базы вернула {count} строк вместо {len(rows)}.")
+    stats["accepted"] = count
+    return stats
+
+
+def _filter_note(stats):
+    parts = [f"{label}: {stats[key]}" for key, label in (("passport", "без паспорта"), ("birth", "не 1980+"),
+                                                         ("phone", "без номера"), ("duplicates", "повторы")) if stats.get(key)]
+    return ("\\n⏭ Отфильтровано " + " · ".join(parts)) if parts else ""
+
+
+def _merge_clean_base(clean_path):
+    """Append the new numbers of clean_path to clients.txt: (added, already there)."""
+    existing = ([x.strip() for x in CLIENTS_FILE.read_text("utf-8", errors="replace").splitlines() if x.strip()]
+                if CLIENTS_FILE.exists() else [])
+    known = set()
+    for line in existing:
+        pair, _ = _normalise_upload_line(line)
+        known.add(pair.split()[0] if pair else line)
+    incoming = [x.strip() for x in Path(clean_path).read_text("utf-8", errors="replace").splitlines() if x.strip()]
+    added = []
+    for line in incoming:
+        if line.split()[0] in known:
+            continue
+        known.add(line.split()[0])
+        added.append(line)
+    if added:
+        merged = BASE_DIR / ".clients_merge.tmp"
+        merged.write_text("\\n".join(existing + added) + "\\n", encoding="utf-8")
+        merged.replace(CLIENTS_FILE)
+    return len(added), len(incoming) - len(added)
+
+
+def _has_unprocessed_base_rows():
+    try:
+        processed = {x.strip() for x in PROCESSED_FILE.read_text("utf-8", errors="replace").splitlines() if x.strip()}
+    except OSError:
+        processed = set()
+    try:
+        return any(row[1] not in processed for row in load_clients(CLIENTS_FILE))
+    except Exception:
+        return False
+
+
+def _continue_appended_base(proc):
+    """The work ended its queue while rows were added: start it again for them."""
+    if not APPEND_PENDING_FILE.exists() or proc.running():
+        return False
+    proc.reap()
+    APPEND_PENDING_FILE.unlink(missing_ok=True)
+    if not _has_unprocessed_base_rows():
+        return False
+    ok, answer = proc.start()
+    _send("➕ Очередь закончена — запускаю добавленные строки." if ok else f"⚠️ Добавленные строки ждут запуска: {answer}")
+    return ok
+
+
+def _download_document(file_id, destination):
+'''
+OLD_C_LOOP_R64 = '        _restart_after_drain(proc)  # SCHEDULED_RESTART_1591R13\n'
+NEW_C_LOOP_R64 = ('        _restart_after_drain(proc)  # SCHEDULED_RESTART_1591R13\n'
+                  '        _continue_appended_base(proc)  # BASE_TOOLS_1591R64: rows added while the work ran\n')
+OLD_C_CALLBACK_R64 = ('                        if cb_chat == chat and menu.handle_callback(callback) == "upload":\n'
+                      '                            waiting_upload = True\n')
+NEW_C_CALLBACK_R64 = ('                        if cb_chat == chat:\n'
+                      '                            menu_result = menu.handle_callback(callback)\n'
+                      '                            if menu_result in ("upload", "upload_new", "upload_add"):  # BASE_TOOLS_1591R64\n'
+                      '                                waiting_upload = "add" if menu_result == "upload_add" else "new"\n')
+C_BUTTONS_R64 = tuple((f'                        _, answer = proc.{act}()\n',
+                       '                        APPEND_PENDING_FILE.unlink(missing_ok=True)  # BASE_TOOLS_1591R64\n'
+                       f'                        _, answer = proc.{act}()\n') for act in ("start", "stop", "restart"))
+OLD_C_ASK_R64 = ('                        if not waiting_upload:\n'
+                 '                            _send(\n'
+                 '                                "Чтобы заменить базу, сначала нажми "\n'
+                 '                                "«📥 Загрузить новую базу номеров»."\n'
+                 '                            )\n')
+NEW_C_ASK_R64 = ('                        if not waiting_upload:\n'
+                 '                            _send("Сначала открой «📂 База» и выбери «➕ Добавить строки» или «🆕 Загрузить новую базу».")  # BASE_TOOLS_1591R64\n')
+OLD_C_UPLOAD_R64 = '''                        was_running = proc.running()
+                        tmp = BASE_DIR / ".clients_upload.tmp"
+                        try:
+                            _download_document(file_id, tmp)
+                            count = _validate_base(tmp)
+
+                            if was_running:
+                                proc.stop()
+
+                            _archive_progress()
+                            tmp.replace(CLIENTS_FILE)
+
+                            # New base means a new processing pass.
+                            PROCESSED_FILE.unlink(missing_ok=True)
+
+                            waiting_upload = False
+
+                            if was_running:
+                                ok, start_msg = proc.start()
+                                if not ok:
+                                    _send(
+                                        f"✅ Новая база загружена: {count} строк.\\n"
+                                        f"⚠️ Автозапуск не удался: {start_msg}"
+                                    )
+                                else:
+                                    _send(
+                                        f"✅ Новая база загружена: {count} строк.\\n"
+                                        "🔄 Работавший процесс остановлен и запущен заново."
+                                    )
+                            else:
+                                _send(
+                                    f"✅ Новая база загружена: {count} строк.\\n"
+                                    "Процесс оставлен остановленным. Нажми «▶️ Запустить»."
+                                )
+                        except Exception as exc:
+                            try:
+                                tmp.unlink(missing_ok=True)
+                            except Exception:
+                                pass
+                            _send(f"❌ База не заменена: {type(exc).__name__}: {exc}")
+                        continue
+'''
+NEW_C_UPLOAD_R64 = '''                        # BASE_TOOLS_1591R64: filter first; «add» appends without stopping, «new» replaces and starts.
+                        mode = "add" if waiting_upload == "add" else "new"
+                        raw_tmp = BASE_DIR / ".clients_upload.raw.tmp"
+                        clean_tmp = BASE_DIR / ".clients_upload.tmp"
+                        try:
+                            _download_document(file_id, raw_tmp)
+                            stats = _prepare_uploaded_base(raw_tmp, clean_tmp)
+                            count = int(stats["accepted"])
+                            waiting_upload = False
+                            if mode == "add":
+                                was_running = proc.running()
+                                added, already = _merge_clean_base(clean_tmp)
+                                if was_running and added:
+                                    APPEND_PENDING_FILE.write_text(str(added), encoding="utf-8")
+                                note = f"✅ Добавлено строк: {added} (после фильтрации {count} из {stats['source']})."
+                                if already:
+                                    note += f"\\n↩️ Уже были в базе: {already}."
+                                note += _filter_note(stats)
+                                note += ("\\n⚙️ Работа не остановлена: добавленные строки запустятся, когда закончится текущая очередь."
+                                         if was_running and added else
+                                         "\\n⏸ Процесс остановлен; строки в базе, нажми «▶️ Запустить»." if added else "")
+                                _send(note)
+                            else:
+                                if proc.running():
+                                    proc.stop()
+                                _archive_progress()
+                                clean_tmp.replace(CLIENTS_FILE)
+                                PROCESSED_FILE.unlink(missing_ok=True)  # a new base is a new pass
+                                APPEND_PENDING_FILE.unlink(missing_ok=True)
+                                ok, start_msg = proc.start()
+                                _send(f"✅ База загружена — {count} строк (из {stats['source']})." + _filter_note(stats)
+                                      + ("\\n▶️ Новая база запущена." if ok else f"\\n⚠️ Запуск не удался: {start_msg}"))
+                        except Exception as exc:
+                            _send(f"❌ База не изменена: {type(exc).__name__}: {exc}")
+                        finally:
+                            for tmp in (raw_tmp, clean_tmp):
+                                try:
+                                    tmp.unlink(missing_ok=True)
+                                except Exception:
+                                    pass
+                        continue
+'''
+OLD_TEST_CONTINUE_R64 = "'_restart_after_drain':lambda p:False,"
+NEW_TEST_CONTINUE_R64 = "'_restart_after_drain':lambda p:False,'_continue_appended_base':lambda p:False,"
+README_NOTE_R64 = ('\n\nРЕВИЗИЯ 64 (fix_package_1591.py)\nКнопки «📂 База» и «🔢 Генерация» (впервые выложены вручную как r63, теперь собираются здесь).\n'
+                   '«📂 База» → «➕ Добавить строки» (дописывает к базе, работа не останавливается, добавленные строки\n'
+                   'запускаются после текущей очереди) или «🆕 Загрузить новую базу» (останавливает, заменяет, запускает). Файл\n'
+                   'фильтруется: строки «номер|паспорт|даты рождения» — нужен паспорт (10 цифр) и год рождения 1980+ (из\n'
+                   'нескольких дат хватит одной); строки старого формата (номер и паспорт через пробел, таб, |, ; или ,) —\n'
+                   'нужен паспорт; повторы номеров убираются. Ответ: сколько строк осталось и сколько и почему отфильтровано.\n'
+                   '«🔢 Генерация»: первые 7 цифр (+7900111****, по одному в строке) → .txt со всеми 10 000 номерами.\n'
+                   'Маркер: BASE_TOOLS_1591R64.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -5555,6 +5830,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if BASE_TOOLS_MARKER in source:
+        return 64
     if ESIM_ISSUED_MARKER in source:
         return 62
     if EXPORT_CARDS_MARKER in source:
@@ -5674,6 +5951,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 60 or BOT_TOOLS_MARKER in source)\
             and (MAX_REVISION < 61 or EXPORT_CARDS_MARKER in source)\
             and (MAX_REVISION < 62 or ESIM_ISSUED_MARKER in source)\
+            and (MAX_REVISION < 64 or BASE_TOOLS_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -6889,6 +7167,50 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 65 (r64; r63 was published by hand). «📂 База» filter and append, «🔢 Генерация»: marker, controller, menu.
+    if BASE_TOOLS_MARKER not in source and MAX_REVISION >= 64:
+        old, new, what = OLD_BASE_TOOLS_MARK_R64, NEW_BASE_TOOLS_MARK_R64, "base tools: marker"
+        new_source = replace_once(new_source, old, new, what)
+        if old in source:
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        else:
+            for change in edits["test_beeline.py"]:
+                joined = "".join(change["replacement"])
+                if old in joined:
+                    change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                    break
+            else:
+                raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        if BASE_TOOLS_MARKER not in ctrl_source:
+            for old, new, what in ((OLD_C_PENDING_R64, NEW_C_PENDING_R64, "controller: append pending file"),
+                                   (OLD_C_FILTER_R64, NEW_C_FILTER_R64, "controller: upload filter"),
+                                   (OLD_C_LOOP_R64, NEW_C_LOOP_R64, "controller: added rows after the queue"),
+                                   (OLD_C_CALLBACK_R64, NEW_C_CALLBACK_R64, "controller: base menu modes"),
+                                   *((o, n, "controller: button clears the append") for o, n in C_BUTTONS_R64),
+                                   (OLD_C_ASK_R64, NEW_C_ASK_R64, "controller: upload hint"),
+                                   (OLD_C_UPLOAD_R64, NEW_C_UPLOAD_R64, "controller: filtered upload")):
+                new_ctrl = replace_once(new_ctrl, old, new, what)
+                if old in ctrl_source:
+                    add_edit(edits["server_controller.py"], ctrl_source, old, new, ctrl_reflected)
+                else:
+                    for change in edits["server_controller.py"]:
+                        joined = "".join(change["replacement"])
+                        if old in joined:
+                            change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                            break
+                    else:
+                        raise SystemExit(f"edits.json: earlier controller entry for {what} not found")
+        if "'_continue_appended_base':" not in test_src:
+            test_src = replace_once(test_src, OLD_TEST_CONTINUE_R64, NEW_TEST_CONTINUE_R64, "test_update.py controller fixture (append)")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if BASE_TOOLS_MARKER not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 64 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -7006,6 +7328,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 60", README_NOTE_R60),) if built_revision >= 60 else ()),
                           *((("РЕВИЗИЯ 61", README_NOTE_R61),) if built_revision >= 61 else ()),
                           *((("РЕВИЗИЯ 62", README_NOTE_R62),) if built_revision >= 62 else ()),
+                          *((("РЕВИЗИЯ 64", README_NOTE_R64),) if built_revision >= 64 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
