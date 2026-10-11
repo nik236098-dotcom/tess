@@ -284,7 +284,44 @@ def error_page(pattern="введите данные снова"):
             print("  " + hide(x)[:180])
 
 
+def lost_pages():
+    """Error pages saved after the confirmation (the tab was past CONFIRM/RESEND): time, step, text, buttons."""
+    before_auth = {"CONFIRM", "RESEND", "AUTH_WAIT", "FILL", "IDLE", "RESTART_ROW_READY", "ERROR_ASSIST", "ERROR_RECOVERY", "None", ""}
+    seen = set()
+    shown = 0
+    for case in sorted(APP.glob("diagnostics/**/blackbox/*error*"), key=lambda c: c.stat().st_mtime):
+        try:
+            if case.stat().st_mtime < SINCE:
+                continue
+            meta = json.loads((case / "meta.json").read_text("utf-8"))
+            html = (case / "page.html").read_text("utf-8", errors="replace")
+        except Exception:
+            continue
+        if str(meta.get("phase")) in before_auth:
+            continue
+        key = (meta.get("tab"), str(meta.get("time"))[:16])
+        if key in seen:
+            continue
+        seen.add(key)
+        shown += 1
+        print(f"\n== {str(meta.get('time'))[5:16]}  вкладка {meta.get('tab')}  шаг {meta.get('phase')}  ({case.name.split('_row')[-1].split('_', 1)[-1]})")
+        print("URL: " + re.sub(r"\?.*", "?…", str(meta.get("url") or "")))
+        for line in page_text(html)[:14]:
+            print("  " + line[:160])
+        buttons = [" ".join(page_text(inner)) for _, _, inner in re.findall(r"(?is)<(button|a)\b([^>]*)>(.*?)</\1>", html)]
+        buttons = [b for b in buttons if b]
+        if buttons:
+            print("  Кнопки: " + " | ".join(dict.fromkeys(buttons))[:200])
+    if not shown:
+        print("Страниц ошибки после подтверждения за это время нет.")
+
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "lost":
+        HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 24.0
+        SINCE = time.time() - HOURS * 3600
+        lost_pages()
+        sys.exit(0)
     if len(sys.argv) > 1 and sys.argv[1] == "page":
         HOURS = 0
         error_page(" ".join(sys.argv[2:]) or "введите данные снова")
