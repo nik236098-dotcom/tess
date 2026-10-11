@@ -22,6 +22,7 @@ APP = Path(os.environ.get("APP_DIR") or "/opt/beeline")
 HOURS = float(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].replace(".", "").isdigit() else 14.0
 SINCE = time.time() - HOURS * 3600
 SINCE_TEXT = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(SINCE))
+FIRST = False
 
 
 def hide(text):
@@ -260,7 +261,7 @@ def field_context(html, field_id):
 def error_page(pattern="введите данные снова"):
     """The newest error page with `pattern`: its buttons, links, fields and what the tab did before."""
     cases = []
-    for case in APP.glob("diagnostics/**/blackbox/*error*"):
+    for case in APP.glob("diagnostics/**/blackbox/*"):
         try:
             html = (case / "page.html").read_text("utf-8", errors="replace")
         except OSError:
@@ -269,7 +270,7 @@ def error_page(pattern="введите данные снова"):
             exc_text = str(json.loads((case / "meta.json").read_text("utf-8")).get("exception") or "").lower()
         except Exception:
             exc_text = ""
-        if pattern in _html.unescape(html).replace("\xa0", " ").lower() or pattern in exc_text:
+        if pattern in _html.unescape(html).replace("\xa0", " ").lower() or pattern in exc_text or pattern in case.name.lower():
             cases.append((case.stat().st_mtime, case, html))
     print(f"== Снимков с «{pattern}» (на странице или в тексте ошибки): {len(cases)}")
     if not cases:
@@ -294,12 +295,12 @@ def error_page(pattern="введите данные снова"):
     for key, n in ages.most_common(10):
         print(f"  {n:5d}  {key}")
     print(f"-- Разных строк: {len(rows)}, строк с ошибкой 2+ раз: {sum(1 for v in rows.values() if v > 1)}")
-    mtime, case, html = max(cases, key=lambda c: c[0])
+    mtime, case, html = (min if FIRST else max)(cases, key=lambda c: c[0])
     try:
         meta = json.loads((case / "meta.json").read_text("utf-8"))
     except Exception:
         meta = {}
-    print(f"Последняя: {time.strftime('%d.%m %H:%M:%S', time.localtime(mtime))}, вкладка {meta.get('tab')}, фаза {meta.get('phase')}")
+    print(f"Снимок: {time.strftime('%d.%m %H:%M:%S', time.localtime(mtime))}, вкладка {meta.get('tab')}, фаза {meta.get('phase')}")
     print("URL: " + re.sub(r"\?.*", "?…", str(meta.get("url") or "")))
     print("Заголовок: " + hide(meta.get("title")))
     if meta.get("exception"):
@@ -322,6 +323,12 @@ def error_page(pattern="введите данные снова"):
         print(f"  <{tag}> «{label[:60]}»" + (f" href={re.sub(r'[?#].*', '', href.group(1))[:80]}" if href else "")
               + (f" type={kind.group(1)}" if kind else ""))
     print("\n-- Поля")
+    for attrs in re.findall(r"(?is)<(?:input|textarea|select)\b([^>]*)>", html):
+        if re.search(r'aria-invalid="true"|status_error|_error\b|invalid', attrs):
+            name = re.search(r'(?:name|id|aria-label)="([^"]*)"', attrs)
+            print(f"  ⚠️ поле с ошибкой: {hide(name.group(1)) if name else attrs[:80]}")
+    for msg in re.findall(r"(?is)<[^>]+(?:error|invalid|hint)[^>]*>([^<]{3,120})<", html)[:10]:
+        print(f"  ⚠️ подсказка: {hide(msg.strip())}")
     for attrs in re.findall(r"(?is)<(?:input|select|textarea)\b([^>]*)>", html):
         got = {k: hide(v)[:50] for k, v in re.findall(r'\b(name|type|id|placeholder|aria-label|inputmode|autocomplete|data-[\w-]+)="([^"]*)"', attrs)}
         print("  " + " ".join(f"{k}={v!r}" for k, v in got.items()))
@@ -494,6 +501,7 @@ if __name__ == "__main__":
         sys.exit(0)
     if len(sys.argv) > 1 and sys.argv[1] == "page":
         HOURS = 0
-        error_page(" ".join(sys.argv[2:]) or "введите данные снова")
+        FIRST = "--first" in sys.argv
+        error_page(" ".join(a for a in sys.argv[2:] if a != "--first").lower() or "введите данные снова")
     else:
         main()

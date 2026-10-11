@@ -177,7 +177,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "f8d6f305e207cc35d2ef37215d76c5fa904642bc82ce8270c891dc28af0a6568",  # r66 exp8 output
                          "b79bcf1cc7579eb2ca0e8333e272f1f2b7ab06bbba6eade5098898ee7669e6a4",  # r67 lite output
                          "5d0345183cbcdee10bdebc33830b1c33b8977dd5dca28f0447ce68fa993fa6fe",  # r67 output
-                         "b7dd73283a0dd995a96f3514b4c658bcb91ffadcb68203b36a7d26db5befcb00"}  # r67 exp8 output
+                         "b7dd73283a0dd995a96f3514b4c658bcb91ffadcb68203b36a7d26db5befcb00",  # r67 exp8 output
+                         "9cbba2a5ecb649cac3969cb2f8bf67ce2679de13f3a92002c0a022aac95022d5",  # r68 lite output
+                         "6d4055e86fb85f589c27c11f3bfdb8bb848c417d53bdae8e23705f80edfefc9c",  # r68 output
+                         "02aba622b3f2867f6a8d19a57b1d257463b9ab3c95efe016768075bddf8d7992"}  # r68 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -5145,6 +5148,33 @@ README_NOTE_R67 = ('\n\nРЕВИЗИЯ 67 (fix_package_1591.py)\nРегистр�
                    '3 минуты после последнего строка отмечается «❔ подпись не подтверждена» (с сообщением), а не висит молча.\n'
                    'DeepSeek знает, что страница со списком шагов — начало заказа, а не оплата. Маркер: REENTER_ROW_1591R67.\n')
 
+# Revision 68: the site takes the signature (checksignature 200), then answers the passport step with 412
+# PERSONAL_TOKEN_ERROR and asks for the data again («введите данные снова — с заказом всё хорошо»). All six
+# «❔ подпись не подтверждена» of a server in three days were this. The row now starts over (a new request to
+# the client, the confirmation token is renewed) instead of being recorded as unverified, at most twice per row
+# (REENTER_ROW_MAX_1591R67 shared with r67).
+TOKEN_REENTER_MARKER = "TOKEN_REENTER_1591R68"
+OLD_TOKEN_MARK_R68 = NEW_REENTER_MARK_R67.splitlines(keepends=True)[-1]
+NEW_TOKEN_MARK_R68 = (OLD_TOKEN_MARK_R68
+                      + '# TOKEN_REENTER_1591R68: 412 PERSONAL_TOKEN_ERROR after the signature re-enters the row, no ❔.\n')
+OLD_TOKEN_DEF_R68 = 'def _reenter_row_1591r67(worker):\n'
+NEW_TOKEN_DEF_R68 = 'def _reenter_row_1591r67(worker, forced=""):\n'
+OLD_TOKEN_HINT_R68 = '    hint = _reenter_page_1591r67(worker.get("page"))\n'
+NEW_TOKEN_HINT_R68 = '    hint = _reenter_page_1591r67(worker.get("page")) or forced  # TOKEN_REENTER_1591R68: the site\'s own code\n'
+OLD_TOKEN_FINISH_R68 = ('def _finish_unverified_1591r24(base_dir, worker, reason):\n'
+                        '    """The signing could not be confirmed: record it apart from the successes and stop the tab."""\n')
+NEW_TOKEN_FINISH_R68 = ('def _finish_unverified_1591r24(base_dir, worker, reason):\n'
+                        '    """The signing could not be confirmed: record it apart from the successes and stop the tab."""\n'
+                        '    # TOKEN_REENTER_1591R68: the site took the signature, then refused the confirmation token (412\n'
+                        '    # PERSONAL_TOKEN_ERROR) or asks for the data again; the order is kept, so the row starts over\n'
+                        '    # (a new request to the client) instead of being recorded as unverified.\n'
+                        '    if _reenter_row_1591r67(worker, "PERSONAL_TOKEN_ERROR" if "PERSONAL_TOKEN" in str(reason) else ""):\n'
+                        '        return None\n')
+README_NOTE_R68 = ('\n\nРЕВИЗИЯ 68 (fix_package_1591.py)\nСайт принимает подпись (checksignature 200), а на шаге паспортных данных отвечает 412\n'
+                   'PERSONAL_TOKEN_ERROR и просит «ввести данные снова — с заказом всё хорошо». Все «❔ подпись не подтверждена»\n'
+                   'были такими. Теперь строка начинается заново (клиент получает новый запрос, токен обновляется), а не\n'
+                   'записывается как «❔»; не больше 2 повторов на строку. Маркер: TOKEN_REENTER_1591R68.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -5986,6 +6016,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if TOKEN_REENTER_MARKER in source:
+        return 68
     if REENTER_MARKER in source:
         return 67
     if AUTO_EXPIRE_MARKER in source:
@@ -6117,6 +6149,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 65 or SETTING_RESTART_MARKER in source)\
             and (MAX_REVISION < 66 or AUTO_EXPIRE_MARKER in source)\
             and (MAX_REVISION < 67 or REENTER_MARKER in source)\
+            and (MAX_REVISION < 68 or TOKEN_REENTER_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -7441,6 +7474,24 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 69 (r68). 412 PERSONAL_TOKEN_ERROR after the signature re-enters the row instead of ❔.
+    if TOKEN_REENTER_MARKER not in source and MAX_REVISION >= 68:
+        for old, new, what in ((OLD_TOKEN_MARK_R68, NEW_TOKEN_MARK_R68, "token reenter: marker"),
+                               (OLD_TOKEN_DEF_R68, NEW_TOKEN_DEF_R68, "token reenter: forced reason"),
+                               (OLD_TOKEN_HINT_R68, NEW_TOKEN_HINT_R68, "token reenter: hint"),
+                               (OLD_TOKEN_FINISH_R68, NEW_TOKEN_FINISH_R68, "token reenter: before ❔")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -7562,6 +7613,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 65", README_NOTE_R65),) if built_revision >= 65 else ()),
                           *((("РЕВИЗИЯ 66", README_NOTE_R66),) if built_revision >= 66 else ()),
                           *((("РЕВИЗИЯ 67", README_NOTE_R67),) if built_revision >= 67 else ()),
+                          *((("РЕВИЗИЯ 68", README_NOTE_R68),) if built_revision >= 68 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

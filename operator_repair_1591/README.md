@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 67 лежит в `beeline_integrated_io_15_91_r67/`; рядом
-`beeline_integrated_io_15_91_r67_lite/` — та же ревизия 67 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 68 лежит в `beeline_integrated_io_15_91_r68/`; рядом
+`beeline_integrated_io_15_91_r68_lite/` — та же ревизия 68 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r67
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r68
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r67_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r68_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -598,6 +598,14 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    - DeepSeek знает, что страница со списком шагов «подтвердите данные → оплатите картой → …» и кнопкой «выбрать
      способ регистрации» — это начало заказа, а не оплата (раньше он отвечал «оплата», а строка уже была закрыта).
    Маркер: `REENTER_ROW_1591R67`.
+
+71. **PERSONAL_TOKEN_ERROR после подписи — повтор строки, а не «❔» (ревизия 68).** Все «❔ подпись не подтверждена»
+   за трое суток на одном сервере оказались одним случаем: подпись сайт принял (`checksignature` 200), а шаг
+   паспортных данных ответил `412 PERSONAL_TOKEN_ERROR` и «введите данные снова — с заказом всё хорошо». Токен
+   подтверждения истекает, пока форма после подписи не уходит дальше (в разобранном случае — 3,5 минуты). Теперь
+   такая строка начинается заново (клиент получает новый запрос), не больше 2 повторов на строку вместе с r67;
+   «❔» остаётся только после них. Маркер: `TOKEN_REENTER_1591R68`. Почему форма не уходит после подписи —
+   смотрит `night_report.py page tabN_rowM_after_sign_click --first` (поля с ошибкой и подсказки).
 
 ## Использование
 
