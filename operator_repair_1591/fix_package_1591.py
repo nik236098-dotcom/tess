@@ -183,7 +183,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "02aba622b3f2867f6a8d19a57b1d257463b9ab3c95efe016768075bddf8d7992",  # r68 exp8 output
                          "fa0e97c5da8a9369b31c65146922e2d61a59660184f50fa6110647f90095dc2b",  # r69 lite output
                          "b18a6cd0914baad00f3301d2bef4979e9d01813682a3af738dedfce2626d7a34",  # r69 output
-                         "ea0511ec3650b830d75c40dfad187698bfbd09447acfaf26ff65101ad838b29c"}  # r69 exp8 output
+                         "ea0511ec3650b830d75c40dfad187698bfbd09447acfaf26ff65101ad838b29c",  # r69 exp8 output
+                         "679c881a19b388da8523eba3094b249f3c22d884a71aeca05f9a69e0886d4901",  # r70 lite output
+                         "c9c55e40b616e577b735243cf72c347a806a0630f38a4044e49fa2b7348ba255",  # r70 output
+                         "f5055f9bcadadcb55dc1019bad40608a58247ff86381cbf853495d1c99e85ab6"}  # r70 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -5634,6 +5637,401 @@ README_NOTE_R69 = ('\n\nРЕВИЗИЯ 69 (fix_package_1591.py)\nБыстрее 
                    'не так». Загрузка базы «номер|паспорт|даты»: ровно одна дата рождения, 1982 и позже. Маркер:\n'
                    'ORDER_REUSE_1591R69.\n')
 
+# Revision 70: the signature that the site saw as empty. checksignature answered 200 with
+# {"isSucceeded": false, "square11": false, "square12": false, "square21": false, "square22": false}: the site checks the
+# picture by quarters and found no line in any. The canvas there is «Место для подписи» (SignField-SignCanvas, 436×392,
+# 100 % wide, so taller than before): one stroke by fixed fractions of its box could fall outside the window or under
+# another element. And that answer counted as «принято» (a 200), so the runtime waited 60 s between clicks, recorded ❔
+# after 3 and replaced the tab.
+# - SIGN_QUADRANTS_1591R70: the signature canvas is found by its own marks; every quarter gets its own dense stroke
+#   (a zigzag along the rows and one along the columns: one thin line covered 1–2 % of a quarter of the bigger canvas),
+#   drawn by TOUCH (the field takes finger strokes only: a mouse stroke leaves it empty — that was the bug), through
+#   points inside the window that hit the canvas; the canvas pixels are read per quarter, and a quarter without a line is
+#   drawn by events sent to the canvas itself. A checksignature answer with isSucceeded false is not «принято»: a
+#   redraw and a click at once (2 s), every time; after 4 attempts DeepSeek is asked too, the redraws go on.
+# - The tab is never closed for the signature: after 3 clicks with an unchanged page, and after the button vanished
+#   with no sign of a signed contract, DeepSeek is asked (again every 3 minutes) instead of ❔ and a new tab.
+SIGN_QUADRANTS_MARKER = "SIGN_QUADRANTS_1591R70"
+OLD_SIGNQ_MARK_R70 = NEW_ORDER_MARK_R69.splitlines(keepends=True)[-1]
+NEW_SIGNQ_MARK_R70 = (OLD_SIGNQ_MARK_R70
+                      + '# SIGN_QUADRANTS_1591R70: the signature is drawn per quarter and checked; an empty one is redrawn, the tab is kept.\n')
+OLD_SIGNQ_HEAD_R70 = '# REENTER_ROW_1591R67\nREENTER_ROW_MAX_1591R67 = 2\n'
+NEW_SIGNQ_HEAD_R70 = r'''# SIGN_QUADRANTS_1591R70
+_SIGN_CANVAS_SELECTORS_1591R70 = ('[data-t-id="SignField-SignCanvas"]', 'canvas[aria-label*="подпис" i]',
+                                  '[data-testid*="sign" i] canvas', '[class*="sign" i] canvas',
+                                  '[class*="signature" i] canvas', "canvas")
+SIGN_INK_MIN_1591R70 = 40               # new line pixels a quarter needs
+SIGN_EMPTY_RETRY_SECONDS_1591R70 = 2    # redraw at once after the site saw an empty signature
+SIGN_EMPTY_AI_AFTER_1591R70 = 4         # DeepSeek is asked too after this many attempts; the redraws go on
+_SIGN_REFUSED_RE_1591R70 = re.compile(r'"isSucceeded"\s*:\s*false', re.I)
+_QUARTER_NAMES_1591R70 = ("левая верхняя", "правая верхняя", "левая нижняя", "правая нижняя")
+_CANVAS_INK_JS_1591R70 = r"""(c) => {
+  try {
+    const ctx = c.getContext('2d'), w = c.width, h = c.height;
+    if (!ctx || !w || !h) return null;
+    const d = ctx.getImageData(0, 0, w, h).data;
+    const bg = [d[4 * (w + 1)], d[4 * (w + 1) + 1], d[4 * (w + 1) + 2], d[4 * (w + 1) + 3]];
+    const counts = [0, 0, 0, 0];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = 4 * (y * w + x);
+      if (Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]) + Math.abs(d[i + 3] - bg[3]) > 60)
+        counts[(y < h / 2 ? 0 : 2) + (x < w / 2 ? 0 : 1)]++;
+    }
+    return counts;
+  } catch (e) { return null; }
+}"""
+_QUARTER_SCROLL_JS_1591R70 = r"""(c, a) => {
+  const r = c.getBoundingClientRect();
+  const cx = r.left + r.width * (a[0] * 0.5 + 0.25), cy = r.top + r.height * (a[1] * 0.5 + 0.25);
+  window.scrollBy(cx < 20 || cx > innerWidth - 20 ? cx - innerWidth / 2 : 0, cy - innerHeight / 2);  // the quarter mid-window
+}"""
+_QUARTER_POINTS_JS_1591R70 = r"""(c, a) => {
+  const [qx, qy, j] = a, r = c.getBoundingClientRect(), out = [];
+  const rows = [0.22, 0.42, 0.62, 0.8], cols = [0.15, 0.38, 0.62, 0.85];
+  const clamp = (v) => Math.min(0.92, Math.max(0.08, v + j));
+  const add = (fx, fy) => {
+    const x = r.left + r.width * (qx * 0.5 + 0.5 * clamp(fx)), y = r.top + r.height * (qy * 0.5 + 0.5 * clamp(fy));
+    if (x < 1 || y < 1 || x > innerWidth - 2 || y > innerHeight - 2) return;
+    const hit = document.elementFromPoint(x, y);
+    if (hit === c || c.contains(hit)) out.push([x, y]);
+  };
+  // a zigzag along the rows, then one along the columns: enough line for the site's check of each quarter
+  rows.forEach((fy, i) => { for (const fx of (i % 2 ? cols.slice().reverse() : cols)) add(fx, fy); });
+  cols.slice().reverse().forEach((fx, i) => { for (const fy of (i % 2 ? rows : rows.slice().reverse())) add(fx, fy); });
+  return out;
+}"""
+_QUARTER_DISPATCH_JS_1591R70 = r"""(c, a) => {
+  const [qx, qy] = a, r = c.getBoundingClientRect();
+  const pts = [[0.15, 0.22], [0.85, 0.22], [0.15, 0.42], [0.85, 0.42], [0.15, 0.62], [0.85, 0.62], [0.15, 0.82],
+               [0.85, 0.82], [0.85, 0.15], [0.62, 0.85], [0.38, 0.15], [0.15, 0.85]];
+  const at = (p) => ({clientX: r.left + r.width * (qx * 0.5 + 0.5 * p[0]), clientY: r.top + r.height * (qy * 0.5 + 0.5 * p[1])});
+  const fire = (type, p, buttons) => {
+    const o = Object.assign({bubbles: true, cancelable: true, composed: true, view: window, button: 0, buttons,
+                             pointerId: 1, pointerType: 'mouse', isPrimary: true, pressure: buttons ? 0.5 : 0}, at(p));
+    c.dispatchEvent(type.startsWith('pointer') && window.PointerEvent ? new PointerEvent(type, o) : new MouseEvent(type, o));
+  };
+  const touch = (type, p) => {
+    try {
+      const t = new Touch(Object.assign({identifier: 1, target: c, radiusX: 1, radiusY: 1, force: 0.5}, at(p)));
+      const live = type === 'touchend' ? [] : [t];
+      c.dispatchEvent(new TouchEvent(type, {bubbles: true, cancelable: true, composed: true, touches: live,
+                                            targetTouches: live, changedTouches: [t]}));
+    } catch (e) {}
+  };
+  touch('touchstart', pts[0]); fire('pointerdown', pts[0], 1); fire('mousedown', pts[0], 1);
+  for (let i = 1; i < pts.length; i++) for (let k = 1; k <= 6; k++) {
+    const p = [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * k / 6, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * k / 6];
+    touch('touchmove', p); fire('pointermove', p, 1); fire('mousemove', p, 1);
+  }
+  const end = pts[pts.length - 1];
+  touch('touchend', end); fire('pointerup', end, 0); fire('mouseup', end, 0);
+  return true;
+}"""
+
+
+def _sign_canvas_1591r70(page):
+    for selector in _SIGN_CANVAS_SELECTORS_1591R70:
+        loc = page.locator(selector)
+        try:
+            count = loc.count()
+        except Exception:
+            continue
+        for i in range(count):
+            candidate = loc.nth(i)
+            try:
+                box = candidate.bounding_box()
+                if candidate.is_visible() and box and box["width"] >= 200 and box["height"] >= 100:
+                    return candidate
+            except Exception:
+                continue
+    return None
+
+
+def _canvas_ink_1591r70(canvas):
+    try:
+        counts = canvas.evaluate(_CANVAS_INK_JS_1591R70)
+    except Exception:
+        return None
+    return [int(x) for x in counts] if isinstance(counts, list) and len(counts) == 4 else None
+
+
+def _ink_text_1591r70(ink):
+    if not ink:
+        return "холст не читается"
+    return " · ".join(f"{name} {int(n)}" for name, n in zip(_QUARTER_NAMES_1591R70, ink))
+
+
+def _touch_stroke_1591r70(page, points):
+    """One finger stroke through the points: real touch input of the browser (the site's signature field takes
+    touches only; mouse strokes leave it empty)."""
+    cdp = page.context.new_cdp_session(page)
+    try:
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": points[0][0], "y": points[0][1]}]})
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            for k in range(1, 7):
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [
+                    {"x": x0 + (x1 - x0) * k / 6, "y": y0 + (y1 - y0) * k / 6}]})
+            page.wait_for_timeout(15)
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+    finally:
+        try:
+            cdp.detach()
+        except Exception:
+            pass
+
+
+def _mouse_stroke_1591r70(page, points):
+    page.mouse.move(points[0][0], points[0][1])
+    page.mouse.down()
+    try:
+        for x, y in points[1:]:
+            page.mouse.move(x, y, steps=6)
+            page.wait_for_timeout(20)
+    finally:
+        page.mouse.up()
+
+
+def _draw_signature_1591r70(page, diagnostic=None):
+    """Every quarter of the signature canvas gets its own stroke through points inside the window that hit the
+    canvas (the quarter is scrolled to the middle first): a finger stroke (real touch input: the site's field takes
+    touches only), then a mouse stroke where the canvas shows no line yet, then pointer/touch/mouse events sent to
+    the canvas itself for a quarter still without enough line. Returns the new line pixels per quarter (square11,
+    square12, square21, square22), or None when the canvas cannot be read."""
+    canvas = _sign_canvas_1591r70(page)
+    if canvas is None:
+        raise RuntimeError("Поле графической подписи не найдено.")
+    try:
+        canvas.evaluate("c => c.scrollIntoView({block: 'center', inline: 'center'})")
+    except Exception:
+        canvas.scroll_into_view_if_needed()
+    page.wait_for_timeout(300)
+    before = _canvas_ink_1591r70(canvas)
+    jitter = (secrets.randbelow(13) - 6) / 100  # each attempt draws new pixels, not the same path again
+    how = {}
+
+    def strokes(stroke, quarters, label):
+        for quarter in quarters:
+            qx, qy = quarter % 2, quarter // 2
+            try:
+                canvas.evaluate(_QUARTER_SCROLL_JS_1591R70, [qx, qy])
+                page.wait_for_timeout(150)
+                points = canvas.evaluate(_QUARTER_POINTS_JS_1591R70, [qx, qy, jitter]) or []
+            except Exception:
+                points = []
+            if len(points) < 3:
+                how.setdefault(quarter, "закрыта")
+                continue
+            try:
+                stroke(page, points)
+                how[quarter] = label
+            except Exception as exc:
+                how.setdefault(quarter, f"{label}: {type(exc).__name__}")
+
+    def lacking():
+        now_ink = _canvas_ink_1591r70(canvas)
+        got = [a - b for a, b in zip(now_ink, before)] if before and now_ink else None
+        return got, ([q for q in range(4) if got[q] < SIGN_INK_MIN_1591R70] if got else list(range(4)))
+
+    strokes(_touch_stroke_1591r70, range(4), "касание")
+    ink, empty = lacking()
+    if empty:
+        strokes(_mouse_stroke_1591r70, empty, "мышь")
+    ink, _ = lacking()
+    # a quarter with no line, or with less than half of the best one, is drawn again by events sent to the canvas
+    missing = ([q for q in range(4) if ink[q] < max(SIGN_INK_MIN_1591R70, max(ink) // 2)] if ink
+               else [q for q in range(4) if how.get(q) not in ("касание", "мышь")])
+    for quarter in missing:
+        try:
+            canvas.evaluate(_QUARTER_DISPATCH_JS_1591R70, [quarter % 2, quarter // 2])
+            how[quarter] = "напрямую"
+        except Exception:
+            pass
+    if missing:
+        page.wait_for_timeout(200)
+        final = _canvas_ink_1591r70(canvas)
+        ink = [a - b for a, b in zip(final, before)] if before and final else ink
+    try:
+        canvas.evaluate("c => c.scrollIntoView({block: 'center'})")
+    except Exception:
+        pass
+    if diagnostic is not None:
+        try:
+            diagnostic.write("signature_quarters_1591r70", ink=ink, how={str(k): v for k, v in how.items()},
+                             box=canvas.bounding_box(), jitter=jitter)
+        except Exception:
+            pass
+    print(f"Подпись нарисована по четвертям: {_ink_text_1591r70(ink)}"
+          + (f"; дорисовано напрямую: {', '.join(_QUARTER_NAMES_1591R70[q] for q in missing)}" if missing else ""), flush=True)
+    if ink and any(n < SIGN_INK_MIN_1591R70 for n in ink):
+        print("⚠️ На холсте нет линии в части четвертей — сайт может не принять подпись.", flush=True)
+    return ink
+
+
+def _sign_trace_refused_1591r70(trace):
+    """True as soon as the signing request of this click was answered with isSucceeded false: the trace stops
+    waiting there, so the redraw follows at once instead of after the SIGN_TRACE_SECONDS window."""
+    for resp, item in (trace or {}).get("_pending") or []:
+        if not SIGN_OK_RE_1591R37.search(str(item.get("url") or "")):
+            continue
+        if "body" not in item:
+            try:
+                item["body"] = re.sub(r"\s+", " ", str(resp.text() or ""))[:1500]
+            except Exception:
+                continue
+        if _SIGN_REFUSED_RE_1591R70.search(str(item.get("body") or "")):
+            return True
+    return False
+
+
+def _sign_empty_1591r70(worker):
+    """«пустые четверти 11, 21» when the last click got checksignature isSucceeded false, else ""."""
+    trace = (worker or {}).get("sign_trace") or {}
+    for response in trace.get("responses") or []:
+        body = str(response.get("body") or "")
+        if SIGN_OK_RE_1591R37.search(str(response.get("url") or "")) and _SIGN_REFUSED_RE_1591R70.search(body):
+            empty = [k for k, v in re.findall(r'"square(\d\d)"\s*:\s*(true|false)', body) if v == "false"]
+            return ("пустые четверти " + ", ".join(empty)) if empty else "подпись не принята"
+    return ""
+
+
+def _sign_empty_hold_1591r70(worker, state, now):
+    """None when the last click was not answered with an empty signature. Otherwise the tab is kept and the
+    signature is redrawn and clicked again at once (False = sign now; True only for the SIGN_EMPTY_RETRY_SECONDS
+    the site's answer settles); after SIGN_EMPTY_AI_AFTER attempts DeepSeek is asked once, the redraws go on."""
+    squares = _sign_empty_1591r70(worker)
+    if not squares:
+        return None
+    tab_id = worker.get("id")
+    if state.get("empty_seen") != state["n"]:
+        state["empty_seen"] = state["n"]
+        capture_blackbox(worker, "signature_empty")
+        print(f"[Вкладка {tab_id}] Сайт не увидел подпись ({squares}) — нарисую заново; вкладку не закрываю.", flush=True)
+    if state["n"] >= SIGN_EMPTY_AI_AFTER_1591R70 and not state.get("empty_ai"):
+        state["empty_ai"] = True
+        queue_success_assist(
+            worker,
+            f"сайт не видит подпись: checksignature isSucceeded=false ({squares}) после {state['n']} попыток бота. "
+            "Вкладку не закрываю: проверь холст «Место для подписи» и помоги подписать договор. Поле принимает только "
+            "касания: рисуй через TouchEvent (touchstart/touchmove/touchend) по всем четырём четвертям.",
+            force=True,
+        )
+    wait = SIGN_EMPTY_RETRY_SECONDS_1591R70
+    if now - state["at"] >= wait:
+        state.update(n=state["n"] + 1, at=now)
+        return False
+    worker["phase"] = "SUCCESS_ASSIST"
+    set_tab_status(worker, "✍️", f"Сайт не увидел подпись ({squares}); попытка {state['n']}, следующая через "
+                                 f"{max(1, int(wait - (now - state['at'])))} с. Вкладку не закрываю.")
+    return True
+
+
+''' + OLD_SIGNQ_HEAD_R70
+OLD_SIGNQ_FILL_R70 = 'def fill_test_signature(page, diagnostic=None):\n    """Fill the visible signature pad with a test scribble crossing all four quadrants."""\n    selectors = [\n        "canvas",\n        \'[data-testid*="sign" i] canvas\',\n        \'[class*="sign" i] canvas\',\n        \'[class*="signature" i] canvas\',\n    ]\n    canvas = None\n    for selector in selectors:\n        loc = page.locator(selector)\n        for i in range(loc.count()):\n            candidate = loc.nth(i)\n            try:\n                box = candidate.bounding_box()\n                if candidate.is_visible() and box and box["width"] >= 250 and box["height"] >= 120:\n                    canvas = candidate\n                    break\n            except Exception:\n                pass\n        if canvas is not None:\n            break\n\n    if canvas is None:\n        raise RuntimeError("Поле графической подписи не найдено.")\n\n    canvas.scroll_into_view_if_needed()\n    box = canvas.bounding_box()\n    if not box:\n        raise RuntimeError("Не удалось получить координаты поля подписи.")\n\n    x, y, w, h = box["x"], box["y"], box["width"], box["height"]\n\n    # One continuous stroke deliberately visits every quadrant while staying\n    # comfortably inside the pad borders.\n    points = [\n        (0.12, 0.28), (0.28, 0.18), (0.43, 0.36),   # top-left\n        (0.58, 0.20), (0.82, 0.32),                 # top-right\n        (0.68, 0.58), (0.86, 0.76),                 # bottom-right\n        (0.55, 0.68), (0.40, 0.82), (0.18, 0.70),   # bottom-left\n        (0.34, 0.54), (0.62, 0.46), (0.78, 0.62),\n        (0.48, 0.74), (0.24, 0.48),\n    ]\n\n    page.mouse.move(x + points[0][0]*w, y + points[0][1]*h)\n    page.mouse.down()\n    try:\n        for px, py in points[1:]:\n            page.mouse.move(x + px*w, y + py*h, steps=5)\n            page.wait_for_timeout(35)\n    finally:\n        page.mouse.up()\n\n    page.wait_for_timeout(500)\n    if diagnostic is not None:\n        try:\n            diagnostic.write("test_signature_drawn", width=w, height=h)\n        except Exception:\n            pass\n    print("Тестовая подпись нарисована через все 4 квадранта.", flush=True)\n    return True\n\n\n\n'
+NEW_SIGNQ_FILL_R70 = ('def fill_test_signature(page, diagnostic=None):\n'
+                      '    """Fill the visible signature pad: a stroke in every quarter, checked on the canvas (SIGN_QUADRANTS_1591R70)."""\n'
+                      '    _draw_signature_1591r70(page, diagnostic)\n'
+                      '    return True\n\n\n\n')
+OLD_SIGNQ_THROUGH_R70 = ('        if SIGN_OK_RE_1591R37.search(url) and 200 <= status < 400:\n'
+                         '            accepted = True\n')
+NEW_SIGNQ_THROUGH_R70 = ('        if SIGN_OK_RE_1591R37.search(url) and 200 <= status < 400:\n'
+                         '            if _SIGN_REFUSED_RE_1591R70.search(str(response.get("body") or "")):  # SIGN_QUADRANTS_1591R70\n'
+                         '                return False  # «isSucceeded: false»: the site saw no signature\n'
+                         '            accepted = True\n')
+OLD_SIGNQ_HOLD_R70 = ('    if not state["n"]:\n'
+                      '        state.update(n=1, at=now)\n'
+                      '        return False\n')
+NEW_SIGNQ_HOLD_R70 = (OLD_SIGNQ_HOLD_R70
+                      + '    empty_hold = _sign_empty_hold_1591r70(worker, state, now)  # SIGN_QUADRANTS_1591R70: an empty signature\n'
+                      '    if empty_hold is not None:\n'
+                      '        return empty_hold\n')
+OLD_SIGNQ_STUCK_R70 = '''    if state["n"] >= SIGN_CLICKS_MAX_1591R67 and now - state["at"] >= UNVERIFIED_HOLD_SECONDS:
+        _finish_unverified_1591r24(
+            base_dir, worker,
+            f"после {state['n']} нажатий «Подписать договор» страница {UNVERIFIED_HOLD_SECONDS // 60} мин не изменилась",
+        )
+        return True
+'''
+NEW_SIGNQ_STUCK_R70 = '''    if state["n"] >= SIGN_CLICKS_MAX_1591R67 and now - state["at"] >= UNVERIFIED_HOLD_SECONDS:
+        # SIGN_QUADRANTS_1591R70: the tab is kept; DeepSeek is asked, again every UNVERIFIED_HOLD_SECONDS
+        if now - float(state.get("stuck_ai_at") or 0) >= UNVERIFIED_HOLD_SECONDS:
+            state["stuck_ai_at"] = now
+            queue_success_assist(
+                worker,
+                f"после {state['n']} нажатий «Подписать договор» страница {UNVERIFIED_HOLD_SECONDS // 60} мин не изменилась. "
+                "Вкладку не закрываю: найди, что мешает, и доведи подпись.",
+                force=True,
+            )
+        worker["phase"] = "SUCCESS_ASSIST"
+        set_tab_status(worker, "🧠", f"Подпись нажата {state['n']} раза, страница не меняется — DeepSeek разбирается; "
+                                     "вкладку не закрываю.")
+        return True
+'''
+OLD_SIGNQ_SETTLE_R70 = '''    _finish_unverified_1591r24(
+        base_dir, worker,
+        f"после «Подписать договор» страница {UNVERIFIED_HOLD_SECONDS // 60} мин не показала признаков подписания (URL: {url or '—'})",
+    )
+    return False
+'''
+NEW_SIGNQ_SETTLE_R70 = '''    # SIGN_QUADRANTS_1591R70: no ❔ and no new tab; DeepSeek is asked again every UNVERIFIED_HOLD_SECONDS
+    worker["phase"] = "SUCCESS_ASSIST"
+    if now - float(worker.get("unverified_ai_at_1591r70") or since) >= UNVERIFIED_HOLD_SECONDS:
+        worker["unverified_ai_at_1591r70"] = now
+        queue_success_assist(
+            worker,
+            f"после «Подписать договор» страница {UNVERIFIED_HOLD_SECONDS // 60} мин не показала признаков подписания "
+            f"(URL: {url or '—'}). Вкладку не закрываю: проверь, подписан ли договор, и доведи его.",
+            force=True,
+        )
+    return False
+'''
+OLD_SIGNQ_UNSEEN_R70 = '''            else:
+                queue_success_assist(
+                    worker,
+                    "подпись нажата, но запроса подписи в сети не видно; проверь ошибки/обязательные поля",
+                    force=True,
+                )
+'''
+NEW_SIGNQ_UNSEEN_R70 = '''            elif _sign_empty_1591r70(worker):  # SIGN_QUADRANTS_1591R70: redrawn by _sign_hold_1591r67
+                print(
+                    f"[Вкладка {worker['id']}] Сайт ответил, что подпись пустая ({_sign_empty_1591r70(worker)}); "
+                    "перерисовываю сразу.",
+                    flush=True,
+                )
+            else:
+                queue_success_assist(
+                    worker,
+                    "подпись нажата, но запроса подписи в сети не видно; проверь ошибки/обязательные поля",
+                    force=True,
+                )
+'''
+OLD_SIGNQ_TRACE_R70 = ('    deadline = monotonic() + SIGN_TRACE_SECONDS\n'
+                       '    while monotonic() < deadline:\n'
+                       '        try:\n'
+                       '            page.wait_for_timeout(250)\n'
+                       '        except Exception:\n'
+                       '            break\n')
+NEW_SIGNQ_TRACE_R70 = (OLD_SIGNQ_TRACE_R70
+                       + '        if _sign_trace_refused_1591r70(trace):  # SIGN_QUADRANTS_1591R70: «empty» already said, redraw now\n'
+                       '            break\n')
+SIGNQ_EDITS_R70 = ((OLD_SIGNQ_MARK_R70, NEW_SIGNQ_MARK_R70, "signature quarters: marker"),
+                   (OLD_SIGNQ_TRACE_R70, NEW_SIGNQ_TRACE_R70, "signature quarters: the trace ends at an empty answer"),
+                   (OLD_SIGNQ_HEAD_R70, NEW_SIGNQ_HEAD_R70, "signature quarters: helpers"),
+                   (OLD_SIGNQ_FILL_R70, NEW_SIGNQ_FILL_R70, "signature quarters: fill_test_signature"),
+                   (OLD_SIGNQ_THROUGH_R70, NEW_SIGNQ_THROUGH_R70, "signature quarters: isSucceeded false is no success"),
+                   (OLD_SIGNQ_HOLD_R70, NEW_SIGNQ_HOLD_R70, "signature quarters: redraw an empty signature"),
+                   (OLD_SIGNQ_STUCK_R70, NEW_SIGNQ_STUCK_R70, "signature quarters: no ❔ after 3 clicks"),
+                   (OLD_SIGNQ_SETTLE_R70, NEW_SIGNQ_SETTLE_R70, "signature quarters: no ❔ after the button vanished"),
+                   (OLD_SIGNQ_UNSEEN_R70, NEW_SIGNQ_UNSEEN_R70, "signature quarters: an empty answer is not «unseen»"))
+README_NOTE_R70 = ('\n\nРЕВИЗИЯ 70 (fix_package_1591.py)\nПодпись. Сайт проверяет картинку подписи по четвертям (checksignature: isSucceeded, square11…22)\n'
+                   'и видел её пустой, а бот считал ответ 200 принятой подписью, ждал минуту, после 3 нажатий ставил «❔» и\n'
+                   'менял вкладку. Теперь холст «Место для подписи» ищется по своим меткам, каждая четверть рисуется своей\n'
+                   'линией КАСАНИЕМ (поле подписи принимает только касания, мышь оставляла его пустым) через точки на экране,\n'
+                   'которые попадают в холст; пиксели холста проверяются по четвертям, пустая\n'
+                   'дорисовывается событиями прямо в холст. Ответ «isSucceeded: false» — сразу перерисовка и нажатие, каждый\n'
+                   'раз; после 4 попыток подключается DeepSeek, перерисовка идёт дальше. Вкладка из-за подписи не\n'
+                   'закрывается: вместо «❔» — DeepSeek.\n'
+                   'Маркер: SIGN_QUADRANTS_1591R70.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -6147,7 +6545,8 @@ SUPERVISOR) и в текст задания AUTO_ERROR_ASSIST. Запрет clos
 # while the page did not change, and each run posted an identical report.
 ASSIST_MARKER = "AUTO_ASSIST_BUDGET_1591R4"
 RESIGNED_HANDLERS = {"queue_success_assist", "queue_error_assist", "tick_error_assist", "run_registration", "main",
-                     "tick_post_auth_review", "tick_sign_wait"}
+                     "tick_post_auth_review", "tick_sign_wait",
+                     "fill_test_signature"}  # SIGN_QUADRANTS_1591R70: draws per quarter
 OLD_SUCCESS_THROTTLE = '''    now = monotonic()
     last = float(worker.get("success_ai_last_at") or 0)
     if not force and now - last < 45:
@@ -6475,6 +6874,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if SIGN_QUADRANTS_MARKER in source:
+        return 70
     if ORDER_REUSE_MARKER in source:
         return 69
     if TOKEN_REENTER_MARKER in source:
@@ -6612,6 +7013,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 67 or REENTER_MARKER in source)\
             and (MAX_REVISION < 68 or TOKEN_REENTER_MARKER in source)\
             and (MAX_REVISION < 69 or ORDER_REUSE_MARKER in source)\
+            and (MAX_REVISION < 70 or SIGN_QUADRANTS_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -7990,6 +8392,21 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 71 (r70). The signature drawn per quarter and checked; an empty one redrawn; the tab kept, DeepSeek instead of ❔.
+    if SIGN_QUADRANTS_MARKER not in source and MAX_REVISION >= 70:
+        for old, new, what in SIGNQ_EDITS_R70:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -8113,6 +8530,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 67", README_NOTE_R67),) if built_revision >= 67 else ()),
                           *((("РЕВИЗИЯ 68", README_NOTE_R68),) if built_revision >= 68 else ()),
                           *((("РЕВИЗИЯ 69", README_NOTE_R69),) if built_revision >= 69 else ()),
+                          *((("РЕВИЗИЯ 70", README_NOTE_R70),) if built_revision >= 70 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

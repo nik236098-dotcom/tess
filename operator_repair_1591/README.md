@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 69 лежит в `beeline_integrated_io_15_91_r69/`; рядом
-`beeline_integrated_io_15_91_r69_lite/` — та же ревизия 69 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 70 лежит в `beeline_integrated_io_15_91_r70/`; рядом
+`beeline_integrated_io_15_91_r70_lite/` — та же ревизия 70 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r69
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r70
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r69_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r70_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -627,6 +627,17 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    - Загрузка базы «номер|паспорт|даты»: ровно одна дата рождения, год 1982 и позже (`BEELINE_BIRTH_YEAR_MIN`);
      строки с несколькими датами отсеиваются («несколько дат»). Уже загруженная база не меняется — её надо
      загрузить заново через «📂 База». Маркер: `BASE_STRICT_1591R69`.
+
+73. **Подпись касанием; пустая подпись перерисовывается сразу, вкладка не закрывается (ревизия 70).** Сайт проверяет
+   картинку подписи по четвертям (`checksignature` → `isSucceeded`, `square11…square22`) и дважды за 11.10 видел её
+   пустой: поле «Место для подписи» (`SignField-SignCanvas`) принимает только касания, а бот (и DeepSeek) рисовали мышью.
+   Бот же считал ответ 200 принятой подписью, ждал минуту, после 3 нажатий ставил «❔» и менял вкладку — строка терялась.
+   Теперь каждая четверть рисуется своей плотной линией касанием (настоящее касание браузера), где линии нет — мышью, а
+   где и так нет — событиями прямо в холст; пиксели холста проверяются по четвертям. Ответ «isSucceeded: false» —
+   сразу перерисовка и нажатие (сбор ответа сайта больше не ждёт 8 с), каждый раз; после 4 попыток подключается
+   DeepSeek (с подсказкой рисовать касаниями), перерисовка идёт дальше. Из-за подписи вкладка не закрывается: после
+   3 нажатий без изменений и когда кнопка пропала без признаков подписи — DeepSeek, а не «❔». В журнале: «Подпись
+   нарисована по четвертям: …», в диагностике событие `signature_quarters_1591r70`. Маркер: `SIGN_QUADRANTS_1591R70`.
 
 ## Использование
 

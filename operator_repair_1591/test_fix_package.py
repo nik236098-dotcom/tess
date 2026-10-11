@@ -199,7 +199,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_69(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_70(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -207,7 +207,7 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("REGION_FIELD_1591R55", src); self.assertNotIn("SHORT_REPORT_1591R56", src); self.assertNotIn("QUIET_AUTO_1591R57", src); self.assertNotIn("LINK_CHECK_1591R58", src); self.assertNotIn("LINK_STATUS_1591R59", src); self.assertNotIn("BOT_TOOLS_1591R60", src); self.assertNotIn("EXPORT_CARDS_1591R61", src); self.assertNotIn("ESIM_ISSUED_1591R62", src); self.assertNotIn("BASE_TOOLS_1591R64", src); self.assertNotIn("SETTING_RESTART_1591R65", src); self.assertNotIn("AUTO_EXPIRE_1591R66", src); self.assertNotIn("REENTER_ROW_1591R67", src); self.assertNotIn("TOKEN_REENTER_1591R68", src); self.assertNotIn("ORDER_REUSE_1591R69", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("REGION_FIELD_1591R55", src); self.assertNotIn("SHORT_REPORT_1591R56", src); self.assertNotIn("QUIET_AUTO_1591R57", src); self.assertNotIn("LINK_CHECK_1591R58", src); self.assertNotIn("LINK_STATUS_1591R59", src); self.assertNotIn("BOT_TOOLS_1591R60", src); self.assertNotIn("EXPORT_CARDS_1591R61", src); self.assertNotIn("ESIM_ISSUED_1591R62", src); self.assertNotIn("BASE_TOOLS_1591R64", src); self.assertNotIn("SETTING_RESTART_1591R65", src); self.assertNotIn("AUTO_EXPIRE_1591R66", src); self.assertNotIn("REENTER_ROW_1591R67", src); self.assertNotIn("TOKEN_REENTER_1591R68", src); self.assertNotIn("ORDER_REUSE_1591R69", src); self.assertNotIn("SIGN_QUADRANTS_1591R70", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
@@ -383,18 +383,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 69 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 70 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69", "SIGN_QUADRANTS_1591R70"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 69", run.stdout)
+            self.assertIn("Already revision 70", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 69 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 70 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -500,7 +500,7 @@ class PackageTests(unittest.TestCase):
         import re as _re
         ns = {"re": _re}
         for node in ast.parse(self.source).body:
-            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "SIGN_OK_RE_1591R37" for x in node.targets):
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id in ("SIGN_OK_RE_1591R37", "_SIGN_REFUSED_RE_1591R70") for x in node.targets):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
         for node in ast.parse(self.source).body:
             if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and x.id == "SELFREG_RE_1591R39" for x in node.targets):
@@ -1026,7 +1026,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 69", run.stdout)
+            self.assertIn("Already revision 70", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1060,7 +1060,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 69)
+        self.assertEqual(manifest["revision"], 70)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1418,7 +1418,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 69); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 70); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1428,7 +1428,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 69", run.stdout)
+            self.assertIn("Already revision 70", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -1773,7 +1773,7 @@ class PackageTests(unittest.TestCase):
         src = (self.pkg / "test_beeline.py").read_text("utf-8")
         self.assertIn("# REENTER_ROW_1591R67:", src)
         self.assertIn("Оплата — это ТОЛЬКО экран «Теперь пора оплатить eSIM»", src, "DeepSeek: the steps page is not payment")
-        restarts, skips, unverified = [], [], []
+        restarts, skips, unverified, asked = [], [], [], []
         clock, final, accepted = [1000.0], [None], [True]
 
         class Page:
@@ -1793,7 +1793,9 @@ class PackageTests(unittest.TestCase):
               "_error_row_key": lambda w: str(w.get("row")), "_error_page_final_reason": lambda page: final[0],
               "_error_skip_final": lambda w, r: skips.append(r) or True, "ERROR_ROW_MAX_ATTEMPTS": 2,
               "UNVERIFIED_HOLD_SECONDS": 180, "_sign_went_through_1591r37": lambda w: accepted[0],
-              "_finish_unverified_1591r24": lambda b, w, r: unverified.append(r)}
+              "_finish_unverified_1591r24": lambda b, w, r: unverified.append(r),
+              "_sign_empty_hold_1591r70": lambda w, state, now: None,  # SIGN_QUADRANTS_1591R70: tested in r70
+              "queue_success_assist": lambda w, r, force=False: asked.append(r)}
         for node in ast.parse(src).body:
             if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id in {
                     "REENTER_ROW_MAX_1591R67", "_REENTER_TEXTS_1591R67", "SIGN_RECLICK_SECONDS_1591R67", "SIGN_CLICKS_MAX_1591R67"}
@@ -1832,8 +1834,13 @@ class PackageTests(unittest.TestCase):
         clock[0] += 100
         self.assertTrue(hold("/b", tab), "never a fourth"); self.assertEqual(unverified, [])
         clock[0] += 81
-        self.assertTrue(hold("/b", tab)); self.assertEqual(len(unverified), 1)
-        self.assertIn("после 3 нажатий «Подписать договор»", unverified[0])
+        self.assertTrue(hold("/b", tab)); self.assertEqual(unverified, [], "SIGN_QUADRANTS_1591R70: no ❔, the tab is kept")
+        self.assertEqual(len(asked), 1); self.assertIn("после 3 нажатий «Подписать договор»", asked[0]); self.assertIn("Вкладку не закрываю", asked[0])
+        self.assertEqual(tab["phase"], "SUCCESS_ASSIST")
+        clock[0] += 10
+        self.assertTrue(hold("/b", tab)); self.assertEqual(len(asked), 1, "DeepSeek is asked again only after 3 minutes")
+        clock[0] += 180
+        self.assertTrue(hold("/b", tab)); self.assertEqual(len(asked), 2)
         tab["generation"] = 2
         self.assertFalse(hold("/b", tab), "a re-entered row (new page) counts anew")
         # TOKEN_REENTER_1591R68: 412 PERSONAL_TOKEN_ERROR after the signature re-enters the row, no ❔
@@ -2032,6 +2039,109 @@ class PackageTests(unittest.TestCase):
                     self.assertEqual(hits.count("/change?proxy_key=k"), 1, "90 s apart for all tabs")
         finally:
             srv.shutdown(); srv.server_close()
+
+    def test_r70_signature_quarters_redraw_and_tab_kept(self):
+        """SIGN_QUADRANTS_1591R70: the signature is drawn per quarter on a tall, partly covered canvas; an empty
+        checksignature answer is redrawn, never ❔; the tab stays and DeepSeek is asked."""
+        import secrets as _secrets
+        src = (self.pkg / "test_beeline.py").read_text("utf-8")
+        self.assertIn("# SIGN_QUADRANTS_1591R70:", src)
+        self.assertIn("    _draw_signature_1591r70(page, diagnostic)\n    return True\n", src)
+        printed, asked, statuses, boxes = [], [], [], []
+        ns = {"re": re, "secrets": _secrets, "print": lambda *a, **k: printed.append(" ".join(map(str, a))),
+              "capture_blackbox": lambda w, r, e=None: boxes.append(r), "set_tab_status": lambda w, icon, note: statuses.append(note),
+              "queue_success_assist": lambda w, r, force=False: asked.append(r)}
+        for node in ast.parse(src).body:
+            if (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and ("1591R70" in t.id or t.id == "SIGN_OK_RE_1591R37")
+                                                     for t in node.targets)) \
+                    or (isinstance(node, ast.FunctionDef) and ("1591r70" in node.name or node.name in {"fill_test_signature", "_sign_went_through_1591r37"})):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        ns["SELFREG_RE_1591R39"] = re.compile(r"esim-selfreg|checksignature|sendpassportdata|/sign\b", re.I)
+
+        # the site's answer: isSucceeded false is an empty signature, not an accepted one
+        refused = {"responses": [{"url": "https://saratov.beeline.ru/v1/esim-selfreg/checksignature/", "status": 200,
+                                  "body": '{"isSucceeded":{"isSucceeded":false,"square11":false,"square12":true,"square21":false,"square22":false}}'}]}
+        good = {"responses": [{"url": "https://saratov.beeline.ru/v1/esim-selfreg/checksignature/", "status": 200,
+                               "body": '{"isSucceeded":{"isSucceeded":true,"square11":true,"square12":true,"square21":true,"square22":true}}'}]}
+        self.assertEqual(ns["_sign_empty_1591r70"]({"sign_trace": refused}), "пустые четверти 11, 21, 22")
+        self.assertEqual(ns["_sign_empty_1591r70"]({"sign_trace": good}), "")
+        self.assertFalse(ns["_sign_went_through_1591r37"]({"sign_trace": refused}), "a 200 with isSucceeded false is no success")
+        self.assertTrue(ns["_sign_went_through_1591r37"]({"sign_trace": good}))
+        # the trace stops waiting as soon as the site said «empty», so the redraw follows at once
+        resp = lambda body: types.SimpleNamespace(text=lambda: body)
+        url = "https://saratov.beeline.ru/v1/esim-selfreg/checksignature/"
+        self.assertFalse(ns["_sign_trace_refused_1591r70"]({"_pending": [(resp("{}"), {"url": "https://x/other"})]}))
+        self.assertTrue(ns["_sign_trace_refused_1591r70"]({"_pending": [(resp(refused["responses"][0]["body"]), {"url": url})]}))
+        self.assertFalse(ns["_sign_trace_refused_1591r70"]({"_pending": [(resp(good["responses"][0]["body"]), {"url": url})]}))
+        self.assertIn("        if _sign_trace_refused_1591r70(trace):", src)
+
+        # an empty answer: a redraw at once (2 s for the answer to settle), every time; DeepSeek too after 4; never ❔
+        hold = ns["_sign_empty_hold_1591r70"]
+        worker, state = {"id": 5, "sign_trace": refused}, {"n": 1, "at": 1000.0}
+        self.assertIsNone(hold({"id": 5, "sign_trace": good}, dict(state), 1000.0), "not an empty answer: r67 decides")
+        self.assertTrue(hold(worker, state, 1001.0)); self.assertEqual(worker["phase"], "SUCCESS_ASSIST")
+        self.assertIn("Вкладку не закрываю", statuses[-1]); self.assertEqual(boxes, ["signature_empty"])
+        self.assertFalse(hold(worker, state, 1002.0)); self.assertEqual(state["n"], 2)
+        self.assertFalse(hold(worker, state, 1004.0)); self.assertFalse(hold(worker, state, 1006.0))
+        self.assertEqual((state["n"], asked), (4, []))
+        self.assertFalse(hold(worker, state, 1008.0), "no slow-down after DeepSeek is asked"); self.assertEqual(len(asked), 1)
+        self.assertIn("checksignature isSucceeded=false (пустые четверти 11, 21, 22)", asked[0]); self.assertIn("Вкладку не закрываю", asked[0])
+        self.assertFalse(hold(worker, state, 1010.0)); self.assertEqual((state["n"], len(asked)), (6, 1), "DeepSeek once")
+
+        # drawing in a real Chromium: a 436×392 canvas stretched to 760 px (taller than the window) under a fixed bar
+        pad = ("<html><body style='margin:0'><div style='height:300px'>проверьте данные</div>"
+               "<div style='width:760px;position:relative'><canvas aria-label='Место для подписи' data-t-id='SignField-SignCanvas'"
+               " width='436' height='392' style='width:100%'></canvas>__COVER__</div><div style='height:600px'>документы</div>"
+               "<div style='position:fixed;left:0;right:0;bottom:0;height:120px;background:#fff'>подписать договор</div>"
+               "<script>const c=document.querySelector('canvas'),x=c.getContext('2d');x.fillStyle='#fff';"
+               "x.fillRect(0,0,c.width,c.height);x.lineWidth=2;x.strokeStyle='#000';let down=false;"
+               "const pos=e=>{const r=c.getBoundingClientRect();return[(e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height]};"
+               "c.addEventListener('pointerdown',e=>{down=true;const[a,b]=pos(e);x.beginPath();x.moveTo(a,b)});"
+               "c.addEventListener('pointermove',e=>{if(!down)return;const[a,b]=pos(e);x.lineTo(a,b);x.stroke()});"
+               "document.addEventListener('pointerup',()=>{down=false})</script></body></html>")
+        cover = "<div style='position:absolute;left:0;top:0;right:0;bottom:0;background:rgba(255,255,255,0.01)'></div>"
+        # the site's field of 11.10: it takes finger strokes only, a mouse stroke leaves it empty
+        touch_only = pad.replace("c.addEventListener('pointerdown',e=>{down=true;const[a,b]=pos(e);x.beginPath();x.moveTo(a,b)});"
+                                 "c.addEventListener('pointermove',e=>{if(!down)return;const[a,b]=pos(e);x.lineTo(a,b);x.stroke()});",
+                                 "c.addEventListener('touchstart',e=>{e.preventDefault();const[a,b]=pos(e.touches[0]);x.beginPath();x.moveTo(a,b)},{passive:false});"
+                                 "c.addEventListener('touchmove',e=>{e.preventDefault();const[a,b]=pos(e.touches[0]);x.lineTo(a,b);x.stroke()},{passive:false});")
+        self.assertNotEqual(touch_only, pad)
+
+        class Diag:
+            def __init__(self): self.events = {}
+            def write(self, name, **k): self.events[name] = k
+        results = {}
+        try:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                try:
+                    browser = p.chromium.launch(headless=True)
+                except Exception:
+                    browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+                for name, html in (("open", pad.replace("__COVER__", "")), ("covered", pad.replace("__COVER__", cover)),
+                                   ("touch only", touch_only.replace("__COVER__", "")),
+                                   ("touch only, covered", touch_only.replace("__COVER__", cover))):
+                    page = browser.new_page(viewport={"width": 800, "height": 500})
+                    page.set_content(html)
+                    diag = Diag()
+                    self.assertTrue(ns["fill_test_signature"](page, diag))
+                    results[name] = diag.events["signature_quarters_1591r70"]
+                    page.close()
+                browser.close()
+        except unittest.SkipTest:
+            raise
+        except Exception as exc:
+            if "Executable doesn't exist" in str(exc) or "BrowserType.launch" in str(exc):
+                self.skipTest(f"no headless Chromium here: {exc}")
+            raise
+        for name in results:
+            ink = results[name]["ink"]
+            self.assertEqual(len(ink), 4, name); self.assertTrue(all(n >= 40 for n in ink), (name, results[name]))
+        self.assertEqual(set(results["open"]["how"].values()), {"касание"}, "a real finger stroke where the canvas is reachable")
+        self.assertEqual(set(results["touch only"]["how"].values()), {"касание"}, "the field of 11.10 takes the finger strokes")
+        self.assertEqual(set(results["covered"]["how"].values()), {"напрямую"}, "a covered canvas gets its events directly")
+        self.assertEqual(set(results["touch only, covered"]["how"].values()), {"напрямую"}, "touch events sent to the canvas itself")
+        self.assertTrue(any("Подпись нарисована по четвертям" in line for line in printed))
 
     def test_r66_esims_older_than_5_days_leave_the_list(self):
         """AUTO_EXPIRE_1591R66: «Мои eSIM» keeps 5 days; the files stay; «↩️ Вернуть» counts what it can bring back."""
@@ -2889,7 +2999,15 @@ document.getElementById('go').onclick = () => { document.querySelector('.basket 
             clock[0] += 100
             self.assertFalse(ns["settle_success_1591r24"](base, bad)); self.assertEqual(bad["phase"], "SUCCESS_ASSIST"); self.assertFalse(pushed)
             clock[0] += 100
+            asked_before = events.count(("assist", True))
             self.assertFalse(ns["settle_success_1591r24"](base, bad))
+            # SIGN_QUADRANTS_1591R70: no ❔ and no new tab after the hold; DeepSeek is asked again
+            self.assertEqual(bad["phase"], "SUCCESS_ASSIST"); self.assertFalse(bad.get("stopped"))
+            self.assertFalse((base / "unverified_signatures.jsonl").exists()); self.assertEqual(events.count(("assist", True)), asked_before + 1)
+            clock[0] += 10
+            self.assertFalse(ns["settle_success_1591r24"](base, bad)); self.assertEqual(events.count(("assist", True)), asked_before + 1)
+            # the record and push of an unverified row (still used for /registration/error after the click)
+            ns["_finish_unverified_1591r24"](base, bad, "после «Подписать договор» страница 3 мин не показала признаков подписания (URL: https://saratov.beeline.ru/)")
             self.assertEqual(bad["phase"], "SUCCESS_STOP"); self.assertTrue(bad["stopped"]); self.assertNotIn("finalize", events)
             saved = json.loads((base / "unverified_signatures.jsonl").read_text("utf-8").splitlines()[-1])
             self.assertEqual(saved["row"], 8); self.assertEqual(saved["final_url"], "https://saratov.beeline.ru/"); self.assertIn("признаков подписания", saved["reason"])
@@ -2937,7 +3055,8 @@ document.getElementById('go').onclick = () => { document.querySelector('.basket 
         clock = [0.0]; events = []
         ns = {"re": __import__("re"), "time": types.SimpleNamespace(time=lambda: clock[0], strftime=__import__("time").strftime),
               "monotonic": lambda: clock[0], "print": lambda *a, **k: events.append(("print", a[0] if a else "")),
-              "capture_blackbox": lambda w, r, exc=None: events.append(("blackbox", r))}
+              "capture_blackbox": lambda w, r, exc=None: events.append(("blackbox", r)),
+              "_sign_trace_refused_1591r70": lambda trace: False}  # SIGN_QUADRANTS_1591R70: tested in r70
         for node in ast.parse(src).body:
             if isinstance(node, ast.Assign) and any(isinstance(x, ast.Name) and (x.id == "SIGN_TRACE_SECONDS" or x.id == "_SIGN_TRACE_SKIP_RE_1591R25") for x in node.targets):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
