@@ -42,6 +42,9 @@ MARK_TITLES = {"new": "новая", "ok": "оформлена", "bad": "брак
 # MENU_DELETE_1591R57: «🗑 Удалить» hides an eSIM from the list (the mark «hidden» in esim_status.json);
 # the result files on the server (successful_sims.jsonl, payment_required.jsonl) stay as they are.
 HIDDEN_MARK = "hidden"
+PUSH_COUNT_DEFAULT = 6        # PUSH_COUNT_1591R73: eSIM per export by default
+PUSH_COUNT_CHOICES = (3, 6, 10, 15, 20, 30)
+PUSH_COUNT_MAX = 500
 ESIM_KEEP_DAYS = 5  # AUTO_EXPIRE_1591R66: older eSIMs leave «Мои eSIM» by themselves (the files stay)
 
 # LINK_CHECK_1591R58: «🔗 Проверить ссылки» opens every order link of «Мои eSIM» in its own headless
@@ -288,6 +291,9 @@ TARIFF_CHOICES = {
 RESTART_CHOICES = ((0, "выкл"), (360, "6 ч"), (720, "12 ч"), (1440, "24 ч"))
 
 
+# BASE_RESET_1591R73: «📂 База → 🔁 Сбросить прогресс» starts the loaded base from the first row (the processed numbers go
+# to base_archive/, the work is restarted); PUSH_COUNT_1591R73: «⚙️ Настройки → 📤 Выгрузка» sets how many eSIM the
+# export gives by default (6), the export dialog has a button for it.
 # MOBILE_PROXY_1591R69: «⚙️ Настройки → 📶 Мобильный прокси» (off by default): the proxy for the browsers and the IP
 # change link the runtime calls on «что-то пошло не так»; values with «%» are escaped for systemd.
 # AUTO_EXPIRE_1591R66: eSIMs older than ESIM_KEEP_DAYS (5) leave «Мои eSIM», the counters, export and checks.
@@ -1212,8 +1218,10 @@ class TelegramMenu:
             exp["await"] = True
             self.state["export"] = exp
             self._save()
-            return self._show(f"📤 <b>Выгрузка</b>\n\nСколько выгрузить? Напиши число или слово «Все».\nЖдут оплаты 💳: {n}",
-                              _kb([[_btn(f"Все ({n})", "m|exp|count|all")], [_btn("✖️ Отмена", "m|exp|cancel")]]))
+            d = self._push_count()  # PUSH_COUNT_1591R73
+            return self._show(f"📤 <b>Выгрузка</b>\n\nСколько выгрузить? Напиши число или слово «Все».\nПо умолчанию {d} (меняется в ⚙️ Настройках).\nЖдут оплаты 💳: {n}",
+                              _kb([[_btn(f"Выгрузить {d}", f"m|exp|count|{d}"), _btn(f"Все ({n})", "m|exp|count|all")],
+                                   [_btn("✖️ Отмена", "m|exp|cancel")]]))
         if step == "cancel":
             self.state.pop("export", None)
             self._save()
@@ -1224,6 +1232,14 @@ class TelegramMenu:
         return self._show(f"📤 <b>Выгрузка eSIM</b>\n\nЖдут оплаты 💳: {n}\nВыбери вид:",
                           _kb([[_btn("🟢 Обычная", "m|exp|mode|normal"), _btn("‼️ Срочная", "m|exp|mode|urgent")],
                                [_btn("◀️ Меню", "m|menu")]]))
+
+    def _push_count(self):
+        """PUSH_COUNT_1591R73: how many eSIM an export gives by default."""
+        try:
+            n = int(self.state.get("push_count") or PUSH_COUNT_DEFAULT)
+        except (TypeError, ValueError):
+            n = PUSH_COUNT_DEFAULT
+        return min(max(n, 1), PUSH_COUNT_MAX)
 
     def run_export(self, count):
         exp = dict(self.state.get("export") or {})
@@ -1398,17 +1414,76 @@ class TelegramMenu:
         return self.start_link_check(recs, on_done=lambda t, b: self._send_report(t, b, only_changes=True))
 
     # BASE_TOOLS_1591R64 (first written as r63): «📂 База» and «🔢 Генерация» ---------
-    def show_base(self):
+    def show_base(self, note=""):
         self.state.update({"view": "base", "awaiting_ai": False, "awaiting_generation": False})
         self._save()
+        rows, done = _count_lines(self.base / "clients.txt"), _count_lines(self.base / "processed_numbers.txt")
+        text = f"📂 <b>База</b>\n\nВ базе: {rows} • Обработано: {done}\nВыбери, что сделать с базой:"  # BASE_RESET_1591R73
+        if note:
+            text += "\n\n" + _esc(note)
         return self._show(
-            "📂 <b>База</b>\n\nВыбери, что сделать с базой:",
+            text,
             _kb([
                 [_btn("➕ Добавить строки", "m|baseadd")],
                 [_btn("🆕 Загрузить новую базу", "m|basenew")],
+                [_btn("🔁 Сбросить прогресс", "m|baserst")],
                 [_btn("◀️ Меню", "m|menu")],
             ]),
         )
+
+    def show_base_reset(self, step="ask"):
+        """BASE_RESET_1591R73: the loaded base from its first row. Asks first; «yes» does it."""
+        rows, done = _count_lines(self.base / "clients.txt"), _count_lines(self.base / "processed_numbers.txt")
+        if step != "yes":
+            if not rows:
+                return self.show_base(note="❌ База пуста: нечего начинать заново.")
+            return self._show(
+                f"🔁 <b>Сбросить прогресс?</b>\n\nВ базе: {rows} • Обработано: {done}\n\n"
+                "Все строки базы пойдут с начала: список обработанных номеров очищается (копия остаётся в base_archive). "
+                "Если бот работает, он перезапустится. «Мои eSIM» и результаты не удаляются.",
+                _kb([[_btn("✅ Да, сбросить", "m|baserst|yes"), _btn("✖️ Отмена", "m|base")]]))
+        return self.reset_progress()
+
+    def reset_progress(self):
+        """BASE_RESET_1591R73: the processed numbers and the deferred rows are archived and removed, the work restarts."""
+        rows = _count_lines(self.base / "clients.txt")
+        if not rows:
+            return self.show_base(note="❌ База пуста: нечего начинать заново.")
+        done = _count_lines(self.base / "processed_numbers.txt")
+        was_running = bool(self.proc.running())
+        if was_running:
+            self.proc.stop()
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        archive = self.base / "base_archive"
+        try:
+            archive.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        for name, saved in (("processed_numbers.txt", f"processed_numbers_{stamp}.txt"),
+                            ("deferred_rows.jsonl", f"deferred_rows_{stamp}.jsonl")):
+            path = self.base / name
+            try:
+                if path.exists() and path.stat().st_size:
+                    (archive / saved).write_bytes(path.read_bytes())
+                path.unlink(missing_ok=True)
+            except Exception as exc:
+                return self.show_base(note=f"❌ Не очищено: {name}: {type(exc).__name__}: {exc}")
+        for leftover in (self.base / ".base_append_pending",):  # rows waiting to be appended belong to the old pass
+            try:
+                leftover.unlink(missing_ok=True)
+            except OSError:
+                pass
+        try:  # the saved confirmation attempts (r71) of the old pass
+            for stale in (self.base / "confirm_progress").glob("*.json"):
+                stale.unlink()
+        except OSError:
+            pass
+        ok, answer = self.proc.start()
+        print(f"[MENU] Сброс прогресса базы: {done} из {rows}, запуск: {ok}", flush=True)
+        note = (f"🔁 Прогресс сброшен: обработано было {done}, в базе {rows}. "
+                + ("Процесс перезапущен, база идёт с первой строки." if ok and was_running else
+                   "Процесс запущен, база идёт с первой строки." if ok else f"Запуск не удался: {answer}"))
+        return self.show_menu(note=note)
 
     def show_generation(self):
         self.state.update({"view": "generation", "awaiting_ai": False, "awaiting_generation": True})
@@ -1657,6 +1732,9 @@ class TelegramMenu:
     def ask_mproxy_input(self, what):
         self.state.update({"view": "settings", "awaiting_setting": what})
         self._save()
+        if what == "push":  # PUSH_COUNT_1591R73
+            return self._show(f"📤 <b>Выгрузка по умолчанию</b>\n\nПришли число eSIM от 1 до {PUSH_COUNT_MAX} одним сообщением.",
+                              _kb([[_btn("✖️ Отмена", "m|cfg|push")]]))
         text = ("🌐 <b>Прокси</b>\n\nПришли адрес одним сообщением, например:\n<code>http://логин:пароль@1.2.3.4:8000</code>\n"
                 "или <code>1.2.3.4:8000:логин:пароль</code>" if what == "proxy" else
                 "🔁 <b>Ссылка смены IP</b>\n\nПришли ссылку одним сообщением, например:\n"
@@ -1666,6 +1744,13 @@ class TelegramMenu:
     def _handle_setting_text(self, text):
         what = self.state.get("awaiting_setting")
         value = str(text or "").strip()
+        if what == "push":  # PUSH_COUNT_1591R73
+            if not value.isdigit() or not 1 <= int(value) <= PUSH_COUNT_MAX:
+                return self._show(f"❌ <b>Нужно число от 1 до {PUSH_COUNT_MAX}</b>\n\nПришли ещё раз.",
+                                  _kb([[_btn("✖️ Отмена", "m|cfg|push")]]))
+            self.state["awaiting_setting"] = ""
+            self._save()
+            return self.show_settings("pc", value)
         ok = _parse_proxy(value) if what == "proxy" else _ip_url_ok(value)
         if not ok:
             return self._show("❌ <b>Не похоже на " + ("адрес прокси" if what == "proxy" else "ссылку") + "</b>\n\nПришли ещё раз.",
@@ -1697,6 +1782,18 @@ class TelegramMenu:
             return self._show(f"{title}\n\nСейчас: {cur[step]}",
                               _kb([[_btn(o, f"m|cfg|ask|{step}|{o}") for o in opts[:4]], [_btn(o, f"m|cfg|ask|{step}|{o}") for o in opts[4:]],
                                    [_btn("◀️ Назад", "m|cfg")]]))
+        if step == "push":  # PUSH_COUNT_1591R73
+            d = self._push_count()
+            rows = [[_btn(("✅ " if n == d else "") + str(n), f"m|cfg|pc|{n}") for n in PUSH_COUNT_CHOICES],
+                    [_btn("✏️ Своё число", "m|cfg|mpin|push")], [_btn("◀️ Назад", "m|cfg")]]
+            self.state.update({"view": "settings", "awaiting_setting": ""})
+            self._save()
+            return self._show(f"📤 <b>Выгрузка по умолчанию</b>\n\nСколько eSIM даёт «📤 Выгрузка», если не писать число: <b>{d}</b>.\n"
+                              f"Можно поднять: выбери число или пришли своё (до {PUSH_COUNT_MAX}).", _kb(rows))
+        if step == "pc":
+            self.state["push_count"] = min(max(int(value or PUSH_COUNT_DEFAULT), 1), PUSH_COUNT_MAX)
+            self._save()
+            return self.show_settings(value=f"📤 Выгрузка по умолчанию: {self.state['push_count']} eSIM")
         if step == "restart":
             rows = [[_btn(t, f"m|cfg|rs|{m}") for m, t in RESTART_CHOICES]]
             return self._show("♻️ <b>Плановый перезапуск</b>\n\nСейчас: " + (_period(cur["restart"] * 60) if cur["restart"] else "выкл"),
@@ -1713,6 +1810,7 @@ class TelegramMenu:
                  f"🤖 DeepSeek: {'включён' if cur['ai'] else 'выключен'}",
                  f"♻️ Плановый перезапуск: {_period(cur['restart'] * 60) if cur['restart'] else 'выкл'}",
                  f"📶 Мобильный прокси: {'включён' if cur['mproxy_on'] else 'выключен'}",  # MOBILE_PROXY_1591R69
+                 f"📤 Выгрузка по умолчанию: {self._push_count()} eSIM",  # PUSH_COUNT_1591R73
                  "", "<i>Тариф, браузеры, вкладки, DeepSeek и прокси применяются перезапуском бота.</i>"]
         if value:
             lines += ["", _esc(value)]
@@ -1720,7 +1818,7 @@ class TelegramMenu:
             [_btn("📦 Тариф", "m|cfg|tariff"), _btn("🌐 Браузеры", "m|cfg|browsers"), _btn("🗂 Вкладки", "m|cfg|tabs")],
             [_btn(f"🤖 DeepSeek: {'выключить' if cur['ai'] else 'включить'}", f"m|cfg|ask|ai|{'0' if cur['ai'] else '1'}")],
             [_btn("♻️ Плановый перезапуск", "m|cfg|restart")],
-            [_btn("📶 Мобильный прокси", "m|cfg|mproxy")],
+            [_btn("📶 Мобильный прокси", "m|cfg|mproxy"), _btn("📤 Выгрузка", "m|cfg|push")],
             [_btn("🏠 Меню", "m|menu")]]))
 
     def ask_setting(self, name, value):
@@ -1926,6 +2024,10 @@ class TelegramMenu:
                 pass
             elif action == "base":
                 self.show_base()
+            elif action == "baserst":  # BASE_RESET_1591R73
+                if args and args[0] == "yes":
+                    self._log_press(cb, data)
+                self.show_base_reset(args[0] if args else "ask")
             elif action in ("baseadd", "basenew"):
                 mode = "add" if action == "baseadd" else "new"
                 title = "Добавить строки" if mode == "add" else "Загрузить новую базу"
@@ -1983,7 +2085,7 @@ class TelegramMenu:
                 elif args[0] in ("mode", "fmt") and len(args) > 1:
                     self.show_export(args[0], args[1])
                 elif args[0] == "count":
-                    self.run_export("all")
+                    self.run_export(int(args[1]) if len(args) > 1 and args[1].isdigit() and int(args[1]) > 0 else "all")
                 else:
                     self.show_export("cancel")
             elif action in ("xo", "xc"):
@@ -2003,11 +2105,13 @@ class TelegramMenu:
             elif action == "cfg":
                 if not args:
                     self.show_settings()
-                elif args[0] in ("tariff", "browsers", "tabs", "restart"):
+                elif args[0] in ("tariff", "browsers", "tabs", "restart", "push"):
                     self.show_settings(args[0])
+                elif args[0] == "pc" and len(args) > 1 and args[1].isdigit():  # PUSH_COUNT_1591R73
+                    self.show_settings("pc", args[1])
                 elif args[0] == "mproxy":  # MOBILE_PROXY_1591R69
                     self.show_mproxy()
-                elif args[0] == "mpin" and len(args) > 1 and args[1] in ("proxy", "ipurl"):
+                elif args[0] == "mpin" and len(args) > 1 and args[1] in ("proxy", "ipurl", "push"):
                     self.ask_mproxy_input(args[1])
                 elif args[0] == "rs" and len(args) > 1:
                     self._log_press(cb, data)

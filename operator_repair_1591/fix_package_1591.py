@@ -192,7 +192,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "4b3d105bcde5864be01443483168c909060cd16a0e94a30e9ea46217750c81f7",  # r71 exp8 output
                          "777bbc275abd0c14e3735d78ea14de4b257bd5f3141e9ac69acb5cbcb627fdac",  # r72 lite output
                          "d00e998c078403f48e7f6ce6b50240672b7bfe36a397e76350540008a582e618",  # r72 output
-                         "40dc8d6e912567016f6a390d66a11913841ead368f908d92e242d024e95da7eb"}  # r72 exp8 output
+                         "40dc8d6e912567016f6a390d66a11913841ead368f908d92e242d024e95da7eb",  # r72 exp8 output
+                         "37477773fc6087f21bd16aeaf763ff53f6e73bc9bb3550efa491bd3b11c60e89",  # r73 lite output
+                         "f8cc737b46040e699572360e6a745be075a46d127a99ca689412f2535f7373c9",  # r73 output
+                         "6b27b6701c6aa342b9c477c0df344f857c1157b8e76dbbc5344160f01318ee55"}  # r73 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -6395,6 +6398,17 @@ README_NOTE_R72 = ('\n\nРЕВИЗИЯ 72 (fix_package_1591.py)\nПодтвер�
                    'снова» — до 6 повторов строки (было 2), номер попытки продолжается. Надпись «клиент подтвердил вход» —\n'
                    'только когда он подтвердил. Маркер: REGION_CAPTION_1591R72.\n')
 
+# Revision 73: the menu only. «📂 База → 🔁 Сбросить прогресс» (BASE_RESET_1591R73) starts the loaded base from its first
+# row again: the processed numbers and the deferred rows go to base_archive/ and are removed, the work is restarted. And
+# «⚙️ Настройки → 📤 Выгрузка» (PUSH_COUNT_1591R73): how many eSIM «📤 Выгрузка» gives by default, 6, can be raised.
+BASE_RESET_MARKER = "BASE_RESET_1591R73"
+OLD_RESET_MARK_R73 = NEW_REG_MARK_R72.splitlines(keepends=True)[-1]
+NEW_RESET_MARK_R73 = (OLD_RESET_MARK_R73
+                      + '# BASE_RESET_1591R73: the menu resets the base progress; the export count has a default setting.\n')
+README_NOTE_R73 = ('\n\nРЕВИЗИЯ 73 (fix_package_1591.py)\nТолько меню. «📂 База → 🔁 Сбросить прогресс»: база идёт с первой строки (список обработанных номеров и\n'
+                   'отложенные строки уходят в base_archive и очищаются, бот перезапускается; «Мои eSIM» не трогаются). «⚙️ Настройки →\n'
+                   '📤 Выгрузка»: сколько eSIM даёт «📤 Выгрузка» по умолчанию (6, можно поднять до 500). Маркер: BASE_RESET_1591R73.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -7238,6 +7252,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if BASE_RESET_MARKER in source:
+        return 73
     if REGION_CAPTION_MARKER in source:
         return 72
     if AGENT_MEMORY_MARKER in source:
@@ -7384,6 +7400,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 70 or SIGN_QUADRANTS_MARKER in source)\
             and (MAX_REVISION < 71 or AGENT_MEMORY_MARKER in source)\
             and (MAX_REVISION < 72 or REGION_CAPTION_MARKER in source)\
+            and (MAX_REVISION < 73 or BASE_RESET_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -8807,6 +8824,29 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 74 (r73). The menu only: «Сбросить прогресс» in «📂 База», the export count in the settings.
+    if BASE_RESET_MARKER not in source and MAX_REVISION >= 73:
+        old, new, what = OLD_RESET_MARK_R73, NEW_RESET_MARK_R73, "base reset: marker"
+        new_source = replace_once(new_source, old, new, what)
+        if old in source:
+            add_edit(edits["test_beeline.py"], source, old, new, reflected)
+        else:
+            for change in edits["test_beeline.py"]:
+                joined = "".join(change["replacement"])
+                if old in joined:
+                    change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                    break
+            else:
+                raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if BASE_RESET_MARKER not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 73 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -8933,6 +8973,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 70", README_NOTE_R70),) if built_revision >= 70 else ()),
                           *((("РЕВИЗИЯ 71", README_NOTE_R71),) if built_revision >= 71 else ()),
                           *((("РЕВИЗИЯ 72", README_NOTE_R72),) if built_revision >= 72 else ()),
+                          *((("РЕВИЗИЯ 73", README_NOTE_R73),) if built_revision >= 73 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

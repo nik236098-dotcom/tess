@@ -199,7 +199,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_72(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_73(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -207,7 +207,7 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("REGION_FIELD_1591R55", src); self.assertNotIn("SHORT_REPORT_1591R56", src); self.assertNotIn("QUIET_AUTO_1591R57", src); self.assertNotIn("LINK_CHECK_1591R58", src); self.assertNotIn("LINK_STATUS_1591R59", src); self.assertNotIn("BOT_TOOLS_1591R60", src); self.assertNotIn("EXPORT_CARDS_1591R61", src); self.assertNotIn("ESIM_ISSUED_1591R62", src); self.assertNotIn("BASE_TOOLS_1591R64", src); self.assertNotIn("SETTING_RESTART_1591R65", src); self.assertNotIn("AUTO_EXPIRE_1591R66", src); self.assertNotIn("REENTER_ROW_1591R67", src); self.assertNotIn("TOKEN_REENTER_1591R68", src); self.assertNotIn("ORDER_REUSE_1591R69", src); self.assertNotIn("SIGN_QUADRANTS_1591R70", src); self.assertNotIn("AGENT_MEMORY_1591R71", src); self.assertNotIn("REGION_CAPTION_1591R72", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("REGION_FIELD_1591R55", src); self.assertNotIn("SHORT_REPORT_1591R56", src); self.assertNotIn("QUIET_AUTO_1591R57", src); self.assertNotIn("LINK_CHECK_1591R58", src); self.assertNotIn("LINK_STATUS_1591R59", src); self.assertNotIn("BOT_TOOLS_1591R60", src); self.assertNotIn("EXPORT_CARDS_1591R61", src); self.assertNotIn("ESIM_ISSUED_1591R62", src); self.assertNotIn("BASE_TOOLS_1591R64", src); self.assertNotIn("SETTING_RESTART_1591R65", src); self.assertNotIn("AUTO_EXPIRE_1591R66", src); self.assertNotIn("REENTER_ROW_1591R67", src); self.assertNotIn("TOKEN_REENTER_1591R68", src); self.assertNotIn("ORDER_REUSE_1591R69", src); self.assertNotIn("SIGN_QUADRANTS_1591R70", src); self.assertNotIn("AGENT_MEMORY_1591R71", src); self.assertNotIn("REGION_CAPTION_1591R72", src); self.assertNotIn("BASE_RESET_1591R73", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
@@ -383,18 +383,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 72 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 73 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69", "SIGN_QUADRANTS_1591R70", "AGENT_MEMORY_1591R71", "REGION_CAPTION_1591R72"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69", "SIGN_QUADRANTS_1591R70", "AGENT_MEMORY_1591R71", "REGION_CAPTION_1591R72", "BASE_RESET_1591R73"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 72", run.stdout)
+            self.assertIn("Already revision 73", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 72 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 73 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -1026,7 +1026,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 72", run.stdout)
+            self.assertIn("Already revision 73", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1060,7 +1060,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 72)
+        self.assertEqual(manifest["revision"], 73)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1418,7 +1418,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 72); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 73); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1428,7 +1428,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 72", run.stdout)
+            self.assertIn("Already revision 73", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -2305,6 +2305,101 @@ class PackageTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(values, ["Саратовская обл", "", "Саратов"], "only the empty region is filled, by the site's suggestion")
         self.assertEqual(caption, "область")
+
+    def test_r73_base_reset_progress_and_export_default_count(self):
+        """BASE_RESET_1591R73 / PUSH_COUNT_1591R73."""
+        import importlib.util, types as _types
+        spec = importlib.util.spec_from_file_location("telegram_menu_r73", self.pkg / "telegram_menu.py")
+        tm = importlib.util.module_from_spec(spec); spec.loader.exec_module(tm)
+        self.assertIn("# BASE_RESET_1591R73:", (self.pkg / "test_beeline.py").read_text("utf-8"))
+        self.assertEqual((tm.PUSH_COUNT_DEFAULT, tm.PUSH_COUNT_MAX), (6, 500))
+        calls = []
+        app = _types.SimpleNamespace(telegram_api=lambda cfg, m, p: calls.append((m, dict(p))) or ({"ok": True, "result": {"message_id": 1}}, None),
+                                     load_telegram_config=lambda: {"chat_id": "1"}, SUCCESS_PROFILE_FIELDS=[],
+                                     restart_policy_minutes=lambda b: 0)
+        events = []
+
+        class Proc:
+            alive = True
+            def status(self): return "🟢 Запущен" if self.alive else "🔴 Остановлен"
+            def running(self): return self.alive
+            def stop(self): events.append("stop"); self.alive = False; return True, "stopped"
+            def start(self): events.append("start"); self.alive = True; return True, "started"
+            def restart(self): return True, "r"
+        shown = lambda: [c for c in calls if c[0] in ("sendMessage", "editMessageText")][-1][1]
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            menu = tm.TelegramMenu(app, base, Proc())
+            menu.dropin_path = base / "zz-menu.conf"; menu.runner = lambda *a: None
+            cb = lambda data: menu.handle_callback({"id": "c", "data": data, "message": {"message_id": 5, "chat": {"id": 1}}})
+            menu.show_menu(fresh=True)
+
+            # an empty base: nothing to start again
+            cb("m|base"); self.assertIn("🔁 Сбросить прогресс", shown()["reply_markup"]); self.assertIn("В базе: 0", shown()["text"])
+            cb("m|baserst"); self.assertIn("База пуста", shown()["text"]); self.assertEqual(events, [])
+
+            # a base of 5 rows, 3 processed, a deferred row, a saved confirmation attempt and rows waiting to be appended
+            (base / "clients.txt").write_text("".join(f"7900111000{i} 451000000{i}\n" for i in range(5)))
+            (base / "processed_numbers.txt").write_text("79001110000\n79001110001\n79001110002\n")
+            (base / "deferred_rows.jsonl").write_text('{"row": 4}\n')
+            (base / "confirm_progress").mkdir(); (base / "confirm_progress" / "79001110003.json").write_text('{"attempt": 4}')
+            (base / ".base_append_pending").write_text("1")
+            (base / "successful_sims.jsonl").write_text('{"row": 1}\n'); (base / "esim_status.json").write_text("{}")
+            cb("m|base"); self.assertIn("В базе: 5 • Обработано: 3", shown()["text"])
+            cb("m|baserst")
+            self.assertIn("Сбросить прогресс?", shown()["text"]); self.assertIn("Обработано: 3", shown()["text"])
+            self.assertIn("m|baserst|yes", shown()["reply_markup"]); self.assertIn("m|base", shown()["reply_markup"])
+            self.assertEqual(events, [], "asks first")
+            self.assertEqual(len((base / "processed_numbers.txt").read_text().split()), 3)
+            cb("m|baserst|yes")
+            self.assertEqual(events, ["stop", "start"], "a running process is restarted")
+            self.assertFalse((base / "processed_numbers.txt").exists()); self.assertFalse((base / "deferred_rows.jsonl").exists())
+            self.assertFalse((base / ".base_append_pending").exists()); self.assertEqual(list((base / "confirm_progress").glob("*.json")), [])
+            self.assertEqual(len((base / "clients.txt").read_text().splitlines()), 5, "the base stays")
+            self.assertTrue((base / "successful_sims.jsonl").exists() and (base / "esim_status.json").exists(), "eSIM records stay")
+            archived = sorted(p.name for p in (base / "base_archive").iterdir())
+            self.assertEqual(len(archived), 2, archived)
+            self.assertEqual(next((base / "base_archive").glob("processed_numbers_*.txt")).read_text().split(),
+                             ["79001110000", "79001110001", "79001110002"], "a copy is kept")
+            self.assertIn("Прогресс сброшен: обработано было 3, в базе 5", shown()["text"]); self.assertIn("Процесс перезапущен", shown()["text"])
+            # a stopped process is only started
+            events.clear(); menu.proc.alive = False
+            cb("m|baserst|yes"); self.assertEqual(events, ["start"]); self.assertIn("Процесс запущен", shown()["text"])
+
+            # the export count: 6 by default, the dialog has a button for it, a number button exports that many
+            recs = [{"row": r, "sim_number": f"+7962000000{r}", "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                     "sim_url": f"https://x/?hash_order={r}"} for r in range(1, 10)]
+            (base / "payment_required.jsonl").write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+            self.assertEqual(menu._push_count(), 6)
+            cb("m|exp"); cb("m|exp|mode|normal"); cb("m|exp|fmt|msg")
+            self.assertIn("По умолчанию 6", shown()["text"]); self.assertIn("m|exp|count|6", shown()["reply_markup"]); self.assertIn("Выгрузить 6", shown()["reply_markup"])
+            self.assertIn("m|exp|count|all", shown()["reply_markup"])
+            sent = []
+            menu._export_worker = lambda recs_, mode, fmt, batch: sent.append(len(recs_))
+            cb("m|exp|count|6")
+            for _ in range(50):
+                if sent: break
+                time.sleep(0.05)
+            self.assertEqual(sent, [6], "the default button exports six")
+
+            # settings: the line, the choices, a chosen and a typed number, a bad one
+            cb("m|cfg"); self.assertIn("📤 Выгрузка по умолчанию: 6 eSIM", shown()["text"]); self.assertIn("m|cfg|push", shown()["reply_markup"])
+            cb("m|cfg|push"); self.assertIn("m|cfg|pc|3", shown()["reply_markup"]); self.assertIn("✅ 6", shown()["reply_markup"])
+            cb("m|cfg|pc|15"); self.assertEqual(menu._push_count(), 15); self.assertIn("Выгрузка по умолчанию: 15 eSIM", shown()["text"])
+            cb("m|cfg|mpin|push"); self.assertTrue(menu.handle_text("не число")); self.assertIn("Нужно число от 1 до 500", shown()["text"])
+            self.assertTrue(menu.handle_text("0")); self.assertEqual(menu._push_count(), 15)
+            self.assertTrue(menu.handle_text("501")); self.assertEqual(menu._push_count(), 15)
+            self.assertTrue(menu.handle_text("40")); self.assertEqual(menu._push_count(), 40)
+            self.assertFalse(menu.handle_text("привет"), "the next text is not a number for the setting")
+            cb("m|exp"); cb("m|exp|mode|normal"); cb("m|exp|fmt|msg"); self.assertIn("По умолчанию 40", shown()["text"]); self.assertIn("m|exp|count|40", shown()["reply_markup"])
+            # the setting survives a restart of the bot (it is in the menu state file)
+            menu2 = tm.TelegramMenu(app, base, Proc()); self.assertEqual(menu2._push_count(), 40)
+            sent.clear(); menu._export_worker = lambda recs_, mode, fmt, batch: sent.append(len(recs_))
+            cb("m|exp|count|all")
+            for _ in range(50):
+                if sent: break
+                time.sleep(0.05)
+            self.assertEqual(sent, [9], "«Все» still exports everything")
 
     def test_r66_esims_older_than_5_days_leave_the_list(self):
         """AUTO_EXPIRE_1591R66: «Мои eSIM» keeps 5 days; the files stay; «↩️ Вернуть» counts what it can bring back."""
