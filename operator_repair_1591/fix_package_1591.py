@@ -201,7 +201,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "294d5c8016c2c76f3ead4b2d1eb1a3966fc64c4bb7e984119f1a090624e8e27a",  # r74 exp8 output
                          "d3b229693f7792e04510a3c19b3ee48e1820746f0cb83ffb1837e58b022b181b",  # r75 lite output
                          "3e3856f05f853c584feabb54fbead378a91cfa49c4ae2649e5864084abfe6919",  # r75 output
-                         "d37437eb4d1446975fa5748011f617e4b648ce99278eaf185d97c9524cd7f9d1"}  # r75 exp8 output
+                         "d37437eb4d1446975fa5748011f617e4b648ce99278eaf185d97c9524cd7f9d1",  # r75 exp8 output
+                         "d6c58c0b7522bff2621e70133e94664bb3c3f4762d6b4273344df3de14308d4a",  # r76 lite output
+                         "3e2097a0fe748293bbb92f3250ca56318be1de6e45765b9d1ab4e56b250cdbfa",  # r76 output
+                         "6a63c7994939fe5ca3c873646696a7fc70a05f17f339020b10532a21ba9000e0"}  # r76 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -6674,6 +6677,178 @@ README_NOTE_R75 = ('\n\nРЕВИЗИЯ 75 (fix_package_1591.py)\nОшибка с
                    'которая так и не проходит, очередь откладывает, а не теряет. «❔» пишется только если ни одну страницу открыть не\n'
                    'удалось. Маркер: ORDER_VERIFY_1591R75.\n')
 
+# Revision 76: why the site shows «введите данные снова — с заказом всё хорошо» on the confirmation screen (about 160
+# times in 14 h on one server, 212 of 250 cases within 10 s after the first «Отправить снова», the same rows again and
+# again). The bot kept the site's answers only around «Подписать договор»; on the confirmation screen it kept nothing,
+# so the reason was a guess.
+# - CONFIRM_TRACE_1591R76: from the start of a row the page keeps the site's own answers (JSON, POST, HTTP errors of
+#   beeline; no pictures, scripts or counters), the bot's «Отправить снова» clicks are marked among them. When an error
+#   page opens, the error tab itself is looked at: its own requests (2.5 s), its text, and the order status asked from
+#   that tab (the same getselfregstatus GET the site makes, with the tab's cookies, as the menu's link check does).
+#   All of it goes to confirm_errors.jsonl, one journal line names the status and the last answers with their codes
+#   (selfregStatus, codeValue, message). night_report.py confirm sums them up. Nothing in the bot's behaviour changes.
+CONFIRM_TRACE_MARKER = "CONFIRM_TRACE_1591R76"
+OLD_TRACE_MARK_R76 = NEW_VERIFY_MARK_R75.splitlines(keepends=True)[-1]
+NEW_TRACE_MARK_R76 = (OLD_TRACE_MARK_R76
+                      + '# CONFIRM_TRACE_1591R76: the site\'s answers before an error page are kept (confirm_errors.jsonl).\n')
+OLD_TRACE_HEAD_R76 = '# ORDER_VERIFY_1591R75\nORDER_VERIFY_SECONDS_1591R75 = 25\n'
+NEW_TRACE_HEAD_R76 = r'''# CONFIRM_TRACE_1591R76
+CONFIRM_TRACE_MAX_1591R76 = 80
+_CONFIRM_TRACE_SKIP_1591R76 = re.compile(
+    r"\.(png|jpe?g|gif|svg|webp|css|js|woff2?|ttf|ico|mp4)(\?|$)|metrika|analytics|google|flocktory|yandex|gtm|chatwidget",
+    re.I,
+)
+_CONFIRM_TRACE_CODES_1591R76 = re.compile(
+    r'"(selfregStatus|codeValue|errorCode|errorMessage|message|error|status|state|reason)"\s*:\s*"([^"]{1,80})"')
+
+
+def _confirm_trace_start_1591r76(page, note):
+    """From the start of a row the page keeps the site's answers (JSON, POST, HTTP errors) in a ring."""
+    if page is None:
+        return
+    ring = getattr(page, "_confirm_trace_1591r76", None)
+    if ring is None:
+        ring = []
+
+        def on_response(resp):
+            try:
+                url = str(resp.url or "")
+                if "beeline" not in url or _CONFIRM_TRACE_SKIP_1591R76.search(url):
+                    return
+                method, status = str(resp.request.method), int(resp.status)
+                kind = str(resp.headers.get("content-type", "") or "")
+                if "json" not in kind and status < 400 and method == "GET":
+                    return
+                if "getselfregstatus" in url.lower():
+                    setattr(page, "_status_url_1591r76", url)  # the tab's own status request, asked again on an error
+                item = {"t": time.strftime("%H:%M:%S"), "method": method, "status": status,
+                        "url": re.sub(r"[?#].*", "", url)[:200]}
+                try:
+                    item["body"] = re.sub(r"\s+", " ", str(resp.text() or ""))[:700]
+                except Exception as exc:
+                    item["body"] = f"<{type(exc).__name__}>"
+                ring.append(item)
+                del ring[:-CONFIRM_TRACE_MAX_1591R76]
+            except Exception:
+                pass
+
+        try:
+            page.on("response", on_response)
+            setattr(page, "_confirm_trace_1591r76", ring)
+        except Exception:
+            return
+    ring.clear()
+    ring.append({"t": time.strftime("%H:%M:%S"), "mark": str(note)[:120]})
+
+
+def _confirm_trace_mark_1591r76(page, note):
+    ring = getattr(page, "_confirm_trace_1591r76", None)
+    if ring is not None:
+        ring.append({"t": time.strftime("%H:%M:%S"), "mark": str(note)[:120]})
+
+
+def _confirm_trace_brief_1591r76(item):
+    """«GET getselfregstatus → 200 selfregStatus=…» or «— нажата «Отправить снова»»."""
+    if "mark" in item:
+        return f"{item.get('t')} — {item['mark']}"
+    parts = [p for p in str(item.get("url") or "").split("/") if p]
+    codes = [f"{k}={v}" for k, v in _CONFIRM_TRACE_CODES_1591R76.findall(str(item.get("body") or ""))
+             if v.strip() and v.lower() not in ("null", "ok")][:3]
+    return (f"{item.get('t')} {item.get('method')} {parts[-1] if parts else '?'} → {item.get('status')}"
+            + (f" {', '.join(codes)}" if codes else ""))
+
+
+_TAB_STATUS_JS_1591R76 = """async (u) => {
+  try {
+    const r = await fetch(u, {credentials: 'include', headers: {'accept': 'application/json'}});
+    return {status: r.status, body: (await r.text()).slice(0, 1500)};
+  } catch (e) { return {status: 0, body: String(e).slice(0, 200)}; }
+}"""
+
+
+def _tab_status_1591r76(page):
+    """The error tab itself asks the site for its order status (the same GET the site's own page makes)."""
+    url = str(getattr(page, "_status_url_1591r76", "") or "/v1/esim-selfreg/v2/getselfregstatus/")
+    try:
+        got = page.evaluate(_TAB_STATUS_JS_1591R76, url) or {}
+    except Exception as exc:
+        got = {"status": 0, "body": type(exc).__name__}
+    return {"t": time.strftime("%H:%M:%S"), "method": "GET", "url": re.sub(r"[?#].*", "", url)[:200],
+            "status": int(got.get("status") or 0), "body": re.sub(r"\s+", " ", str(got.get("body") or ""))[:900],
+            "tab_check": True}
+
+
+def _confirm_trace_dump_1591r76(worker, reason):
+    """An error page: the site's answers of this row, the error page's own requests and the order status asked from
+    the error tab itself go to confirm_errors.jsonl; the last ones and the status to the journal."""
+    page = worker.get("page")
+    ring = getattr(page, "_confirm_trace_1591r76", None)
+    if not ring:  # no trace for this page, or this error page is already written
+        return None
+    try:
+        page.wait_for_timeout(2500)  # the error page's own requests
+    except Exception:
+        pass
+    tab_status = _tab_status_1591r76(page)
+    try:
+        page_text = re.sub(r"\s+", " ", page.locator("body").inner_text(timeout=1500) or "")[:400]
+    except Exception:
+        page_text = ""
+    row_no, _, _ = row_parts(worker.get("row"))
+    try:
+        url = str(page.url or "")
+    except Exception:
+        url = ""
+    rec = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "tab": worker.get("id"), "row": row_no,
+           "attempt": worker.get("confirm_attempt"), "phase": worker.get("phase"), "reason": str(reason)[:120],
+           "last_step": worker.get("last_progress_label"), "url": re.sub(r"[?#].*", "", url),
+           "page_text": page_text, "tab_status": tab_status, "answers": list(ring)}
+    base_dir = worker.get("base_dir") or Path(__file__).resolve().parent
+    try:
+        with (Path(base_dir) / "confirm_errors.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        print(f"[Вкладка {worker.get('id')}] confirm_errors.jsonl не записан: {type(exc).__name__}: {exc}", flush=True)
+    last = [_confirm_trace_brief_1591r76(item) for item in rec["answers"][-6:]]
+    print(f"[Вкладка {worker.get('id')}] Статус заказа во вкладке с ошибкой (строка {row_no}): "
+          f"{_confirm_trace_brief_1591r76(tab_status)}. Ответы сайта перед этим: " + " | ".join(last), flush=True)
+    ring.clear()
+    return rec
+
+
+''' + OLD_TRACE_HEAD_R76
+OLD_TRACE_START_R76 = ('        f"\\n[Вкладка {tab_id}] Обрабатываю строку {line_number}, "\n'
+                       '        f"номер заканчивается на {active_digits[-4:]}.",\n'
+                       '        flush=True,\n'
+                       '    )\n')
+NEW_TRACE_START_R76 = (OLD_TRACE_START_R76
+                       + '    # CONFIRM_TRACE_1591R76: the site\'s answers of this row are kept (the push request goes on «Продолжить»)\n'
+                       + '    (globals().get("_confirm_trace_start_1591r76") or (lambda p, n: None))(page, f"строка {line_number}")\n')
+OLD_TRACE_RESEND_R76 = '    clicked = try_click_resend_once(page, worker["id"])\n'
+NEW_TRACE_RESEND_R76 = (OLD_TRACE_RESEND_R76
+                        + '    if clicked:  # CONFIRM_TRACE_1591R76\n'
+                        + '        (globals().get("_confirm_trace_mark_1591r76") or (lambda p, n: None))(\n'
+                        + '            page, f"нажата «Отправить снова» после попытки {worker.get(\'confirm_attempt\')}")\n')
+OLD_TRACE_BOX_R76 = '    """Сохраняет визуальное и техническое состояние проблемной вкладки."""\n'
+NEW_TRACE_BOX_R76 = (OLD_TRACE_BOX_R76
+                     + '    if "registration_error" in str(reason) or str(reason) == "error_final_skip":  # CONFIRM_TRACE_1591R76\n'
+                     + '        try:\n'
+                     + '            (globals().get("_confirm_trace_dump_1591r76") or (lambda w, r: None))(worker, reason)\n'
+                     + '        except Exception:\n'
+                     + '            pass\n')
+TRACE_EDITS_R76 = ((OLD_TRACE_MARK_R76, NEW_TRACE_MARK_R76, "confirm trace: marker"),
+                   (OLD_TRACE_HEAD_R76, NEW_TRACE_HEAD_R76, "confirm trace: helpers"),
+                   (OLD_TRACE_START_R76, NEW_TRACE_START_R76, "confirm trace: row start"),
+                   (OLD_TRACE_RESEND_R76, NEW_TRACE_RESEND_R76, "confirm trace: «Отправить снова» mark"),
+                   (OLD_TRACE_BOX_R76, NEW_TRACE_BOX_R76, "confirm trace: dump on an error page"))
+README_NOTE_R76 = ('\n\nРЕВИЗИЯ 76 (fix_package_1591.py)\nПочему на экране подтверждения сайт пишет «введите данные снова — с заказом всё хорошо» (сотни раз за ночь,\n'
+                   'почти всегда сразу после первого «Отправить снова»), было не видно: ответы сайта бот записывал только при подписи.\n'
+                   'Теперь с начала строки вкладка хранит ответы сайта (JSON, POST, ошибки HTTP; без картинок и счётчиков), нажатия\n'
+                   '«Отправить снова» отмечены среди них. Когда открывается страница ошибки, они пишутся в confirm_errors.jsonl, а в\n'
+                   'журнал — строка с последними ответами и их кодами (selfregStatus, codeValue, message). Сама вкладка с ошибкой\n'
+                   'тоже проверяется: её текст, её запросы и статус заказа, запрошенный прямо из неё (как в проверке ссылок). Сводка:\n'
+                   'night_report.py confirm. Поведение бота не меняется. Маркер: CONFIRM_TRACE_1591R76.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -7518,6 +7693,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if CONFIRM_TRACE_MARKER in source:
+        return 76
     if ORDER_VERIFY_MARKER in source:
         return 75
     if CONFIRM_PUSH_MARKER in source:
@@ -7673,6 +7850,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 73 or BASE_RESET_MARKER in source)\
             and (MAX_REVISION < 74 or CONFIRM_PUSH_MARKER in source)\
             and (MAX_REVISION < 75 or ORDER_VERIFY_MARKER in source)\
+            and (MAX_REVISION < 76 or CONFIRM_TRACE_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -9157,6 +9335,21 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 77 (r76). The site's answers before an error page on the confirmation screen are kept (confirm_errors.jsonl).
+    if CONFIRM_TRACE_MARKER not in source and MAX_REVISION >= 76:
+        for old, new, what in TRACE_EDITS_R76:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -9286,6 +9479,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 73", README_NOTE_R73),) if built_revision >= 73 else ()),
                           *((("РЕВИЗИЯ 74", README_NOTE_R74),) if built_revision >= 74 else ()),
                           *((("РЕВИЗИЯ 75", README_NOTE_R75),) if built_revision >= 75 else ()),
+                          *((("РЕВИЗИЯ 76", README_NOTE_R76),) if built_revision >= 76 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

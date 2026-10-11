@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 75 лежит в `beeline_integrated_io_15_91_r75/`; рядом
-`beeline_integrated_io_15_91_r75_lite/` — та же ревизия 75 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 76 лежит в `beeline_integrated_io_15_91_r76/`; рядом
+`beeline_integrated_io_15_91_r76_lite/` — та же ревизия 76 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r75
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r76
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r75_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r76_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -705,6 +705,14 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    ссылке (в чистом контексте, только чтение): шаг оплаты — 💳, eSIM выпущена — ✅, заказ вернулся в начало или не читается —
    строка вводится заново, потом новой вкладкой; «❔» остаётся только на случай, когда ни одну страницу открыть не удалось.
    Маркеры: `CONTRACT_LIMIT_1591R75`, `ORDER_VERIFY_1591R75`.
+
+81. **Ревизия 76: что сайт ответил перед «введите данные снова».** Эта страница бывает сотни раз за ночь, почти всегда
+   сразу после первого «Отправить снова», и у одних и тех же номеров; почему — было не видно. Теперь с начала строки вкладка
+   хранит ответы сайта (JSON, POST, ошибки HTTP), нажатия «Отправить снова» отмечены. Когда открывается страница ошибки,
+   смотрится сама вкладка с ошибкой: её текст, её собственные запросы и статус заказа, запрошенный прямо из неё (тот же
+   запрос `getselfregstatus`, что делает сайт, как в проверке ссылок). Всё пишется в `confirm_errors.jsonl`, в журнал —
+   строка «Статус заказа во вкладке с ошибкой: …». Сводка: `sudo python3 /tmp/nr.py confirm 3` (за 3 часа). Поведение бота
+   не меняется. Маркер: `CONFIRM_TRACE_1591R76`.
 
 ## Использование
 

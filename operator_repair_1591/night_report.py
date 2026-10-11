@@ -413,6 +413,64 @@ def error_summary():
         print(f"{n:5d}  {key}\n       часы: {when}")
 
 
+def confirm_errors():
+    """CONFIRM_TRACE_1591R76: the site's answers before an error page on the confirmation screen (confirm_errors.jsonl)."""
+    recs = records("confirm_errors.jsonl")
+    print(f"== Ошибки после экрана подтверждения с ответами сайта за {HOURS:g} ч: {len(recs)}")
+    if not recs:
+        print("Записей нет (нужна ревизия 76 и хотя бы одна такая ошибка).")
+        return
+    codes, last_req, clicks = collections.Counter(), collections.Counter(), collections.Counter()
+    tab_codes, texts = collections.Counter(), collections.Counter()
+    code_re = re.compile(r'"(selfregStatus|codeValue|errorCode|errorMessage|message|error|status|state|reason)"\s*:\s*"([^"]{1,80})"')
+    for rec in recs:
+        answers = [a for a in rec.get("answers") or [] if "mark" not in a]
+        status = rec.get("tab_status") or {}
+        found = [f"{k}={hide(v)}" for k, v in code_re.findall(str(status.get("body") or "")) if v.strip() and v.lower() not in ("null", "ok")]
+        tab_codes[(", ".join(dict.fromkeys(found)) or f"HTTP {status.get('status')}: {hide(status.get('body'))[:80]}")[:160]] += 1
+        if rec.get("page_text"):
+            texts[hide(rec["page_text"])[:150]] += 1
+        marks = [a.get("mark", "") for a in rec.get("answers") or [] if "mark" in a]
+        clicks["после нажатия «Отправить снова»" if any("Отправить снова" in m for m in marks) else "без нажатия «Отправить снова»"] += 1
+        for a in answers[-3:]:
+            name = ([p for p in str(a.get("url") or "").split("/") if p] or ["?"])[-1]
+            last_req[f"{a.get('method')} {name} → {a.get('status')}"] += 1
+        seen = set()
+        for a in answers[-6:]:
+            for k, v in code_re.findall(str(a.get("body") or "")):
+                if v.strip() and v.lower() not in ("null", "ok") and (k, v) not in seen:
+                    seen.add((k, v))
+                    codes[f"{k}={hide(v)}"] += 1
+    print("\n-- Статус заказа, запрошенный из вкладки с ошибкой")
+    for key, n in tab_codes.most_common(12):
+        print(f"  {n:5d}  {key}")
+    print("-- Текст страницы ошибки")
+    for key, n in texts.most_common(8):
+        print(f"  {n:5d}  {key}")
+    print("-- Когда")
+    for key, n in clicks.most_common():
+        print(f"  {n:5d}  {key}")
+    print("-- Коды в последних ответах сайта перед ошибкой (сколько ошибок с этим кодом)")
+    for key, n in codes.most_common(15):
+        print(f"  {n:5d}  {key}")
+    print("-- Последние запросы перед ошибкой")
+    for key, n in last_req.most_common(12):
+        print(f"  {n:5d}  {key}")
+    for rec in recs[-2:]:
+        print(f"\n== {str(rec.get('time'))[5:16]}  вкладка {rec.get('tab')}  попытка {rec.get('attempt')}  "
+              f"({rec.get('reason')}, последний шаг бота {rec.get('last_step')})")
+        print("URL: " + str(rec.get("url") or ""))
+        print("Текст: " + hide(rec.get("page_text"))[:300])
+        status = rec.get("tab_status") or {}
+        print(f"Статус из вкладки: {status.get('url')} → {status.get('status')}  {hide(status.get('body'))[:600]}")
+        for a in (rec.get("answers") or [])[-14:]:
+            if "mark" in a:
+                print(f"  {a.get('t')} — {hide(a['mark'])}")
+                continue
+            name = re.sub(r"^https?://[^/]+", "", str(a.get("url") or ""))
+            print(f"  {a.get('t')} {a.get('method')} {name[:80]} → {a.get('status')}  {hide(a.get('body'))[:300]}")
+
+
 def tab_journal(tab, start, minutes=30):
     """One tab's journal from HH:MM (today, or yesterday when that is still ahead) for `minutes`,
     without the captcha matcher's noise; DeepSeek's lines about that tab are kept too."""
@@ -498,6 +556,12 @@ if __name__ == "__main__":
         HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 14.0
         SINCE = time.time() - HOURS * 3600
         error_summary()
+        sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "confirm":
+        HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 14.0
+        SINCE = time.time() - HOURS * 3600
+        SINCE_TEXT = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(SINCE))
+        confirm_errors()
         sys.exit(0)
     if len(sys.argv) > 1 and sys.argv[1] == "lost":
         HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 24.0
