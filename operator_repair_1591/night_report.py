@@ -425,7 +425,60 @@ def tab_journal(tab, start, minutes=30):
         print("  " + x[11:19] + "  " + hide(x.split("]: ", 1)[-1])[:200])
 
 
+def unverified_details():
+    """Every «❔ подпись не подтверждена» row in the window: why, what the site answered to the signing,
+    and the page the tab stayed on (the newest snapshot of that tab before the record)."""
+    recs = records("unverified_signatures.jsonl")
+    print(f"== ❔ подпись не подтверждена за {HOURS:g} ч: {len(recs)}")
+    snaps = []
+    for case in APP.glob("diagnostics/**/blackbox/*"):
+        if not re.search(r"success_unverified|after_sign_click|registration_error_after_auth|signature", case.name):
+            continue
+        try:
+            meta = json.loads((case / "meta.json").read_text("utf-8"))
+        except Exception:
+            continue
+        snaps.append((str(meta.get("time") or ""), str(meta.get("tab")), case, meta))
+    for rec in recs:
+        when, tab = str(rec.get("time") or ""), str(rec.get("tab"))
+        print(f"\n== {when[5:16]}  вкладка {tab}")
+        print("Причина: " + hide(rec.get("reason"))[:200])
+        print("Страница в конце: " + re.sub(r"[?#].*", "", str(rec.get("final_url") or "")) + " — " + hide(rec.get("final_title"))[:80])
+        trace = rec.get("sign_trace") or {}
+        if trace:
+            print("Подпись: " + re.sub(r"[?#].*", "", str(trace.get("url_before") or "")) + " → " + re.sub(r"[?#].*", "", str(trace.get("url_after") or "")))
+            for r in (trace.get("responses") or [])[:8]:
+                path = re.sub(r"^https?://[^/]+", "", re.sub(r"[?#].*", "", str(r.get("url") or "")))
+                body = hide(json.dumps(r.get("body"), ensure_ascii=False))[:120] if "body" in r else ""
+                print(f"  {r.get('method') or ''} {path} → {r.get('status')}" + (f"  {body}" if body else ""))
+            for x in (trace.get("failed") or [])[:3]:
+                print("  сбой сети: " + hide(json.dumps(x, ensure_ascii=False))[:150])
+            for x in (trace.get("console") or [])[:3]:
+                print("  console: " + hide(json.dumps(x, ensure_ascii=False))[:150])
+        mine = [s_ for s_ in snaps if s_[1] == tab and s_[0] <= when]
+        if mine:
+            stamp, _, case, meta = max(mine, key=lambda x: x[0])
+            try:
+                html = (case / "page.html").read_text("utf-8", errors="replace")
+            except Exception:
+                html = ""
+            print(f"Последний снимок вкладки: {stamp[11:19]} ({case.name.split('_row')[-1].split('_', 1)[-1]}), "
+                  + re.sub(r"[?#].*", "", str(meta.get("url") or "")))
+            for line in page_text(html)[:14]:
+                print("  " + line[:150])
+            buttons = [" ".join(page_text(inner)) for _, _, inner in re.findall(r"(?is)<(button|a)\b([^>]*)>(.*?)</\1>", html)]
+            buttons = [x for x in buttons if x]
+            if buttons:
+                print("  Кнопки: " + " | ".join(dict.fromkeys(buttons))[:200])
+
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "unverified":
+        HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 72.0
+        SINCE = time.time() - HOURS * 3600
+        SINCE_TEXT = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(SINCE))
+        unverified_details()
+        sys.exit(0)
     if len(sys.argv) > 1 and sys.argv[1] == "tab":
         tab_journal(sys.argv[2], sys.argv[3], int(sys.argv[4]) if len(sys.argv) > 4 else 30)
         sys.exit(0)
