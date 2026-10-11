@@ -199,7 +199,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_78(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_79(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -383,18 +383,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 78 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 79 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
             for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69", "SIGN_QUADRANTS_1591R70", "AGENT_MEMORY_1591R71", "REGION_CAPTION_1591R72", "BASE_RESET_1591R73", "CONFIRM_PUSH_1591R74"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 78", run.stdout)
+            self.assertIn("Already revision 79", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 78 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 79 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -1026,7 +1026,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 78", run.stdout)
+            self.assertIn("Already revision 79", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1060,7 +1060,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 78)
+        self.assertEqual(manifest["revision"], 79)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1418,7 +1418,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 78); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 79); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1428,7 +1428,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 78", run.stdout)
+            self.assertIn("Already revision 79", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -2855,6 +2855,125 @@ class PackageTests(unittest.TestCase):
             self.assertEqual([r["sim_number"] for r in menu._oldest_first(menu._esims())][:2], ["+79620000101", "+79620000103"])
             menu.show_export("fmt", "msg")
             self.assertIn("Идут от старых к новым.", [c[1].get("text", "") for c in calls][-1])
+
+    def test_r79_socks5_with_login_goes_through_a_local_relay(self):
+        """SOCKS_AUTH_1591R79: Chromium cannot log in to SOCKS5; the relay does it, the browser gets a proxy without a password."""
+        import socket as _socket, threading as _threading, http.server
+        src = (self.pkg / "test_beeline.py").read_text("utf-8")
+        self.assertIn("# SOCKS_AUTH_1591R79:", src)
+        self.assertIn("МОБИЛЬНЫЙ ПРОКСИ НЕ ПРИМЕНЁН", src, "a proxy that could not be applied is said so")
+        ns = {"socket": _socket, "print": lambda *a, **k: None}
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(t_, ast.Name) and t_.id == "_SOCKS_RELAYS_1591R79" for t_ in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        ns["_threading_1591r79"] = _threading
+        exec_functions(src, ["_socks_recv_1591r79", "_socks_pipe_1591r79", "_socks_serve_1591r79", "_socks_local_1591r79"], ns)
+        local = ns["_socks_local_1591r79"]
+
+        class Page(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = "через посредника: " .encode("utf-8") + self.headers.get("Host", "").encode()
+                self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+            def log_message(self, *a): pass
+
+        target = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Page)
+        _threading.Thread(target=target.serve_forever, daemon=True).start()
+        target_port = target.server_address[1]
+        seen = {"logins": [], "targets": []}
+        upstream = _socket.socket(); upstream.bind(("127.0.0.1", 0)); upstream.listen(16)
+
+        def recv(sock, n):
+            data = b""
+            while len(data) < n:
+                chunk = sock.recv(n - len(data))
+                if not chunk:
+                    raise OSError("closed")
+                data += chunk
+            return data
+
+        def fake_proxy(conn):
+            """A SOCKS5 proxy that wants a login and password and sends every name to the local test server."""
+            try:
+                head = recv(conn, 2); recv(conn, head[1])
+                conn.sendall(b"\x05\x02")
+                recv(conn, 1); user = recv(conn, recv(conn, 1)[0]).decode(); password = recv(conn, recv(conn, 1)[0]).decode()
+                seen["logins"].append((user, password))
+                if (user, password) != ("vasya", "s3cret"):
+                    conn.sendall(b"\x01\x01"); return
+                conn.sendall(b"\x01\x00")
+                req = recv(conn, 4)
+                name = recv(conn, recv(conn, 1)[0]).decode() if req[3] == 3 else ""
+                port = int.from_bytes(recv(conn, 2), "big")
+                seen["targets"].append((name, port))
+                out = _socket.create_connection(("127.0.0.1", target_port))
+                conn.sendall(b"\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x50")
+                a = _threading.Thread(target=ns["_socks_pipe_1591r79"], args=(out, conn), daemon=True); a.start()
+                ns["_socks_pipe_1591r79"](conn, out)
+            except OSError:
+                pass
+
+        def accept():
+            while True:
+                try:
+                    conn, _ = upstream.accept()
+                except OSError:
+                    return
+                _threading.Thread(target=fake_proxy, args=(conn,), daemon=True).start()
+        _threading.Thread(target=accept, daemon=True).start()
+        up_port = upstream.getsockname()[1]
+        # not a SOCKS5-with-login proxy: returned unchanged
+        for plain in ({"server": f"socks5://127.0.0.1:{up_port}"}, {"server": "http://h:3128", "username": "u", "password": "p"}, None):
+            self.assertEqual(local(plain), plain)
+        good = local({"server": f"socks5://127.0.0.1:{up_port}", "username": "vasya", "password": "s3cret"})
+        self.assertRegex(good["server"], r"^socks5://127\.0\.0\.1:\d+$"); self.assertNotIn("username", good)
+        self.assertEqual(local({"server": f"socks5://127.0.0.1:{up_port}", "username": "vasya", "password": "s3cret"}), good, "one relay per proxy")
+        bad = local({"server": f"socks5://127.0.0.1:{up_port}", "username": "vasya", "password": "wrong"})
+        # a plain SOCKS5 client (no login) asks the relay for a name
+        def ask(relay, name="saratov.beeline.test"):
+            host, port = relay["server"][len("socks5://"):].rsplit(":", 1)
+            c = _socket.create_connection((host, int(port)), timeout=10)
+            c.sendall(b"\x05\x01\x00"); self.assertEqual(c.recv(2), b"\x05\x00")
+            c.sendall(b"\x05\x01\x00\x03" + bytes([len(name)]) + name.encode() + (80).to_bytes(2, "big"))
+            return c, c.recv(10)
+        c, reply = ask(good)
+        self.assertEqual(reply[1], 0, "the proxy accepted the login the relay gave it")
+        c.sendall(b"GET / HTTP/1.1\r\nHost: saratov.beeline.test\r\nConnection: close\r\n\r\n")
+        data = b""
+        while True:
+            chunk = c.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        c.close()
+        self.assertIn("через посредника: saratov.beeline.test".encode("utf-8"), data)
+        c2, reply2 = ask(bad); c2.close()
+        self.assertNotEqual(reply2[1], 0, "a wrong password is a failed connection, not a silent success")
+        self.assertIn(("vasya", "s3cret"), seen["logins"]); self.assertIn(("vasya", "wrong"), seen["logins"])
+        self.assertIn(("saratov.beeline.test", 80), seen["targets"])
+        # the real browser through the relay
+        try:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                try:
+                    browser = p.chromium.launch(headless=True)
+                except Exception:
+                    browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+                with self.assertRaises(Exception) as direct:
+                    browser.new_context(proxy={"server": f"socks5://127.0.0.1:{up_port}", "username": "vasya", "password": "s3cret"})
+                self.assertIn("socks5 proxy authentication", str(direct.exception), "why the relay is needed")
+                context = browser.new_context(proxy=good)
+                page = context.new_page()
+                page.goto("http://saratov.beeline.test/", wait_until="domcontentloaded", timeout=20000)
+                text = page.locator("body").inner_text()
+                browser.close()
+        except Exception as exc:
+            if "Executable doesn't exist" in str(exc) or "BrowserType.launch" in str(exc):
+                self.skipTest(f"no headless Chromium here: {exc}")
+            raise
+        finally:
+            target.shutdown(); upstream.close()
+        self.assertIn("через посредника: saratov.beeline.test", text)
 
     def test_r66_esims_older_than_5_days_leave_the_list(self):
         """AUTO_EXPIRE_1591R66: «Мои eSIM» keeps 5 days; the files stay; «↩️ Вернуть» counts what it can bring back."""

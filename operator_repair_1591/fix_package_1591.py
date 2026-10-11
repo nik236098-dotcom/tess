@@ -210,7 +210,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "d0c310b4636948d6e4b5ac3bb44bd55d665e42c4decf2026503fba758a09839d",  # r77 exp8 output
                          "77619ee754fd3d8101619fe71e57c099d5152b3033bb09a464b1e24e0c943db0",  # r78 lite output
                          "5e742fead1350c89dd6125c3c483a635f17a9e0885fa61f3c2c10510d1cde45c",  # r78 output
-                         "b3a9b091cbe650e1a4c1683d4b9e4162e0f045cfc18ce713c831409c3e1ec212"}  # r78 exp8 output
+                         "b3a9b091cbe650e1a4c1683d4b9e4162e0f045cfc18ce713c831409c3e1ec212",  # r78 exp8 output
+                         "a3d279dcc07a16374c387333d53718df99c42b6ebc5c6e93e18153ff2c781e41",  # r79 lite output
+                         "911c98065552d41c48c3edac6bc8da9151af0f0cb0fe464522725f1b14da19d3",  # r79 output
+                         "31ccc19e992a79a7641fff1615d6983b568dcc01c6aeb188812aa85830434f9f"}  # r79 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -6932,6 +6935,175 @@ README_NOTE_R78 = ('\n\nРЕВИЗИЯ 78 (fix_package_1591.py)\nВыгрузк�
                    'самых старых к новым, а число в «Сколько выгрузить?» берёт самые старые. «Мои eSIM» по-прежнему от новых к старым.\n'
                    'Маркер: EXPORT_ORDER_1591R78.\n')
 
+# Revision 79: SOCKS5 proxies with a login and password for the browser («📶 Мобильный прокси»).
+# Chromium cannot authenticate to a SOCKS5 proxy («Browser does not support socks5 proxy authentication»), and when the
+# context could not be made the bot worked in the shared context WITHOUT the proxy, so a proxy of this kind was silently not used.
+# - SOCKS_AUTH_1591R79: every tab process starts a small relay on 127.0.0.1 (a SOCKS5 server without a password for the browser)
+#   that connects to the real proxy with the login and password; the browser gets socks5://127.0.0.1:<port>. HTTP/HTTPS proxies
+#   with a login and SOCKS5 without a login go to the browser as before.
+SOCKS_AUTH_MARKER = "SOCKS_AUTH_1591R79"
+OLD_SOCKS_MARK_R79 = NEW_ORDER_MARK_R78.splitlines(keepends=True)[-1]
+NEW_SOCKS_MARK_R79 = (OLD_SOCKS_MARK_R79
+                      + '# SOCKS_AUTH_1591R79: SOCKS5 with a login and password goes through a local relay (the browser cannot do it itself).\n')
+OLD_SOCKS_HEAD_R79 = 'def _proxy_context_kwargs_1591r69(tab_id):\n    proxy, _ = _mobile_proxy_1591r69()\n    if not proxy:\n        return {}\n'
+NEW_SOCKS_HEAD_R79 = r'''# SOCKS_AUTH_1591R79
+import threading as _threading_1591r79
+
+
+def _socks_recv_1591r79(sock, count):
+    data = b""
+    while len(data) < count:
+        chunk = sock.recv(count - len(data))
+        if not chunk:
+            raise OSError("closed")
+        data += chunk
+    return data
+
+
+def _socks_pipe_1591r79(src, dst):
+    try:
+        while True:
+            chunk = src.recv(65536)
+            if not chunk:
+                break
+            dst.sendall(chunk)
+    except OSError:
+        pass
+    finally:
+        for sock in (src, dst):
+            try:
+                sock.shutdown(2)
+            except OSError:
+                pass
+
+
+def _socks_serve_1591r79(client, host, port, user, password):
+    """One browser connection: SOCKS5 without a password in, SOCKS5 with the login and password out."""
+    upstream = None
+    try:
+        client.settimeout(30)
+        head = _socks_recv_1591r79(client, 2)
+        if head[0] != 5:
+            return
+        _socks_recv_1591r79(client, head[1])
+        client.sendall(b"\x05\x00")
+        req = _socks_recv_1591r79(client, 4)
+        atyp = req[3]
+        if atyp == 1:
+            tail = _socks_recv_1591r79(client, 4)
+        elif atyp == 4:
+            tail = _socks_recv_1591r79(client, 16)
+        elif atyp == 3:
+            size = _socks_recv_1591r79(client, 1)
+            tail = size + _socks_recv_1591r79(client, size[0])
+        else:
+            client.sendall(b"\x05\x08\x00\x01\x00\x00\x00\x00\x00\x00")
+            return
+        tail += _socks_recv_1591r79(client, 2)
+        if req[1] != 1:  # only CONNECT
+            client.sendall(b"\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00")
+            return
+        upstream = socket.create_connection((host, port), timeout=20)
+        upstream.settimeout(30)
+        upstream.sendall(b"\x05\x02\x00\x02" if user else b"\x05\x01\x00")
+        method = _socks_recv_1591r79(upstream, 2)
+        if method[1] == 2:
+            u, p = user.encode("utf-8"), password.encode("utf-8")
+            upstream.sendall(b"\x01" + bytes([len(u)]) + u + bytes([len(p)]) + p)
+            if _socks_recv_1591r79(upstream, 2)[1] != 0:
+                client.sendall(b"\x05\x01\x00\x01\x00\x00\x00\x00\x00\x00")  # the proxy refused the login
+                return
+        elif method[1] != 0:
+            client.sendall(b"\x05\x01\x00\x01\x00\x00\x00\x00\x00\x00")
+            return
+        upstream.sendall(req + tail)
+        reply = _socks_recv_1591r79(upstream, 4)
+        if reply[3] == 1:
+            rest = _socks_recv_1591r79(upstream, 4)
+        elif reply[3] == 4:
+            rest = _socks_recv_1591r79(upstream, 16)
+        else:
+            size = _socks_recv_1591r79(upstream, 1)
+            rest = size + _socks_recv_1591r79(upstream, size[0])
+        rest += _socks_recv_1591r79(upstream, 2)
+        client.sendall(reply + rest)
+        if reply[1] != 0:
+            return
+        client.settimeout(None)
+        upstream.settimeout(None)
+        worker = _threading_1591r79.Thread(target=_socks_pipe_1591r79, args=(upstream, client), daemon=True)
+        worker.start()
+        _socks_pipe_1591r79(client, upstream)
+        worker.join(5)
+    except OSError:
+        pass
+    finally:
+        for sock in (client, upstream):
+            try:
+                if sock is not None:
+                    sock.close()
+            except OSError:
+                pass
+
+
+_SOCKS_RELAYS_1591R79 = {}
+
+
+def _socks_local_1591r79(proxy):
+    """A SOCKS5 proxy with a login and a password → a relay on 127.0.0.1 that the browser can use without a password
+    (one per process and proxy). Anything else is returned as it is."""
+    try:
+        server = str((proxy or {}).get("server") or "")
+        user, password = str(proxy.get("username") or ""), str(proxy.get("password") or "")
+        if not server.startswith("socks5://") or not (user or password):
+            return proxy
+        host, _, port = server[len("socks5://"):].rpartition(":")
+        key = (host, int(port), user, password)
+        relay = _SOCKS_RELAYS_1591R79.get(key)
+        if relay is None:
+            listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(128)
+
+            def accept_loop():
+                while True:
+                    try:
+                        client, _ = listener.accept()
+                    except OSError:
+                        return
+                    _threading_1591r79.Thread(target=_socks_serve_1591r79, args=(client, host, int(port), user, password),
+                                              daemon=True).start()
+
+            _threading_1591r79.Thread(target=accept_loop, daemon=True).start()
+            relay = _SOCKS_RELAYS_1591R79[key] = listener
+        return {"server": f"socks5://127.0.0.1:{relay.getsockname()[1]}"}
+    except Exception as exc:
+        print(f"SOCKS5 с паролем: локальный посредник не запущен ({type(exc).__name__}: {exc}).", flush=True)
+        return proxy
+
+
+''' + OLD_SOCKS_HEAD_R79
+NEW_SOCKS_HEAD_R79 = NEW_SOCKS_HEAD_R79 + '    proxy = (globals().get("_socks_local_1591r79") or (lambda p: p))(proxy)  # SOCKS_AUTH_1591R79\n'
+# the head block above ends with the old head text; the log line below keeps the real server in the message
+OLD_SOCKS_FALL_R79 = ('    except Exception as exc:\n'
+                      '        print(\n'
+                      '            f"[Вкладка {tab_id}] Отдельный контекст не создан ({type(exc).__name__}: {exc}); "\n')
+NEW_SOCKS_FALL_R79 = ('    except Exception as exc:\n'
+                      '        if (globals().get("_mobile_proxy_1591r69") or (lambda: (None, "")))()[0]:  # SOCKS_AUTH_1591R79: a proxy that cannot be applied is said so, not skipped quietly\n'
+                      '            print(f"[Вкладка {tab_id}] ⚠️ МОБИЛЬНЫЙ ПРОКСИ НЕ ПРИМЕНЁН: {type(exc).__name__}: {str(exc)[:120]}. "\n'
+                      '                  "Вкладка пойдёт с адреса сервера.", flush=True)\n'
+                      '        print(\n'
+                      '            f"[Вкладка {tab_id}] Отдельный контекст не создан ({type(exc).__name__}: {exc}); "\n')
+SOCKS_EDITS_R79 = ((OLD_SOCKS_MARK_R79, NEW_SOCKS_MARK_R79, "socks auth: marker"),
+                   (OLD_SOCKS_HEAD_R79, NEW_SOCKS_HEAD_R79, "socks auth: relay before the context"),
+                   (OLD_SOCKS_FALL_R79, NEW_SOCKS_FALL_R79, "socks auth: a proxy that was not applied is said so"))
+README_NOTE_R79 = ('\n\nРЕВИЗИЯ 79 (fix_package_1591.py)\nSOCKS5-прокси с логином и паролем для браузера («⚙️ Настройки → 📶 Мобильный прокси»). Chromium не умеет\n'
+                   'авторизоваться на SOCKS5 («Browser does not support socks5 proxy authentication»), а при такой ошибке бот работал в\n'
+                   'общем контексте без прокси, поэтому такой прокси молча не применялся. Теперь каждый процесс вкладки поднимает на\n'
+                   '127.0.0.1 небольшой посредник (SOCKS5 без пароля для браузера), который заходит на настоящий прокси с логином и\n'
+                   'паролем. HTTP/HTTPS-прокси с логином и SOCKS5 без логина идут в браузер, как раньше. Маркер: SOCKS_AUTH_1591R79.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -7776,6 +7948,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if SOCKS_AUTH_MARKER in source:
+        return 79
     if EXPORT_ORDER_MARKER in source:
         return 78
     if CONFIRM_TRACE_V2_MARKER in source:
@@ -7940,6 +8114,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 76 or CONFIRM_TRACE_MARKER in source)\
             and (MAX_REVISION < 77 or CONFIRM_TRACE_V2_MARKER in source)\
             and (MAX_REVISION < 78 or EXPORT_ORDER_MARKER in source)\
+            and (MAX_REVISION < 79 or SOCKS_AUTH_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -9477,6 +9652,21 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 80 (r79). SOCKS5 proxies with a login and password for the browser go through a local relay.
+    if SOCKS_AUTH_MARKER not in source and MAX_REVISION >= 79:
+        for old, new, what in SOCKS_EDITS_R79:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -9609,6 +9799,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 76", README_NOTE_R76),) if built_revision >= 76 else ()),
                           *((("РЕВИЗИЯ 77", README_NOTE_R77),) if built_revision >= 77 else ()),
                           *((("РЕВИЗИЯ 78", README_NOTE_R78),) if built_revision >= 78 else ()),
+                          *((("РЕВИЗИЯ 79", README_NOTE_R79),) if built_revision >= 79 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
