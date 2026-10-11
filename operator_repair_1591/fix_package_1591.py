@@ -186,7 +186,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "ea0511ec3650b830d75c40dfad187698bfbd09447acfaf26ff65101ad838b29c",  # r69 exp8 output
                          "679c881a19b388da8523eba3094b249f3c22d884a71aeca05f9a69e0886d4901",  # r70 lite output
                          "c9c55e40b616e577b735243cf72c347a806a0630f38a4044e49fa2b7348ba255",  # r70 output
-                         "f5055f9bcadadcb55dc1019bad40608a58247ff86381cbf853495d1c99e85ab6"}  # r70 exp8 output
+                         "f5055f9bcadadcb55dc1019bad40608a58247ff86381cbf853495d1c99e85ab6",  # r70 exp8 output
+                         "7226d133e2918fd9127106c0455e094fb06eb7adfef7e6c53079e42782a788b9",  # r71 lite output
+                         "e65e08e87bc4a7bf05f5c262234cfd7c0efc6ca8a70430d7b490e7de45284be0",  # r71 output
+                         "4b3d105bcde5864be01443483168c909060cd16a0e94a30e9ea46217750c81f7"}  # r71 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -6032,6 +6035,304 @@ README_NOTE_R70 = ('\n\nРЕВИЗИЯ 70 (fix_package_1591.py)\nПодпись.
                    'закрывается: вместо «❔» — DeepSeek.\n'
                    'Маркер: SIGN_QUADRANTS_1591R70.\n')
 
+# Revision 71: DeepSeek as an agent with a memory, and a row that resumes where it stopped.
+# - AGENT_MEMORY_1591R71: the dialogue was never remembered (_chat_memory_append was defined and called nowhere), so
+#   every message started from nothing. Now each answered message of the owner (not the automatic jobs) is written
+#   with the reply to ai_chat_memory.jsonl, and the last 12 turns of the last 12 hours go to the agent as real
+#   messages (the quick-chat route reads the same file). A short «да / давай / сделай / повтори» after an answer is a
+#   follow-up: it goes to the tool route with live actions allowed. Any message of 15+ characters goes to the agent
+#   with tools, only short chatter keeps the single quick answer. DeepSeek can draw the signature: the tool
+#   browser_draw_signature draws by touch (the field takes touches only) and returns the ink per quarter.
+# - CONFIRM_RESUME_1591R71: the attempt (1..6) of a row in the confirmation is kept per number in confirm_progress/.
+#   After a restart of the bot, a replaced page or any error the row starts at the attempt where it stopped, not at
+#   1/6. The record is dropped when the row is finished or the client confirmed.
+AGENT_MEMORY_MARKER = "AGENT_MEMORY_1591R71"
+OLD_MEM_MARK_R71 = NEW_SIGNQ_MARK_R70.splitlines(keepends=True)[-1]
+NEW_MEM_MARK_R71 = (OLD_MEM_MARK_R71
+                    + '# AGENT_MEMORY_1591R71: DeepSeek remembers the dialogue, draws the signature by touch; a row resumes its attempt.\n')
+OLD_MEM_HEAD_R71 = '# REENTER_ROW_1591R67\nREENTER_ROW_MAX_1591R67 = 2\n'
+NEW_MEM_HEAD_R71 = r'''# AGENT_MEMORY_1591R71
+CHAT_MEMORY_TURNS_1591R71 = 12              # messages (6 exchanges) given to the agent
+CHAT_MEMORY_MAX_AGE_1591R71 = 12 * 3600     # older talk is not "the previous dialogue" any more
+CHAT_MEMORY_KEEP_LINES_1591R71 = 200
+CHAT_MEMORY_TEXT_1591R71 = 2500
+_FOLLOWUP_WORDS_1591R71 = ("да", "давай", "делай", "сделай", "ок", "окей", "хорошо", "продолжай", "дальше",
+                           "ещё раз", "еще раз", "повтори", "попробуй", "пробуй", "согласен", "угу")
+_REPLY_HEADS_1591R71 = ("🤖 DeepSeek Operator\n\n", "🤖 DeepSeek Operator\n", "🤖 ")
+
+
+def _chat_memory_entries_1591r71():
+    try:
+        lines = AI_CHAT_MEMORY_FILE.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return []
+    now, out = time.time(), []
+    for line in lines[-80:]:
+        try:
+            rec = json.loads(line)
+            stamp = time.mktime(time.strptime(str(rec.get("time")), "%Y-%m-%d %H:%M:%S"))
+        except Exception:
+            continue
+        text = str(rec.get("text") or "").strip()
+        if rec.get("role") in ("user", "assistant") and text and 0 <= now - stamp <= CHAT_MEMORY_MAX_AGE_1591R71:
+            out.append({"role": rec["role"], "content": text[:CHAT_MEMORY_TEXT_1591R71]})
+    return out
+
+
+def _chat_history_messages_1591r71(limit=None):
+    """The last turns of the dialogue as chat messages: they start with the owner's message, end with the
+    answer to it, and the same roles are merged (the API wants them alternating)."""
+    merged = []
+    for item in _chat_memory_entries_1591r71():
+        if merged and merged[-1]["role"] == item["role"]:
+            merged[-1]["content"] = (merged[-1]["content"] + "\n" + item["content"])[:CHAT_MEMORY_TEXT_1591R71]
+        else:
+            merged.append(dict(item))
+    while merged and merged[0]["role"] != "user":
+        merged.pop(0)
+    while merged and merged[-1]["role"] != "assistant":
+        merged.pop()
+    return merged[-(limit or CHAT_MEMORY_TURNS_1591R71):]
+
+
+def _chat_memory_pair_1591r71(user_text, reply):
+    """Remember one answered exchange of the owner. The automatic jobs, the silent «-» and the failures are not
+    dialogue and stay out; the file is cut to its last lines."""
+    user_text, reply = str(user_text or "").strip(), str(reply or "").strip()
+    if not user_text or not reply or user_text.upper().startswith("[AUTO_") or reply.startswith("⚠️"):
+        return False
+    for head in _REPLY_HEADS_1591R71:
+        if reply.startswith(head):
+            reply = reply[len(head):].strip()
+            break
+    if not reply or reply in {"-", "—", "–"}:
+        return False
+    try:
+        _chat_memory_append("user", user_text)
+        _chat_memory_append("assistant", reply)
+        lines = AI_CHAT_MEMORY_FILE.read_text(encoding="utf-8").splitlines()
+        if len(lines) > CHAT_MEMORY_KEEP_LINES_1591R71 * 2:
+            tmp = AI_CHAT_MEMORY_FILE.with_suffix(".tmp")
+            tmp.write_text("\n".join(lines[-CHAT_MEMORY_KEEP_LINES_1591R71:]) + "\n", encoding="utf-8")
+            tmp.replace(AI_CHAT_MEMORY_FILE)
+    except Exception:
+        return False
+    return True
+
+
+def _followup_1591r71(text):
+    """A short agreement or «again» right after an answer: «да», «давай», «сделай», «повтори»…"""
+    low = re.sub(r"[\s.,!?…]+$", "", str(text or "").lower().strip())
+    if not low or len(low) > 32 or low.startswith(("/", "[auto_")):
+        return False
+    first = re.split(r"[\s,.!]+", low, maxsplit=1)[0]
+    if not (first in _FOLLOWUP_WORDS_1591R71 or low.startswith(("ещё раз", "еще раз"))):
+        return False
+    return bool(_chat_history_messages_1591r71())
+
+
+def _agent_message_1591r71(text):
+    """A real message (15+ characters, not an automatic job) goes to the agent with tools; only short chatter
+    keeps the single quick answer."""
+    low = str(text or "").strip()
+    return len(low) >= 15 and not low.lower().startswith("[auto_")
+
+
+# CONFIRM_RESUME_1591R71
+CONFIRM_PROGRESS_DIR_1591R71 = "confirm_progress"
+CONFIRM_PROGRESS_MAX_AGE_1591R71 = 12 * 3600
+
+
+def _confirm_progress_path_1591r71(base_dir, row):
+    number = _row_number_value(row) if row is not None else ""
+    if not number:
+        return None
+    return Path(base_dir or Path(__file__).resolve().parent) / CONFIRM_PROGRESS_DIR_1591R71 / f"{number}.json"
+
+
+def _confirm_progress_save_1591r71(base_dir, row, attempt):
+    path = _confirm_progress_path_1591r71(base_dir, row)
+    if path is None:
+        return False
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"attempt": int(attempt), "time": time.time()}), "utf-8")
+        tmp.replace(path)
+    except Exception:
+        return False
+    return True
+
+
+def _confirm_progress_load_1591r71(base_dir, row):
+    """The attempt (1..6) the row stopped at, 1 when there is nothing fresh."""
+    path = _confirm_progress_path_1591r71(base_dir, row)
+    try:
+        rec = json.loads(path.read_text("utf-8")) if path is not None else {}
+        attempt = int(rec.get("attempt") or 1)
+        if time.time() - float(rec.get("time") or 0) > CONFIRM_PROGRESS_MAX_AGE_1591R71:
+            return 1
+    except Exception:
+        return 1
+    return attempt if 1 <= attempt <= 6 else 1
+
+
+def _confirm_progress_clear_1591r71(base_dir, row):
+    path = _confirm_progress_path_1591r71(base_dir, row)
+    try:
+        if path is not None:
+            path.unlink()
+    except Exception:
+        pass
+
+
+def _confirm_progress_tick_1591r71(base_dir, worker):
+    """Keep the row's attempt on disk while it waits for the client; drop it once the client confirmed."""
+    phase, row = worker.get("phase"), worker.get("row")
+    if phase in ("CONFIRM", "RESEND"):
+        attempt = int(worker.get("confirm_attempt") or 0)
+        key = (worker.get("generation"), attempt)
+        if attempt and worker.get("conf_saved_1591r71") != key:
+            worker["conf_saved_1591r71"] = key
+            _confirm_progress_save_1591r71(base_dir, row, attempt)
+    elif phase in _ORDER_TAKEN_PHASES_1591R69 and worker.get("conf_saved_1591r71"):
+        worker["conf_saved_1591r71"] = None
+        _confirm_progress_clear_1591r71(base_dir, row)
+
+
+''' + OLD_MEM_HEAD_R71
+OLD_MEM_TICK_R71 = '    phase, gen = worker.get("phase"), worker.get("generation")\n    if phase in _ORDER_TAKEN_PHASES_1591R69 and worker.get("order_taken_1591r69") != gen:\n'
+NEW_MEM_TICK_R71 = ('    phase, gen = worker.get("phase"), worker.get("generation")\n'
+                    '    (globals().get("_confirm_progress_tick_1591r71") or (lambda *a: None))(base_dir, worker)  # CONFIRM_RESUME_1591R71\n'
+                    '    if phase in _ORDER_TAKEN_PHASES_1591R69 and worker.get("order_taken_1591r69") != gen:\n')
+OLD_MEM_BEGIN_R71 = ('    worker["confirm_attempt"] = 1\n'
+                     '    entered_at = worker.get("auth_entered_at")\n'
+                     '    worker["confirm_deadline"] = (entered_at if entered_at is not None else now) + 65\n'
+                     '    external_heartbeat(worker, "confirm_wait")\n'
+                     '    set_tab_status(worker, "🟡", "Ожидаю подтверждение: попытка 1/6")\n'
+                     '    print(\n'
+                     '        f"[Вкладка {worker[\'id\']}] Экран подтверждения открыт. "\n'
+                     '        "Запущен собственный таймер 65 секунд (попытка 1/6).",\n'
+                     '        flush=True,\n'
+                     '    )\n')
+NEW_MEM_BEGIN_R71 = ('    # CONFIRM_RESUME_1591R71: after a restart / a replaced page the row goes on from the attempt it stopped at\n'
+                     '    attempt = (globals().get("_confirm_progress_load_1591r71") or (lambda *a: 1))(worker.get("base_dir"), worker.get("row"))\n'
+                     '    worker["confirm_attempt"] = attempt\n'
+                     '    entered_at = worker.get("auth_entered_at")\n'
+                     '    worker["confirm_deadline"] = (entered_at if entered_at is not None else now) + 65\n'
+                     '    external_heartbeat(worker, "confirm_wait")\n'
+                     '    set_tab_status(worker, "🟡", f"Ожидаю подтверждение: попытка {attempt}/6")\n'
+                     '    print(\n'
+                     '        f"[Вкладка {worker[\'id\']}] Экран подтверждения открыт. "\n'
+                     '        f"Запущен собственный таймер 65 секунд (попытка {attempt}/6"\n'
+                     '        + (", продолжаю с той, на которой остановился)." if attempt > 1 else ")."),\n'
+                     '        flush=True,\n'
+                     '    )\n')
+OLD_MEM_PROCESSED_R71 = ('    number = _row_number_value(row)\n'
+                         '    if not number:\n'
+                         '        return\n'
+                         '    path = Path(base_dir) / PROGRESS_FILE_NAME\n')
+NEW_MEM_PROCESSED_R71 = ('    number = _row_number_value(row)\n'
+                         '    if not number:\n'
+                         '        return\n'
+                         '    (globals().get("_confirm_progress_clear_1591r71") or (lambda *a: None))(base_dir, row)  # CONFIRM_RESUME_1591R71\n'
+                         '    path = Path(base_dir) / PROGRESS_FILE_NAME\n')
+OLD_MEM_LIVE_R71 = 'def _explicit_live_action_request(text):\n    low = str(text or "").lower().strip()\n    if not low:\n        return False\n'
+NEW_MEM_LIVE_R71 = (OLD_MEM_LIVE_R71
+                    + '    if (globals().get("_followup_1591r71") or (lambda t: False))(text):  # AGENT_MEMORY_1591R71: «да, сделай» after an answer\n'
+                    '        return True\n')
+OLD_MEM_NEEDS_R71 = 'def _operator_needs_tools(text):\n    low = str(text or "").lower().strip()\n    if not low:\n        return False\n'
+NEW_MEM_NEEDS_R71 = (OLD_MEM_NEEDS_R71
+                     + '    if (globals().get("_followup_1591r71") or (lambda t: False))(text) \\\n'
+                     '            or (globals().get("_agent_message_1591r71") or (lambda t: False))(text):  # AGENT_MEMORY_1591R71: an agent, not a status button\n'
+                     '        return True\n')
+OLD_MEM_MESSAGES_R71 = ('    messages = [\n'
+                        '        {"role": "system", "content": system_prompt},\n'
+                        '        {"role": "user", "content": user_content},\n'
+                        '    ]\n'
+                        '    round_no = 0\n')
+NEW_MEM_MESSAGES_R71 = ('    # AGENT_MEMORY_1591R71: the dialogue so far goes in as real messages, the new one is the last\n'
+                        '    history = [] if str(user_text or "").lstrip().upper().startswith("[AUTO_") else \\\n'
+                        '        (globals().get("_chat_history_messages_1591r71") or (lambda: []))()\n'
+                        '    if history:\n'
+                        '        user_content[0]["text"] = str(user_text)\n'
+                        '    messages = [\n'
+                        '        {"role": "system", "content": system_prompt},\n'
+                        '        *history,\n'
+                        '        {"role": "user", "content": user_content},\n'
+                        '    ]\n'
+                        '    round_no = 0\n')
+OLD_MEM_SAVE_R71 = '            print(f"[AI {lane.upper()}] update {update_id} завершён.", flush=True)\n'
+NEW_MEM_SAVE_R71 = ('            (globals().get("_chat_memory_pair_1591r71") or (lambda *a: None))(latest, response_text)  # AGENT_MEMORY_1591R71: remembered\n'
+                    + OLD_MEM_SAVE_R71)
+OLD_MEM_TOOL_R71 = ('        {\n'
+                    '            "type": "function",\n'
+                    '            "function": {\n'
+                    '                "name": "browser_evaluate_js",\n')
+NEW_MEM_TOOL_R71 = ('        {\n'
+                    '            "type": "function",\n'
+                    '            "function": {\n'
+                    '                "name": "browser_draw_signature",\n'
+                    '                "description": "Нарисовать подпись в поле «Место для подписи» живой вкладки настоящим касанием по всем '
+                    'четырём четвертям (поле принимает только касания; мышь и JS-события оно не засчитывает) и вернуть, сколько линии '
+                    'появилось в каждой четверти. После неё нажми «Подписать договор» и проверь ответ checksignature.",\n'
+                    '                "strict": True,\n'
+                    '                "parameters": {\n'
+                    '                    "type":"object",\n'
+                    '                    "properties":{"tab":{"type":"integer","minimum":1,"maximum":TAB_COUNT}},\n'
+                    '                    "required":["tab"],"additionalProperties":False\n'
+                    '                },\n'
+                    '            },\n'
+                    '        },\n'
+                    + OLD_MEM_TOOL_R71)
+OLD_MEM_MUT_R71 = '            "browser_close_tab", "browser_open_page",\n        }\n'
+NEW_MEM_MUT_R71 = '            "browser_close_tab", "browser_open_page", "browser_draw_signature",  # AGENT_MEMORY_1591R71\n        }\n'
+OLD_MEM_MAP_R71 = '                "browser_close_tab": "CLOSE_TAB",\n            }\n'
+NEW_MEM_MAP_R71 = '                "browser_close_tab": "CLOSE_TAB",\n                "browser_draw_signature": "DRAW_SIGNATURE",  # AGENT_MEMORY_1591R71\n            }\n'
+OLD_MEM_LIVE_NAMES_R71 = '        "browser_close_tab", "browser_open_page", "request_runtime_action",\n        "run_terminal",\n    }\n'
+NEW_MEM_LIVE_NAMES_R71 = '        "browser_close_tab", "browser_open_page", "request_runtime_action",\n        "run_terminal", "browser_draw_signature",  # AGENT_MEMORY_1591R71\n    }\n'
+OLD_MEM_HOST_R71 = '                    if kind == "EVALUATE_JS":\n'
+NEW_MEM_HOST_R71 = ('                    if kind == "DRAW_SIGNATURE":  # AGENT_MEMORY_1591R71: by touch, per quarter, checked on the canvas\n'
+                    '                        ink = _draw_signature_1591r70(page)\n'
+                    '                        return {"ok": True, "ink_per_quarter": ink, "quarters": list(_QUARTER_NAMES_1591R70), "url": page.url,\n'
+                    '                                "note": "подпись нарисована касанием; теперь нажми «Подписать договор» и проверь checksignature"}\n'
+                    + OLD_MEM_HOST_R71)
+OLD_MEM_PROMPT_R71 = '  запрашивать restart worker и выполнять terminal-команды.\n'
+NEW_MEM_PROMPT_R71 = (OLD_MEM_PROMPT_R71
+                      + '- рисовать подпись настоящим касанием (инструмент browser_draw_signature): поле подписи сайта принимает только касания.\n\n'
+                      'ТЫ АГЕНТ С ПАМЯТЬЮ (AGENT_MEMORY_1591R71): предыдущие сообщения этого диалога переданы выше — опирайся на них; '
+                      '«да», «давай», «сделай» — согласие с тем, что ты сам предложил. Если просят что-то сделать — делай инструментами, '
+                      'проверь результат и ответь по факту, а не описанием того, что можно было бы сделать. Отвечай коротко, по-русски.\n')
+OLD_MEM_SIGN_R71 = '        "Затем правильно заполни поле подписи, дождись активной кнопки и нажми "\n'
+NEW_MEM_SIGN_R71 = ('        "ПОДПИСЬ РИСУЙ ТОЛЬКО инструментом browser_draw_signature: поле «Место для подписи» принимает лишь касания, мышь и JS-события "  # AGENT_MEMORY_1591R71\n'
+                    '        "оно не засчитывает (сайт проверяет четыре четверти: checksignature → isSucceeded, square11…square22). "\n'
+                    '        "СТРОКУ БРОСАТЬ НЕЛЬЗЯ: клиент уже подтвердил вход. Если подпись не принялась — нарисуй снова, нажми «Подписать договор» "\n'
+                    '        "ещё раз и смотри ответ checksignature; «Не подписано» пиши, только если сайт сам вернул заказ в начало. "\n'
+                    + OLD_MEM_SIGN_R71)
+MEM_EDITS_R71 = ((OLD_MEM_MARK_R71, NEW_MEM_MARK_R71, "agent memory: marker"),
+                 (OLD_MEM_HEAD_R71, NEW_MEM_HEAD_R71, "agent memory: helpers"),
+                 (OLD_MEM_TICK_R71, NEW_MEM_TICK_R71, "confirm resume: keep the attempt"),
+                 (OLD_MEM_BEGIN_R71, NEW_MEM_BEGIN_R71, "confirm resume: start at the saved attempt"),
+                 (OLD_MEM_PROCESSED_R71, NEW_MEM_PROCESSED_R71, "confirm resume: drop it when the row is finished"),
+                 (OLD_MEM_LIVE_R71, NEW_MEM_LIVE_R71, "agent memory: a follow-up is a live request"),
+                 (OLD_MEM_NEEDS_R71, NEW_MEM_NEEDS_R71, "agent memory: a real message goes to the agent"),
+                 (OLD_MEM_MESSAGES_R71, NEW_MEM_MESSAGES_R71, "agent memory: the dialogue as messages"),
+                 (OLD_MEM_SAVE_R71, NEW_MEM_SAVE_R71, "agent memory: remember the exchange"),
+                 (OLD_MEM_TOOL_R71, NEW_MEM_TOOL_R71, "agent memory: tool browser_draw_signature"),
+                 (OLD_MEM_MUT_R71, NEW_MEM_MUT_R71, "agent memory: tool is a mutation"),
+                 (OLD_MEM_MAP_R71, NEW_MEM_MAP_R71, "agent memory: tool action name"),
+                 (OLD_MEM_LIVE_NAMES_R71, NEW_MEM_LIVE_NAMES_R71, "agent memory: tool allowed on live tasks"),
+                 (OLD_MEM_HOST_R71, NEW_MEM_HOST_R71, "agent memory: host draws the signature"),
+                 (OLD_MEM_PROMPT_R71, NEW_MEM_PROMPT_R71, "agent memory: system prompt"),
+                 (OLD_MEM_SIGN_R71, NEW_MEM_SIGN_R71, "agent memory: signing prompt"))
+README_NOTE_R71 = ('\n\nРЕВИЗИЯ 71 (fix_package_1591.py)\nDeepSeek как агент с памятью. Раньше разговор не запоминался вообще (функция записи была,\n'
+                   'но нигде не вызывалась): каждое сообщение — с нуля. Теперь каждый отвеченный обмен пишется в ai_chat_memory.jsonl,\n'
+                   'и последние 12 сообщений за 12 часов передаются агенту настоящими сообщениями. Короткое «да / давай / сделай /\n'
+                   'повтори» после ответа — продолжение: идёт в режим с инструментами и живыми действиями. Любое сообщение от 15\n'
+                   'символов идёт к агенту с инструментами. Новый инструмент browser_draw_signature рисует подпись касанием (поле\n'
+                   'принимает только касания). Попытка из шести хранится по номеру в confirm_progress/: после перезапуска бота,\n'
+                   'замены страницы или ошибки строка идёт с той же попытки, а не с 1/6. Маркер: AGENT_MEMORY_1591R71.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -6546,7 +6847,8 @@ SUPERVISOR) и в текст задания AUTO_ERROR_ASSIST. Запрет clos
 ASSIST_MARKER = "AUTO_ASSIST_BUDGET_1591R4"
 RESIGNED_HANDLERS = {"queue_success_assist", "queue_error_assist", "tick_error_assist", "run_registration", "main",
                      "tick_post_auth_review", "tick_sign_wait",
-                     "fill_test_signature"}  # SIGN_QUADRANTS_1591R70: draws per quarter
+                     "fill_test_signature",  # SIGN_QUADRANTS_1591R70: draws per quarter
+                     "_agent_tools", "_agent_execute_tool"}  # AGENT_MEMORY_1591R71: the signature tool
 OLD_SUCCESS_THROTTLE = '''    now = monotonic()
     last = float(worker.get("success_ai_last_at") or 0)
     if not force and now - last < 45:
@@ -6874,6 +7176,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if AGENT_MEMORY_MARKER in source:
+        return 71
     if SIGN_QUADRANTS_MARKER in source:
         return 70
     if ORDER_REUSE_MARKER in source:
@@ -7014,6 +7318,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 68 or TOKEN_REENTER_MARKER in source)\
             and (MAX_REVISION < 69 or ORDER_REUSE_MARKER in source)\
             and (MAX_REVISION < 70 or SIGN_QUADRANTS_MARKER in source)\
+            and (MAX_REVISION < 71 or AGENT_MEMORY_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -8407,6 +8712,21 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 72 (r71). DeepSeek remembers the dialogue and draws the signature; a row resumes its confirmation attempt.
+    if AGENT_MEMORY_MARKER not in source and MAX_REVISION >= 71:
+        for old, new, what in MEM_EDITS_R71:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -8531,6 +8851,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 68", README_NOTE_R68),) if built_revision >= 68 else ()),
                           *((("РЕВИЗИЯ 69", README_NOTE_R69),) if built_revision >= 69 else ()),
                           *((("РЕВИЗИЯ 70", README_NOTE_R70),) if built_revision >= 70 else ()),
+                          *((("РЕВИЗИЯ 71", README_NOTE_R71),) if built_revision >= 71 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
