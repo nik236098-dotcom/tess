@@ -682,6 +682,12 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    вопросом «Применить?»). Все места, где было «/6» (статус вкладки, журнал, предел попыток, продолжение с сохранённой
    попытки r71), берут это число. Маркер: `CONFIRM_PUSH_1591R74`.
 
+78. **Лог состояния сервера `health_log.sh` (для разбора зависаний).** Раз в 5 минут cron дописывает строку в
+   `/var/log/beeline-health.log`: нагрузка, память, подкачка, число процессов, Chromium (штук и МБ), Python, размер `/tmp`,
+   диск, давление ядра (psi). Работает независимо от бота, поэтому последние строки перед зависанием остаются. Ставится
+   `curl -fsSL https://raw.githubusercontent.com/nik236098-dotcom/tess/codex/operator-observer-15.87/operator_repair_1591/health_log.sh | sudo bash`,
+   смотреть `sudo tail -n 40 /var/log/beeline-health.log`. Лог обрезается до 2000 строк. Бота не трогает.
+
 ## Использование
 
 ```
