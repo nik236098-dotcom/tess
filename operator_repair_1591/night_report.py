@@ -145,11 +145,73 @@ def main():
         for key, n in pages.most_common(8):
             print(f"  {n:5d}  {key}")
 
+    post_auth(lines)
+
     last = [x for x in lines if "Результат строки" in x or "Вкладка" in x][-5:]
     if last:
         print("\n== Последние события вкладок")
         for x in last:
-            print("  " + hide(x)[:200])
+            print("  " + x[5:16].replace("T", " ") + "  " + hide(x.split("]: ", 1)[-1])[:180])
+
+
+def post_auth(lines):
+    """Rows that passed the confirmation («🔒 SUCCESS GUARD») and how each ended: a success, payment or
+    unverified record of the same tab after it, or lost — with the tab's last notable line."""
+    stamp = lambda x: x[:19].replace("T", " ")
+    finals = []
+    for name, title in (("successful_sims.jsonl", "✅ успех"), ("payment_required.jsonl", "💳 оплата"),
+                        ("unverified_signatures.jsonl", "❔ подпись не подтверждена")):
+        for rec in records(name):
+            finals.append((str(rec.get("time") or ""), str(rec.get("tab")), title))
+    episodes = []  # [tab, start, end, notable lines]
+    open_ep = {}
+    restarts = []
+    for x in lines:
+        m = re.search(r"\[Вкладка (\d+)\]", x)
+        if "automation завершилась" in x or "Плановый перезапуск" in x or "BROWSER RESTART" in x:
+            restarts.append((stamp(x), hide(x.split("]: ", 1)[-1])[:120]))
+        if not m:
+            continue
+        tab, msg = m.group(1), hide(x.split("]: ", 1)[-1])
+        if "SUCCESS GUARD" in x:
+            if tab in open_ep:
+                open_ep[tab][2] = stamp(x)
+            open_ep[tab] = [tab, stamp(x), None, []]
+            episodes.append(open_ep[tab])
+            continue
+        ep = open_ep.get(tab)
+        if ep is None:
+            continue
+        if "Экран подтверждения открыт" in x or "Открываю корзину" in x or "Новая physical-вкладка готова" in x:
+            ep[2] = stamp(x)
+            open_ep.pop(tab, None)
+            continue
+        if re.search(r"error|ошиб|не удал|закрыт|перезапуск|таймаут|timeout|пропуска|не найден|не подтвержд|подпис|договор|оплат", msg, re.I):
+            ep[3].append(msg)
+    if not episodes:
+        print("\n== После подтверждения: ни одна строка не прошла подтверждение")
+        return
+    used = set()
+    outcome = collections.Counter()
+    lost = []
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    for tab, start, end, notes in episodes:
+        hit = next((f for f in finals if f not in used and f[1] == tab and start <= f[0] <= (end or now)), None)
+        if hit:
+            used.add(hit)
+            outcome[hit[2]] += 1
+            continue
+        if end is None and time.time() - time.mktime(time.strptime(start, "%Y-%m-%d %H:%M:%S")) < 900:
+            outcome["⏳ ещё в работе"] += 1
+            continue
+        cause = next((r[1] for r in restarts if start <= r[0] <= (end or now)), "")
+        lost.append((start, tab, cause or (notes[-1] if notes else "вкладка взяла следующую строку без записи об итоге")))
+    print(f"\n== После подтверждения клиентом: {len(episodes)} строк")
+    for title, n in outcome.most_common():
+        print(f"  {n:5d}  {title}")
+    print(f"  {len(lost):5d}  ❌ потеряно (нет записи об итоге)")
+    for start, tab, why in lost[-15:]:
+        print(f"         {start[5:16]} вкладка {tab}: {why[:140]}")
 
 
 def error_page(pattern="введите данные снова"):
