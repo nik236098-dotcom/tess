@@ -100,6 +100,40 @@ def main():
         print("  Причины пропуска строк:")
         for reason, n in reasons.most_common(8):
             print(f"  {n:5d}  {reason}")
+    # Python errors: the last line of each traceback, grouped (numbers hidden)
+    errors = collections.Counter()
+    for i, x in enumerate(lines):
+        if "Traceback" not in x:
+            continue
+        for y in lines[i + 1:i + 60]:
+            msg = y.split("]: ", 1)[-1].strip()
+            if re.match(r"^[\w.]*(Error|Exception|Exit|Interrupt)\b", msg):
+                errors[re.sub(r"\d{4,}", "N", msg)[:150]] += 1
+                break
+    if errors:
+        print("\n== Ошибки Python (самые частые)")
+        for msg, n in errors.most_common(10):
+            print(f"  {n:5d}  {msg}")
+
+    # What the site wrote on the /registration/error pages the rows were skipped on
+    pages = collections.Counter()
+    for case in APP.glob("diagnostics/**/blackbox/*error_final_skip*"):
+        try:
+            if case.stat().st_mtime < SINCE:
+                continue
+            html = (case / "page.html").read_text("utf-8", errors="replace")
+        except OSError:
+            continue
+        html = re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", html)
+        text = [t.strip() for t in re.sub(r"<[^>]+>", "\n", html).splitlines() if len(t.strip()) > 3]
+        found = [t for t in text if re.search(r"ошиб|пошло не так|не удал|невозмож|отказ|попробуй|недоступ|провер|не совпад|номер|лимит|уже", t, re.I)]
+        key = " | ".join(found[:3]) or " | ".join(text[:3])
+        pages[re.sub(r"\d{4,}", "N", key)[:200]] += 1
+    if pages:
+        print("\n== Что было на странице /registration/error")
+        for key, n in pages.most_common(8):
+            print(f"  {n:5d}  {key}")
+
     last = [x for x in lines if "Результат строки" in x or "Вкладка" in x][-5:]
     if last:
         print("\n== Последние события вкладок")
