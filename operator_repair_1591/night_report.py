@@ -214,6 +214,46 @@ def post_auth(lines):
         print(f"         {start[5:16]} вкладка {tab}: {why[:140]}")
 
 
+def field_context(html, field_id):
+    """The open elements around <input id=field_id>: tag, class, hidden/style/aria-hidden."""
+    from html.parser import HTMLParser
+    void = {"input", "img", "br", "hr", "meta", "link", "source", "area", "base", "col", "embed", "param", "track", "wbr"}
+
+    class P(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack, self.found = [], None
+
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            if tag == "input" and a.get("id") == field_id and self.found is None:
+                self.found = list(self.stack) + [(tag, a)]
+            if tag not in void:
+                self.stack.append((tag, a))
+
+        def handle_endtag(self, tag):
+            for i in range(len(self.stack) - 1, -1, -1):
+                if self.stack[i][0] == tag:
+                    del self.stack[i:]
+                    break
+
+    p = P()
+    try:
+        p.feed(html)
+    except Exception:
+        return []
+    if not p.found:
+        return [f"поля {field_id} на странице нет"]
+    out = []
+    for tag, a in p.found[-12:]:
+        bits = [tag]
+        for key in ("class", "style", "hidden", "aria-hidden", "aria-expanded", "data-t-id", "disabled", "inert"):
+            if key in a:
+                bits.append(f"{key}={hide(a[key] if a[key] is not None else '')[:70]!r}")
+        out.append(" ".join(bits))
+    return out
+
+
 def error_page(pattern="введите данные снова"):
     """The newest error page with `pattern`: its buttons, links, fields and what the tab did before."""
     cases = []
@@ -222,9 +262,13 @@ def error_page(pattern="введите данные снова"):
             html = (case / "page.html").read_text("utf-8", errors="replace")
         except OSError:
             continue
-        if pattern in _html.unescape(html).replace("\xa0", " ").lower():
+        try:
+            exc_text = str(json.loads((case / "meta.json").read_text("utf-8")).get("exception") or "").lower()
+        except Exception:
+            exc_text = ""
+        if pattern in _html.unescape(html).replace("\xa0", " ").lower() or pattern in exc_text:
             cases.append((case.stat().st_mtime, case, html))
-    print(f"== Страниц ошибки с «{pattern}»: {len(cases)}")
+    print(f"== Снимков с «{pattern}» (на странице или в тексте ошибки): {len(cases)}")
     if not cases:
         return
     stats = collections.Counter()
@@ -255,6 +299,15 @@ def error_page(pattern="введите данные снова"):
     print(f"Последняя: {time.strftime('%d.%m %H:%M:%S', time.localtime(mtime))}, вкладка {meta.get('tab')}, фаза {meta.get('phase')}")
     print("URL: " + re.sub(r"\?.*", "?…", str(meta.get("url") or "")))
     print("Заголовок: " + hide(meta.get("title")))
+    if meta.get("exception"):
+        print("\n-- Ошибка целиком")
+        for line in hide(meta.get("exception")).splitlines()[:25]:
+            print("  " + line[:220])
+    probe = field_context(html, "phone-input")
+    if probe:
+        print("\n-- Где стоит поле phone-input (снаружи внутрь)")
+        for line in probe:
+            print("  " + line)
     print("\n-- Текст страницы")
     for line in page_text(html)[:25]:
         print("  " + line[:160])
