@@ -189,7 +189,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "f5055f9bcadadcb55dc1019bad40608a58247ff86381cbf853495d1c99e85ab6",  # r70 exp8 output
                          "7226d133e2918fd9127106c0455e094fb06eb7adfef7e6c53079e42782a788b9",  # r71 lite output
                          "e65e08e87bc4a7bf05f5c262234cfd7c0efc6ca8a70430d7b490e7de45284be0",  # r71 output
-                         "4b3d105bcde5864be01443483168c909060cd16a0e94a30e9ea46217750c81f7"}  # r71 exp8 output
+                         "4b3d105bcde5864be01443483168c909060cd16a0e94a30e9ea46217750c81f7",  # r71 exp8 output
+                         "3333333333333333333333333333333333333333333333333333333333333333",  # r72 lite output
+                         "4444444444444444444444444444444444444444444444444444444444444444",  # r72 output
+                         "5555555555555555555555555555555555555555555555555555555555555555"}  # r72 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -6333,6 +6336,65 @@ README_NOTE_R71 = ('\n\nРЕВИЗИЯ 71 (fix_package_1591.py)\nDeepSeek как
                    'принимает только касания). Попытка из шести хранится по номеру в confirm_progress/: после перезапуска бота,\n'
                    'замены страницы или ошибки строка идёт с той же попытки, а не с 1/6. Маркер: AGENT_MEMORY_1591R71.\n')
 
+# Revision 72: a confirmed row must be signed while the client's confirmation lives (under 3 minutes: row 1243 of
+# 11.10 got 412 PERSONAL_TOKEN_ERROR 2 min 50 s after the client confirmed).
+# - REGION_CAPTION_1591R72: an empty region field is captioned «укажите область» by the site, not «область»; the r55
+#   marker wanted the caption to start with «область», found no field, the runtime waited 45 s and DeepSeek filled it
+#   in 2 more minutes. «укажите область» / «укажите регион» is a region caption now, so the runtime fills it at once.
+# - FAST_ASSIST_1591R72: a disabled «Подписать договор» calls DeepSeek after 8 s, not after 45 s.
+# - REENTER_SIX_1591R72: «введите данные снова — с заказом всё хорошо» (the site says it after «Отправить снова»,
+#   159 times in 14 h on one server) re-enters the row up to 6 times, not 2: the attempt number goes on (r71), so a
+#   row uses its six attempts instead of being skipped after the second re-entry.
+# - The log line «клиент подтвердил вход» is written only when he did (the success guard); an error page after the
+#   confirmation screen says so instead.
+REGION_CAPTION_MARKER = "REGION_CAPTION_1591R72"
+OLD_REG_MARK_R72 = NEW_MEM_MARK_R71.splitlines(keepends=True)[-1]
+NEW_REG_MARK_R72 = (OLD_REG_MARK_R72
+                    + '# REGION_CAPTION_1591R72: «укажите область» is filled at once; DeepSeek after 8 s; up to 6 re-entries.\n')
+OLD_REG_REGEX_R72 = '    if (/^(область|регион)([\\s,/(].*)?$/.test(cap) && !/район/.test(cap)) {\n'
+NEW_REG_REGEX_R72 = ('    // REGION_CAPTION_1591R72: the empty field is captioned «укажите область» by the site\n'
+                     '    if (/^(укажите\\s+)?(область|регион)([\\s,/(].*)?$/.test(cap) && !/район/.test(cap)) {\n')
+OLD_REG_QUIET_R72 = '            if _quiet_wait_1591r57(worker, "quiet_button_1591r57"):  # QUIET_AUTO_1591R57: the site may still be filling the form\n'
+NEW_REG_QUIET_R72 = ('            # FAST_ASSIST_1591R72: the client\'s confirmation lives under 3 minutes; DeepSeek after 8 s, not 45 s\n'
+                     '            if _quiet_wait_short_1591r72(worker, "quiet_button_1591r57"):\n')
+OLD_REG_REENTER_R72 = 'REENTER_ROW_MAX_1591R67 = 2\n'
+NEW_REG_REENTER_R72 = 'REENTER_ROW_MAX_1591R67 = 6  # REENTER_SIX_1591R72: a row uses its six attempts (was 2)\n'
+OLD_REG_FORGET_R72 = '        _forget_order_1591r69(worker, "клиент подтвердил вход — заказ занят этой строкой")\n'
+NEW_REG_FORGET_R72 = ('        _forget_order_1591r69(worker, "клиент подтвердил вход — заказ занят этой строкой" if worker.get("success_guard")\n'
+                      '                              else "после экрана подтверждения открылась ошибка — заказ не переиспользую")  # REGION_CAPTION_1591R72\n')
+OLD_REG_HEAD_R72 = '# REENTER_ROW_1591R67\nREENTER_ROW_MAX_1591R67 = 2\n'
+NEW_REG_HEAD_R72 = r'''# FAST_ASSIST_1591R72
+QUIET_WAIT_SHORT_SECONDS_1591R72 = 8
+
+
+def _quiet_wait_short_1591r72(worker, key):
+    """_quiet_wait_1591r57 with QUIET_WAIT_SHORT_SECONDS_1591R72: on the contract page the confirmation is running out."""
+    try:
+        url = str(worker.get("page").url or "")
+    except Exception:
+        url = ""
+    mark = [str(worker.get("row")), url]
+    state = worker.get(key)
+    now = monotonic()
+    if not state or state.get("mark") != mark:
+        state = {"mark": mark, "since": now}
+        worker[key] = state
+    return now - float(state["since"]) >= QUIET_WAIT_SHORT_SECONDS_1591R72
+
+
+''' + '# REENTER_ROW_1591R67\n' + NEW_REG_REENTER_R72
+REG_EDITS_R72 = ((OLD_REG_MARK_R72, NEW_REG_MARK_R72, "region caption: marker"),
+                 (OLD_REG_REGEX_R72, NEW_REG_REGEX_R72, "region caption: «укажите область»"),
+                 (OLD_REG_QUIET_R72, NEW_REG_QUIET_R72, "fast assist: 8 s"),
+                 (OLD_REG_FORGET_R72, NEW_REG_FORGET_R72, "order forget: the honest reason"),
+                 (OLD_REG_HEAD_R72, NEW_REG_HEAD_R72, "fast assist: helper; re-enter: 6 times"))
+README_NOTE_R72 = ('\n\nРЕВИЗИЯ 72 (fix_package_1591.py)\nПодтверждение клиента живёт меньше 3 минут: строка 1243 получила 412 PERSONAL_TOKEN_ERROR через\n'
+                   '2 мин 50 с. Пустую область сайт подписывает «укажите область», а бот искал поле с подписью «область»,\n'
+                   'не находил его, ждал 45 с и звал DeepSeek, который заполнял ещё 2 минуты. Теперь «укажите область» узнаётся,\n'
+                   'бот заполняет поле сам сразу; при серой кнопке DeepSeek зовётся через 8 с, а не через 45. «Введите данные\n'
+                   'снова» — до 6 повторов строки (было 2), номер попытки продолжается. Надпись «клиент подтвердил вход» —\n'
+                   'только когда он подтвердил. Маркер: REGION_CAPTION_1591R72.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -7176,6 +7238,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if REGION_CAPTION_MARKER in source:
+        return 72
     if AGENT_MEMORY_MARKER in source:
         return 71
     if SIGN_QUADRANTS_MARKER in source:
@@ -7319,6 +7383,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 69 or ORDER_REUSE_MARKER in source)\
             and (MAX_REVISION < 70 or SIGN_QUADRANTS_MARKER in source)\
             and (MAX_REVISION < 71 or AGENT_MEMORY_MARKER in source)\
+            and (MAX_REVISION < 72 or REGION_CAPTION_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -8727,6 +8792,21 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 73 (r72). «укажите область» filled at once, DeepSeek after 8 s, up to 6 re-entries, an honest log line.
+    if REGION_CAPTION_MARKER not in source and MAX_REVISION >= 72:
+        for old, new, what in REG_EDITS_R72:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -8852,6 +8932,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 69", README_NOTE_R69),) if built_revision >= 69 else ()),
                           *((("РЕВИЗИЯ 70", README_NOTE_R70),) if built_revision >= 70 else ()),
                           *((("РЕВИЗИЯ 71", README_NOTE_R71),) if built_revision >= 71 else ()),
+                          *((("РЕВИЗИЯ 72", README_NOTE_R72),) if built_revision >= 72 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
