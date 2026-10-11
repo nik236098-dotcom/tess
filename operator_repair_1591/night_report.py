@@ -297,7 +297,7 @@ def lost_pages():
             html = (case / "page.html").read_text("utf-8", errors="replace")
         except Exception:
             continue
-        if str(meta.get("phase")) in before_auth:
+        if str(meta.get("phase")) in before_auth or not ("after_auth" in case.name or str(meta.get("phase")).startswith(("POST_AUTH", "SUCCESS", "SIGN"))):
             continue
         key = (meta.get("tab"), str(meta.get("time"))[:16])
         if key in seen:
@@ -316,7 +316,43 @@ def lost_pages():
         print("Страниц ошибки после подтверждения за это время нет.")
 
 
+def error_summary():
+    """All blackbox cases in the window grouped by: reason, the error text and what the page was."""
+    groups = collections.Counter()
+    hours = collections.defaultdict(collections.Counter)
+    for case in APP.glob("diagnostics/**/blackbox/*"):
+        try:
+            if case.stat().st_mtime < SINCE:
+                continue
+            meta = json.loads((case / "meta.json").read_text("utf-8"))
+        except Exception:
+            continue
+        try:
+            text = page_text((case / "page.html").read_text("utf-8", errors="replace"))
+        except Exception:
+            text = []
+        url = re.sub(r"^https?://[^/]+", "", re.sub(r"[?#].*", "", str(meta.get("url") or "")))
+        marks = [t for t in text if re.search(r"запрос заблокирован|случайный номер|выберите способ|несколько шагов|"
+                                              r"номер должен|нужен номер|введите данные снова|что-то пошло не так|"
+                                              r"укажите ваши данные|тариф для смарт", t, re.I)]
+        page = (url or "?") + (" — " + " / ".join(dict.fromkeys(m[:40] for m in marks[:2])) if marks else "")
+        exc = hide(str(meta.get("exception") or ""))[:90]
+        reason = case.name.split("_row", 1)[-1].split("_", 1)[-1]
+        key = f"{reason} | {page}" + (f" | {exc}" if exc else "")
+        groups[key] += 1
+        hours[key][str(meta.get("time") or "")[11:13]] += 1
+    print(f"== Ошибки за {HOURS:g} ч (снимки бота), по видам")
+    for key, n in groups.most_common(15):
+        when = " ".join(f"{h}ч:{c}" for h, c in sorted(hours[key].items()))
+        print(f"{n:5d}  {key}\n       часы: {when}")
+
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "errors":
+        HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 14.0
+        SINCE = time.time() - HOURS * 3600
+        error_summary()
+        sys.exit(0)
     if len(sys.argv) > 1 and sys.argv[1] == "lost":
         HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 24.0
         SINCE = time.time() - HOURS * 3600
