@@ -204,7 +204,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "d37437eb4d1446975fa5748011f617e4b648ce99278eaf185d97c9524cd7f9d1",  # r75 exp8 output
                          "d6c58c0b7522bff2621e70133e94664bb3c3f4762d6b4273344df3de14308d4a",  # r76 lite output
                          "3e2097a0fe748293bbb92f3250ca56318be1de6e45765b9d1ab4e56b250cdbfa",  # r76 output
-                         "6a63c7994939fe5ca3c873646696a7fc70a05f17f339020b10532a21ba9000e0"}  # r76 exp8 output
+                         "6a63c7994939fe5ca3c873646696a7fc70a05f17f339020b10532a21ba9000e0",  # r76 exp8 output
+                         "b9b5e58377638b3cd3c45c48b7d59817d15a7fda89691c300b53842a3d1dcf73",  # r77 lite output
+                         "34a2ce9c72c2908d6f01c828073ca082590096e4b697416b10ab64632b34a4da",  # r77 output
+                         "d0c310b4636948d6e4b5ac3bb44bd55d665e42c4decf2026503fba758a09839d"}  # r77 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -6849,6 +6852,66 @@ README_NOTE_R76 = ('\n\nРЕВИЗИЯ 76 (fix_package_1591.py)\nПочему н
                    'тоже проверяется: её текст, её запросы и статус заказа, запрошенный прямо из неё (как в проверке ссылок). Сводка:\n'
                    'night_report.py confirm. Поведение бота не меняется. Маркер: CONFIRM_TRACE_1591R76.\n')
 
+# Revision 77: the trace of r76 lost the beginning of a row (a status poll every 1.5 s filled the 80 places in two
+# minutes, so the earlier «Отправить снова» answers were gone) and wrote one error twice.
+# - CONFIRM_TRACE_V2_1591R77: a poll that repeats the previous status only moves its counter («×14 до 19:55:29»);
+#   answers of POST requests (the pushes) are never dropped; the places are 120; one error page is written once.
+#   night_report.py confirm counts the attempt the error came on and how many repeated pushes the site accepted
+#   before it refused one (200 / 412 PERSONAL_TOKEN_ERROR). Nothing in the bot's behaviour changes.
+CONFIRM_TRACE_V2_MARKER = "CONFIRM_TRACE_V2_1591R77"
+OLD_V2_MARK_R77 = NEW_TRACE_MARK_R76.splitlines(keepends=True)[-1]
+NEW_V2_MARK_R77 = (OLD_V2_MARK_R77
+                   + '# CONFIRM_TRACE_V2_1591R77: repeated polls are folded, POST answers are kept, one record per error page.\n')
+OLD_V2_HEAD_R77 = '# CONFIRM_TRACE_1591R76\nCONFIRM_TRACE_MAX_1591R76 = 80\n'
+NEW_V2_HEAD_R77 = r'''# CONFIRM_TRACE_1591R76
+CONFIRM_TRACE_MAX_1591R76 = 120  # CONFIRM_TRACE_V2_1591R77: was 80 (repeated polls are folded now)
+
+
+def _confirm_trace_add_1591r77(ring, item):
+    """A poll that repeats the previous status only moves its counter; the oldest poll goes first when the ring is full,
+    answers of POST requests (the pushes) stay."""
+    if item.get("method") == "GET" and "getselfregstatus" in str(item.get("url")):
+        key = re.findall(r'"(?:selfregStatus|errorCode)"\s*:\s*"([^"]*)"', str(item.get("body") or ""))
+        item["poll"] = key
+        last = ring[-1] if ring else None
+        if last is not None and "mark" not in last and last.get("poll") == key and key:
+            last["n"] = int(last.get("n") or 1) + 1
+            last["t_last"] = item.get("t")
+            return
+    ring.append(item)
+    while len(ring) > CONFIRM_TRACE_MAX_1591R76:
+        index = next((i for i, x in enumerate(ring) if x.get("poll") is not None), 0)
+        del ring[index]
+'''
+OLD_V2_ADD_R77 = '                ring.append(item)\n                del ring[:-CONFIRM_TRACE_MAX_1591R76]\n'
+NEW_V2_ADD_R77 = '                _confirm_trace_add_1591r77(ring, item)  # CONFIRM_TRACE_V2_1591R77\n'
+OLD_V2_BRIEF_R77 = ('''    return (f"{item.get('t')} {item.get('method')} {parts[-1] if parts else '?'} → {item.get('status')}"\n'''
+                    '''            + (f" {', '.join(codes)}" if codes else ""))\n''')
+NEW_V2_BRIEF_R77 = ('''    return (f"{item.get('t')} {item.get('method')} {parts[-1] if parts else '?'} → {item.get('status')}"\n'''
+                    '''            + (f" {', '.join(codes)}" if codes else "")\n'''
+                    '''            + (f" ×{item['n']} до {item.get('t_last')}" if int(item.get("n") or 1) > 1 else ""))  # CONFIRM_TRACE_V2_1591R77\n''')
+OLD_V2_GUARD_R77 = '    if not ring:  # no trace for this page, or this error page is already written\n        return None\n'
+NEW_V2_GUARD_R77 = (OLD_V2_GUARD_R77
+                    + '    if time.time() - float(getattr(page, "_confirm_dumped_1591r77", 0) or 0) < 30:  # CONFIRM_TRACE_V2_1591R77\n'
+                    + '        return None  # the answer to our own status request must not become a second record\n')
+OLD_V2_DONE_R77 = '    ring.clear()\n    return rec\n'
+NEW_V2_DONE_R77 = ('    try:\n'
+                   '        setattr(page, "_confirm_dumped_1591r77", time.time())  # CONFIRM_TRACE_V2_1591R77\n'
+                   '    except Exception:\n'
+                   '        pass\n'
+                   + OLD_V2_DONE_R77)
+V2_EDITS_R77 = ((OLD_V2_MARK_R77, NEW_V2_MARK_R77, "confirm trace v2: marker"),
+                (OLD_V2_HEAD_R77, NEW_V2_HEAD_R77, "confirm trace v2: folding helper"),
+                (OLD_V2_ADD_R77, NEW_V2_ADD_R77, "confirm trace v2: add through the helper"),
+                (OLD_V2_BRIEF_R77, NEW_V2_BRIEF_R77, "confirm trace v2: folded polls in the journal line"),
+                (OLD_V2_GUARD_R77, NEW_V2_GUARD_R77, "confirm trace v2: one record per error page"),
+                (OLD_V2_DONE_R77, NEW_V2_DONE_R77, "confirm trace v2: remember the dump"))
+README_NOTE_R77 = ('\n\nРЕВИЗИЯ 77 (fix_package_1591.py)\nЗапись ответов сайта из r76 теряла начало строки: опрос статуса каждые 1,5 с заполнял 80 мест за две минуты,\n'
+                   'и ответы на ранние «Отправить снова» пропадали; одна ошибка записывалась дважды. Теперь повторяющийся опрос\n'
+                   'сворачивается в одну запись со счётчиком («×14 до 19:55:29»), ответы POST (пуши) не вытесняются, мест 120, одна\n'
+                   'страница ошибки пишется один раз. В night_report.py confirm: на какой попытке случилась ошибка и сколько повторных\n'
+                   'push сайт принял до отказа (200 / 412 PERSONAL_TOKEN_ERROR). Поведение бота не меняется. Маркер: CONFIRM_TRACE_V2_1591R77.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -7693,6 +7756,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if CONFIRM_TRACE_V2_MARKER in source:
+        return 77
     if CONFIRM_TRACE_MARKER in source:
         return 76
     if ORDER_VERIFY_MARKER in source:
@@ -7851,6 +7916,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 74 or CONFIRM_PUSH_MARKER in source)\
             and (MAX_REVISION < 75 or ORDER_VERIFY_MARKER in source)\
             and (MAX_REVISION < 76 or CONFIRM_TRACE_MARKER in source)\
+            and (MAX_REVISION < 77 or CONFIRM_TRACE_V2_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -9350,6 +9416,21 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 78 (r77). The trace of the confirmation screen folds repeated polls and writes one record per error page.
+    if CONFIRM_TRACE_V2_MARKER not in source and MAX_REVISION >= 77:
+        for old, new, what in V2_EDITS_R77:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -9480,6 +9561,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 74", README_NOTE_R74),) if built_revision >= 74 else ()),
                           *((("РЕВИЗИЯ 75", README_NOTE_R75),) if built_revision >= 75 else ()),
                           *((("РЕВИЗИЯ 76", README_NOTE_R76),) if built_revision >= 76 else ()),
+                          *((("РЕВИЗИЯ 77", README_NOTE_R77),) if built_revision >= 77 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

@@ -423,6 +423,7 @@ def confirm_errors():
     codes, last_req, clicks = collections.Counter(), collections.Counter(), collections.Counter()
     tab_codes, texts = collections.Counter(), collections.Counter()
     after_click, after_start = collections.Counter(), collections.Counter()
+    attempts, pushes_ok, posts = collections.Counter(), collections.Counter(), collections.Counter()
 
     def secs(text):
         try:
@@ -450,6 +451,13 @@ def confirm_errors():
                         else "кнопку «Отправить снова» ещё не нажимали"] += 1
             if starts and starts[0] is not None:
                 after_start[bucket((t_err - starts[0]) % 86400, (60, 70, 130, 200))] += 1
+        attempts[f"попытка {rec.get('attempt')}"] += 1
+        sent = [a for a in items if "mark" not in a and "sendnewpush" in str(a.get("url")).lower()]
+        accepted = sum(1 for a in sent if int(a.get("status") or 0) < 400)
+        pushes_ok[f"повторных push принято {accepted}, отказов {len(sent) - accepted}"] += 1
+        for a in items:
+            if "mark" not in a and a.get("method") != "GET":
+                posts[f"{a.get('method')} {([p for p in str(a.get('url') or '').split('/') if p] or ['?'])[-1]} → {a.get('status')}"] += 1
         status = rec.get("tab_status") or {}
         found = [f"{k}={hide(v)}" for k, v in code_re.findall(str(status.get("body") or "")) if v.strip() and v.lower() not in ("null", "ok")]
         tab_codes[(", ".join(dict.fromkeys(found)) or f"HTTP {status.get('status')}: {hide(status.get('body'))[:80]}")[:160]] += 1
@@ -471,6 +479,15 @@ def confirm_errors():
         print(f"  {n:5d}  {key}")
     print("-- Текст страницы ошибки")
     for key, n in texts.most_common(8):
+        print(f"  {n:5d}  {key}")
+    print("-- На какой попытке пришла ошибка")
+    for key, n in sorted(attempts.items()):
+        print(f"  {n:5d}  {key}")
+    print("-- Сколько повторных push сайт принял до ошибки (в записи видны ответы с начала строки)")
+    for key, n in pushes_ok.most_common():
+        print(f"  {n:5d}  {key}")
+    print("-- Все запросы POST в этих строках")
+    for key, n in posts.most_common(12):
         print(f"  {n:5d}  {key}")
     print("-- Через сколько после последнего «Отправить снова» статус стал ERROR_ORDER")
     for key, n in sorted(after_click.items(), key=lambda kv: -kv[1]):
@@ -494,12 +511,13 @@ def confirm_errors():
         print("Текст: " + hide(rec.get("page_text"))[:300])
         status = rec.get("tab_status") or {}
         print(f"Статус из вкладки: {status.get('url')} → {status.get('status')}  {hide(status.get('body'))[:600]}")
-        for a in (rec.get("answers") or [])[-14:]:
+        for a in (rec.get("answers") or [])[-24:]:
             if "mark" in a:
                 print(f"  {a.get('t')} — {hide(a['mark'])}")
                 continue
             name = re.sub(r"^https?://[^/]+", "", str(a.get("url") or ""))
-            print(f"  {a.get('t')} {a.get('method')} {name[:80]} → {a.get('status')}  {hide(a.get('body'))[:300]}")
+            more = f" ×{a['n']} до {a.get('t_last')}" if int(a.get("n") or 1) > 1 else ""
+            print(f"  {a.get('t')} {a.get('method')} {name[:80]} → {a.get('status')}{more}  {hide(a.get('body'))[:300]}")
 
 
 def tab_journal(tab, start, minutes=30):

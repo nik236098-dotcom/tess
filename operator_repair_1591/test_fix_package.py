@@ -199,7 +199,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_76(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_77(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -383,18 +383,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 76 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 77 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
             for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69", "SIGN_QUADRANTS_1591R70", "AGENT_MEMORY_1591R71", "REGION_CAPTION_1591R72", "BASE_RESET_1591R73", "CONFIRM_PUSH_1591R74"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 76", run.stdout)
+            self.assertIn("Already revision 77", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 76 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 77 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -1026,7 +1026,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 76", run.stdout)
+            self.assertIn("Already revision 77", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1060,7 +1060,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 76)
+        self.assertEqual(manifest["revision"], 77)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1418,7 +1418,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 76); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 77); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1428,7 +1428,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 76", run.stdout)
+            self.assertIn("Already revision 77", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -2623,7 +2623,7 @@ class PackageTests(unittest.TestCase):
                     "CONFIRM_TRACE_MAX_1591R76", "_CONFIRM_TRACE_SKIP_1591R76", "_CONFIRM_TRACE_CODES_1591R76"} for t_ in node.targets):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
         exec_functions(src, ["_confirm_trace_start_1591r76", "_confirm_trace_mark_1591r76", "_confirm_trace_brief_1591r76",
-                             "_confirm_trace_dump_1591r76", "_tab_status_1591r76"], ns)
+                             "_confirm_trace_dump_1591r76", "_tab_status_1591r76", "_confirm_trace_add_1591r77"], ns)
         for node in ast.parse(src).body:
             if isinstance(node, ast.Assign) and any(isinstance(t_, ast.Name) and t_.id == "_TAB_STATUS_JS_1591R76" for t_ in node.targets):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
@@ -2711,6 +2711,46 @@ class PackageTests(unittest.TestCase):
                            "Через сколько после начала строки статус стал ERROR_ORDER",
                            "POST resend → 400", "Сессия истекла"):
                 self.assertIn(needle, run.stdout)
+
+    def test_r77_trace_folds_polls_and_keeps_pushes(self):
+        """CONFIRM_TRACE_V2_1591R77: repeated polls are one record with a counter, POST answers are never dropped."""
+        src = (self.pkg / "test_beeline.py").read_text("utf-8")
+        self.assertIn("# CONFIRM_TRACE_V2_1591R77:", src)
+        self.assertIn("_confirm_trace_add_1591r77(ring, item)", src)
+        ns = {"re": re, "time": time}
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(t_, ast.Name) and t_.id == "CONFIRM_TRACE_MAX_1591R76" for t_ in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(src, ["_confirm_trace_add_1591r77", "_confirm_trace_brief_1591r76"], ns)
+        ns["_CONFIRM_TRACE_CODES_1591R76"] = re.compile(r'"(selfregStatus|codeValue|errorCode)"\s*:\s*"([^"]{1,80})"')
+        add = ns["_confirm_trace_add_1591r77"]
+        url = "https://s/v1/esim-selfreg/v2/getselfregstatus/"
+
+        def poll(t, status, code="NONE"):
+            return {"t": t, "method": "GET", "status": 200, "url": url,
+                    "body": '{"data":{"selfregStatus":"%s","errorCode":"%s"}}' % (status, code)}
+
+        ring = [{"t": "19:50:00", "mark": "строка 1"}]
+        for i in range(30):
+            add(ring, poll("19:50:%02d" % i, "PENDING_MOBID"))
+        self.assertEqual(len(ring), 2, "thirty identical polls are one record")
+        self.assertEqual((ring[1]["n"], ring[1]["t_last"]), (30, "19:50:29"))
+        add(ring, {"t": "19:51:00", "method": "POST", "status": 200, "url": "https://s/v1/esim-selfreg/sendNewPush", "body": "{}"})
+        add(ring, poll("19:51:01", "PENDING_MOBID"))
+        add(ring, poll("19:51:05", "MOBID_NOT_RESPONSE"))
+        add(ring, {"t": "19:51:06", "method": "POST", "status": 412, "url": "https://s/v1/esim-selfreg/sendNewPush",
+                   "body": '{"meta":{"codeValue":"PERSONAL_TOKEN_ERROR"}}'})
+        self.assertEqual([x.get("status") for x in ring if x.get("method") == "POST"], [200, 412])
+        self.assertIn("×30 до 19:50:29", ns["_confirm_trace_brief_1591r76"](ring[1]))
+        # a long row: polls with changing statuses fill the ring, the pushes stay and the oldest polls go
+        for i in range(400):
+            add(ring, poll("20:%02d:%02d" % divmod(i, 60), "S%d" % (i % 2)))
+        self.assertLessEqual(len(ring), ns["CONFIRM_TRACE_MAX_1591R76"])
+        self.assertEqual([x.get("status") for x in ring if x.get("method") == "POST"], [200, 412], "pushes are never evicted")
+        self.assertEqual(ring[0].get("mark"), "строка 1", "the row's mark stays")
+        report = (Path(__file__).resolve().parent / "night_report.py").read_text("utf-8")
+        for needle in ("На какой попытке пришла ошибка", "Сколько повторных push сайт принял до ошибки", "Все запросы POST в этих строках"):
+            self.assertIn(needle, report)
 
     def test_r66_esims_older_than_5_days_leave_the_list(self):
         """AUTO_EXPIRE_1591R66: «Мои eSIM» keeps 5 days; the files stay; «↩️ Вернуть» counts what it can bring back."""

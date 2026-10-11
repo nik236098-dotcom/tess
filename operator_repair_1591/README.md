@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 76 лежит в `beeline_integrated_io_15_91_r76/`; рядом
-`beeline_integrated_io_15_91_r76_lite/` — та же ревизия 76 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 77 лежит в `beeline_integrated_io_15_91_r77/`; рядом
+`beeline_integrated_io_15_91_r77_lite/` — та же ревизия 77 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r76
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r77
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r76_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r77_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -713,6 +713,14 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    запрос `getselfregstatus`, что делает сайт, как в проверке ссылок). Всё пишется в `confirm_errors.jsonl`, в журнал —
    строка «Статус заказа во вкладке с ошибкой: …». Сводка: `sudo python3 /tmp/nr.py confirm 3` (за 3 часа). Поведение бота
    не меняется. Маркер: `CONFIRM_TRACE_1591R76`.
+
+82. **Ревизия 77: запись ответов сайта не теряет начало строки.** В r76 опрос статуса каждые 1,5 с заполнял 80 мест за две
+   минуты, и ответы на ранние «Отправить снова» пропадали; одна ошибка писалась дважды. Теперь повторяющийся опрос
+   сворачивается в одну запись со счётчиком, ответы POST (пуши) не вытесняются, одна страница ошибки — одна запись.
+   `night_report.py confirm` показывает, на какой попытке пришла ошибка и сколько повторных push сайт принял до отказа.
+   Находка по r76: на 5-й попытке `POST sendNewPush → 412 PERSONAL_TOKEN_ERROR` после статуса `MOBID_NOT_RESPONSE`, то есть
+   сайт сам отклоняет повторную отправку (после 4 push), а не клиент «не отвечает»; по другим попыткам данных пока нет.
+   Маркер: `CONFIRM_TRACE_V2_1591R77`.
 
 ## Использование
 
