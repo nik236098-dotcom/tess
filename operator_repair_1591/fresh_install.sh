@@ -53,12 +53,25 @@ say "Пакет: $(basename "$PACKAGE") (ревизия $REVISION)"
 if [[ -z "${SKIP_APT:-}" ]]; then
   say "Системные пакеты"
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y
-  ASOUND_PKG="libasound2"
-  if apt-cache show libasound2t64 >/dev/null 2>&1; then ASOUND_PKG="libasound2t64"; fi
-  apt-get install -y python3 python3-venv python3-pip unzip curl git rsync xvfb ca-certificates fonts-liberation \
-    libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 "$ASOUND_PKG" libxss1 libxtst6 libx11-xcb1 libdrm2 \
-    libxcomposite1 libxdamage1 libxrandr2 libxfixes3 libglib2.0-0 libgl1
+  # A stalled mirror (mirror.yandex.ru on Cloud.ru hung for 15 minutes) must fail fast and be retried,
+  # then the install goes on from the main Ubuntu archive.
+  printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-beeline-retries
+  apt_packages() {
+    apt-get update -y || return 1
+    ASOUND_PKG="libasound2"
+    if apt-cache show libasound2t64 >/dev/null 2>&1; then ASOUND_PKG="libasound2t64"; fi
+    timeout 1200 apt-get install -y python3 python3-venv python3-pip unzip curl git rsync xvfb ca-certificates fonts-liberation \
+      libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 "$ASOUND_PKG" libxss1 libxtst6 libx11-xcb1 libdrm2 \
+      libxcomposite1 libxdamage1 libxrandr2 libxfixes3 libglib2.0-0 libgl1
+  }
+  if ! apt_packages; then
+    say "Зеркало пакетов не отвечает — переключаюсь на archive.ubuntu.com и повторяю"
+    dpkg --configure -a || true
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+      [[ -f "$f" ]] && sed -i -E 's#https?://[a-z0-9.-]*mirror[a-z0-9.-]*/ubuntu/?#http://archive.ubuntu.com/ubuntu/#g' "$f"
+    done
+    apt_packages || die "системные пакеты не поставились"
+  fi
 fi
 
 mkdir -p "$APP_DIR"
