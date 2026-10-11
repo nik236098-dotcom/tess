@@ -688,6 +688,11 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    `curl -fsSL https://raw.githubusercontent.com/nik236098-dotcom/tess/codex/operator-observer-15.87/operator_repair_1591/health_log.sh | sudo bash`,
    смотреть `sudo tail -n 40 /var/log/beeline-health.log`. Лог обрезается до 2000 строк. Бота не трогает.
 
+79. **Проверка связи с Telegram `tg_check.py`.** Если меню и пуши молчат, а в журнале `getUpdates: ConnectionError: SOCKS…`:
+   `curl -fsSL https://raw.githubusercontent.com/nik236098-dotcom/tess/codex/operator-observer-15.87/operator_repair_1591/tg_check.py -o /tmp/tg_check.py && sudo /opt/beeline/venv/bin/python /tmp/tg_check.py`.
+   Три раза вызывает `getMe` через прокси из `telegram_config.json` и три раза напрямую, говорит, что работает, и при
+   необходимости даёт команду переключить на прямое соединение. Токен и логин/пароль прокси не печатает. Ничего не меняет.
+
 ## Использование
 
 ```
