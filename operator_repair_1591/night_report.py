@@ -165,6 +165,26 @@ def error_page(pattern="введите данные снова"):
     print(f"== Страниц ошибки с «{pattern}»: {len(cases)}")
     if not cases:
         return
+    stats = collections.Counter()
+    ages = collections.Counter()
+    rows = collections.Counter()
+    for _, case_i, _ in cases:
+        try:
+            meta_i = json.loads((case_i / "meta.json").read_text("utf-8"))
+        except Exception:
+            continue
+        stats[f"фаза {meta_i.get('phase')}, попытка подтверждения {meta_i.get('confirm_attempt')}"] += 1
+        age = float(meta_i.get("last_progress_age_seconds") or 0)
+        bucket = "до 10 с" if age < 10 else "10–30 с" if age < 30 else "30–65 с" if age < 65 else "больше 65 с"
+        ages[f"{meta_i.get('last_progress_label')}: {bucket}"] += 1
+        rows[str(meta_i.get("row_no"))] += 1
+    print("\n-- На каком шаге (все случаи)")
+    for key, n in stats.most_common(10):
+        print(f"  {n:5d}  {key}")
+    print("-- Последний шаг бота перед ошибкой и сколько секунд назад")
+    for key, n in ages.most_common(10):
+        print(f"  {n:5d}  {key}")
+    print(f"-- Разных строк: {len(rows)}, строк с ошибкой 2+ раз: {sum(1 for v in rows.values() if v > 1)}")
     mtime, case, html = max(cases, key=lambda c: c[0])
     try:
         meta = json.loads((case / "meta.json").read_text("utf-8"))
