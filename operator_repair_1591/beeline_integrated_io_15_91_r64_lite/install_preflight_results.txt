@@ -1,0 +1,4 @@
+Offline preflight: corresponding r52 -> r53; temporary app, no --apply.
+SOURCE CHECKSUMS OK. Running offline tests before any service operation.
+Ran 58 tests in 4.851s — OK
+CHECK OK. No source files or services changed.
