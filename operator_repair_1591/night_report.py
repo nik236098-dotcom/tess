@@ -87,6 +87,9 @@ def main():
                         ("unverified_signatures.jsonl", "❔ подпись не подтверждена"), ("deferred_rows.jsonl", "↩️ строка отложена")):
         print(f"  {len(records(name)):5d}  {title}")
 
+    for rec in records("unverified_signatures.jsonl"):  # which ones, so `tab N HH:MM` can follow each
+        print(f"         ❔ {str(rec.get('time'))[5:16]} вкладка {rec.get('tab')}: {hide(rec.get('reason'))[:150]}")
+
     lines = [x for x in journal() if "dbus" not in x]
     processed = sum("сохранён как обработанный" in x for x in lines)
     print(f"\n== Журнал: строк журнала {len(lines)}, номеров отмечено обработанными {processed}")
