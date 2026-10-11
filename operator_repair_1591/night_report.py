@@ -456,12 +456,14 @@ def unverified_details():
             print("Подпись: " + re.sub(r"[?#].*", "", str(trace.get("url_before") or "")) + " → " + re.sub(r"[?#].*", "", str(trace.get("url_after") or "")))
             for r in (trace.get("responses") or [])[:8]:
                 path = re.sub(r"^https?://[^/]+", "", re.sub(r"[?#].*", "", str(r.get("url") or "")))
-                body = hide(json.dumps(r.get("body"), ensure_ascii=False))[:120] if "body" in r else ""
+                # the signing answers in full (the site says there why it refused the signature)
+                limit = 900 if re.search(r"sign|passport", path, re.I) else 120
+                body = hide(json.dumps(r.get("body"), ensure_ascii=False))[:limit] if "body" in r else ""
                 print(f"  {r.get('method') or ''} {path} → {r.get('status')}" + (f"  {body}" if body else ""))
             for x in (trace.get("failed") or [])[:3]:
                 print("  сбой сети: " + hide(json.dumps(x, ensure_ascii=False))[:150])
-            for x in (trace.get("console") or [])[:3]:
-                print("  console: " + hide(json.dumps(x, ensure_ascii=False))[:150])
+            for x in (trace.get("console") or [])[:6]:
+                print("  console: " + hide(json.dumps(x, ensure_ascii=False))[:300])
         mine = [s_ for s_ in snaps if s_[1] == tab and s_[0] <= when]
         if mine:
             stamp, _, case, meta = max(mine, key=lambda x: x[0])
@@ -471,8 +473,11 @@ def unverified_details():
                 html = ""
             print(f"Последний снимок вкладки: {stamp[11:19]} ({case.name.split('_row')[-1].split('_', 1)[-1]}), "
                   + re.sub(r"[?#].*", "", str(meta.get("url") or "")))
-            for line in page_text(html)[:14]:
-                print("  " + line[:150])
+            for line in page_text(html)[:25]:
+                print("  " + line[:200])
+            canvases = re.findall(r"(?is)<canvas\b([^>]*)>", html)
+            for attrs in canvases[:4]:
+                print("  холст: " + re.sub(r"\s+", " ", attrs)[:200])
             buttons = [" ".join(page_text(inner)) for _, _, inner in re.findall(r"(?is)<(button|a)\b([^>]*)>(.*?)</\1>", html)]
             buttons = [x for x in buttons if x]
             if buttons:
