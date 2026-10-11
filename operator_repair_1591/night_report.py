@@ -267,9 +267,12 @@ def error_page(pattern="введите данные снова"):
               + (f" type={kind.group(1)}" if kind else ""))
     print("\n-- Поля")
     for attrs in re.findall(r"(?is)<(?:input|select|textarea)\b([^>]*)>", html):
-        name = re.search(r'name="([^"]*)"', attrs)
-        kind = re.search(r'type="([^"]*)"', attrs)
-        print(f"  name={name.group(1) if name else '-'} type={kind.group(1) if kind else '-'}")
+        got = {k: hide(v)[:50] for k, v in re.findall(r'\b(name|type|id|placeholder|aria-label|inputmode|autocomplete|data-[\w-]+)="([^"]*)"', attrs)}
+        print("  " + " ".join(f"{k}={v!r}" for k, v in got.items()))
+    for label in re.findall(r"(?is)<label\b[^>]*>(.*?)</label>", html)[:12]:
+        txt = " ".join(page_text(label))
+        if txt:
+            print(f"  подпись: {txt[:80]}")
     tab, when = meta.get("tab"), str(meta.get("time") or "")
     if tab and when:
         print(f"\n-- Что делала вкладка {tab} за 4 минуты до ошибки")
