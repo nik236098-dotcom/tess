@@ -198,7 +198,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "6b27b6701c6aa342b9c477c0df344f857c1157b8e76dbbc5344160f01318ee55",  # r73 exp8 output
                          "c98b0659205e3f5d6d6f986f1f2faa1d267d201f213cb01614023074aa936f59",  # r74 lite output
                          "86d2cda219e4f5b1fec2d5b6720f7150101a8bbff6c5057517f219931579df3d",  # r74 output
-                         "294d5c8016c2c76f3ead4b2d1eb1a3966fc64c4bb7e984119f1a090624e8e27a"}  # r74 exp8 output
+                         "294d5c8016c2c76f3ead4b2d1eb1a3966fc64c4bb7e984119f1a090624e8e27a",  # r74 exp8 output
+                         "79bd3b3d9ed469374d4bd3a35e0f2308b0f6f5fe7820b03cdf8a5951a9d67777",  # r75 lite output
+                         "0ec9dd41bd2370d2d49a23dc6a204e8c36cf9a9aa8d24f57db22792f5c7caf9a",  # r75 output
+                         "d30301cc9fcbfbbbb6d11a25e1f3327b0ad592f873227be57d4e910b51665b79"}  # r75 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -6472,6 +6475,147 @@ README_NOTE_R74 = ('\n\nРЕВИЗИЯ 74 (fix_package_1591.py)\nСколько 
                    '(BEELINE_CONFIRM_ATTEMPTS, применяется перезапуском бота). Настройка «Выгрузка по умолчанию» из r73 убрана\n'
                    '(я неверно понял просьбу). Маркер: CONFIRM_PUSH_1591R74.\n')
 
+# Revision 75: «❔ подпись не подтверждена» is gone. After the signature the site answered 200 and the passport data
+# 202 (both «принято») and then showed /registration/error; the runtime wrote the row off by the look of that page,
+# without looking at the order. The order has its own link, and the site's state of it is the truth.
+# - ORDER_VERIFY_1591R75: before a row is recorded as unverified, the order is opened by its own link in a fresh
+#   browser context (read-only, as the menu's link check does) and its state is read: the payment step → 💳 recorded
+#   as a payment (the number is processed), the eSIM already issued → ✅ recorded as a success, the order back at its
+#   first step, gone or unreadable → the row starts over (REENTER_ROW_MAX_1591R67 times) and then in a fresh page again;
+#   the loop defers a row that keeps failing, it never writes it off. «❔» is written only when no page could be opened.
+ORDER_VERIFY_MARKER = "ORDER_VERIFY_1591R75"
+OLD_VERIFY_MARK_R75 = NEW_PUSH_MARK_R74.splitlines(keepends=True)[-1]
+NEW_VERIFY_MARK_R75 = (OLD_VERIFY_MARK_R75
+                       + '# ORDER_VERIFY_1591R75: the order is read by its own link before a row is written off; no «❔».\n')
+OLD_VERIFY_HEAD_R75 = '# CONFIRM_PUSH_1591R74\ndef _confirm_attempts_1591r74():\n'
+NEW_VERIFY_HEAD_R75 = r'''# ORDER_VERIFY_1591R75
+ORDER_VERIFY_SECONDS_1591R75 = 25
+_ORDER_STATUS_KINDS_1591R75 = {"DOCS_GENERATED": "pay", "ESIM_SUCCESS": "used"}
+
+
+def _order_state_1591r75(worker):
+    """(kind, note) of the row's order read by its own link in a fresh browser context: "pay" the payment step,
+    "used" the eSIM is issued, "start" the order is back at its first step, "unknown" nothing could be read."""
+    page = worker.get("page")
+    url = str(worker.get("reserved_sim_url") or getattr(page, "_reserved_sim_url", "") or "")
+    context = worker.get("context")
+    if not url or context is None:
+        return "unknown", "нет ссылки заказа"
+    fresh, probe, seen = None, None, {"status": ""}
+    try:
+        browser = getattr(context, "browser", None)
+        fresh = browser.new_context() if browser is not None else None
+        probe = (fresh or context).new_page()
+
+        def on_response(resp):
+            try:
+                if "json" not in str(resp.headers.get("content-type", "")):
+                    return
+                if "selfreg" not in resp.url and "order" not in resp.url.lower():
+                    return
+                found = re.search(r'"selfregStatus"\s*:\s*"([A-Za-z_]+)"', resp.text() or "")
+                if found:
+                    seen["status"] = found.group(1).upper()
+            except Exception:
+                pass
+
+        probe.on("response", on_response)
+        probe.goto(url, wait_until="domcontentloaded", timeout=ORDER_VERIFY_SECONDS_1591R75 * 1000)
+        try:
+            probe.wait_for_load_state("networkidle", timeout=10000)
+        except Exception:
+            pass
+        probe.wait_for_timeout(1500)
+        body = (probe.locator("body").inner_text(timeout=2000) or "").lower().replace("\xa0", " ")
+    except Exception as exc:
+        return "unknown", f"{type(exc).__name__}: {str(exc)[:80]}"
+    finally:
+        for thing in (probe, fresh):
+            try:
+                if thing is not None:
+                    thing.close()
+            except Exception:
+                pass
+    status = seen["status"]
+    kind = _ORDER_STATUS_KINDS_1591R75.get(status)
+    if kind:
+        return kind, f"selfregStatus={status}"
+    if "пора оплатить" in body and "способ регистрации" not in body:
+        return "pay", "экран «Теперь пора оплатить eSIM»"
+    if "способ регистрации" in body or "введите данные снова" in body or "/error" in str(getattr(probe, "url", "")):
+        return "start", (f"selfregStatus={status}" if status else "заказ вернулся в начало")
+    return "unknown", (f"selfregStatus={status}" if status else "страница заказа не опознана")
+
+
+def _restart_row_1591r75(worker, reason):
+    """The row is not written off: a fresh page, the same row; the loop defers a row that keeps failing."""
+    print(f"[Вкладка {worker.get('id')}] {reason}: строку не списываю — новая вкладка, та же строка "
+          "(если и это не поможет, её отложат в очередь, а не потеряют).", flush=True)
+    worker["error_guard"] = False
+    worker["success_guard"] = False
+    worker["error_assist_entered_at"] = None
+    worker["auto_assist_state"] = {}
+    worker["phase"] = "ERROR_RECOVERY"
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        return False
+    set_tab_status(worker, "♻️", "Заказ не дошёл до оплаты — повторяю строку в новой вкладке.")
+    external_heartbeat(worker, "restart_row_1591r75")
+    return True
+
+
+def _finish_issued_1591r75(base_dir, worker, note):
+    """The site says the eSIM is issued: recorded as a success, the number is processed."""
+    row_no, _, _ = row_parts(worker.get("row"))
+    worker["phase"] = "SUCCESS_STOP"
+    rec = write_success_record(base_dir, worker)
+    remember_processed_number(base_dir, worker.get("row"))
+    success_queue = worker.get("success_queue")
+    if success_queue is not None:
+        try:
+            success_queue.put(_success_message(worker, rec))
+        except Exception as exc:
+            print(f"[Telegram] Не удалось поставить SUCCESS в очередь: {type(exc).__name__}: {exc}", flush=True)
+    set_tab_status(worker, "✅", f"УСПЕХ\neSIM выпущена ({note})\nSIM: {rec.get('sim_number') or 'не найден'}")
+    external_heartbeat(worker, "success_stop")
+    print(f"\n[Вкладка {worker['id']}] ✅ eSIM ВЫПУЩЕНА ({note}). Строка {row_no}.\n", flush=True)
+    worker["stopped"] = True
+    return rec
+
+
+def _verify_order_1591r75(base_dir, worker, reason):
+    """True when the row was dealt with without writing it off as unverified."""
+    kind, note = _order_state_1591r75(worker)
+    print(f"[Вкладка {worker.get('id')}] Состояние заказа по его ссылке: {kind} ({note}).", flush=True)
+    if kind == "pay":
+        _finish_payment_required_1591r26(base_dir, worker, f"заказ на шаге оплаты: {note}")
+        return True
+    if kind == "used":
+        _finish_issued_1591r75(base_dir, worker, note)
+        return True
+    if _reenter_row_1591r67(worker, "ORDER_" + kind.upper()):
+        return True
+    return _restart_row_1591r75(worker, str(reason or "")[:120])
+
+
+''' + OLD_VERIFY_HEAD_R75
+OLD_VERIFY_HOOK_R75 = ('    if _reenter_row_1591r67(worker, "PERSONAL_TOKEN_ERROR" if "PERSONAL_TOKEN" in str(reason) else ""):\n'
+                       '        return None\n')
+NEW_VERIFY_HOOK_R75 = ('    # ORDER_VERIFY_1591R75: the order is read by its own link first: the payment step is 💳, an issued eSIM is ✅,\n'
+                       '    # anything else starts the row over; the row is written off as unverified only when no page could be opened.\n'
+                       '    if (globals().get("_verify_order_1591r75") or (lambda b, w, r: False))(base_dir, worker, reason):\n'
+                       '        return None\n'
+                       + OLD_VERIFY_HOOK_R75)
+VERIFY_EDITS_R75 = ((OLD_VERIFY_MARK_R75, NEW_VERIFY_MARK_R75, "order verify: marker"),
+                    (OLD_VERIFY_HEAD_R75, NEW_VERIFY_HEAD_R75, "order verify: helpers"),
+                    (OLD_VERIFY_HOOK_R75, NEW_VERIFY_HOOK_R75, "order verify: before the unverified record"))
+README_NOTE_R75 = ('\n\nРЕВИЗИЯ 75 (fix_package_1591.py)\n«❔ подпись не подтверждена» убрана. Сайт отвечал на подпись 200 и на паспортные данные 202 («принято»), а потом\n'
+                   'показывал /registration/error, и бот списывал строку по виду страницы, не глядя на заказ. Теперь перед этим заказ\n'
+                   'открывается по его собственной ссылке (в чистом контексте, только чтение): шаг оплаты — строка 💳, eSIM выпущена —\n'
+                   'строка ✅, заказ вернулся в начало или не читается — строка вводится заново (до 6 раз), потом новой вкладкой; строку,\n'
+                   'которая так и не проходит, очередь откладывает, а не теряет. «❔» пишется только если ни одну страницу открыть не\n'
+                   'удалось. Маркер: ORDER_VERIFY_1591R75.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -7316,6 +7460,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if ORDER_VERIFY_MARKER in source:
+        return 75
     if CONFIRM_PUSH_MARKER in source:
         return 74
     if BASE_RESET_MARKER in source:
@@ -7468,6 +7614,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 72 or REGION_CAPTION_MARKER in source)\
             and (MAX_REVISION < 73 or BASE_RESET_MARKER in source)\
             and (MAX_REVISION < 74 or CONFIRM_PUSH_MARKER in source)\
+            and (MAX_REVISION < 75 or ORDER_VERIFY_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -8937,6 +9084,21 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 76 (r75). A row is not written off by the look of /registration/error: the order is read by its own link first.
+    if ORDER_VERIFY_MARKER not in source and MAX_REVISION >= 75:
+        for old, new, what in VERIFY_EDITS_R75:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -9065,6 +9227,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 72", README_NOTE_R72),) if built_revision >= 72 else ()),
                           *((("РЕВИЗИЯ 73", README_NOTE_R73),) if built_revision >= 73 else ()),
                           *((("РЕВИЗИЯ 74", README_NOTE_R74),) if built_revision >= 74 else ()),
+                          *((("РЕВИЗИЯ 75", README_NOTE_R75),) if built_revision >= 75 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

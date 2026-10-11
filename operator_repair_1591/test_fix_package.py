@@ -199,7 +199,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_74(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_75(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -383,18 +383,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 74 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 75 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
             for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69", "SIGN_QUADRANTS_1591R70", "AGENT_MEMORY_1591R71", "REGION_CAPTION_1591R72", "BASE_RESET_1591R73", "CONFIRM_PUSH_1591R74"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 74", run.stdout)
+            self.assertIn("Already revision 75", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 74 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 75 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -1026,7 +1026,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 74", run.stdout)
+            self.assertIn("Already revision 75", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1060,7 +1060,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 74)
+        self.assertEqual(manifest["revision"], 75)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1418,7 +1418,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 74); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 75); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1428,7 +1428,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 74", run.stdout)
+            self.assertIn("Already revision 75", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -2474,6 +2474,103 @@ class PackageTests(unittest.TestCase):
                 os.environ["BEELINE_CONFIRM_ATTEMPTS"] = "10"
                 cb("m|cfg"); self.assertIn("📲 Push клиенту на странице подтверждения: 10", shown()["text"])
                 n = len(ran); cb("m|cfg|ok|push|10"); self.assertEqual(len(ran), n, "already in effect: nothing to restart"); self.assertIn("Уже стоит", shown()["text"])
+
+    def test_r75_order_is_read_by_its_link_before_a_row_is_written_off(self):
+        """ORDER_VERIFY_1591R75: after «подпись 200 + паспортные данные 202» the order's own link decides, not /registration/error."""
+        import http.server, threading
+        src = (self.pkg / "test_beeline.py").read_text("utf-8")
+        self.assertIn("# ORDER_VERIFY_1591R75", src)
+        hook = src.index("def _finish_unverified_1591r24")
+        self.assertLess(src.index('globals().get("_verify_order_1591r75")', hook),
+                        src.index('_reenter_row_1591r67(worker, "PERSONAL_TOKEN_ERROR"', hook), "the order is read before anything else")
+        pages = {
+            "/pay": "<html><body>Теперь пора оплатить eSIM. Оплатить картой</body></html>",
+            "/used": "<html><body>загрузка<script>fetch('/api/selfreg').then(r=>r.json())</script></body></html>",
+            "/start": "<html><body>Выберите способ регистрации</body></html>",
+            "/blank": "<html><body>ok</body></html>",
+        }
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/api/selfreg":
+                    body, kind = b'{"selfregStatus": "ESIM_SUCCESS"}', "application/json"
+                else:
+                    body, kind = pages.get(self.path, "<html><body>?</body></html>").encode("utf-8"), "text/html; charset=utf-8"
+                self.send_response(200); self.send_header("Content-Type", kind); self.send_header("Content-Length", str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+            def log_message(self, *a): pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{server.server_address[1]}"
+        events = []
+        ns = {"re": re, "print": lambda *a, **k: None, "json": json,
+              "ORDER_VERIFY_SECONDS_1591R75": 10,
+              "restart_same_row_in_new_page": lambda w: w.__setitem__("phase", "RESTART_ROW_READY"),
+              "set_tab_status": lambda w, e, m: events.append(("status", e)),
+              "external_heartbeat": lambda w, k: None,
+              "row_parts": lambda r: (r, "", ""),
+              "write_success_record": lambda b, w: {"sim_number": w.get("reserved_sim_number")},
+              "remember_processed_number": lambda b, r: events.append(("processed", r)),
+              "_success_message": lambda w, rec: "success",
+              "_finish_payment_required_1591r26": lambda b, w, text: events.append(("pay", text)),
+              "_reenter_row_1591r67": lambda w, forced="": events.append(("reenter", forced)) or False}
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(t_, ast.Name) and t_.id == "_ORDER_STATUS_KINDS_1591R75" for t_ in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(src, ["_order_state_1591r75", "_restart_row_1591r75", "_finish_issued_1591r75", "_verify_order_1591r75"], ns)
+        try:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                try:
+                    browser = p.chromium.launch(headless=True)
+                except Exception:
+                    browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+                context = browser.new_context()
+                page = context.new_page()
+
+                def worker(path, **extra):
+                    w = {"id": 1, "row": 1509, "page": page, "context": context, "reserved_sim_url": base + path,
+                         "reserved_sim_number": "+7000", "success_queue": None, "phase": "SIGN_WAIT"}
+                    w.update(extra)
+                    return w
+
+                states = {path: ns["_order_state_1591r75"](worker(path)) for path in ("/pay", "/used", "/start", "/blank")}
+                no_link = ns["_order_state_1591r75"](worker("/pay", reserved_sim_url=""))
+                dead = ns["_order_state_1591r75"](worker("/pay", reserved_sim_url="http://127.0.0.1:9/x"))
+                kept_open = len(context.pages)
+                # the verdicts
+                events.clear(); w = worker("/pay")
+                self.assertTrue(ns["_verify_order_1591r75"](str(self.pkg), w, "registration/error"))
+                self.assertEqual([e[0] for e in events], ["pay"], "the payment step is 💳, the row is not lost")
+                events.clear(); w = worker("/used")
+                self.assertTrue(ns["_verify_order_1591r75"](str(self.pkg), w, "registration/error"))
+                self.assertEqual(w["phase"], "SUCCESS_STOP"); self.assertTrue(w["stopped"])
+                self.assertIn(("processed", 1509), events, "an issued eSIM marks the number processed")
+                events.clear(); w = worker("/start")
+                self.assertTrue(ns["_verify_order_1591r75"](str(self.pkg), w, "registration/error"))
+                self.assertEqual(events[0], ("reenter", "ORDER_START"), "the order is back at the start: the row is entered again")
+                events.clear(); w = worker("/start", error_guard=True)
+                ns["_reenter_row_1591r67"] = lambda wk, forced="": True
+                self.assertTrue(ns["_verify_order_1591r75"](str(self.pkg), w, "registration/error"))
+                ns["_reenter_row_1591r67"] = lambda wk, forced="": events.append(("reenter", forced)) or False
+                events.clear(); w = worker("/blank")
+                self.assertTrue(ns["_verify_order_1591r75"](str(self.pkg), w, "registration/error"))
+                self.assertEqual(w["phase"], "RESTART_ROW_READY", "an unreadable order starts the row over in a new page, it is not written off")
+                ns["restart_same_row_in_new_page"] = lambda wk: wk.__setitem__("phase", "ERROR_RECOVERY")
+                self.assertFalse(ns["_verify_order_1591r75"](str(self.pkg), worker("/blank"), "x"),
+                                 "only when even a new page cannot be opened the old path (the record) runs")
+                browser.close()
+        except Exception as exc:
+            if "Executable doesn't exist" in str(exc) or "BrowserType.launch" in str(exc):
+                self.skipTest(f"no headless Chromium here: {exc}")
+            raise
+        finally:
+            server.shutdown()
+        self.assertEqual(states["/pay"][0], "pay"); self.assertEqual(states["/used"][0], "used")
+        self.assertIn("ESIM_SUCCESS", states["/used"][1]); self.assertEqual(states["/start"][0], "start")
+        self.assertEqual(states["/blank"][0], "unknown"); self.assertEqual(no_link[0], "unknown"); self.assertEqual(dead[0], "unknown")
+        self.assertEqual(kept_open, 1, "the check closes its own pages and context")
 
     def test_r66_esims_older_than_5_days_leave_the_list(self):
         """AUTO_EXPIRE_1591R66: «Мои eSIM» keeps 5 days; the files stay; «↩️ Вернуть» counts what it can bring back."""
