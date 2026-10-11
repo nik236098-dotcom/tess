@@ -388,6 +388,7 @@ def error_summary():
     """All blackbox cases in the window grouped by: reason, the error text and what the page was."""
     groups = collections.Counter()
     hours = collections.defaultdict(collections.Counter)
+    essence = collections.Counter()
     for case in APP.glob("diagnostics/**/blackbox/*"):
         try:
             if case.stat().st_mtime < SINCE:
@@ -407,8 +408,23 @@ def error_summary():
         exc = hide(str(meta.get("exception") or ""))[:90]
         reason = case.name.split("_row", 1)[-1].split("_", 1)[-1]
         key = f"{reason} | {page}" + (f" | {exc}" if exc else "")
+        reenter = any("введите данные снова" in m.lower() for m in marks)
+        if reason.startswith("confirm_cycle_complete"):
+            essence["норма: 6 попыток закончились, клиент не подтвердил (это не ошибка)"] += 1
+        elif reenter and reason.startswith("registration_error"):
+            essence["«введите данные снова»: страница ошибки (бот вводит строку заново)"] += 1
+        elif reenter:
+            essence["«введите данные снова»: тот же случай, второй снимок"] += 1
+        elif "/basket" in url:
+            essence["корзина (поле номера, тариф): перегрузка или сбой страницы"] += 1
+        else:
+            essence["прочее"] += 1
         groups[key] += 1
         hours[key][str(meta.get("time") or "")[11:13]] += 1
+    print(f"== По сути за {HOURS:g} ч (снимок бота ≠ ошибка: одно событие может дать два снимка)")
+    for key, n in essence.most_common():
+        print(f"{n:5d}  {key}")
+    print()
     print(f"== Ошибки за {HOURS:g} ч (снимки бота), по видам")
     for key, n in groups.most_common(15):
         when = " ".join(f"{h}ч:{c}" for h, c in sorted(hours[key].items()))

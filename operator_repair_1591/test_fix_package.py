@@ -2752,6 +2752,28 @@ class PackageTests(unittest.TestCase):
         for needle in ("На какой попытке пришла ошибка", "Сколько повторных push сайт принял до ошибки", "Все запросы POST в этих строках"):
             self.assertIn(needle, report)
 
+    def test_night_report_errors_separates_normal_outcomes_from_errors(self):
+        """night_report.py errors: «По сути» — timeouts are not errors, one «введите данные снова» is two snapshots."""
+        with tempfile.TemporaryDirectory() as d:
+            def case(name, url, body):
+                c = Path(d) / "diagnostics/s1/blackbox" / name
+                c.mkdir(parents=True)
+                (c / "meta.json").write_text(json.dumps({"url": url, "time": "2026-10-11 20:00:00", "tab": 1}), "utf-8")
+                (c / "page.html").write_text(f"<html><body>{body}</body></html>", "utf-8")
+            case("a_tab1_row1_confirm_cycle_complete", "https://s/registration/esim/mobile-id-auth", "x")
+            case("b_tab1_row2_registration_error_after_auth", "https://s/registration/error", "введите данные снова")
+            case("c_tab1_row2_error_final_skip", "https://s/registration/error", "введите данные снова")
+            case("d_tab1_row3_batch_error", "https://s/basket/", "случайный номер")
+            run = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "night_report.py"), "errors", "1"],
+                                 env={**os.environ, "APP_DIR": d}, capture_output=True, text=True, timeout=60)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        head = run.stdout.split("== Ошибки за")[0]
+        for needle in ("норма: 6 попыток закончились, клиент не подтвердил (это не ошибка)",
+                       "«введите данные снова»: страница ошибки (бот вводит строку заново)",
+                       "«введите данные снова»: тот же случай, второй снимок",
+                       "корзина (поле номера, тариф)"):
+            self.assertRegex(head, r"\s1\s+" + re.escape(needle))
+
     def test_night_report_neighbours_error_rate_by_busy_neighbours(self):
         """night_report.py neighbours: the share of «Отправить снова» that ended in 412 by how many other tabs were busy before."""
         now = time.time()
