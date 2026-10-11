@@ -422,9 +422,34 @@ def confirm_errors():
         return
     codes, last_req, clicks = collections.Counter(), collections.Counter(), collections.Counter()
     tab_codes, texts = collections.Counter(), collections.Counter()
+    after_click, after_start = collections.Counter(), collections.Counter()
+
+    def secs(text):
+        try:
+            h, m, s = (int(x) for x in str(text).split(":"))
+            return h * 3600 + m * 60 + s
+        except ValueError:
+            return None
+
+    def bucket(delta, edges):
+        for edge in edges:
+            if delta < edge:
+                return f"до {edge} с"
+        return f"{edges[-1]} с и больше"
     code_re = re.compile(r'"(selfregStatus|codeValue|errorCode|errorMessage|message|error|status|state|reason)"\s*:\s*"([^"]{1,80})"')
     for rec in recs:
         answers = [a for a in rec.get("answers") or [] if "mark" not in a]
+        # when the site's status turned into an error: seconds after the last «Отправить снова» and after the row started
+        items = rec.get("answers") or []
+        err = next((i for i, a in enumerate(items) if "mark" not in a and "ERROR_ORDER" in str(a.get("body"))), None)
+        if err is not None and secs(items[err].get("t")) is not None:
+            t_err = secs(items[err]["t"])
+            clicks_before = [secs(a.get("t")) for a in items[:err] if "Отправить снова" in str(a.get("mark"))]
+            starts = [secs(a.get("t")) for a in items[:err] if str(a.get("mark", "")).startswith("строка")]
+            after_click[bucket((t_err - clicks_before[-1]) % 86400, (5, 15, 65)) if clicks_before and clicks_before[-1] is not None
+                        else "кнопку «Отправить снова» ещё не нажимали"] += 1
+            if starts and starts[0] is not None:
+                after_start[bucket((t_err - starts[0]) % 86400, (60, 70, 130, 200))] += 1
         status = rec.get("tab_status") or {}
         found = [f"{k}={hide(v)}" for k, v in code_re.findall(str(status.get("body") or "")) if v.strip() and v.lower() not in ("null", "ok")]
         tab_codes[(", ".join(dict.fromkeys(found)) or f"HTTP {status.get('status')}: {hide(status.get('body'))[:80]}")[:160]] += 1
@@ -446,6 +471,12 @@ def confirm_errors():
         print(f"  {n:5d}  {key}")
     print("-- Текст страницы ошибки")
     for key, n in texts.most_common(8):
+        print(f"  {n:5d}  {key}")
+    print("-- Через сколько после последнего «Отправить снова» статус стал ERROR_ORDER")
+    for key, n in sorted(after_click.items(), key=lambda kv: -kv[1]):
+        print(f"  {n:5d}  {key}")
+    print("-- Через сколько после начала строки статус стал ERROR_ORDER")
+    for key, n in sorted(after_start.items(), key=lambda kv: -kv[1]):
         print(f"  {n:5d}  {key}")
     print("-- Когда")
     for key, n in clicks.most_common():

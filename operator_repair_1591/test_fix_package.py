@@ -2707,6 +2707,8 @@ class PackageTests(unittest.TestCase):
             for needle in ("с ответами сайта за 1 ч: 1", "после нажатия «Отправить снова»", "codeValue=MOBILE_ID_SESSION_EXPIRED",
                            "Статус заказа, запрошенный из вкладки с ошибкой", "selfregStatus=ERROR_MOBILE_ID_TIMEOUT",
                            "Текст страницы ошибки", "введите данные снова",
+                           "Через сколько после последнего «Отправить снова» статус стал ERROR_ORDER",
+                           "Через сколько после начала строки статус стал ERROR_ORDER",
                            "POST resend → 400", "Сессия истекла"):
                 self.assertIn(needle, run.stdout)
 
