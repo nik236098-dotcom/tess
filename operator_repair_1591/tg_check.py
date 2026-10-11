@@ -25,7 +25,7 @@ TRIES = 3
 def hide(text, secrets):
     out = str(text)
     for secret in secrets:
-        if secret:
+        if secret and len(secret) >= 4:  # a one-letter password would blank out the whole message
             out = out.replace(secret, "***")
     return re.sub(r"(://)[^/@\s]+@", r"\1***@", out)
 
