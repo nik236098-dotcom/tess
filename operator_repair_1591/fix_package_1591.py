@@ -174,7 +174,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "31af9d9eceeb010627922c94a228fe2ce4df4d0091251a9301763822aded203a",  # r65 exp8 output
                          "2acb9788c8ca15faf5964b156551a64aa5d52302fb139547b699914902c00e7c",  # r66 lite output
                          "32176b20666a07c335720ba68ec72bfd12ca004509e24333386c49bc4deff50a",  # r66 output
-                         "f8d6f305e207cc35d2ef37215d76c5fa904642bc82ce8270c891dc28af0a6568"}  # r66 exp8 output
+                         "f8d6f305e207cc35d2ef37215d76c5fa904642bc82ce8270c891dc28af0a6568",  # r66 exp8 output
+                         "b79bcf1cc7579eb2ca0e8333e272f1f2b7ab06bbba6eade5098898ee7669e6a4",  # r67 lite output
+                         "5d0345183cbcdee10bdebc33830b1c33b8977dd5dca28f0447ce68fa993fa6fe",  # r67 output
+                         "b7dd73283a0dd995a96f3514b4c658bcb91ffadcb68203b36a7d26db5befcb00"}  # r67 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -5016,6 +5019,132 @@ NEW_AUTO_EXPIRE_MARK_R66 = (OLD_AUTO_EXPIRE_MARK_R66
 README_NOTE_R66 = ('\n\nРЕВИЗИЯ 66 (fix_package_1591.py)\nТолько меню. eSIM старше 5 дней сами уходят из «📱 Мои eSIM», из счётчиков «Ждут оплаты / Готово»,\n'
                    'из выгрузки и проверки ссылок. Файлы результатов на сервере остаются. Маркер: AUTO_EXPIRE_1591R66.\n')
 
+# Revision 67: the registration flow after the owner's data.
+# - REENTER_ROW_1591R67: /registration/error saying «введите данные снова» (the order is kept, the data is asked
+#   again; it follows «Отправить снова» 9 times out of 10) or showing the order's first steps («выбрать способ
+#   регистрации», the order reset after signing) restarts the same row in a fresh page — the client gets a new
+#   request — at most twice per row; then the old rule (skip) applies. A named refusal is still skipped at once.
+# - SIGN_THROTTLE_1591R67: «Подписать договор» is not clicked again every ~11 s while the page stays: after a click
+#   the site accepted the next waits 60 s, at most 3 clicks per row; 3 minutes after the last one the row is
+#   recorded as unverified (❔) instead of waiting in silence.
+# - SIGN_STEPS_1591R67: DeepSeek is told that the steps page («несколько шагов… выбрать способ регистрации») is the
+#   order's start, not the payment; the payment is only «теперь пора оплатить eSIM».
+REENTER_MARKER = "REENTER_ROW_1591R67"
+OLD_REENTER_MARK_R67 = NEW_AUTO_EXPIRE_MARK_R66.splitlines(keepends=True)[-1]
+NEW_REENTER_MARK_R67 = (OLD_REENTER_MARK_R67
+                        + '# REENTER_ROW_1591R67: «введите данные снова» re-enters the row; «Подписать» is not clicked in a loop.\n')
+OLD_REENTER_HEAD_R67 = ('def enter_error_guard(worker, note):\n'
+                        '    # ERROR_SKIP_ALWAYS_1591R16: every /registration/error after the confirmation is handled\n')
+NEW_REENTER_HEAD_R67 = ('''# REENTER_ROW_1591R67
+REENTER_ROW_MAX_1591R67 = 2
+_REENTER_TEXTS_1591R67 = ("введите данные снова", "заново ввести данные", "выбрать способ регистрации",
+                          "выберите способ регистрации")
+
+
+def _reenter_page_1591r67(page):
+    """The phrase that says the order is kept and the data is asked again, "" when none."""
+    try:
+        body = (page.locator("body").inner_text(timeout=1500) or "").lower().replace("\\xa0", " ")
+    except Exception:
+        return ""
+    return next((text for text in _REENTER_TEXTS_1591R67 if text in body), "")
+
+
+def _reenter_row_1591r67(worker):
+    """«Введите данные снова» (or the order back at its first step): the same row starts over in a fresh
+    page and the client gets a new request, at most REENTER_ROW_MAX_1591R67 times per row."""
+    hint = _reenter_page_1591r67(worker.get("page"))
+    if not hint:
+        return False
+    key = _error_row_key(worker)
+    used = int((worker.get("reenter_1591r67") or {}).get(key) or 0)
+    if used >= REENTER_ROW_MAX_1591R67:
+        return False
+    worker["reenter_1591r67"] = {key: used + 1}
+    print(
+        f"[Вкладка {worker['id']}] /registration/error: «{hint}». Заказ жив — ввожу данные заново "
+        f"({used + 1}/{REENTER_ROW_MAX_1591R67}), строка {key} не пропускается.",
+        flush=True,
+    )
+    worker["error_guard"] = False
+    worker["success_guard"] = False
+    worker["error_assist_entered_at"] = None
+    worker["auto_assist_state"] = {}
+    worker["phase"] = "ERROR_RECOVERY"
+    restart_same_row_in_new_page(worker)
+    if worker.get("phase") != "RESTART_ROW_READY":
+        return False
+    set_tab_status(worker, "♻️", f"Сайт просит ввести данные снова — повторяю строку ({used + 1}/{REENTER_ROW_MAX_1591R67}).")
+    external_heartbeat(worker, "reenter_row_1591r67")
+    return True
+
+
+# SIGN_THROTTLE_1591R67
+SIGN_RECLICK_SECONDS_1591R67 = 60
+SIGN_CLICKS_MAX_1591R67 = 3
+
+
+def _sign_hold_1591r67(base_dir, worker):
+    """True while the last «Подписать договор» is still being answered: after a click the site accepted
+    the next one waits SIGN_RECLICK_SECONDS_1591R67, a row gets at most SIGN_CLICKS_MAX_1591R67 clicks, and
+    UNVERIFIED_HOLD_SECONDS after the last one the row is recorded as unverified. r66 clicked every ~11 s
+    while the page stayed and the order could be reset."""
+    key = f"{_error_row_key(worker)}:{worker.get('generation')}"  # a re-entered row starts its count anew
+    state = worker.get("sign_clicks_1591r67") or {}
+    if state.get("row") != key:
+        state = {"row": key, "n": 0, "at": 0.0}
+        worker["sign_clicks_1591r67"] = state
+    now = monotonic()
+    if not state["n"]:
+        state.update(n=1, at=now)
+        return False
+    wait = SIGN_RECLICK_SECONDS_1591R67 if _sign_went_through_1591r37(worker) else 12
+    if state["n"] < SIGN_CLICKS_MAX_1591R67 and now - state["at"] >= wait:
+        state.update(n=state["n"] + 1, at=now)
+        return False
+    if state["n"] >= SIGN_CLICKS_MAX_1591R67 and now - state["at"] >= UNVERIFIED_HOLD_SECONDS:
+        _finish_unverified_1591r24(
+            base_dir, worker,
+            f"после {state['n']} нажатий «Подписать договор» страница {UNVERIFIED_HOLD_SECONDS // 60} мин не изменилась",
+        )
+        return True
+    worker["phase"] = "SUCCESS_ASSIST"
+    set_tab_status(worker, "⏳", f"Подпись отправлена ({state['n']}/{SIGN_CLICKS_MAX_1591R67}) — жду ответа сайта, "
+                                 "повторно не нажимаю.")
+    return True
+
+def enter_error_guard(worker, note):
+    # ERROR_SKIP_ALWAYS_1591R16: every /registration/error after the confirmation is handled
+''')
+OLD_REENTER_CALL_R67 = ('    reason = _error_page_final_reason(worker.get("page")) or "registration/error после подтверждения"\n'
+                        '    if _error_skip_final(worker, reason):\n')
+NEW_REENTER_CALL_R67 = ('    reason = _error_page_final_reason(worker.get("page")) or "registration/error после подтверждения"\n'
+                        '    if reason == "registration/error после подтверждения" and _reenter_row_1591r67(worker):  # REENTER_ROW_1591R67\n'
+                        '        return\n'
+                        '    if _error_skip_final(worker, reason):\n')
+OLD_SIGN_CALL_R67 = ('        try:\n'
+                     '            set_tab_status(\n'
+                     '                worker, "✍️",\n'
+                     '                "Подтверждение успешно. Заполняю подпись и подписываю договор."\n')
+NEW_SIGN_CALL_R67 = ('        if _sign_hold_1591r67(base_dir, worker):  # SIGN_THROTTLE_1591R67: the site is still answering\n'
+                     '            return\n'
+                     '        try:\n'
+                     '            set_tab_status(\n'
+                     '                worker, "✍️",\n'
+                     '                "Подтверждение успешно. Заполняю подпись и подписываю договор."\n')
+OLD_SIGN_STEPS_R67 = ('        "«VERDICT: PAYMENT» или «VERDICT: NOT_SIGNED». "\n')
+NEW_SIGN_STEPS_R67 = ('        "«VERDICT: PAYMENT» или «VERDICT: NOT_SIGNED». "\n'
+                      '        "Оплата — это ТОЛЬКО экран «Теперь пора оплатить eSIM». Страница со списком шагов «подтвердите данные → "  # SIGN_STEPS_1591R67\n'
+                      '        "оплатите картой → дождитесь регистрации договора» и кнопкой «выбрать способ регистрации» — это НАЧАЛО "\n'
+                      '        "заказа (сайт сбросил оформление), а не оплата: итог «Не подписано — сайт вернул заказ в начало», VERDICT: NOT_SIGNED. "\n')
+README_NOTE_R67 = ('\n\nРЕВИЗИЯ 67 (fix_package_1591.py)\nРегистрация. «Введите данные снова» на /registration/error (так сайт отвечает почти каждый раз после\n'
+                   '«Отправить снова») и сброс заказа в начало после подписи («выбрать способ регистрации») больше не\n'
+                   'выбрасывают строку: та же строка начинается заново в новой вкладке, клиент получает новый запрос; не\n'
+                   'больше 2 раз на строку, потом прежнее правило (пропуск). «Подписать договор» больше не нажимается каждые\n'
+                   '11 секунд: после принятой сайтом подписи следующее нажатие через 60 секунд, не больше 3 на строку, через\n'
+                   '3 минуты после последнего строка отмечается «❔ подпись не подтверждена» (с сообщением), а не висит молча.\n'
+                   'DeepSeek знает, что страница со списком шагов — начало заказа, а не оплата. Маркер: REENTER_ROW_1591R67.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -5857,6 +5986,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if REENTER_MARKER in source:
+        return 67
     if AUTO_EXPIRE_MARKER in source:
         return 66
     if SETTING_RESTART_MARKER in source:
@@ -5985,6 +6116,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 64 or BASE_TOOLS_MARKER in source)\
             and (MAX_REVISION < 65 or SETTING_RESTART_MARKER in source)\
             and (MAX_REVISION < 66 or AUTO_EXPIRE_MARKER in source)\
+            and (MAX_REVISION < 67 or REENTER_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -7290,6 +7422,25 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 68 (r67). Re-enter the row on «введите данные снова», no «Подписать» loop, the steps page is not payment.
+    if REENTER_MARKER not in source and MAX_REVISION >= 67:
+        for old, new, what in ((OLD_REENTER_MARK_R67, NEW_REENTER_MARK_R67, "reenter: marker"),
+                               (OLD_REENTER_HEAD_R67, NEW_REENTER_HEAD_R67, "reenter: helpers"),
+                               (OLD_REENTER_CALL_R67, NEW_REENTER_CALL_R67, "reenter: enter_error_guard"),
+                               (OLD_SIGN_CALL_R67, NEW_SIGN_CALL_R67, "sign throttle: the sign block"),
+                               (OLD_SIGN_STEPS_R67, NEW_SIGN_STEPS_R67, "sign steps: DeepSeek prompt")):
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -7410,6 +7561,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 64", README_NOTE_R64),) if built_revision >= 64 else ()),
                           *((("РЕВИЗИЯ 65", README_NOTE_R65),) if built_revision >= 65 else ()),
                           *((("РЕВИЗИЯ 66", README_NOTE_R66),) if built_revision >= 66 else ()),
+                          *((("РЕВИЗИЯ 67", README_NOTE_R67),) if built_revision >= 67 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
