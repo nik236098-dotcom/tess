@@ -199,7 +199,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_77(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_78(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -383,18 +383,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 77 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 78 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
             for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69", "SIGN_QUADRANTS_1591R70", "AGENT_MEMORY_1591R71", "REGION_CAPTION_1591R72", "BASE_RESET_1591R73", "CONFIRM_PUSH_1591R74"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 77", run.stdout)
+            self.assertIn("Already revision 78", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 77 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 78 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -1026,7 +1026,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 77", run.stdout)
+            self.assertIn("Already revision 78", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1060,7 +1060,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 77)
+        self.assertEqual(manifest["revision"], 78)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1418,7 +1418,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 77); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 78); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1428,7 +1428,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 77", run.stdout)
+            self.assertIn("Already revision 78", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -2805,6 +2805,57 @@ class PackageTests(unittest.TestCase):
         self.assertRegex(window30, r"соседей\s+0: нажатий\s+3, из них ошибка 412:\s+0 \(0%\)")
         self.assertRegex(window30, r"соседей\s+3 и больше: нажатий\s+1, из них ошибка 412:\s+1 \(100%\)")
 
+    def test_r78_export_goes_from_the_oldest_to_the_newest(self):
+        """EXPORT_ORDER_1591R78: «Все» and a number take the oldest eSIMs first; «Мои eSIM» stays newest first."""
+        import importlib.util, types as _types
+        spec = importlib.util.spec_from_file_location("telegram_menu_r78", self.pkg / "telegram_menu.py")
+        tm = importlib.util.module_from_spec(spec); spec.loader.exec_module(tm)
+        self.assertIn("# EXPORT_ORDER_1591R78:", (self.pkg / "test_beeline.py").read_text("utf-8"))
+        calls = []
+        app = _types.SimpleNamespace(telegram_api=lambda cfg, m, p: calls.append((m, dict(p))) or ({"ok": True, "result": {"message_id": 1}}, None),
+                                     load_telegram_config=lambda: {"chat_id": "1"}, SUCCESS_PROFILE_FIELDS=[],
+                                     restart_policy_minutes=lambda b: 0)
+        proc = _types.SimpleNamespace(status=lambda: "🟢 Запущен", running=lambda: True)
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            # written out of order on purpose: the order is the time of the record, not the line number
+            times = ["2026-10-11 12:00:00", "2026-10-11 09:00:00", "2026-10-11 15:00:00", "2026-10-11 10:30:00", "2026-10-11 13:00:00"]
+            recs = [{"row": 20 + i, "tab": 1, "sim_number": f"+7962000010{i}", "time": ts,
+                     "sim_url": f"https://s.beeline.ru/registration/esim?hash_order=h{i}", "profile": {"full_name": f"Тест {i}"}}
+                    for i, ts in enumerate(times)]
+            (base / "payment_required.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in recs) + "\n")
+            menu = tm.TelegramMenu(app, base, proc)
+            menu.document_sender = lambda name, text, caption: ({"ok": True}, None)
+            menu.dropin_path = base / "zz-menu.conf"
+            sent = lambda: [c[1].get("text", "") for c in calls if c[0] == "sendMessage"]
+            newest_first = [r["sim_number"] for r in menu._esims()]
+            self.assertEqual(newest_first, ["+79620000102", "+79620000104", "+79620000100", "+79620000103", "+79620000101"], "«Мои eSIM» newest first")
+            menu.state["export"] = {"mode": "urgent", "fmt": "msg"}
+            menu.run_export("all")
+            for _ in range(100):
+                if any("Номер:" in t for t in sent()):
+                    break
+                time.sleep(0.05)
+            text = next(t for t in sent() if "Номер:" in t)
+            numbers = re.findall(r"Номер: (\+\d+)", text)
+            self.assertEqual(numbers, ["+79620000101", "+79620000103", "+79620000100", "+79620000104", "+79620000102"], "the oldest first")
+            # a number takes the oldest ones
+            menu.state["export"] = {"mode": "urgent", "fmt": "msg"}
+            before = len(sent())
+            menu.run_export("2")
+            for _ in range(100):
+                if any("Номер:" in t for t in sent()[before:]):
+                    break
+                time.sleep(0.05)
+            part = next(t for t in sent()[before:] if "Номер:" in t)
+            self.assertEqual(re.findall(r"Номер: (\+\d+)", part), ["+79620000101", "+79620000103"])
+            keys = json.loads((base / "esim_exports.json").read_text())
+            last = keys[sorted(keys, key=int)[-1]]["keys"]
+            self.assertEqual(len(last), 2); self.assertEqual(last, ["p1", "p3"], "the batch keeps the order for «Обновить»")
+            self.assertEqual([r["sim_number"] for r in menu._oldest_first(menu._esims())][:2], ["+79620000101", "+79620000103"])
+            menu.show_export("fmt", "msg")
+            self.assertIn("Идут от старых к новым.", [c[1].get("text", "") for c in calls][-1])
+
     def test_r66_esims_older_than_5_days_leave_the_list(self):
         """AUTO_EXPIRE_1591R66: «Мои eSIM» keeps 5 days; the files stay; «↩️ Вернуть» counts what it can bring back."""
         import importlib.util, types as _types
@@ -2994,24 +3045,25 @@ class PackageTests(unittest.TestCase):
             self.assertTrue(menu.handle_text("2")); settle()
             new = sent()[n:]
             cards = [m for m in new if "🔼" in str(m.get("reply_markup"))]
-            self.assertEqual([c["text"].split("\n")[:2] for c in cards], [["💳 eSIM · #оплата", "📱 <b>+7 962 000-00-03</b>"],
-                                                                         ["💳 eSIM · #оплата", "📱 <b>+7 962 000-00-02</b>"]], "the push card")
-            self.assertIn("👤 Тест 3 · 🎂 —", cards[0]["text"]); self.assertIn("🔗 https://s.beeline.ru/registration/esim?hash_order=a3", cards[0]["text"])
+            self.assertEqual([c["text"].split("\n")[:2] for c in cards], [["💳 eSIM · #оплата", "📱 <b>+7 962 000-00-01</b>"],
+                                                                         ["💳 eSIM · #оплата", "📱 <b>+7 962 000-00-02</b>"]],
+                             "EXPORT_ORDER_1591R78: the oldest first, a count takes the oldest ones")
+            self.assertIn("👤 Тест 1 · 🎂 —", cards[0]["text"]); self.assertIn("🔗 https://s.beeline.ru/registration/esim?hash_order=a1", cards[0]["text"])
             self.assertNotIn("вкладка", cards[0]["text"], "the short card")
-            for part in ("m|xo|p3", "m|xm|p3|ok|0", "m|xm|p3|bank|0", "m|xm|p3|new|0"):
+            for part in ("m|xo|p1", "m|xm|p1|ok|0", "m|xm|p1|bank|0", "m|xm|p1|new|0"):
                 self.assertIn(part, cards[0]["reply_markup"])
             self.assertIn("Обновить статус ссылок", new[-1]["text"])
             batch = re.search(r"m\|xr\|(\d+)", new[-1]["reply_markup"]).group(1)
-            self.assertEqual(json.loads((base / "esim_exports.json").read_text())[batch], {"keys": ["p3", "p2"], "mode": "normal", "fmt": "msg"})
+            self.assertEqual(json.loads((base / "esim_exports.json").read_text())[batch], {"keys": ["p1", "p2"], "mode": "normal", "fmt": "msg"})
             self.assertFalse(menu.handle_text("3"), "the count is asked once")
-            cb("m|xo|p3"); self.assertEqual(shown()["message_id"], 55)
-            self.assertIn("вкладка 1", shown()["text"]); self.assertIn("m|xc|p3", shown()["reply_markup"]); self.assertIn("🔽", shown()["reply_markup"])
-            cb("m|xm|p3|bank|1"); self.assertEqual(answers()[-1], "🏦 отмечено")
-            self.assertTrue(shown()["text"].startswith("💳 • 🏦 <b>Требуется оплата eSIM</b>")); self.assertIn("m|xc|p3", shown()["reply_markup"])
-            cb("m|xc|p3"); self.assertIn("m|xo|p3", shown()["reply_markup"])
+            cb("m|xo|p1"); self.assertEqual(shown()["message_id"], 55)
+            self.assertIn("вкладка 1", shown()["text"]); self.assertIn("m|xc|p1", shown()["reply_markup"]); self.assertIn("🔽", shown()["reply_markup"])
+            cb("m|xm|p1|bank|1"); self.assertEqual(answers()[-1], "🏦 отмечено")
+            self.assertTrue(shown()["text"].startswith("💳 • 🏦 <b>Требуется оплата eSIM</b>")); self.assertIn("m|xc|p1", shown()["reply_markup"])
+            cb("m|xc|p1"); self.assertIn("m|xo|p1", shown()["reply_markup"])
 
             # «🔄 Обновить»: the report counts, what changed, then the still waiting ones with their links
-            kinds = {"a3": "ok", "a2": "pay", "a1": "pay"}
+            kinds = {"a1": "ok", "a2": "pay", "a3": "pay"}
             def fake(urls):
                 for url in urls:
                     yield url, {"kind": kinds[url.rsplit("=", 1)[1]], "text": "страница"}
@@ -3020,18 +3072,18 @@ class PackageTests(unittest.TestCase):
             msgs = sent()[n:]; new = [m["text"] for m in msgs]
             self.assertIn("Проверяю 2 ссылок", new[0])
             self.assertIn("📋 <b>Отчёт</b>", new[1]); self.assertIn("✅ 1 — оплачены / готовы", new[1]); self.assertIn("💳 1 — ожидают оплаты", new[1])
-            self.assertIn("Изменились:\n✅ +7 962 000-00-03 · стр. 13", new[1])
+            self.assertIn("Изменились:\n✅ +7 962 000-00-01 · стр. 11", new[1])
             self.assertEqual(new[2], "💳 Ожидают оплаты: 1")
             self.assertTrue(new[3].startswith("💳 eSIM · #оплата\n📱 <b>+7 962 000-00-02</b>"), "EXPORT_CARDS_1591R61: as the export gave them")
             self.assertIn("m|xo|p2", msgs[3]["reply_markup"]); self.assertEqual(len(new), 5)
             nxt = re.search(r"m\|xr\|(\d+)", msgs[4]["reply_markup"]).group(1)
             self.assertNotEqual(nxt, batch); self.assertEqual(json.loads((base / "esim_exports.json").read_text())[nxt]["keys"], ["p2"])
-            self.assertEqual(menu._status_of(menu._esim_by_key("p3")), "done", "the check updates «Мои eSIM» too")
+            self.assertEqual(menu._status_of(menu._esim_by_key("p1")), "done", "the check updates «Мои eSIM» too")
 
             # ‼️ urgent: number and link in one message; .txt as a document
             n = len(sent())
             cb("m|exp|mode|urgent"); cb("m|exp|fmt|msg"); cb("m|exp|count|all"); settle()
-            self.assertIn("1. Номер: +79620000002\nhttps://s.beeline.ru/registration/esim?hash_order=a2\n\n2. Номер: +79620000001\n", "".join(m["text"] for m in sent()[n:]))
+            self.assertIn("1. Номер: +79620000002\nhttps://s.beeline.ru/registration/esim?hash_order=a2\n\n2. Номер: +79620000003\n", "".join(m["text"] for m in sent()[n:]))
             self.assertEqual(sum("Номер:" in m["text"] for m in sent()[n:]), 1, "one message for all")
             cb("m|exp|mode|normal"); cb("m|exp|fmt|txt"); self.assertTrue(menu.handle_text("Все")); settle()
             self.assertTrue(docs[-1][0].startswith("esim_обычная_") and docs[-1][0].endswith(".txt"))
@@ -3040,8 +3092,10 @@ class PackageTests(unittest.TestCase):
             exports = json.loads((base / "esim_exports.json").read_text())
             exports["1"] = {"keys": ["p2", "p1"], "mode": "urgent", "fmt": "msg"}; exports["2"] = ["p1"]
             (base / "esim_exports.json").write_text(json.dumps(exports))
+            kinds["a1"] = "pay"
             n = len(sent()); cb("m|xr|1"); settle()
-            self.assertIn("💳 Ожидают оплаты: 2\n\n1. Номер: +79620000002\nhttps://s.beeline.ru/registration/esim?hash_order=a2\n\n2. Номер: +79620000001\nhttps://s.beeline.ru/registration/esim?hash_order=a1", [m["text"] for m in sent()[n:]])
+            self.assertIn("💳 Ожидают оплаты: 2\n\n1. Номер: +79620000001\nhttps://s.beeline.ru/registration/esim?hash_order=a1\n\n2. Номер: +79620000002\nhttps://s.beeline.ru/registration/esim?hash_order=a2", [m["text"] for m in sent()[n:]],
+                          "EXPORT_ORDER_1591R78: the ones still waiting go from the oldest too")
             n = len(sent()); cb("m|xr|2"); settle()
             self.assertIn("💳 Ожидают оплаты: 1\n\n1. Номер: +79620000001\nhttps://s.beeline.ru/registration/esim?hash_order=a1", [m["text"] for m in sent()[n:]])
             cb("m|exp|mode|urgent"); cb("m|exp|fmt|msg")

@@ -1216,6 +1216,10 @@ class TelegramMenu:
     def _pay_recs(self):
         return [r for r in self._esims() if self._status_of(r) == "pay"]
 
+    def _oldest_first(self, recs):
+        """EXPORT_ORDER_1591R78: the export goes from the oldest eSIM toward the newest («Мои eSIM» stays newest first)."""
+        return sorted(recs, key=lambda r: r["_order"])
+
     def show_export(self, step="start", value=""):
         exp = self.state.get("export") or {}
         n = len(self._pay_recs())
@@ -1231,7 +1235,7 @@ class TelegramMenu:
             exp["await"] = True
             self.state["export"] = exp
             self._save()
-            return self._show(f"📤 <b>Выгрузка</b>\n\nСколько выгрузить? Напиши число или слово «Все».\nЖдут оплаты 💳: {n}",
+            return self._show(f"📤 <b>Выгрузка</b>\n\nСколько выгрузить? Напиши число или слово «Все».\nЖдут оплаты 💳: {n}\nИдут от старых к новым.",
                               _kb([[_btn(f"Все ({n})", "m|exp|count|all")], [_btn("✖️ Отмена", "m|exp|cancel")]]))
         if step == "cancel":
             self.state.pop("export", None)
@@ -1248,7 +1252,7 @@ class TelegramMenu:
         exp = dict(self.state.get("export") or {})
         self.state.pop("export", None)
         self._save()
-        recs = self._pay_recs()
+        recs = self._oldest_first(self._pay_recs())  # EXPORT_ORDER_1591R78: the oldest first, a number takes the oldest ones
         if count != "all":
             recs = recs[:max(0, int(count))]
         if not recs:
@@ -1334,7 +1338,7 @@ class TelegramMenu:
 
     def export_recheck(self, batch):
         keys, _, _ = self._load_batch(batch)
-        recs = [r for r in self._esims() if r["_key"] in set(keys)]
+        recs = self._oldest_first([r for r in self._esims() if r["_key"] in set(keys)])  # EXPORT_ORDER_1591R78
         if not recs:
             self._send_msg("Эта выгрузка уже недоступна.")
             return False
@@ -1364,7 +1368,7 @@ class TelegramMenu:
             lines.append("")
             lines.append("Изменились:")
             lines.extend(f"{STATUS_ICONS[after[key]]} {self._phone(rec)} · стр. {rec.get('row', '?')}" for key, rec in changed[:30])
-        waiting = [rec for key, _, rec in targets if after.get(key) == "pay"]
+        waiting = self._oldest_first([rec for key, _, rec in targets if after.get(key) == "pay"])  # EXPORT_ORDER_1591R78
         if only_changes or not batch:
             self._send_msg("\n".join(lines))
             return True

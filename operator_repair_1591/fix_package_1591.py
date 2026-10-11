@@ -207,7 +207,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "6a63c7994939fe5ca3c873646696a7fc70a05f17f339020b10532a21ba9000e0",  # r76 exp8 output
                          "b9b5e58377638b3cd3c45c48b7d59817d15a7fda89691c300b53842a3d1dcf73",  # r77 lite output
                          "34a2ce9c72c2908d6f01c828073ca082590096e4b697416b10ab64632b34a4da",  # r77 output
-                         "d0c310b4636948d6e4b5ac3bb44bd55d665e42c4decf2026503fba758a09839d"}  # r77 exp8 output
+                         "d0c310b4636948d6e4b5ac3bb44bd55d665e42c4decf2026503fba758a09839d",  # r77 exp8 output
+                         "77619ee754fd3d8101619fe71e57c099d5152b3033bb09a464b1e24e0c943db0",  # r78 lite output
+                         "5e742fead1350c89dd6125c3c483a635f17a9e0885fa61f3c2c10510d1cde45c",  # r78 output
+                         "b3a9b091cbe650e1a4c1683d4b9e4162e0f045cfc18ce713c831409c3e1ec212"}  # r78 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -6912,6 +6915,23 @@ README_NOTE_R77 = ('\n\nРЕВИЗИЯ 77 (fix_package_1591.py)\nЗапись о
                    'страница ошибки пишется один раз. В night_report.py confirm: на какой попытке случилась ошибка и сколько повторных\n'
                    'push сайт принял до отказа (200 / 412 PERSONAL_TOKEN_ERROR). Поведение бота не меняется. Маркер: CONFIRM_TRACE_V2_1591R77.\n')
 
+# Revision 78: the export of eSIMs goes from the oldest toward the newest. Until now «📤 Выгрузка» gave the newest first (the
+# list of «Мои eSIM» is newest first and the export took it as it was), so a number «30» took the 30 newest and the old
+# ones, which wait the longest for payment and whose order links die first, were left to the end.
+# - EXPORT_ORDER_1591R78: the export (messages, the numbered list and the .txt), «🔄 Обновить статус ссылок» and the
+#   re-delivery of the ones still waiting go oldest first; a number in «Сколько выгрузить?» takes the oldest ones.
+#   «Мои eSIM» stays newest first.
+EXPORT_ORDER_MARKER = "EXPORT_ORDER_1591R78"
+OLD_ORDER_MARK_R78 = NEW_V2_MARK_R77.splitlines(keepends=True)[-1]
+NEW_ORDER_MARK_R78 = (OLD_ORDER_MARK_R78
+                      + '# EXPORT_ORDER_1591R78: the export of eSIMs goes from the oldest toward the newest.\n')
+ORDER_EDITS_R78 = ((OLD_ORDER_MARK_R78, NEW_ORDER_MARK_R78, "export order: marker"),)
+README_NOTE_R78 = ('\n\nРЕВИЗИЯ 78 (fix_package_1591.py)\nВыгрузка eSIM шла от новых к старым: число «30» брало 30 самых новых, а старые, которые дольше всех ждут\n'
+                   'оплаты и у которых ссылки заказа протухают первыми, оставались напоследок. Теперь «📤 Выгрузка» (сообщения,\n'
+                   'нумерованный список и .txt), «🔄 Обновить статус ссылок» и повторная выдача тех, что ещё ждут оплаты, идут от\n'
+                   'самых старых к новым, а число в «Сколько выгрузить?» берёт самые старые. «Мои eSIM» по-прежнему от новых к старым.\n'
+                   'Маркер: EXPORT_ORDER_1591R78.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -7756,6 +7776,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if EXPORT_ORDER_MARKER in source:
+        return 78
     if CONFIRM_TRACE_V2_MARKER in source:
         return 77
     if CONFIRM_TRACE_MARKER in source:
@@ -7917,6 +7939,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 75 or ORDER_VERIFY_MARKER in source)\
             and (MAX_REVISION < 76 or CONFIRM_TRACE_MARKER in source)\
             and (MAX_REVISION < 77 or CONFIRM_TRACE_V2_MARKER in source)\
+            and (MAX_REVISION < 78 or EXPORT_ORDER_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -9431,6 +9454,29 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 79 (r78). The export of eSIMs goes from the oldest toward the newest (the menu module carries the change).
+    if EXPORT_ORDER_MARKER not in source and MAX_REVISION >= 78:
+        for old, new, what in ORDER_EDITS_R78:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if EXPORT_ORDER_MARKER not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 78 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -9562,6 +9608,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 75", README_NOTE_R75),) if built_revision >= 75 else ()),
                           *((("РЕВИЗИЯ 76", README_NOTE_R76),) if built_revision >= 76 else ()),
                           *((("РЕВИЗИЯ 77", README_NOTE_R77),) if built_revision >= 77 else ()),
+                          *((("РЕВИЗИЯ 78", README_NOTE_R78),) if built_revision >= 78 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
