@@ -190,9 +190,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "7226d133e2918fd9127106c0455e094fb06eb7adfef7e6c53079e42782a788b9",  # r71 lite output
                          "e65e08e87bc4a7bf05f5c262234cfd7c0efc6ca8a70430d7b490e7de45284be0",  # r71 output
                          "4b3d105bcde5864be01443483168c909060cd16a0e94a30e9ea46217750c81f7",  # r71 exp8 output
-                         "3333333333333333333333333333333333333333333333333333333333333333",  # r72 lite output
-                         "4444444444444444444444444444444444444444444444444444444444444444",  # r72 output
-                         "5555555555555555555555555555555555555555555555555555555555555555"}  # r72 exp8 output
+                         "777bbc275abd0c14e3735d78ea14de4b257bd5f3141e9ac69acb5cbcb627fdac",  # r72 lite output
+                         "d00e998c078403f48e7f6ce6b50240672b7bfe36a397e76350540008a582e618",  # r72 output
+                         "40dc8d6e912567016f6a390d66a11913841ead368f908d92e242d024e95da7eb"}  # r72 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
