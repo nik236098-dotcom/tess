@@ -42,9 +42,9 @@ MARK_TITLES = {"new": "новая", "ok": "оформлена", "bad": "брак
 # MENU_DELETE_1591R57: «🗑 Удалить» hides an eSIM from the list (the mark «hidden» in esim_status.json);
 # the result files on the server (successful_sims.jsonl, payment_required.jsonl) stay as they are.
 HIDDEN_MARK = "hidden"
-PUSH_COUNT_DEFAULT = 6        # PUSH_COUNT_1591R73: eSIM per export by default
-PUSH_COUNT_CHOICES = (3, 6, 10, 15, 20, 30)
-PUSH_COUNT_MAX = 500
+CONFIRM_PUSH_DEFAULT = 6      # CONFIRM_PUSH_1591R74: push requests to the client on the confirmation page
+CONFIRM_PUSH_CHOICES = (6, 8, 10, 12, 15, 20)
+CONFIRM_PUSH_MAX = 30
 ESIM_KEEP_DAYS = 5  # AUTO_EXPIRE_1591R66: older eSIMs leave «Мои eSIM» by themselves (the files stay)
 
 # LINK_CHECK_1591R58: «🔗 Проверить ссылки» opens every order link of «Мои eSIM» in its own headless
@@ -292,8 +292,8 @@ RESTART_CHOICES = ((0, "выкл"), (360, "6 ч"), (720, "12 ч"), (1440, "24 ч
 
 
 # BASE_RESET_1591R73: «📂 База → 🔁 Сбросить прогресс» starts the loaded base from the first row (the processed numbers go
-# to base_archive/, the work is restarted); PUSH_COUNT_1591R73: «⚙️ Настройки → 📤 Выгрузка» sets how many eSIM the
-# export gives by default (6), the export dialog has a button for it.
+# to base_archive/, the work is restarted). CONFIRM_PUSH_1591R74: «⚙️ Настройки → 📲 Push» sets how many push requests a
+# client gets on the confirmation page (6 attempts of 65 s by default, up to 30): BEELINE_CONFIRM_ATTEMPTS, a restart.
 # MOBILE_PROXY_1591R69: «⚙️ Настройки → 📶 Мобильный прокси» (off by default): the proxy for the browsers and the IP
 # change link the runtime calls on «что-то пошло не так»; values with «%» are escaped for systemd.
 # AUTO_EXPIRE_1591R66: eSIMs older than ESIM_KEEP_DAYS (5) leave «Мои eSIM», the counters, export and checks.
@@ -355,6 +355,8 @@ def _dropin_value(value):
 
 
 def _setting_desc(name, value):
+    if name == "push" and str(value).isdigit() and 1 <= int(value) <= CONFIRM_PUSH_MAX:  # CONFIRM_PUSH_1591R74
+        return f"push клиенту на странице подтверждения: {int(value)} (по 65 с)"
     if name == "mproxy" and value in ("0", "1"):  # MOBILE_PROXY_1591R69
         return "мобильный прокси " + ("включён" if value == "1" else "выключен")
     if name == "tariff" and value in TARIFF_CHOICES:
@@ -377,7 +379,18 @@ def _setting_env(name, value):
         return {"BEELINE_TABS_PER_BROWSER": str(int(value))}
     if name == "mproxy":
         return {"BEELINE_MOBILE_PROXY_ON": value}
+    if name == "push":  # CONFIRM_PUSH_1591R74
+        return {"BEELINE_CONFIRM_ATTEMPTS": str(int(value))}
     return {"BEELINE_AI": value}
+
+
+def _confirm_push_value(raw):
+    """CONFIRM_PUSH_1591R74: the push count from BEELINE_CONFIRM_ATTEMPTS, 6 when unset or not a sane number."""
+    try:
+        n = int(str(raw or "").strip())
+    except ValueError:
+        return CONFIRM_PUSH_DEFAULT
+    return n if 1 <= n <= CONFIRM_PUSH_MAX else CONFIRM_PUSH_DEFAULT
 
 
 def _read_dropin(path):
@@ -1218,10 +1231,8 @@ class TelegramMenu:
             exp["await"] = True
             self.state["export"] = exp
             self._save()
-            d = self._push_count()  # PUSH_COUNT_1591R73
-            return self._show(f"📤 <b>Выгрузка</b>\n\nСколько выгрузить? Напиши число или слово «Все».\nПо умолчанию {d} (меняется в ⚙️ Настройках).\nЖдут оплаты 💳: {n}",
-                              _kb([[_btn(f"Выгрузить {d}", f"m|exp|count|{d}"), _btn(f"Все ({n})", "m|exp|count|all")],
-                                   [_btn("✖️ Отмена", "m|exp|cancel")]]))
+            return self._show(f"📤 <b>Выгрузка</b>\n\nСколько выгрузить? Напиши число или слово «Все».\nЖдут оплаты 💳: {n}",
+                              _kb([[_btn(f"Все ({n})", "m|exp|count|all")], [_btn("✖️ Отмена", "m|exp|cancel")]]))
         if step == "cancel":
             self.state.pop("export", None)
             self._save()
@@ -1232,14 +1243,6 @@ class TelegramMenu:
         return self._show(f"📤 <b>Выгрузка eSIM</b>\n\nЖдут оплаты 💳: {n}\nВыбери вид:",
                           _kb([[_btn("🟢 Обычная", "m|exp|mode|normal"), _btn("‼️ Срочная", "m|exp|mode|urgent")],
                                [_btn("◀️ Меню", "m|menu")]]))
-
-    def _push_count(self):
-        """PUSH_COUNT_1591R73: how many eSIM an export gives by default."""
-        try:
-            n = int(self.state.get("push_count") or PUSH_COUNT_DEFAULT)
-        except (TypeError, ValueError):
-            n = PUSH_COUNT_DEFAULT
-        return min(max(n, 1), PUSH_COUNT_MAX)
 
     def run_export(self, count):
         exp = dict(self.state.get("export") or {})
@@ -1690,7 +1693,8 @@ class TelegramMenu:
                 "tabs": (env.get("BEELINE_TABS_PER_BROWSER") or "4").strip(),
                 "ai": str(env.get("BEELINE_AI") or ("0" if "EXPERIMENT_BROWSERS8_1591" in self._app_source() else "1")).strip().lower()
                 not in {"0", "off", "no", "false"},
-                "restart": restart, **self._mproxy_values()}
+                "restart": restart, **self._mproxy_values(),
+                "push": _confirm_push_value(env.get("BEELINE_CONFIRM_ATTEMPTS"))}  # CONFIRM_PUSH_1591R74
 
     def _mproxy_values(self):
         """MOBILE_PROXY_1591R69: the drop-in holds what was saved (also while it is off), the environment what runs."""
@@ -1732,8 +1736,8 @@ class TelegramMenu:
     def ask_mproxy_input(self, what):
         self.state.update({"view": "settings", "awaiting_setting": what})
         self._save()
-        if what == "push":  # PUSH_COUNT_1591R73
-            return self._show(f"📤 <b>Выгрузка по умолчанию</b>\n\nПришли число eSIM от 1 до {PUSH_COUNT_MAX} одним сообщением.",
+        if what == "push":  # CONFIRM_PUSH_1591R74
+            return self._show(f"📲 <b>Push клиенту</b>\n\nПришли число от 1 до {CONFIRM_PUSH_MAX} одним сообщением.",
                               _kb([[_btn("✖️ Отмена", "m|cfg|push")]]))
         text = ("🌐 <b>Прокси</b>\n\nПришли адрес одним сообщением, например:\n<code>http://логин:пароль@1.2.3.4:8000</code>\n"
                 "или <code>1.2.3.4:8000:логин:пароль</code>" if what == "proxy" else
@@ -1744,13 +1748,13 @@ class TelegramMenu:
     def _handle_setting_text(self, text):
         what = self.state.get("awaiting_setting")
         value = str(text or "").strip()
-        if what == "push":  # PUSH_COUNT_1591R73
-            if not value.isdigit() or not 1 <= int(value) <= PUSH_COUNT_MAX:
-                return self._show(f"❌ <b>Нужно число от 1 до {PUSH_COUNT_MAX}</b>\n\nПришли ещё раз.",
+        if what == "push":  # CONFIRM_PUSH_1591R74
+            if not value.isdigit() or not 1 <= int(value) <= CONFIRM_PUSH_MAX:
+                return self._show(f"❌ <b>Нужно число от 1 до {CONFIRM_PUSH_MAX}</b>\n\nПришли ещё раз.",
                                   _kb([[_btn("✖️ Отмена", "m|cfg|push")]]))
             self.state["awaiting_setting"] = ""
             self._save()
-            return self.show_settings("pc", value)
+            return self.ask_setting("push", str(int(value)))
         ok = _parse_proxy(value) if what == "proxy" else _ip_url_ok(value)
         if not ok:
             return self._show("❌ <b>Не похоже на " + ("адрес прокси" if what == "proxy" else "ссылку") + "</b>\n\nПришли ещё раз.",
@@ -1782,18 +1786,16 @@ class TelegramMenu:
             return self._show(f"{title}\n\nСейчас: {cur[step]}",
                               _kb([[_btn(o, f"m|cfg|ask|{step}|{o}") for o in opts[:4]], [_btn(o, f"m|cfg|ask|{step}|{o}") for o in opts[4:]],
                                    [_btn("◀️ Назад", "m|cfg")]]))
-        if step == "push":  # PUSH_COUNT_1591R73
-            d = self._push_count()
-            rows = [[_btn(("✅ " if n == d else "") + str(n), f"m|cfg|pc|{n}") for n in PUSH_COUNT_CHOICES],
+        if step == "push":  # CONFIRM_PUSH_1591R74
+            d = cur["push"]
+            rows = [[_btn(("✅ " if n == d else "") + str(n), f"m|cfg|ask|push|{n}") for n in CONFIRM_PUSH_CHOICES[:3]],
+                    [_btn(("✅ " if n == d else "") + str(n), f"m|cfg|ask|push|{n}") for n in CONFIRM_PUSH_CHOICES[3:]],
                     [_btn("✏️ Своё число", "m|cfg|mpin|push")], [_btn("◀️ Назад", "m|cfg")]]
             self.state.update({"view": "settings", "awaiting_setting": ""})
             self._save()
-            return self._show(f"📤 <b>Выгрузка по умолчанию</b>\n\nСколько eSIM даёт «📤 Выгрузка», если не писать число: <b>{d}</b>.\n"
-                              f"Можно поднять: выбери число или пришли своё (до {PUSH_COUNT_MAX}).", _kb(rows))
-        if step == "pc":
-            self.state["push_count"] = min(max(int(value or PUSH_COUNT_DEFAULT), 1), PUSH_COUNT_MAX)
-            self._save()
-            return self.show_settings(value=f"📤 Выгрузка по умолчанию: {self.state['push_count']} eSIM")
+            return self._show(f"📲 <b>Push клиенту</b>\n\nСколько запросов подтверждения клиент получает на странице подтверждения: <b>{d}</b> "
+                              f"(первый и затем «Отправить снова» каждые 65 с; по умолчанию {CONFIRM_PUSH_DEFAULT}).\n"
+                              f"Можно поднять: выбери число или пришли своё (до {CONFIRM_PUSH_MAX}). Применяется перезапуском бота.", _kb(rows))
         if step == "restart":
             rows = [[_btn(t, f"m|cfg|rs|{m}") for m, t in RESTART_CHOICES]]
             return self._show("♻️ <b>Плановый перезапуск</b>\n\nСейчас: " + (_period(cur["restart"] * 60) if cur["restart"] else "выкл"),
@@ -1810,15 +1812,15 @@ class TelegramMenu:
                  f"🤖 DeepSeek: {'включён' if cur['ai'] else 'выключен'}",
                  f"♻️ Плановый перезапуск: {_period(cur['restart'] * 60) if cur['restart'] else 'выкл'}",
                  f"📶 Мобильный прокси: {'включён' if cur['mproxy_on'] else 'выключен'}",  # MOBILE_PROXY_1591R69
-                 f"📤 Выгрузка по умолчанию: {self._push_count()} eSIM",  # PUSH_COUNT_1591R73
-                 "", "<i>Тариф, браузеры, вкладки, DeepSeek и прокси применяются перезапуском бота.</i>"]
+                 f"📲 Push клиенту на странице подтверждения: {cur['push']}",  # CONFIRM_PUSH_1591R74
+                 "", "<i>Тариф, браузеры, вкладки, DeepSeek, push и прокси применяются перезапуском бота.</i>"]
         if value:
             lines += ["", _esc(value)]
         return self._show("\n".join(lines), _kb([
             [_btn("📦 Тариф", "m|cfg|tariff"), _btn("🌐 Браузеры", "m|cfg|browsers"), _btn("🗂 Вкладки", "m|cfg|tabs")],
             [_btn(f"🤖 DeepSeek: {'выключить' if cur['ai'] else 'включить'}", f"m|cfg|ask|ai|{'0' if cur['ai'] else '1'}")],
             [_btn("♻️ Плановый перезапуск", "m|cfg|restart")],
-            [_btn("📶 Мобильный прокси", "m|cfg|mproxy"), _btn("📤 Выгрузка", "m|cfg|push")],
+            [_btn("📶 Мобильный прокси", "m|cfg|mproxy"), _btn("📲 Push", "m|cfg|push")],
             [_btn("🏠 Меню", "m|menu")]]))
 
     def ask_setting(self, name, value):
@@ -2085,7 +2087,7 @@ class TelegramMenu:
                 elif args[0] in ("mode", "fmt") and len(args) > 1:
                     self.show_export(args[0], args[1])
                 elif args[0] == "count":
-                    self.run_export(int(args[1]) if len(args) > 1 and args[1].isdigit() and int(args[1]) > 0 else "all")
+                    self.run_export("all")
                 else:
                     self.show_export("cancel")
             elif action in ("xo", "xc"):
@@ -2107,8 +2109,6 @@ class TelegramMenu:
                     self.show_settings()
                 elif args[0] in ("tariff", "browsers", "tabs", "restart", "push"):
                     self.show_settings(args[0])
-                elif args[0] == "pc" and len(args) > 1 and args[1].isdigit():  # PUSH_COUNT_1591R73
-                    self.show_settings("pc", args[1])
                 elif args[0] == "mproxy":  # MOBILE_PROXY_1591R69
                     self.show_mproxy()
                 elif args[0] == "mpin" and len(args) > 1 and args[1] in ("proxy", "ipurl", "push"):

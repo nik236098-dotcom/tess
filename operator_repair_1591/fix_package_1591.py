@@ -195,7 +195,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "40dc8d6e912567016f6a390d66a11913841ead368f908d92e242d024e95da7eb",  # r72 exp8 output
                          "37477773fc6087f21bd16aeaf763ff53f6e73bc9bb3550efa491bd3b11c60e89",  # r73 lite output
                          "f8cc737b46040e699572360e6a745be075a46d127a99ca689412f2535f7373c9",  # r73 output
-                         "6b27b6701c6aa342b9c477c0df344f857c1157b8e76dbbc5344160f01318ee55"}  # r73 exp8 output
+                         "6b27b6701c6aa342b9c477c0df344f857c1157b8e76dbbc5344160f01318ee55",  # r73 exp8 output
+                         "c98b0659205e3f5d6d6f986f1f2faa1d267d201f213cb01614023074aa936f59",  # r74 lite output
+                         "86d2cda219e4f5b1fec2d5b6720f7150101a8bbff6c5057517f219931579df3d",  # r74 output
+                         "294d5c8016c2c76f3ead4b2d1eb1a3966fc64c4bb7e984119f1a090624e8e27a"}  # r74 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -6409,6 +6412,66 @@ README_NOTE_R73 = ('\n\nРЕВИЗИЯ 73 (fix_package_1591.py)\nТолько м
                    'отложенные строки уходят в base_archive и очищаются, бот перезапускается; «Мои eSIM» не трогаются). «⚙️ Настройки →\n'
                    '📤 Выгрузка»: сколько eSIM даёт «📤 Выгрузка» по умолчанию (6, можно поднять до 500). Маркер: BASE_RESET_1591R73.\n')
 
+# Revision 74: the number of push requests a client gets on the confirmation page is a setting. Until now it was a six in
+# the code: the first request and five «Отправить снова» at 65 s each. «⚙️ Настройки → 📲 Push» sets it (6 by default,
+# up to 30): BEELINE_CONFIRM_ATTEMPTS. The r73 setting «Выгрузка по умолчанию» (how many eSIM an export gives) was a
+# misreading of the request and is gone from the menu.
+CONFIRM_PUSH_MARKER = "CONFIRM_PUSH_1591R74"
+OLD_PUSH_MARK_R74 = NEW_RESET_MARK_R73.splitlines(keepends=True)[-1]
+NEW_PUSH_MARK_R74 = (OLD_PUSH_MARK_R74
+                     + '# CONFIRM_PUSH_1591R74: push requests on the confirmation page are a setting (BEELINE_CONFIRM_ATTEMPTS, 6 by default).\n')
+OLD_PUSH_HEAD_R74 = '# REENTER_ROW_1591R67\nREENTER_ROW_MAX_1591R67 = 6  # REENTER_SIX_1591R72: a row uses its six attempts (was 2)\n'
+NEW_PUSH_HEAD_R74 = ('# CONFIRM_PUSH_1591R74\n'
+                     'def _confirm_attempts_1591r74():\n'
+                     '    """How many push requests a client gets on the confirmation page: BEELINE_CONFIRM_ATTEMPTS, 6 by default, 1..30."""\n'
+                     '    try:\n'
+                     '        n = int(str(os.environ.get("BEELINE_CONFIRM_ATTEMPTS") or "").strip())\n'
+                     '    except ValueError:\n'
+                     '        return 6\n'
+                     '    return n if 1 <= n <= 30 else 6\n'
+                     '\n\n'
+                     'CONFIRM_ATTEMPTS_1591R74 = _confirm_attempts_1591r74()\n\n\n'
+                     + OLD_PUSH_HEAD_R74)
+PUSH_SITES_R74 = (
+    ('''    if worker.get("confirm_attempt"): lines.append(f"Подтверждение: {worker['confirm_attempt']}/6")\n''',
+     '''    if worker.get("confirm_attempt"): lines.append(f"Подтверждение: {worker['confirm_attempt']}/{CONFIRM_ATTEMPTS_1591R74}")  # CONFIRM_PUSH_1591R74\n''',
+     "confirm push: the status line"),
+    ('''    set_tab_status(worker, "🟡", f"Ожидаю подтверждение: попытка {attempt}/6")\n''',
+     '''    set_tab_status(worker, "🟡", f"Ожидаю подтверждение: попытка {attempt}/{CONFIRM_ATTEMPTS_1591R74}")\n''',
+     "confirm push: begin, status"),
+    ('''        f"Запущен собственный таймер 65 секунд (попытка {attempt}/6"\n''',
+     '''        f"Запущен собственный таймер 65 секунд (попытка {attempt}/{CONFIRM_ATTEMPTS_1591R74}"\n''',
+     "confirm push: begin, log"),
+    ('''    return attempt if 1 <= attempt <= 6 else 1\n''',
+     '''    return attempt if 1 <= attempt <= CONFIRM_ATTEMPTS_1591R74 else 1\n''',
+     "confirm push: saved attempt"),
+    ('''    if worker["confirm_attempt"] >= 6:\n''',
+     '''    if worker["confirm_attempt"] >= CONFIRM_ATTEMPTS_1591R74:  # CONFIRM_PUSH_1591R74\n''',
+     "confirm push: the cap"),
+    ('''        set_tab_status(worker, "🟠", "6 попыток завершены — беру следующую строку")\n''',
+     '''        set_tab_status(worker, "🟠", f"{CONFIRM_ATTEMPTS_1591R74} попыток завершены — беру следующую строку")\n''',
+     "confirm push: the end status"),
+    ('''        set_tab_status(worker, "🟡", f"Ожидаю подтверждение: попытка {worker['confirm_attempt']}/6")\n''',
+     '''        set_tab_status(worker, "🟡", f"Ожидаю подтверждение: попытка {worker['confirm_attempt']}/{CONFIRM_ATTEMPTS_1591R74}")\n''',
+     "confirm push: next, status"),
+    ('''            f"{worker['confirm_attempt']}/6: новый таймер 65 секунд.",\n''',
+     '''            f"{worker['confirm_attempt']}/{CONFIRM_ATTEMPTS_1591R74}: новый таймер 65 секунд.",\n''',
+     "confirm push: next, log"),
+    ('''        "6 попыток подтверждения закончились — возвращаюсь на один шаг назад "\n''',
+     '''        f"{CONFIRM_ATTEMPTS_1591R74} попыток подтверждения закончились — возвращаюсь на один шаг назад "\n''',
+     "confirm push: back to the form, log"),
+    ('''            f"[Вкладка {worker['id']}] После 6 попыток не удалось вернуться к форме. "\n''',
+     '''            f"[Вкладка {worker['id']}] После {CONFIRM_ATTEMPTS_1591R74} попыток не удалось вернуться к форме. "\n''',
+     "confirm push: back to the form, failure"),
+)
+PUSH_EDITS_R74 = ((OLD_PUSH_MARK_R74, NEW_PUSH_MARK_R74, "confirm push: marker"),
+                  (OLD_PUSH_HEAD_R74, NEW_PUSH_HEAD_R74, "confirm push: helper"),
+                  *PUSH_SITES_R74)
+README_NOTE_R74 = ('\n\nРЕВИЗИЯ 74 (fix_package_1591.py)\nСколько push-запросов получает клиент на странице подтверждения — настройка. Раньше шесть было зашито в коде\n'
+                   '(первый запрос и пять «Отправить снова» по 65 с). «⚙️ Настройки → 📲 Push»: 6 по умолчанию, можно поднять до 30\n'
+                   '(BEELINE_CONFIRM_ATTEMPTS, применяется перезапуском бота). Настройка «Выгрузка по умолчанию» из r73 убрана\n'
+                   '(я неверно понял просьбу). Маркер: CONFIRM_PUSH_1591R74.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -6924,7 +6987,8 @@ ASSIST_MARKER = "AUTO_ASSIST_BUDGET_1591R4"
 RESIGNED_HANDLERS = {"queue_success_assist", "queue_error_assist", "tick_error_assist", "run_registration", "main",
                      "tick_post_auth_review", "tick_sign_wait",
                      "fill_test_signature",  # SIGN_QUADRANTS_1591R70: draws per quarter
-                     "_agent_tools", "_agent_execute_tool"}  # AGENT_MEMORY_1591R71: the signature tool
+                     "_agent_tools", "_agent_execute_tool",  # AGENT_MEMORY_1591R71: the signature tool
+                     "tick_confirmation", "tick_resend"}  # CONFIRM_PUSH_1591R74: the cap is a setting
 OLD_SUCCESS_THROTTLE = '''    now = monotonic()
     last = float(worker.get("success_ai_last_at") or 0)
     if not force and now - last < 45:
@@ -7252,6 +7316,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if CONFIRM_PUSH_MARKER in source:
+        return 74
     if BASE_RESET_MARKER in source:
         return 73
     if REGION_CAPTION_MARKER in source:
@@ -7401,6 +7467,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 71 or AGENT_MEMORY_MARKER in source)\
             and (MAX_REVISION < 72 or REGION_CAPTION_MARKER in source)\
             and (MAX_REVISION < 73 or BASE_RESET_MARKER in source)\
+            and (MAX_REVISION < 74 or CONFIRM_PUSH_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -8847,6 +8914,29 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 75 (r74). Push requests on the confirmation page are a setting (menu «📲 Push», BEELINE_CONFIRM_ATTEMPTS).
+    if CONFIRM_PUSH_MARKER not in source and MAX_REVISION >= 74:
+        for old, new, what in PUSH_EDITS_R74:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if CONFIRM_PUSH_MARKER not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 74 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -8974,6 +9064,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 71", README_NOTE_R71),) if built_revision >= 71 else ()),
                           *((("РЕВИЗИЯ 72", README_NOTE_R72),) if built_revision >= 72 else ()),
                           *((("РЕВИЗИЯ 73", README_NOTE_R73),) if built_revision >= 73 else ()),
+                          *((("РЕВИЗИЯ 74", README_NOTE_R74),) if built_revision >= 74 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
