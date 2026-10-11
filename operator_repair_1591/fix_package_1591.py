@@ -199,9 +199,9 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "c98b0659205e3f5d6d6f986f1f2faa1d267d201f213cb01614023074aa936f59",  # r74 lite output
                          "86d2cda219e4f5b1fec2d5b6720f7150101a8bbff6c5057517f219931579df3d",  # r74 output
                          "294d5c8016c2c76f3ead4b2d1eb1a3966fc64c4bb7e984119f1a090624e8e27a",  # r74 exp8 output
-                         "79bd3b3d9ed469374d4bd3a35e0f2308b0f6f5fe7820b03cdf8a5951a9d67777",  # r75 lite output
-                         "0ec9dd41bd2370d2d49a23dc6a204e8c36cf9a9aa8d24f57db22792f5c7caf9a",  # r75 output
-                         "d30301cc9fcbfbbbb6d11a25e1f3327b0ad592f873227be57d4e910b51665b79"}  # r75 exp8 output
+                         "d3b229693f7792e04510a3c19b3ee48e1820746f0cb83ffb1837e58b022b181b",  # r75 lite output
+                         "3e3856f05f853c584feabb54fbead378a91cfa49c4ae2649e5864084abfe6919",  # r75 output
+                         "d37437eb4d1446975fa5748011f617e4b648ce99278eaf185d97c9524cd7f9d1"}  # r75 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -6478,6 +6478,10 @@ README_NOTE_R74 = ('\n\nРЕВИЗИЯ 74 (fix_package_1591.py)\nСколько 
 # Revision 75: «❔ подпись не подтверждена» is gone. After the signature the site answered 200 and the passport data
 # 202 (both «принято») and then showed /registration/error; the runtime wrote the row off by the look of that page,
 # without looking at the order. The order has its own link, and the site's state of it is the truth.
+# - CONTRACT_LIMIT_1591R75: the site's own answer «ошибка N — превышено количество договоров, дистанционная регистрация
+#   невозможна» (10.11, rows 1509 and others: signature 200, passport data 202, then /registration/error) is a refusal
+#   by the client's data, not a lost eSIM and not an unconfirmed signature: the row is skipped at once with that text
+#   (no six re-entries, no «❔»), recorded in error_skipped_rows.txt and told to Telegram in plain words.
 # - ORDER_VERIFY_1591R75: before a row is recorded as unverified, the order is opened by its own link in a fresh
 #   browser context (read-only, as the menu's link check does) and its state is read: the payment step → 💳 recorded
 #   as a payment (the number is processed), the eSIM already issued → ✅ recorded as a success, the order back at its
@@ -6487,6 +6491,7 @@ ORDER_VERIFY_MARKER = "ORDER_VERIFY_1591R75"
 OLD_VERIFY_MARK_R75 = NEW_PUSH_MARK_R74.splitlines(keepends=True)[-1]
 NEW_VERIFY_MARK_R75 = (OLD_VERIFY_MARK_R75
                        + '# ORDER_VERIFY_1591R75: the order is read by its own link before a row is written off; no «❔».\n')
+CONTRACT_LIMIT_REASON_R75 = "у клиента превышено количество договоров — Билайн не даёт оформить eSIM дистанционно"
 OLD_VERIFY_HEAD_R75 = '# CONFIRM_PUSH_1591R74\ndef _confirm_attempts_1591r74():\n'
 NEW_VERIFY_HEAD_R75 = r'''# ORDER_VERIFY_1591R75
 ORDER_VERIFY_SECONDS_1591R75 = 25
@@ -6596,20 +6601,73 @@ def _verify_order_1591r75(base_dir, worker, reason):
     if _reenter_row_1591r67(worker, "ORDER_" + kind.upper()):
         return True
     return _restart_row_1591r75(worker, str(reason or "")[:120])
+''' + r'''
+
+# CONTRACT_LIMIT_1591R75
+CONTRACT_LIMIT_REASON_1591R75 = ''' + repr(CONTRACT_LIMIT_REASON_R75) + r'''
+CONTRACT_LIMIT_TEXTS_1591R75 = ("превышено количество договоров", "дистанционная регистрация невозможна")
+
+
+def _contract_limit_1591r75(worker):
+    """The reason when the error page says the client has too many contracts (a refusal by his data), else ""."""
+    try:
+        body = (worker["page"].locator("body").inner_text(timeout=1500) or "").lower().replace("\xa0", " ")
+    except Exception:
+        return ""
+    return CONTRACT_LIMIT_REASON_1591R75 if any(text in body for text in CONTRACT_LIMIT_TEXTS_1591R75) else ""
+
+
+def _finish_contract_limit_1591r75(base_dir, worker, reason):
+    """The row is skipped at once (a new tab, the number is processed, error_skipped_rows.txt) and Telegram is told in
+    plain words that this is the client's refusal, not a lost eSIM. False when no new tab could be opened."""
+    row_no, active_value, second_value = row_parts(worker.get("row"))
+    total, tab_id = worker.get("total_rows") or "?", worker.get("id")
+    print(f"[Вкладка {tab_id}] Сайт пишет «превышено количество договоров, дистанционная регистрация невозможна»: "
+          f"строка {row_no} — {reason}. Это отказ по данным клиента, eSIM не потеряна; повторять бессмысленно.", flush=True)
+    if not _error_skip_final(worker, reason):
+        remember_processed_number(base_dir, worker.get("row"))
+        return False
+    queue = worker.get("success_queue")
+    if queue is not None:
+        try:
+            queue.put("\n".join([
+                "#лимит_договоров",
+                f"🚫 Строка {row_no}/{total} · Вкладка {tab_id}: у клиента превышено количество договоров",
+                "Билайн не даёт оформить eSIM дистанционно (сайт: «превышено количество договоров, дистанционная регистрация невозможна»).",
+                "Это отказ по данным строки, не сбой бота: заказ не потерян, номер пропущен, повторять не нужно.",
+                f"Исходные данные: {active_value} | {second_value}"]))
+        except Exception as exc:
+            print(f"[Telegram] Не удалось поставить LIMIT в очередь: {type(exc).__name__}: {exc}", flush=True)
+    return True
 
 
 ''' + OLD_VERIFY_HEAD_R75
+OLD_LIMIT_NEEDLES_R75 = '    ("не совпадают с данными", "данные не совпадают с базой оператора"),\n)\n'
+NEW_LIMIT_NEEDLES_R75 = (OLD_LIMIT_NEEDLES_R75[:-2]
+                         + '    ("превышено количество договоров", ' + repr(CONTRACT_LIMIT_REASON_R75) + '),  # CONTRACT_LIMIT_1591R75\n'
+                         + '    ("дистанционная регистрация невозможна", ' + repr(CONTRACT_LIMIT_REASON_R75) + '),\n)\n')
 OLD_VERIFY_HOOK_R75 = ('    if _reenter_row_1591r67(worker, "PERSONAL_TOKEN_ERROR" if "PERSONAL_TOKEN" in str(reason) else ""):\n'
                        '        return None\n')
 NEW_VERIFY_HOOK_R75 = ('    # ORDER_VERIFY_1591R75: the order is read by its own link first: the payment step is 💳, an issued eSIM is ✅,\n'
                        '    # anything else starts the row over; the row is written off as unverified only when no page could be opened.\n'
-                       '    if (globals().get("_verify_order_1591r75") or (lambda b, w, r: False))(base_dir, worker, reason):\n'
+                       '    # CONTRACT_LIMIT_1591R75: «превышено количество договоров» is the client\'s refusal: skip at once, say so plainly.\n'
+                       '    limit = (globals().get("_contract_limit_1591r75") or (lambda w: ""))(worker)\n'
+                       '    if limit:\n'
+                       '        if _finish_contract_limit_1591r75(base_dir, worker, limit):\n'
+                       '            return None\n'
+                       '        reason = limit\n'
+                       '    elif (globals().get("_verify_order_1591r75") or (lambda b, w, r: False))(base_dir, worker, reason):\n'
                        '        return None\n'
                        + OLD_VERIFY_HOOK_R75)
 VERIFY_EDITS_R75 = ((OLD_VERIFY_MARK_R75, NEW_VERIFY_MARK_R75, "order verify: marker"),
                     (OLD_VERIFY_HEAD_R75, NEW_VERIFY_HEAD_R75, "order verify: helpers"),
+                    (OLD_LIMIT_NEEDLES_R75, NEW_LIMIT_NEEDLES_R75, "contract limit: the operator's refusal texts"),
                     (OLD_VERIFY_HOOK_R75, NEW_VERIFY_HOOK_R75, "order verify: before the unverified record"))
-README_NOTE_R75 = ('\n\nРЕВИЗИЯ 75 (fix_package_1591.py)\n«❔ подпись не подтверждена» убрана. Сайт отвечал на подпись 200 и на паспортные данные 202 («принято»), а потом\n'
+README_NOTE_R75 = ('\n\nРЕВИЗИЯ 75 (fix_package_1591.py)\nОшибка сайта «превышено количество договоров, дистанционная регистрация невозможна» (11.10, строки 1509 и другие:\n'
+                   'подпись 200, паспортные данные 202, потом /registration/error) — отказ по данным клиента, а не потеря eSIM. Строка\n'
+                   'пропускается сразу (без шести повторов), номер помечается обработанным, в Telegram — понятное сообщение\n'
+                   '«🚫 у клиента превышено количество договоров». Маркер: CONTRACT_LIMIT_1591R75.\n'
+                   '«❔ подпись не подтверждена» убрана. Сайт отвечал на подпись 200 и на паспортные данные 202 («принято»), а потом\n'
                    'показывал /registration/error, и бот списывал строку по виду страницы, не глядя на заказ. Теперь перед этим заказ\n'
                    'открывается по его собственной ссылке (в чистом контексте, только чтение): шаг оплаты — строка 💳, eSIM выпущена —\n'
                    'строка ✅, заказ вернулся в начало или не читается — строка вводится заново (до 6 раз), потом новой вкладкой; строку,\n'

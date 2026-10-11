@@ -2481,6 +2481,8 @@ class PackageTests(unittest.TestCase):
         src = (self.pkg / "test_beeline.py").read_text("utf-8")
         self.assertIn("# ORDER_VERIFY_1591R75", src)
         hook = src.index("def _finish_unverified_1591r24")
+        self.assertLess(src.index('globals().get("_contract_limit_1591r75")', hook), src.index('globals().get("_verify_order_1591r75")', hook),
+                        "the client's refusal is recognised before the order is read, so it is not re-entered six times")
         self.assertLess(src.index('globals().get("_verify_order_1591r75")', hook),
                         src.index('_reenter_row_1591r67(worker, "PERSONAL_TOKEN_ERROR"', hook), "the order is read before anything else")
         pages = {
@@ -2488,6 +2490,7 @@ class PackageTests(unittest.TestCase):
             "/used": "<html><body>загрузка<script>fetch('/api/selfreg').then(r=>r.json())</script></body></html>",
             "/start": "<html><body>Выберите способ регистрации</body></html>",
             "/blank": "<html><body>ok</body></html>",
+            "/limit": "<html><body>билайн частным лицам<br>ошибка 7<br>Превышено количество договоров, дистанционная регистрация невозможна<br>найти офис</body></html>",
         }
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -2518,7 +2521,16 @@ class PackageTests(unittest.TestCase):
         for node in ast.parse(src).body:
             if isinstance(node, ast.Assign) and any(isinstance(t_, ast.Name) and t_.id == "_ORDER_STATUS_KINDS_1591R75" for t_ in node.targets):
                 exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
-        exec_functions(src, ["_order_state_1591r75", "_restart_row_1591r75", "_finish_issued_1591r75", "_verify_order_1591r75"], ns)
+        ns["_error_skip_final"] = lambda w, reason: events.append(("skip", reason)) or ns.get("_skip_ok", True)
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(t_, ast.Name) and t_.id in {
+                    "CONTRACT_LIMIT_REASON_1591R75", "CONTRACT_LIMIT_TEXTS_1591R75"} for t_ in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(src, ["_order_state_1591r75", "_restart_row_1591r75", "_finish_issued_1591r75", "_verify_order_1591r75",
+                             "_contract_limit_1591r75", "_finish_contract_limit_1591r75", "_error_page_final_reason"], ns)
+        ns["ERROR_FINAL_NEEDLES_1591R15"] = ast.literal_eval(next(
+            n.value for n in ast.parse(src).body if isinstance(n, ast.Assign)
+            and any(isinstance(t_, ast.Name) and t_.id == "ERROR_FINAL_NEEDLES_1591R15" for t_ in n.targets)))
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
@@ -2560,6 +2572,20 @@ class PackageTests(unittest.TestCase):
                 ns["restart_same_row_in_new_page"] = lambda wk: wk.__setitem__("phase", "ERROR_RECOVERY")
                 self.assertFalse(ns["_verify_order_1591r75"](str(self.pkg), worker("/blank"), "x"),
                                  "only when even a new page cannot be opened the old path (the record) runs")
+                # the site's own refusal (11.10, row 1509): «превышено количество договоров» — not a lost eSIM
+                limit_page = context.new_page(); limit_page.goto(base + "/limit")
+                reason_text = ns["_contract_limit_1591r75"]({"page": limit_page})
+                other_text = ns["_contract_limit_1591r75"]({"page": page})
+                final_reason = ns["_error_page_final_reason"](limit_page)
+                queue = []
+                events.clear()
+                w = worker("/limit", success_queue=types.SimpleNamespace(put=queue.append), total_rows=3261)
+                handled = ns["_finish_contract_limit_1591r75"](str(self.pkg), w, reason_text)
+                pushed = list(queue); skipped = [e for e in events if e[0] == "skip"]
+                events.clear(); queue.clear(); ns["_skip_ok"] = False
+                not_handled = ns["_finish_contract_limit_1591r75"](str(self.pkg), w, reason_text)
+                after_fail = (list(queue), [e for e in events if e[0] == "processed"])
+                limit_page.close()
                 browser.close()
         except Exception as exc:
             if "Executable doesn't exist" in str(exc) or "BrowserType.launch" in str(exc):
@@ -2567,6 +2593,15 @@ class PackageTests(unittest.TestCase):
             raise
         finally:
             server.shutdown()
+        self.assertIn("превышено количество договоров", reason_text); self.assertEqual(other_text, "")
+        self.assertEqual(final_reason, reason_text, "the generic error-page skip knows the same refusal")
+        self.assertTrue(handled); self.assertEqual(len(skipped), 1)
+        self.assertEqual(len(pushed), 1)
+        for needle in ("#лимит_договоров", "Строка 1509/3261", "превышено количество договоров", "не сбой бота", "заказ не потерян"):
+            self.assertIn(needle, pushed[0])
+        self.assertNotIn("ПОДПИСЬ НЕ ПОДТВЕРЖДЕНА", pushed[0])
+        self.assertFalse(not_handled); self.assertEqual(after_fail[0], [], "no push when no new tab could be opened")
+        self.assertEqual(after_fail[1], [("processed", 1509)], "the number is marked processed even then, it is not tried again")
         self.assertEqual(states["/pay"][0], "pay"); self.assertEqual(states["/used"][0], "used")
         self.assertIn("ESIM_SUCCESS", states["/used"][1]); self.assertEqual(states["/start"][0], "start")
         self.assertEqual(states["/blank"][0], "unknown"); self.assertEqual(no_link[0], "unknown"); self.assertEqual(dead[0], "unknown")
