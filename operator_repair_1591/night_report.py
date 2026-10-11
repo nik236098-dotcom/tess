@@ -53,6 +53,8 @@ def records(name):
 
 
 def journal():
+    if os.environ.get("NR_JOURNAL_FILE"):  # a saved journal (short-iso lines) instead of journalctl: tests, offline analysis
+        return Path(os.environ["NR_JOURNAL_FILE"]).read_text("utf-8", errors="replace").splitlines()
     try:
         return subprocess.run(["journalctl", "-u", "beeline", "--since", f"-{int(HOURS * 60)}min", "--no-pager", "-o", "short-iso"],
                               capture_output=True, text=True, timeout=120).stdout.splitlines()
@@ -520,6 +522,52 @@ def confirm_errors():
             print(f"  {a.get('t')} {a.get('method')} {name[:80]} → {a.get('status')}{more}  {hide(a.get('body'))[:300]}")
 
 
+def neighbours():
+    """Does a push request of one tab break the others? For every «Отправить снова» of the journal: how many OTHER tabs
+    opened a confirmation screen (sent a new push) or started a row in the seconds before, and how often the click then
+    ended in the token error (confirm_errors.jsonl). If the error rate rises with the number of neighbours, parallel
+    orders from one address break each other."""
+    stamp = re.compile(r"^(\d{4}-\d\d-\d\d)T(\d\d:\d\d:\d\d)")
+    events = []
+    for line in journal():
+        m = stamp.match(line)
+        tab = re.search(r"\[Вкладка (\d+)\]", line)
+        if not m or not tab:
+            continue
+        when = time.mktime(time.strptime(f"{m.group(1)} {m.group(2)}", "%Y-%m-%d %H:%M:%S"))
+        kind = ("open" if "Экран подтверждения открыт" in line else "start" if "Обрабатываю строку" in line
+                else "click" if "После 65 секунд нажата" in line else "")
+        if kind:
+            events.append((when, int(tab.group(1)), kind))
+    errors = []
+    for rec in records("confirm_errors.jsonl"):
+        try:
+            errors.append((time.mktime(time.strptime(str(rec["time"]), "%Y-%m-%d %H:%M:%S")), int(rec["tab"]),
+                           any("sendnewpush" in str(a.get("url")).lower() and int(a.get("status") or 0) >= 400
+                               for a in rec.get("answers") or [])))
+        except (KeyError, ValueError):
+            continue
+    print(f"== Соседние вкладки и ошибка на «Отправить снова» за {HOURS:g} ч")
+    clicks = [e for e in events if e[2] == "click"]
+    print(f"Нажатий «Отправить снова» в журнале: {len(clicks)}, записей об ошибке: {len(errors)}")
+    if not clicks or not errors:
+        print("Мало данных: нужны нажатия в журнале и записи confirm_errors.jsonl (ревизия 76+).")
+        return
+    for window in (15, 30, 60):
+        table = collections.defaultdict(lambda: [0, 0])
+        for when, tab, _ in clicks:
+            near = sum(1 for w, other, kind in events if kind in ("open", "start") and other != tab and when - window <= w <= when)
+            failed = any(e_tab == tab and 0 <= e_when - when <= 12 and e_push for e_when, e_tab, e_push in errors)
+            bucket = "0" if near == 0 else "1" if near == 1 else "2" if near == 2 else "3 и больше"
+            table[bucket][0] += 1
+            table[bucket][1] += failed
+        print(f"\n-- Сколько ДРУГИХ вкладок за {window} с до нажатия открыли подтверждение или начали строку")
+        for bucket in ("0", "1", "2", "3 и больше"):
+            total, bad = table.get(bucket, [0, 0])
+            if total:
+                print(f"  соседей {bucket:>10}: нажатий {total:4d}, из них ошибка 412: {bad:3d} ({100 * bad / total:.0f}%)")
+
+
 def tab_journal(tab, start, minutes=30):
     """One tab's journal from HH:MM (today, or yesterday when that is still ahead) for `minutes`,
     without the captcha matcher's noise; DeepSeek's lines about that tab are kept too."""
@@ -605,6 +653,12 @@ if __name__ == "__main__":
         HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 14.0
         SINCE = time.time() - HOURS * 3600
         error_summary()
+        sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "neighbours":
+        HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 3.0
+        SINCE = time.time() - HOURS * 3600
+        SINCE_TEXT = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(SINCE))
+        neighbours()
         sys.exit(0)
     if len(sys.argv) > 1 and sys.argv[1] == "confirm":
         HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 14.0

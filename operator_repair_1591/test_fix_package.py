@@ -2752,6 +2752,37 @@ class PackageTests(unittest.TestCase):
         for needle in ("На какой попытке пришла ошибка", "Сколько повторных push сайт принял до ошибки", "Все запросы POST в этих строках"):
             self.assertIn(needle, report)
 
+    def test_night_report_neighbours_error_rate_by_busy_neighbours(self):
+        """night_report.py neighbours: the share of «Отправить снова» that ended in 412 by how many other tabs were busy before."""
+        now = time.time()
+
+        def at(sec):
+            return time.strftime("%Y-%m-%dT%H:%M:%S+0300", time.localtime(now - 600 + sec))
+
+        lines, errors = [], []
+        # tab 1 clicks quietly three times (no neighbours, no error); tab 2 clicks twice right after neighbours opened
+        # a confirmation screen, and one of its clicks ends in 412
+        for sec in (0, 100, 200):
+            lines.append(f"{at(sec)} h python[1]: [Вкладка 1] После 65 секунд нажата «Отправить снова».")
+        for sec in (310, 311, 312):
+            lines.append(f"{at(sec)} h python[1]: [Вкладка {3 + sec % 3}] Экран подтверждения открыт. Запущен собственный таймер 65 секунд")
+        lines.append(f"{at(320)} h python[1]: [Вкладка 2] После 65 секунд нажата «Отправить снова».")
+        lines.append(f"{at(420)} h python[1]: [Вкладка 5] Обрабатываю строку 9, номер заканчивается на 1.")
+        lines.append(f"{at(425)} h python[1]: [Вкладка 2] После 65 секунд нажата «Отправить снова».")
+        errors.append({"time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now - 600 + 321)), "tab": 2,
+                       "answers": [{"method": "POST", "url": "https://s/v1/esim-selfreg/sendNewPush", "status": 412}]})
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "journal.txt").write_text("\n".join(lines) + "\n", "utf-8")
+            (Path(d) / "confirm_errors.jsonl").write_text("\n".join(json.dumps(e) for e in errors) + "\n", "utf-8")
+            run = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "night_report.py"), "neighbours", "1"],
+                                 env={**os.environ, "APP_DIR": d, "NR_JOURNAL_FILE": str(Path(d) / "journal.txt")},
+                                 capture_output=True, text=True, timeout=60)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("Нажатий «Отправить снова» в журнале: 5, записей об ошибке: 1", run.stdout)
+        window30 = run.stdout.split("за 30 с до нажатия")[1].split("--")[0]
+        self.assertRegex(window30, r"соседей\s+0: нажатий\s+3, из них ошибка 412:\s+0 \(0%\)")
+        self.assertRegex(window30, r"соседей\s+3 и больше: нажатий\s+1, из них ошибка 412:\s+1 \(100%\)")
+
     def test_r66_esims_older_than_5_days_leave_the_list(self):
         """AUTO_EXPIRE_1591R66: «Мои eSIM» keeps 5 days; the files stay; «↩️ Вернуть» counts what it can bring back."""
         import importlib.util, types as _types
