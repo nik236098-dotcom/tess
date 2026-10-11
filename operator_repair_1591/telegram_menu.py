@@ -288,6 +288,8 @@ TARIFF_CHOICES = {
 RESTART_CHOICES = ((0, "выкл"), (360, "6 ч"), (720, "12 ч"), (1440, "24 ч"))
 
 
+# MOBILE_PROXY_1591R69: «⚙️ Настройки → 📶 Мобильный прокси» (off by default): the proxy for the browsers and the IP
+# change link the runtime calls on «что-то пошло не так»; values with «%» are escaped for systemd.
 # AUTO_EXPIRE_1591R66: eSIMs older than ESIM_KEEP_DAYS (5) leave «Мои eSIM», the counters, export and checks.
 # SETTING_RESTART_1591R65: «⚙️ Настройки» restart the bot from tick(), once the button's update is saved; a value
 # already in effect restarts nothing (r60–r64 restarted forever on a tariff change).
@@ -307,7 +309,48 @@ def _period(seconds):
     return f"{hours} ч" if hours else f"{seconds // 60} мин"
 
 
+def _parse_proxy(raw):
+    """MOBILE_PROXY_1591R69: «http://login:pass@host:port», «host:port», «host:port:login:pass» → the proxy
+    without the password for display, or "" when the text is not a proxy (same rule as the runtime)."""
+    text = str(raw or "").strip()
+    if not text or any(ch in text for ch in ' "\\\n\t'):
+        return ""
+    scheme = "http"
+    if "://" in text:
+        scheme, text = text.split("://", 1)
+        scheme = scheme.lower()
+    if scheme not in {"http", "https", "socks5"}:
+        return ""
+    user = ""
+    if "@" in text:
+        cred, text = text.rsplit("@", 1)
+        user = cred.partition(":")[0]
+    parts = text.strip("/").split(":")
+    if len(parts) == 4 and not user:
+        parts, user = parts[:2], parts[2]
+    if len(parts) != 2 or not parts[0] or not parts[1].isdigit():
+        return ""
+    return f"{scheme}://" + (f"{user}:•••@" if user else "") + f"{parts[0]}:{parts[1]}"
+
+
+def _ip_url_ok(raw):
+    text = str(raw or "").strip()
+    return bool(re.match(r"^https?://[^\s\"\\]+$", text))
+
+
+def _mask_url(raw):
+    text = str(raw or "").strip()
+    host = re.match(r"^(https?://[^/?#]+)", text)
+    return (host.group(1) + "/…") if host else "—"
+
+
+def _dropin_value(value):
+    return str(value).replace("%", "%%")  # systemd expands %-specifiers in Environment=
+
+
 def _setting_desc(name, value):
+    if name == "mproxy" and value in ("0", "1"):  # MOBILE_PROXY_1591R69
+        return "мобильный прокси " + ("включён" if value == "1" else "выключен")
     if name == "tariff" and value in TARIFF_CHOICES:
         return f"тариф «{TARIFF_CHOICES[value][0]}»"
     if name in ("browsers", "tabs") and str(value).isdigit() and 1 <= int(value) <= 8:
@@ -326,6 +369,8 @@ def _setting_env(name, value):
         return {"BEELINE_BROWSERS": str(int(value))}
     if name == "tabs":
         return {"BEELINE_TABS_PER_BROWSER": str(int(value))}
+    if name == "mproxy":
+        return {"BEELINE_MOBILE_PROXY_ON": value}
     return {"BEELINE_AI": value}
 
 
@@ -336,7 +381,7 @@ def _read_dropin(path):
     except Exception:
         return out
     for m in re.finditer(r'^Environment="?([A-Z0-9_]+)=([^"\n]*)"?\s*$', text, re.M):
-        out[m.group(1)] = m.group(2)
+        out[m.group(1)] = m.group(2).replace("%%", "%")  # MOBILE_PROXY_1591R69: written escaped
     return out
 
 
@@ -571,6 +616,7 @@ class TelegramMenu:
         self.state["view"] = "menu"
         self.state["awaiting_ai"] = False
         self.state["awaiting_generation"] = False
+        self.state["awaiting_setting"] = ""  # MOBILE_PROXY_1591R69
         self._save()
         text = self._header() + (f"\n\n{_esc(note)}" if note else "")
         return self._show(text, self._menu_markup(), fresh=fresh)
@@ -1424,6 +1470,13 @@ class TelegramMenu:
         if first == "/recheck":
             self.recheck_command(t)
             return True
+        if self.state.get("awaiting_setting"):  # MOBILE_PROXY_1591R69: the proxy or the IP change link
+            if t.startswith("/"):
+                self.state["awaiting_setting"] = ""
+                self._save()
+                return False
+            self._handle_setting_text(t)
+            return True
         if self.state.get("awaiting_generation"):
             if t.startswith("/"):
                 self.state["awaiting_generation"] = False
@@ -1562,7 +1615,75 @@ class TelegramMenu:
                 "tabs": (env.get("BEELINE_TABS_PER_BROWSER") or "4").strip(),
                 "ai": str(env.get("BEELINE_AI") or ("0" if "EXPERIMENT_BROWSERS8_1591" in self._app_source() else "1")).strip().lower()
                 not in {"0", "off", "no", "false"},
-                "restart": restart}
+                "restart": restart, **self._mproxy_values()}
+
+    def _mproxy_values(self):
+        """MOBILE_PROXY_1591R69: the drop-in holds what was saved (also while it is off), the environment what runs."""
+        saved = _read_dropin(getattr(self, "dropin_path", None) or MENU_DROPIN)
+        get = lambda key: saved.get(key, os.environ.get(key, "")) or ""
+        return {"mproxy_on": str(get("BEELINE_MOBILE_PROXY_ON") or "0").strip().lower() in {"1", "on", "yes", "true"},
+                "mproxy": get("BEELINE_MOBILE_PROXY").strip(), "ipurl": get("BEELINE_IP_CHANGE_URL").strip()}
+
+    def _save_env(self, env):
+        """Write env into the menu's drop-in; True when systemd took it."""
+        path = Path(getattr(self, "dropin_path", None) or MENU_DROPIN)
+        current = _read_dropin(path)
+        current.update(env)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("[Service]\n# BOT_TOOLS_1591R60: written by «⚙️ Настройки» of the bot's menu\n"
+                        + "".join(f'Environment="{k}={_dropin_value(v)}"\n' for k, v in current.items()), "utf-8")
+        self.runner(["systemctl", "daemon-reload"])
+        return True
+
+    def show_mproxy(self, note=""):
+        """MOBILE_PROXY_1591R69: «📶 Мобильный прокси» — the browsers go through it, «что-то пошло не так» changes the IP."""
+        cur = self._mproxy_values()
+        self.state.update({"view": "settings", "awaiting_setting": ""})
+        self._save()
+        lines = ["📶 <b>Мобильный прокси</b>", "",
+                 f"Сейчас: {'✅ включён' if cur['mproxy_on'] else '⛔ выключен'}",
+                 f"🌐 Прокси: {_esc(_parse_proxy(cur['mproxy']) or '—')}",
+                 f"🔁 Смена IP: {_esc(_mask_url(cur['ipurl']) if cur['ipurl'] else '—')}", "",
+                 "<i>Когда включён: браузеры работают через этот прокси, а при «Что-то пошло не так» бот открывает "
+                 "ссылку смены IP (не чаще раза в 90 секунд). Прокси нужен http(s) — socks5 с паролем браузер не умеет.</i>"]
+        if note:
+            lines += ["", _esc(note)]
+        toggle = (_btn("⛔ Выключить", "m|cfg|ask|mproxy|0") if cur["mproxy_on"]
+                  else _btn("✅ Включить", "m|cfg|ask|mproxy|1"))
+        return self._show("\n".join(lines), _kb([
+            [_btn("✏️ Прокси", "m|cfg|mpin|proxy"), _btn("✏️ Ссылка смены IP", "m|cfg|mpin|ipurl")],
+            [toggle], [_btn("◀️ Назад", "m|cfg")]]))
+
+    def ask_mproxy_input(self, what):
+        self.state.update({"view": "settings", "awaiting_setting": what})
+        self._save()
+        text = ("🌐 <b>Прокси</b>\n\nПришли адрес одним сообщением, например:\n<code>http://логин:пароль@1.2.3.4:8000</code>\n"
+                "или <code>1.2.3.4:8000:логин:пароль</code>" if what == "proxy" else
+                "🔁 <b>Ссылка смены IP</b>\n\nПришли ссылку одним сообщением, например:\n"
+                "<code>https://changeip.mobileproxy.rent/?proxy_key=…</code>")
+        return self._show(text, _kb([[_btn("✖️ Отмена", "m|cfg|mproxy")]]))
+
+    def _handle_setting_text(self, text):
+        what = self.state.get("awaiting_setting")
+        value = str(text or "").strip()
+        ok = _parse_proxy(value) if what == "proxy" else _ip_url_ok(value)
+        if not ok:
+            return self._show("❌ <b>Не похоже на " + ("адрес прокси" if what == "proxy" else "ссылку") + "</b>\n\nПришли ещё раз.",
+                              _kb([[_btn("✖️ Отмена", "m|cfg|mproxy")]]))
+        key = "BEELINE_MOBILE_PROXY" if what == "proxy" else "BEELINE_IP_CHANGE_URL"
+        self.state["awaiting_setting"] = ""
+        self._save()
+        try:
+            self._save_env({key: value})
+        except Exception as exc:
+            return self.show_mproxy(note=f"❌ Не сохранилось: {type(exc).__name__}: {exc}")
+        label = "Прокси" if what == "proxy" else "Ссылка смены IP"
+        if self._mproxy_values()["mproxy_on"]:
+            self.state["settings_applied"] = f"{label.lower()} мобильного прокси"
+            self._save()
+            self._restart_at = _now() + 2
+            return self.show_menu(note=f"⏳ {label} сохранён(а). Бот перезапустится через пару секунд.")
+        return self.show_mproxy(note=f"✅ {label} сохранён(а). Заработает, когда включишь мобильный прокси.")
 
     def show_settings(self, step="", value=""):
         cur = self._settings_values()
@@ -1591,13 +1712,15 @@ class TelegramMenu:
                  f"🌐 Браузеров: {cur['browsers']} · вкладок в каждом: {cur['tabs']}",
                  f"🤖 DeepSeek: {'включён' if cur['ai'] else 'выключен'}",
                  f"♻️ Плановый перезапуск: {_period(cur['restart'] * 60) if cur['restart'] else 'выкл'}",
-                 "", "<i>Тариф, браузеры, вкладки и DeepSeek применяются перезапуском бота.</i>"]
+                 f"📶 Мобильный прокси: {'включён' if cur['mproxy_on'] else 'выключен'}",  # MOBILE_PROXY_1591R69
+                 "", "<i>Тариф, браузеры, вкладки, DeepSeek и прокси применяются перезапуском бота.</i>"]
         if value:
             lines += ["", _esc(value)]
         return self._show("\n".join(lines), _kb([
             [_btn("📦 Тариф", "m|cfg|tariff"), _btn("🌐 Браузеры", "m|cfg|browsers"), _btn("🗂 Вкладки", "m|cfg|tabs")],
             [_btn(f"🤖 DeepSeek: {'выключить' if cur['ai'] else 'включить'}", f"m|cfg|ask|ai|{'0' if cur['ai'] else '1'}")],
             [_btn("♻️ Плановый перезапуск", "m|cfg|restart")],
+            [_btn("📶 Мобильный прокси", "m|cfg|mproxy")],
             [_btn("🏠 Меню", "m|menu")]]))
 
     def ask_setting(self, name, value):
@@ -1613,13 +1736,18 @@ class TelegramMenu:
         if not env:
             return self.show_settings()
         if all(os.environ.get(k, "") == v for k, v in env.items()):  # SETTING_RESTART_1591R65: nothing to restart for
-            return self.show_settings(value=f"✅ Уже стоит: {desc}")
+            return (self.show_mproxy(note=f"✅ Уже стоит: {desc}") if name == "mproxy"
+                    else self.show_settings(value=f"✅ Уже стоит: {desc}"))
+        if name == "mproxy" and value == "1":  # MOBILE_PROXY_1591R69: nothing to turn on yet
+            cur = self._mproxy_values()
+            if not _parse_proxy(cur["mproxy"]) and not _ip_url_ok(cur["ipurl"]):
+                return self.show_mproxy(note="Сначала укажи прокси или ссылку смены IP.")
         path = Path(getattr(self, "dropin_path", None) or MENU_DROPIN)
         current = _read_dropin(path)
         current.update(env)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("[Service]\n# BOT_TOOLS_1591R60: written by «⚙️ Настройки» of the bot's menu\n"
-                        + "".join(f'Environment="{k}={v}"\n' for k, v in current.items()), "utf-8")
+                        + "".join(f'Environment="{k}={_dropin_value(v)}"\n' for k, v in current.items()), "utf-8")
         self.state["settings_applied"] = desc
         self._save()
         print(f"[MENU] Настройка: {desc}", flush=True)
@@ -1785,6 +1913,9 @@ class TelegramMenu:
         if action != "gen" and self.state.get("awaiting_generation"):
             self.state["awaiting_generation"] = False
             self._save()
+        if self.state.get("awaiting_setting") and not (action == "cfg" and args[:1] == ["mpin"]):  # MOBILE_PROXY_1591R69
+            self.state["awaiting_setting"] = ""
+            self._save()
         if action != "exp" and (self.state.get("export") or {}).get("await"):
             self.state.pop("export", None)
             self._save()
@@ -1874,6 +2005,10 @@ class TelegramMenu:
                     self.show_settings()
                 elif args[0] in ("tariff", "browsers", "tabs", "restart"):
                     self.show_settings(args[0])
+                elif args[0] == "mproxy":  # MOBILE_PROXY_1591R69
+                    self.show_mproxy()
+                elif args[0] == "mpin" and len(args) > 1 and args[1] in ("proxy", "ipurl"):
+                    self.ask_mproxy_input(args[1])
                 elif args[0] == "rs" and len(args) > 1:
                     self._log_press(cb, data)
                     self.show_settings("rs", args[1])

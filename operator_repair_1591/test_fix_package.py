@@ -199,7 +199,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_68(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_69(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -207,7 +207,7 @@ class PackageTests(unittest.TestCase):
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 30 applied", run.stdout)
             src = (r30 / "test_beeline.py").read_text("utf-8")
-            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("REGION_FIELD_1591R55", src); self.assertNotIn("SHORT_REPORT_1591R56", src); self.assertNotIn("QUIET_AUTO_1591R57", src); self.assertNotIn("LINK_CHECK_1591R58", src); self.assertNotIn("LINK_STATUS_1591R59", src); self.assertNotIn("BOT_TOOLS_1591R60", src); self.assertNotIn("EXPORT_CARDS_1591R61", src); self.assertNotIn("ESIM_ISSUED_1591R62", src); self.assertNotIn("BASE_TOOLS_1591R64", src); self.assertNotIn("SETTING_RESTART_1591R65", src); self.assertNotIn("AUTO_EXPIRE_1591R66", src); self.assertNotIn("REENTER_ROW_1591R67", src); self.assertNotIn("TOKEN_REENTER_1591R68", src)
+            self.assertIn("AI_VERDICT_1591R30", src); self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("TARIFF_SCOPE_1591R32", src); self.assertNotIn("TARIFF_CHANGE_BUTTON_1591R33", src); self.assertNotIn("BROWSER_COUNT_ENV_1591R34", src); self.assertNotIn("TRACE_COMPACT_1591R35", src); self.assertNotIn("SIM_URL_PER_ROW_1591R36", src); self.assertNotIn("AI_ON_SIGN_FAIL_1591R37", src); self.assertNotIn("TELEGRAM_MENU_1591R38", src); self.assertNotIn("SIGN_REJECTED_1591R39", src); self.assertNotIn("ISOLATED_CONTEXT_1591R40", src); self.assertNotIn("TARIFF_CONFIG_1591R41", src); self.assertNotIn("TARIFF_LOG_1591R42", src); self.assertNotIn("BASKET_SUMMARY_1591R43", src); self.assertNotIn("CONFIGURATOR_DUMP_1591R44", src); self.assertNotIn("CONFIGURATOR_SELECT_1591R45", src); self.assertNotIn("OPERATOR_LIVE_1591R46", src); self.assertNotIn("STREET_RULE_1591R47", src); self.assertNotIn("RESIGN_LIMIT_1591R48", src); self.assertNotIn("EXHAUSTED_UNVERIFIED_1591R49", src); self.assertNotIn("CLEAR_BASE_1591R50", src); self.assertNotIn("PAYMENT_STRICT_1591R51", src); self.assertNotIn("CLEAR_SAFE_1591R52", src); self.assertNotIn("CONTACT_PHONE_FIELD_1591R53", src); self.assertNotIn("AUTO_TOOLS_1591R54", src); self.assertNotIn("REGION_FIELD_1591R55", src); self.assertNotIn("SHORT_REPORT_1591R56", src); self.assertNotIn("QUIET_AUTO_1591R57", src); self.assertNotIn("LINK_CHECK_1591R58", src); self.assertNotIn("LINK_STATUS_1591R59", src); self.assertNotIn("BOT_TOOLS_1591R60", src); self.assertNotIn("EXPORT_CARDS_1591R61", src); self.assertNotIn("ESIM_ISSUED_1591R62", src); self.assertNotIn("BASE_TOOLS_1591R64", src); self.assertNotIn("SETTING_RESTART_1591R65", src); self.assertNotIn("AUTO_EXPIRE_1591R66", src); self.assertNotIn("REENTER_ROW_1591R67", src); self.assertNotIn("TOKEN_REENTER_1591R68", src); self.assertNotIn("ORDER_REUSE_1591R69", src)
             self.assertIn("VERDICT: SIGNED", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertEqual(json.loads((r30 / "manifest.json").read_text("utf-8"))["revision"], 30)
             run = subprocess.run([sys.executable, fix.__file__, str(r30)], env=env, capture_output=True, text=True)
@@ -383,18 +383,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 68 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 69 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
-            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68"):
+            for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 68", run.stdout)
+            self.assertIn("Already revision 69", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 68 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 69 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -659,7 +659,8 @@ class PackageTests(unittest.TestCase):
         src = self.source
         boot = src[src.index("def _tab_process("):][:2500]
         self.assertIn("context = _isolated_context_1591r40(browser, tab_id)", boot); self.assertNotIn("context = browser.contexts[0]\n        page = context.new_page()", boot)
-        ns = {"os": types.SimpleNamespace(environ={}), "print": lambda *a, **k: None}
+        ns = {"os": types.SimpleNamespace(environ={}), "print": lambda *a, **k: None,
+              "_proxy_context_kwargs_1591r69": lambda tab_id: {}}  # MOBILE_PROXY_1591R69: off (tested in r69)
         exec_functions(src, ["_isolated_context_1591r40"], ns)
         ns["ISOLATED_CONTEXTS"] = False
         shared = object()
@@ -702,7 +703,8 @@ class PackageTests(unittest.TestCase):
                     if worker is None:
                         self.skipTest("chromium did not open its CDP port")
                     said = []
-                    own_ns = {"os": types.SimpleNamespace(environ={}), "print": lambda *a, **k: said.append(" ".join(map(str, a))), "ISOLATED_CONTEXTS": True}
+                    own_ns = {"os": types.SimpleNamespace(environ={}), "print": lambda *a, **k: said.append(" ".join(map(str, a))), "ISOLATED_CONTEXTS": True,
+                              "_proxy_context_kwargs_1591r69": lambda tab_id: {}}
                     exec_functions(src, ["_isolated_context_1591r40"], own_ns)
                     before = list(worker.contexts)        # the default context may register late in headless Chromium
                     ctx = own_ns["_isolated_context_1591r40"](worker, 3)
@@ -1024,7 +1026,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 68", run.stdout)
+            self.assertIn("Already revision 69", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1058,7 +1060,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 68)
+        self.assertEqual(manifest["revision"], 69)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1288,7 +1290,8 @@ class PackageTests(unittest.TestCase):
               "restart_same_row_in_new_page": restart, "set_tab_status": lambda *a: None,
               "external_heartbeat": lambda w, label: events.append(("hb", label)),
               "save_worker_result": lambda base, w, status: events.append(("saved", status)),
-              "remember_processed_number": lambda base, row: events.append(("processed", row))}
+              "remember_processed_number": lambda base, row: events.append(("processed", row)),
+              "_grey_streak_1591r69": lambda w: True, "GREY_SAME_FORM_1591R69": False}  # r22 as it was; r69 tested apart
         exec_functions(self.source, ["finish_worker_row", "reset_runtime_state", "_error_row_key",
                                      "_invalid_row_retry_1591r22", "_fresh_tab_for_next_row_1591r22"], ns)
         worker = {"id": 2, "row": (7, "79990000000", "1"), "phase": "ROW_START", "form_ready": True}
@@ -1415,7 +1418,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 68); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 69); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1425,7 +1428,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 68", run.stdout)
+            self.assertIn("Already revision 69", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -1668,6 +1671,11 @@ class PackageTests(unittest.TestCase):
                   "CLIENTS_FILE": base / "clients.txt", "PROCESSED_FILE": base / "processed_numbers.txt",
                   "APPEND_PENDING_FILE": base / ".base_append_pending", "_send": lambda text, **k: sent.append(text)}
             sent = []
+            ns["os"] = os
+            for node in ast.parse(ctrl).body:  # BASE_STRICT_1591R69: BIRTH_YEAR_MIN as the controller sets it
+                if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "BIRTH_YEAR_MIN" for t in node.targets):
+                    exec(compile(ast.Module(body=[node], type_ignores=[]), "ctrl", "exec"), ns)
+            self.assertEqual(ns["BIRTH_YEAR_MIN"], 1982)
             exec_functions(ctrl, ["_validate_base", "_phone_digits", "_passport_digits", "_birth_years", "_normalise_upload_line",
                                   "_prepare_uploaded_base", "_filter_note", "_merge_clean_base", "_has_unprocessed_base_rows",
                                   "_continue_appended_base"], ns)
@@ -1678,13 +1686,17 @@ class PackageTests(unittest.TestCase):
                 self.assertEqual(norm(line), ("79001112233 4510123456", "legacy"), line)
             self.assertEqual(norm("79001112233 12345")[1], "passport"); self.assertEqual(norm("12345 4510123456")[1], "phone")
             self.assertEqual(norm("# комментарий")[0], None)
-            # «номер|паспорт|даты рождения»: no passport or no year 1980+ is skipped; one of two dates is enough
+            # «номер|паспорт|даты рождения»: no passport is skipped; BASE_STRICT_1591R69: exactly one birth date, 1982+
             self.assertEqual(norm("79001112233|4510 123456|01.02.1985"), ("79001112233 4510123456", "pipe"))
-            self.assertEqual(norm("79001112233|4510123456|01.01.1972;02.02.1990")[0], "79001112233 4510123456")
+            self.assertEqual(norm("79001112233|4510123456|01.01.1972;02.02.1990")[1], "dates", "several people: skipped")
+            self.assertEqual(norm("79001112233|4510123456|02.02.1990|01.01.1991")[1], "dates")
+            self.assertEqual(norm("79001112233|4510123456|02.02.1990;02.02.1990")[0], "79001112233 4510123456", "the same date twice is one")
             self.assertEqual(norm("79001112233|4510123456|1990-02-02")[0], "79001112233 4510123456")
-            self.assertEqual(norm("79001112233|4510123456|01.01.1980")[0], "79001112233 4510123456")
+            self.assertEqual(norm("79001112233|4510123456|01.01.1982")[0], "79001112233 4510123456")
+            self.assertEqual(norm("79001112233|4510123456|31.12.1981")[1], "birth")
+            self.assertEqual(norm("79001112233|4510123456|01.01.1980")[1], "birth")
             self.assertEqual(norm("79001112233||03.03.1995")[1], "passport")
-            self.assertEqual(norm("79001112233|4510123456|01.01.1972;02.02.1979")[1], "birth")
+            self.assertEqual(norm("79001112233|4510123456|01.01.1972;02.02.1979")[1], "dates")
             self.assertEqual(norm("79001112233|4510123456|")[1], "birth")
             self.assertEqual(norm("79001112233|4510123456|31.02.1990")[1], "birth", "not a real date")
             raw, clean = base / "raw.txt", base / "clean.txt"
@@ -1693,7 +1705,8 @@ class PackageTests(unittest.TestCase):
             stats = ns["_prepare_uploaded_base"](raw, clean)
             self.assertEqual(clean.read_text().splitlines(), ["79001112201 4510000001", "79001112204 4510000004"])
             self.assertEqual((stats["source"], stats["accepted"], stats["birth"], stats["passport"], stats["duplicates"]), (5, 2, 1, 1, 1))
-            self.assertEqual(ns["_filter_note"](stats), "\n⏭ Отфильтровано без паспорта: 1 · не 1980+: 1 · повторы: 1")
+            self.assertEqual(ns["_filter_note"](stats), "\n⏭ Отфильтровано без паспорта: 1 · не 1982+: 1 · повторы: 1")
+            self.assertEqual(ns["_filter_note"]({"dates": 2, "birth": 1}), "\n⏭ Отфильтровано не 1982+: 1 · несколько дат: 2")
             self.assertEqual(len(bs["load_clients"](clean)), 2, "the runtime reads the cleaned base")
             raw.write_text("79001112202|4510000002|01.01.1970\n", "utf-8")
             with self.assertRaises(ValueError):
@@ -1832,6 +1845,193 @@ class PackageTests(unittest.TestCase):
         page_tab = {"id": 8, "row": "7905", "page": Page("введите данные снова"), "phase": "SIGN_WAIT"}
         self.assertIsNone(ns["_finish_unverified_1591r24"]("/b", page_tab, "после «Подписать договор» сайт показал registration/error"))
         self.assertEqual(restarts[-1], "7905")
+
+    def test_r69_order_reuse_grey_rows_corporate_and_mobile_proxy(self):
+        """ORDER_REUSE_1591R69 / GREY_SAME_FORM_1591R69 / CORPORATE_1591R69 / MOBILE_PROXY_1591R69."""
+        import http.server, threading as _th, urllib.request, urllib.parse as _up, unittest.mock as _mock
+        src = (self.pkg / "test_beeline.py").read_text("utf-8")
+        for needle in ("# ORDER_REUSE_1591R69:", "    if _row_tick_1591r69(base_dir, worker):",
+                       "        _remember_order_1591r69(page, phone, digits)  # ORDER_REUSE_1591R69",
+                       '    if not worker["form_ready"] and _reuse_order_1591r69(worker):',
+                       "|получить\\s+новый\\s+запрос)", "**_proxy_context_kwargs_1591r69(tab_id))",
+                       "_grey_streak_1591r69(worker) and _invalid_row_retry_1591r22(worker)",
+                       "if not GREY_SAME_FORM_1591R69 and _fresh_tab_for_next_row_1591r22(worker):"):
+            self.assertIn(needle, src)
+        self.assertRegex("получить новый запрос", re.compile(r"^\s*(?:отправить\s+снова|отправить|повторить\s+ещ[её]|получить\s+новый\s+запрос)\s*$", re.I))
+        printed, saved, remembered, blackbox, cleared = [], [], [], [], []
+        ns = {"re": re, "os": os, "json": json, "time": time, "Path": Path, "urlsplit": _up.urlsplit, "urllib": urllib,
+              "monotonic": time.monotonic, "print": lambda *a, **k: printed.append(" ".join(map(str, a))),
+              "TARIFF_NAME": "для смарт часов", "ensure_region_page": lambda page, diag=None: True,
+              "_row_progress": lambda page, note: None, "capture_blackbox": lambda w, r, e=None: blackbox.append(r),
+              "_error_row_key": lambda w: str(w.get("row")), "save_worker_result": lambda b, w, st: saved.append(st),
+              "remember_processed_number": lambda b, row: remembered.append(row),
+              "clear_registration_fields": lambda page: cleared.append(1),
+              "reset_runtime_state": lambda w: w.update({"row": None, "diagnostic": None}),
+              "set_tab_status": lambda *a: None, "external_heartbeat": lambda *a: None}
+        for node in ast.parse(src).body:
+            named = (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and "1591R69" in t.id for t in node.targets)) \
+                or (isinstance(node, ast.FunctionDef) and "1591r69" in node.name)
+            if named:
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(src, ["finish_worker_row"], ns)
+
+        class Diag:
+            def __init__(self): self.events = []
+            def snapshot(self, name): self.events.append(name)
+            def write(self, name, **k): self.events.append(name)
+
+        page_html = ("<html><body><h3>несколько шагов</h3><button id=m onclick=\"document.getElementById('c').style.display='block'\">"
+                     "выбрать способ регистрации</button><div id=c style='display:none'><div onclick=\"document.getElementById('f')"
+                     ".style.display='block'\"><p>с сим билайна</p><p>возьмём ваши данные с активного номера у нас</p></div></div>"
+                     "<form id=f style='display:none'><input name=ctn></form></body></html>").encode()
+        hits = []
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                hits.append(self.path)
+                self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(page_html))); self.end_headers(); self.wfile.write(page_html)
+            def log_message(self, *a): pass
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        _th.Thread(target=srv.serve_forever, daemon=True).start()
+        url = f"http://127.0.0.1:{srv.server_address[1]}/registration/esim?hash_order=abc"
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                base = Path(d)
+                order_file = base / "order_links" / "tab_2.json"
+                # the basket path saves the order of this tab
+                fake = types.SimpleNamespace(_order_store_1591r69=(base, 2), _reserved_sim_url=url, _reserved_sim_number="+79620000001")
+                self.assertTrue(ns["_remember_order_1591r69"](fake, "+7 919 000 11 22", "79190001122"))
+                rec = json.loads(order_file.read_text())
+                self.assertEqual((rec["url"], rec["sim_number"], rec["tariff"], rec["opens"]), (url, "+79620000001", "для смарт часов", 0))
+                self.assertFalse(ns["_remember_order_1591r69"](types.SimpleNamespace(_order_store_1591r69=(base, 3), _reserved_sim_url="https://x/basket/"), "", ""),
+                                 "only a registration page is an order")
+                # a fresh tab opens it in a real Chromium: «выбрать способ регистрации» → «с сим билайна» → the form
+                try:
+                    from playwright.sync_api import sync_playwright
+                    with sync_playwright() as p:
+                        try:
+                            browser = p.chromium.launch(headless=True)
+                        except Exception:
+                            browser = p.chromium.launch(headless=True, executable_path="/opt/pw-browsers/chromium")
+                        page = browser.new_page()
+                        worker = {"id": 2, "base_dir": base, "page": page, "diagnostic": Diag(), "generation": 1}
+                        reused = ns["_reuse_order_1591r69"](worker)
+                        attrs = (getattr(page, "_reserved_sim_url", None), getattr(page, "_reserved_sim_number", None))
+                        form_visible = page.locator('input[name="ctn"]').is_visible()
+                        browser.close()
+                except Exception as exc:
+                    self.skipTest(f"no headless Chromium here: {type(exc).__name__}: {exc}")
+                self.assertTrue(reused); self.assertTrue(form_visible)
+                self.assertEqual(attrs, (url, "+79620000001"), "the push keeps the order's link and eSIM number")
+                self.assertEqual((worker["contact_digits"], worker["contact_phone"]), ("79190001122", "+7 919 000 11 22"))
+                self.assertEqual(json.loads(order_file.read_text())["opens"], 1)
+                # the confirmation started: the counter starts over; the client confirmed: the order is taken
+                tick = ns["_row_tick_1591r69"]
+                worker.update({"phase": "CONFIRM", "page": None})
+                tick(base, worker); self.assertEqual(json.loads(order_file.read_text())["opens"], 0)
+                worker["phase"] = "POST_AUTH_REVIEW"
+                tick(base, worker); self.assertFalse(order_file.exists(), "a confirmed client takes the order")
+                self.assertFalse(ns["_reuse_order_1591r69"](worker), "nothing saved: the basket")
+                # stale, a changed tariff, 3 opens without a confirmation: dropped, the basket follows
+                for change in ({"created": time.time() - 24 * 3600}, {"tariff": "подписка bee START"}, {"opens": 3}):
+                    ns["_remember_order_1591r69"](fake, "+7 919 000 11 22", "79190001122")
+                    rec = json.loads(order_file.read_text()); rec.update(change); order_file.write_text(json.dumps(rec))
+                    self.assertFalse(ns["_reuse_order_1591r69"](worker)); self.assertFalse(order_file.exists(), change)
+                # the form does not open by the link: dropped
+                ns["_remember_order_1591r69"](fake, "+7 919 000 11 22", "79190001122")
+                real_to_form, ns["_order_to_form_1591r69"] = ns["_order_to_form_1591r69"], lambda page, timeout=30: False
+                worker.update({"page": types.SimpleNamespace(goto=lambda *a, **k: None), "diagnostic": Diag()})
+                self.assertFalse(ns["_reuse_order_1591r69"](worker)); self.assertFalse(order_file.exists())
+                self.assertIn("order_reuse_failed", worker["diagnostic"].events)
+                ns["_order_to_form_1591r69"] = real_to_form
+                with _mock.patch.dict(os.environ, {"BEELINE_ORDER_REUSE": "0"}):
+                    ns["ORDER_REUSE_1591R69"] = False
+                    self.assertFalse(ns["_remember_order_1591r69"](fake, "", "")); self.assertFalse(order_file.exists())
+                ns["ORDER_REUSE_1591R69"] = True
+
+                # grey «Продолжить»: the next row in the same form; a fresh tab only after 3 in a row
+                retried, fresh = [], []
+                ns.update({"_invalid_row_retry_1591r22": lambda w: retried.append(w["row"]) or True,
+                           "_fresh_tab_for_next_row_1591r22": lambda w: fresh.append(w["row"]) or True,
+                           "return_to_clean_registration_form": lambda page, diag: True})
+                tab = {"id": 1, "generation": 1, "page": None, "diagnostic": None, "phase": "AUTH_WAIT"}
+                for row in ("r1", "r2"):
+                    tab["row"] = row; ns["finish_worker_row"](base, tab, "INVALID_ROW")
+                    self.assertEqual((tab["phase"], tab["form_ready"], retried, fresh), ("IDLE", True, [], []))
+                tab["row"] = "r3"; ns["finish_worker_row"](base, tab, "INVALID_ROW")
+                self.assertEqual(retried, ["r3"], "3 greys in a row: the form may be stale, this row in a fresh tab")
+                self.assertEqual(saved.count("INVALID_ROW"), 2)
+                tab["row"] = "r4"; ns["finish_worker_row"](base, tab, "INVALID_ROW")
+                tab["row"] = "r5"; ns["finish_worker_row"](base, tab, "CONFIRM_TIMEOUT")
+                tab["row"] = "r6"; ns["finish_worker_row"](base, tab, "INVALID_ROW")
+                tab["row"] = "r7"; ns["finish_worker_row"](base, tab, "INVALID_ROW")
+                self.assertEqual(retried, ["r3"], "a confirmation in between starts the streak over")
+                tab["generation"] = 2
+                tab["row"] = "r8"; ns["finish_worker_row"](base, tab, "INVALID_ROW")
+                self.assertEqual((retried, fresh), (["r3"], []), "a fresh page starts the streak over")
+                ns["GREY_SAME_FORM_1591R69"] = False
+                ns["_invalid_row_retry_1591r22"] = lambda w: False
+                tab["row"] = "r9"; ns["finish_worker_row"](base, tab, "INVALID_ROW")
+                self.assertEqual(fresh, ["r9"], "BEELINE_GREY_SAME_FORM=0: r22 as before")
+                ns["GREY_SAME_FORM_1591R69"] = True
+
+                # «с корпоративным номером не получится»: the row is skipped at once, the next one in the form
+                clicks, event = [], _th.Event()
+
+                class Loc:
+                    def __init__(self, visible): self.visible = visible
+                    def count(self): return 1 if self.visible else 0
+                    def is_visible(self): return self.visible
+                    def click(self, **k): clicks.append(1)
+                    @property
+                    def first(self): return self
+
+                class Page:
+                    text = "К сожалению, с корпоративным номером не получится\nУказать личный номер"
+                    def is_closed(self): return False
+                    def locator(self, selector):
+                        return types.SimpleNamespace(inner_text=lambda timeout=0: self.text) if selector == "body" else Loc(bool(clicks))
+                    def get_by_role(self, role, name=None): return Loc(True)
+                    def get_by_text(self, text): return Loc(True)
+                    def wait_for_timeout(self, ms): time.sleep(ms / 1000)
+                corp = {"id": 5, "row": "79001112233", "phase": "AUTH_WAIT", "generation": 1, "page": Page(),
+                        "launch_ready_event": event, "diagnostic": None, "base_dir": base}
+                self.assertTrue(tick(base, corp))
+                self.assertEqual((saved[-1], remembered[-1], corp["phase"], corp["form_ready"], clicks, event.is_set()),
+                                 ("CORPORATE_NUMBER", "79001112233", "IDLE", True, [1], True))
+                self.assertEqual((blackbox[-1], len(cleared)), ("corporate_number", 1))
+                corp2 = dict(corp, phase="CONFIRM", generation=2, page_check_at_1591r69=time.monotonic())
+                self.assertFalse(tick(base, corp2), "the page is read every 2 s, not every tick")
+
+                # 📶 the mobile proxy: off by default; on: the browser context and the IP change on «что-то пошло не так»
+                parse = ns["_parse_proxy_1591r69"]
+                self.assertEqual(parse("http://u:p@1.2.3.4:8000"), {"server": "http://1.2.3.4:8000", "username": "u", "password": "p"})
+                self.assertEqual(parse("1.2.3.4:8000:u:p:x"), None)
+                self.assertEqual(parse("1.2.3.4:8000:u:p"), {"server": "http://1.2.3.4:8000", "username": "u", "password": "p"})
+                self.assertEqual(parse("socks5://h:1080"), {"server": "socks5://h:1080"})
+                self.assertEqual(parse("ftp://h:1"), None); self.assertEqual(parse(""), None)
+                change_url = f"http://127.0.0.1:{srv.server_address[1]}/change?proxy_key=k"
+                err = {"id": 6, "row": "7", "phase": "CONFIRM", "generation": 1, "base_dir": base,
+                       "page": types.SimpleNamespace(is_closed=lambda: False, locator=lambda s: types.SimpleNamespace(inner_text=lambda timeout=0: "Что-то пошло не так"))}
+                with _mock.patch.dict(os.environ, {"BEELINE_MOBILE_PROXY": "1.2.3.4:8000:u:p", "BEELINE_IP_CHANGE_URL": change_url}):
+                    os.environ.pop("BEELINE_MOBILE_PROXY_ON", None)
+                    self.assertEqual(ns["_proxy_context_kwargs_1591r69"](1), {}, "off by default")
+                    tick(base, err); self.assertNotIn("/change?proxy_key=k", hits)
+                    os.environ["BEELINE_MOBILE_PROXY_ON"] = "1"
+                    self.assertEqual(ns["_proxy_context_kwargs_1591r69"](1)["proxy"]["server"], "http://1.2.3.4:8000")
+                    err["page_check_at_1591r69"] = 0; tick(base, err)
+                    for _ in range(50):
+                        if "/change?proxy_key=k" in hits:
+                            break
+                        time.sleep(0.1)
+                    self.assertEqual(hits.count("/change?proxy_key=k"), 1)
+                    self.assertFalse(any("proxy_key" in line for line in printed), "the link (its key) is never printed")
+                    other = dict(err, id=7, generation=1, page_check_at_1591r69=0, ip_changed_1591r69=None)
+                    tick(base, other); time.sleep(0.3)
+                    self.assertEqual(hits.count("/change?proxy_key=k"), 1, "90 s apart for all tabs")
+        finally:
+            srv.shutdown(); srv.server_close()
 
     def test_r66_esims_older_than_5_days_leave_the_list(self):
         """AUTO_EXPIRE_1591R66: «Мои eSIM» keeps 5 days; the files stay; «↩️ Вернуть» counts what it can bring back."""
@@ -2125,6 +2325,32 @@ class PackageTests(unittest.TestCase):
                         os.environ[key] = value
             cb("m|cfg|ok|browsers|99"); self.assertEqual(len(ran), 2, "an invalid value changes nothing")
             cb("m|cfg|rs|720"); self.assertEqual(policy, [720])
+
+            # MOBILE_PROXY_1591R69: «📶 Мобильный прокси» — saved while off, a restart only once it is on
+            restarts = lambda: len([r for r in ran if r[1:2] == ["--no-block"]])
+            applied_before = menu.state.get("settings_applied")
+            cb("m|cfg"); self.assertIn("📶 Мобильный прокси: выключен", shown()["text"])
+            cb("m|cfg|mproxy"); self.assertIn("⛔ выключен", shown()["text"])
+            cb("m|cfg|ask|mproxy|1"); cb("m|cfg|ok|mproxy|1")
+            self.assertIn("Сначала укажи прокси или ссылку", shown()["text"]); self.assertEqual(len(ran), 2)
+            cb("m|cfg|mpin|proxy"); self.assertTrue(menu.handle_text("не прокси")); self.assertIn("Не похоже", shown()["text"])
+            self.assertTrue(menu.handle_text("1.2.3.4:8000:user:secret"))
+            self.assertIn("Заработает, когда включишь", shown()["text"]); self.assertIn("http://user:•••@1.2.3.4:8000", shown()["text"])
+            self.assertNotIn("secret", shown()["text"], "the password is never shown")
+            cb("m|cfg|mpin|ipurl"); self.assertTrue(menu.handle_text("https://changeip.example/?proxy_key=a%20b"))
+            conf = menu.dropin_path.read_text()
+            self.assertIn('Environment="BEELINE_MOBILE_PROXY=1.2.3.4:8000:user:secret"', conf)
+            self.assertIn('Environment="BEELINE_IP_CHANGE_URL=https://changeip.example/?proxy_key=a%%20b"', conf, "systemd %-escaping")
+            self.assertIn('Environment="BEELINE_TARIFF=для смарт часов"', conf, "the other settings stay")
+            self.assertEqual(menu._mproxy_values()["ipurl"], "https://changeip.example/?proxy_key=a%20b")
+            self.assertEqual(restarts(), 1, "no restart while it is off")
+            self.assertFalse(menu.handle_text("hello"), "the next text is not taken for a proxy")
+            cb("m|cfg|mpin|proxy"); cb("m|menu"); self.assertFalse(menu.handle_text("1.2.3.4:9"), "another button ends the input")
+            cb("m|cfg|ok|mproxy|1"); self.assertIn('Environment="BEELINE_MOBILE_PROXY_ON=1"', menu.dropin_path.read_text())
+            self.assertIn("Бот перезапустится", shown()["text"]); self.assertTrue(menu._restart_at)
+            self.assertEqual(menu.state["settings_applied"], "мобильный прокси включён")
+            menu._restart_at = 0.0
+            menu.state["settings_applied"] = applied_before; menu._save()
 
             # 🖥 server and ⬆️ self-update
             cb("m|srv"); self.assertIn("Версия бота: r60 (lite)", shown()["text"])

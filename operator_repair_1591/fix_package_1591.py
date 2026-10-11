@@ -180,7 +180,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "b7dd73283a0dd995a96f3514b4c658bcb91ffadcb68203b36a7d26db5befcb00",  # r67 exp8 output
                          "9cbba2a5ecb649cac3969cb2f8bf67ce2679de13f3a92002c0a022aac95022d5",  # r68 lite output
                          "6d4055e86fb85f589c27c11f3bfdb8bb848c417d53bdae8e23705f80edfefc9c",  # r68 output
-                         "02aba622b3f2867f6a8d19a57b1d257463b9ab3c95efe016768075bddf8d7992"}  # r68 exp8 output
+                         "02aba622b3f2867f6a8d19a57b1d257463b9ab3c95efe016768075bddf8d7992",  # r68 exp8 output
+                         "fa0e97c5da8a9369b31c65146922e2d61a59660184f50fa6110647f90095dc2b",  # r69 lite output
+                         "b18a6cd0914baad00f3301d2bef4979e9d01813682a3af738dedfce2626d7a34",  # r69 output
+                         "ea0511ec3650b830d75c40dfad187698bfbd09447acfaf26ff65101ad838b29c"}  # r69 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -732,7 +735,8 @@ CONTROLLER_ACCEPTED_SHAS = {CONTROLLER_OUTPUT_SHA_R12, CONTROLLER_OUTPUT_SHA_R13
                             "ab1c4088f714471f480dbe29af0e2359ad189850e386d2f53058082acf4162ae",  # controller of r52..r59
                             "6ba64b644e27ee202971a72d24b5efcfa9e5dfd7b1ce97515a17414f4b60f442",  # controller of r60 (menu hooks)
                             "989606fee80a565e000e1a5f45de01584e955a751ec639e7ce59dcff68d9ce85",  # controller of r63 (by hand)
-                            "acfd905f16ef07a50d68e1017ff163c215119dfd5cd27f32929dbe516c22110e"}  # controller of r64 (base tools)
+                            "acfd905f16ef07a50d68e1017ff163c215119dfd5cd27f32929dbe516c22110e",  # controller of r64 (base tools)
+                            "8a827f68aa4972f1c9ed1aeeec5f0de4b918dbb6e8bb1a4884f9abec2dd19935"}  # controller of r69 (one birth date)
 RESTART_HELPER_R13 = '''# SCHEDULED_RESTART_1591R13
 RESTART_POLICY_FILE_NAME = "restart_policy.json"
 RESTART_DRAIN_FILE_NAME = "restart_drain.json"
@@ -5175,6 +5179,461 @@ README_NOTE_R68 = ('\n\nРЕВИЗИЯ 68 (fix_package_1591.py)\nСайт при
                    'были такими. Теперь строка начинается заново (клиент получает новый запрос, токен обновляется), а не\n'
                    'записывается как «❔»; не больше 2 повторов на строку. Маркер: TOKEN_REENTER_1591R68.\n')
 
+# Revision 69: a faster row flow, from a bot that does the same registration.
+# - ORDER_REUSE_1591R69: the order link («/registration/esim?hash_order=…», captured after «идём дальше») is kept
+#   per tab for 23 hours. A fresh tab opens it instead of the basket (tariff, contact phone, «идём дальше»: 1–2
+#   minutes) and goes straight to «выбрать способ регистрации» → «с сим билайна». The link is dropped when its client
+#   confirmed (the order is taken), when the form does not open by it, after 3 opens without a confirmation, or
+#   when the tariff changed. BEELINE_ORDER_REUSE=0 turns it off.
+# - GREY_SAME_FORM_1591R69: a grey «Продолжить» takes the next row in the same form (fields cleared) instead of
+#   a fresh tab for the retry and another for the next row; only 3 greys in a row in one page retry the row in
+#   a fresh tab (the form itself may be stale, r22). BEELINE_GREY_SAME_FORM=0 restores r22.
+# - CORPORATE_1591R69: «с корпоративным номером не получится» skips the row at once («указать личный номер»,
+#   the next row in the same form) instead of 3 restarts through the basket and a deferral.
+# - MOBILE_PROXY_1591R69: «⚙️ Настройки → 📶 Мобильный прокси» (off by default): the browser contexts go through
+#   the proxy, and «что-то пошло не так» calls the proxy's IP change link (once per page, 90 s apart).
+# - «получить новый запрос» is a resend button too. BASE_STRICT_1591R69: an uploaded «номер|паспорт|даты» line
+#   needs exactly one birth date, 1982 or later (BEELINE_BIRTH_YEAR_MIN).
+ORDER_REUSE_MARKER = "ORDER_REUSE_1591R69"
+OLD_ORDER_MARK_R69 = NEW_TOKEN_MARK_R68.splitlines(keepends=True)[-1]
+NEW_ORDER_MARK_R69 = (OLD_ORDER_MARK_R69
+                      + '# ORDER_REUSE_1591R69: new tabs reuse the order link; grey rows stay in the form; corporate rows skip.\n')
+OLD_ORDER_HEAD_R69 = '# REENTER_ROW_1591R67\nREENTER_ROW_MAX_1591R67 = 2\n'
+NEW_ORDER_HEAD_R69 = r'''# ORDER_REUSE_1591R69
+ORDER_REUSE_1591R69 = str(os.environ.get("BEELINE_ORDER_REUSE") or "1").strip().lower() not in {"0", "off", "no", "false"}
+ORDER_LINK_MAX_AGE_1591R69 = 23 * 3600   # the order link lives about a day
+ORDER_OPENS_MAX_1591R69 = 3              # opens in a row that never reached the confirmation
+ORDER_LINKS_DIR_1591R69 = "order_links"
+_ORDER_TAKEN_PHASES_1591R69 = {"POST_AUTH_REVIEW", "SIGN_WAIT", "SUCCESS_ASSIST", "ERROR_ASSIST", "SUCCESS_STOP"}
+
+
+def _order_file_1591r69(base_dir, tab_id):
+    return Path(base_dir or Path(__file__).resolve().parent) / ORDER_LINKS_DIR_1591R69 / f"tab_{tab_id}.json"
+
+
+def _read_order_1591r69(path):
+    try:
+        rec = json.loads(Path(path).read_text("utf-8"))
+    except Exception:
+        return None
+    return rec if isinstance(rec, dict) and rec.get("url") else None
+
+
+def _write_order_1591r69(path, rec):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(rec, ensure_ascii=False), "utf-8")
+    tmp.replace(path)
+
+
+def _remember_order_1591r69(page, phone, digits):
+    """The basket path just captured the order page: this tab keeps its link for the next fresh tabs."""
+    store = getattr(page, "_order_store_1591r69", None)
+    url = str(getattr(page, "_reserved_sim_url", "") or "")
+    if not ORDER_REUSE_1591R69 or not store or "/registration" not in urlsplit(url).path:
+        return False
+    base_dir, tab_id = store
+    try:
+        _write_order_1591r69(_order_file_1591r69(base_dir, tab_id), {
+            "url": url, "sim_number": getattr(page, "_reserved_sim_number", None), "contact_phone": phone,
+            "contact_digits": digits, "tariff": TARIFF_NAME, "created": time.time(), "opens": 0})
+    except Exception as exc:
+        print(f"[Вкладка {tab_id}] Ссылку заказа сохранить не удалось: {type(exc).__name__}: {exc}", flush=True)
+        return False
+    print(f"[Вкладка {tab_id}] Заказ сохранён: новые вкладки откроют его сразу, без корзины.", flush=True)
+    return True
+
+
+def _forget_order_1591r69(worker, why):
+    path = _order_file_1591r69(worker.get("base_dir"), worker.get("id"))
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return False
+    except Exception:
+        return False
+    print(f"[Вкладка {worker.get('id')}] Сохранённый заказ больше не используется: {why}.", flush=True)
+    return True
+
+
+def _visible_1591r69(locator):
+    try:
+        return locator.count() > 0 and locator.is_visible()
+    except Exception:
+        return False
+
+
+def _order_to_form_1591r69(page, timeout=30):
+    """From the order page to the «с сим билайна» form: True when the active-number field is shown."""
+    form = page.locator('input[name="ctn"]').first
+    method = page.get_by_role("button", name=re.compile(r"выбрать способ регистрации", re.I)).first
+    chips = (page.locator("div").filter(
+                 has_text=re.compile(r"^с сим билайнавозьмём ваши данные с активного номера у нас$")).nth(1),
+             page.get_by_text(re.compile(r"^\s*с\s+(?:сим|sim)\s+билайна\s*$", re.I)).first)
+    clicks = {"method": 0, "chip": 0}
+    deadline = monotonic() + timeout
+    while monotonic() < deadline:
+        if _visible_1591r69(form):
+            return True
+        _row_progress(page, "открываю форму по сохранённому заказу")
+        chip = next((c for c in chips if _visible_1591r69(c)), None)
+        try:
+            if chip is not None and clicks["chip"] < 3:
+                clicks["chip"] += 1
+                chip.click(timeout=5000, no_wait_after=True)
+                page.wait_for_timeout(1500)
+                continue
+            if _visible_1591r69(method) and clicks["method"] < 3:
+                clicks["method"] += 1
+                method.scroll_into_view_if_needed(timeout=3000)
+                method.click(timeout=5000)
+                page.wait_for_timeout(1500)
+                continue
+        except Exception:
+            pass
+        page.wait_for_timeout(500)
+    return _visible_1591r69(form)
+
+
+def _reuse_order_1591r69(worker):
+    """A fresh tab opens this tab's saved order instead of the basket. False (the basket path follows) when
+    there is none, it is stale, or the form does not open by it (the link is dropped then)."""
+    if not ORDER_REUSE_1591R69:
+        return False
+    page, diagnostic, tab_id = worker["page"], worker.get("diagnostic"), worker.get("id")
+    path = _order_file_1591r69(worker.get("base_dir"), tab_id)
+    rec = _read_order_1591r69(path)
+    if rec is None:
+        return False
+    age = time.time() - float(rec.get("created") or 0)
+    if age > ORDER_LINK_MAX_AGE_1591R69 or age < 0:
+        _forget_order_1591r69(worker, "ссылке больше 23 часов")
+        return False
+    if int(rec.get("opens") or 0) >= ORDER_OPENS_MAX_1591R69:
+        _forget_order_1591r69(worker, f"{ORDER_OPENS_MAX_1591R69} открытия подряд без подтверждения")
+        return False
+    if str(rec.get("tariff") or "") != TARIFF_NAME:
+        _forget_order_1591r69(worker, "тариф сменился")
+        return False
+    rec["opens"] = int(rec.get("opens") or 0) + 1
+    try:
+        _write_order_1591r69(path, rec)
+    except Exception:
+        pass
+    print(f"[Вкладка {tab_id}] Открываю сохранённый заказ без корзины (ему {int(age // 60)} мин).", flush=True)
+    _row_progress(page, "открываю сохранённый заказ")
+    opened, error = False, ""
+    try:
+        page.goto(rec["url"], wait_until="domcontentloaded", timeout=45000)
+        ensure_region_page(page, diagnostic)
+        opened = _order_to_form_1591r69(page)
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {str(exc)[:200]}"
+    if not opened:
+        try:
+            diagnostic.snapshot("order_reuse_failed")
+            diagnostic.write("order_reuse_failed", url=rec["url"], error=error)
+        except Exception:
+            pass
+        _forget_order_1591r69(worker, "форма по ссылке не открылась" + (f" ({error})" if error else ""))
+        return False
+    setattr(page, "_reserved_sim_url", rec["url"])
+    setattr(page, "_reserved_sim_url_locked", True)
+    if rec.get("sim_number"):
+        setattr(page, "_reserved_sim_number", rec["sim_number"])
+    if rec.get("contact_digits") and rec.get("contact_phone"):
+        worker["contact_digits"], worker["contact_phone"] = rec["contact_digits"], rec["contact_phone"]
+    try:
+        diagnostic.write("order_reused", url=rec["url"], age_seconds=int(age), opens=rec["opens"])
+    except Exception:
+        pass
+    print(f"[Вкладка {tab_id}] Форма открыта по сохранённому заказу.", flush=True)
+    return True
+
+
+def _order_reached_auth_1591r69(worker):
+    """The confirmation started on this order: its open counter starts over."""
+    path = _order_file_1591r69(worker.get("base_dir"), worker.get("id"))
+    rec = _read_order_1591r69(path)
+    if rec is not None and rec.get("opens"):
+        rec["opens"] = 0
+        try:
+            _write_order_1591r69(path, rec)
+        except Exception:
+            pass
+
+
+# GREY_SAME_FORM_1591R69
+GREY_SAME_FORM_1591R69 = str(os.environ.get("BEELINE_GREY_SAME_FORM") or "1").strip().lower() not in {"0", "off", "no", "false"}
+GREY_STREAK_MAX_1591R69 = 3
+
+
+def _grey_streak_1591r69(worker):
+    """True when the grey row is retried in a fresh tab (r22): after GREY_STREAK_MAX_1591R69 greys in a row in
+    one page, when the form itself may be stale. Otherwise the next row goes into the same form."""
+    if not GREY_SAME_FORM_1591R69:
+        return True
+    gen = worker.get("generation")
+    seen_gen, count = worker.get("grey_streak_1591r69") or (gen, 0)
+    count = (count if seen_gen == gen else 0) + 1
+    if count >= GREY_STREAK_MAX_1591R69:
+        worker["grey_streak_1591r69"] = None
+        print(f"[Вкладка {worker.get('id')}] {count} серых «Продолжить» подряд — возможно, зависла сама форма; "
+              "эту строку повторяю в новой вкладке.", flush=True)
+        return True
+    worker["grey_streak_1591r69"] = (gen, count)
+    return False
+
+
+# CORPORATE_1591R69
+_CORPORATE_TEXTS_1591R69 = ("с корпоративным номером не получится", "корпоративным номером не получится")
+_PAGE_CHECK_PHASES_1591R69 = {"AUTH_WAIT", "CONFIRM", "RESEND"}
+
+
+def _corporate_row_1591r69(base_dir, worker):
+    """Mobile ID does not work for a corporate number: the row is skipped at once and the next one goes into
+    the form «указать личный номер» opens (or a fresh start when it does not)."""
+    page, tab_id, key = worker["page"], worker.get("id"), _error_row_key(worker)
+    capture_blackbox(worker, "corporate_number")
+    print(f"[Вкладка {tab_id}] Строка {key}: сайт пишет «с корпоративным номером не получится» — "
+          "пропускаю её и беру следующую.", flush=True)
+    clicked = False
+    for locator in (page.get_by_role("button", name=re.compile(r"указать\s+личный\s+номер", re.I)),
+                    page.get_by_text(re.compile(r"^\s*указать\s+личный\s+номер\s*$", re.I))):
+        try:
+            if locator.count() and locator.first.is_visible():
+                locator.first.click(timeout=5000)
+                clicked = True
+                break
+        except Exception:
+            continue
+    event = worker.get("launch_ready_event")
+    if event is not None and not event.is_set():
+        event.set()
+    save_worker_result(base_dir, worker, "CORPORATE_NUMBER")
+    remember_processed_number(base_dir, worker.get("row"))
+    form_ok = False
+    deadline = monotonic() + (10 if clicked else 0)
+    while monotonic() < deadline:
+        if _visible_1591r69(page.locator('input[name="ctn"]').first):
+            form_ok = True
+            break
+        page.wait_for_timeout(300)
+    if form_ok:
+        clear_registration_fields(page)
+    reset_runtime_state(worker)
+    worker["grey_streak_1591r69"] = None
+    worker["form_ready"] = form_ok
+    worker["phase"] = "IDLE"
+    set_tab_status(worker, "⏭", f"Строка {key}: корпоративный номер — пропущена")
+    external_heartbeat(worker, "corporate_number")
+    return True
+
+
+# MOBILE_PROXY_1591R69
+IP_CHANGE_COOLDOWN_1591R69 = 90
+_IP_CHANGE_TEXTS_1591R69 = ("что-то пошло не так", "что то пошло не так", "еще раз нажать, и все заработает")
+
+
+def _parse_proxy_1591r69(raw):
+    """«scheme://» (http, https, socks5; http by default), the login and password before «@» or after the port
+    («host:port:login:pass»), → Playwright's proxy dict, or None."""
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    scheme = "http"
+    if "://" in text:
+        scheme, text = text.split("://", 1)
+        scheme = scheme.lower()
+    if scheme not in {"http", "https", "socks5"}:
+        return None
+    user = password = ""
+    if "@" in text:
+        cred, text = text.rsplit("@", 1)
+        user, _, password = cred.partition(":")
+    parts = text.strip("/").split(":")
+    if len(parts) == 4 and not user:
+        parts, user, password = parts[:2], parts[2], parts[3]
+    if len(parts) != 2 or not parts[0] or not parts[1].isdigit():
+        return None
+    proxy = {"server": f"{scheme}://{parts[0]}:{parts[1]}"}
+    if user:
+        proxy.update({"username": user, "password": password})
+    return proxy
+
+
+def _mobile_proxy_1591r69():
+    """(Playwright proxy or None, IP change link or "") from «📶 Мобильный прокси»; both off unless enabled."""
+    if str(os.environ.get("BEELINE_MOBILE_PROXY_ON") or "0").strip().lower() not in {"1", "on", "yes", "true"}:
+        return None, ""
+    return (_parse_proxy_1591r69(os.environ.get("BEELINE_MOBILE_PROXY")),
+            str(os.environ.get("BEELINE_IP_CHANGE_URL") or "").strip())
+
+
+def _proxy_context_kwargs_1591r69(tab_id):
+    proxy, _ = _mobile_proxy_1591r69()
+    if not proxy:
+        return {}
+    print(f"[Вкладка {tab_id}] 📶 Браузер работает через мобильный прокси {proxy['server']}.", flush=True)
+    return {"proxy": proxy}
+
+
+def _change_ip_1591r69(worker, why):
+    """Call the proxy's IP change link (in the background), at most once per IP_CHANGE_COOLDOWN_1591R69 for
+    all tabs. The link itself is never printed: it carries the proxy key."""
+    _, url = _mobile_proxy_1591r69()
+    if not url.startswith(("http://", "https://")):
+        return False
+    tab_id = worker.get("id")
+    stamp = Path(worker.get("base_dir") or Path(__file__).resolve().parent) / "ip_change.json"
+    try:
+        last = float(json.loads(stamp.read_text("utf-8")).get("at") or 0)
+    except Exception:
+        last = 0.0
+    if time.time() - last < IP_CHANGE_COOLDOWN_1591R69:
+        return False
+    try:
+        stamp.write_text(json.dumps({"at": time.time(), "tab": tab_id, "why": why}, ensure_ascii=False), "utf-8")
+    except Exception:
+        pass
+    import threading
+
+    def _call():
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(request, timeout=20) as response:
+                code = response.status
+            print(f"[Вкладка {tab_id}] 📶 Смена IP: ответ {code}.", flush=True)
+        except Exception as exc:
+            print(f"[Вкладка {tab_id}] 📶 Смена IP не удалась: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
+
+    threading.Thread(target=_call, daemon=True).start()
+    print(f"[Вкладка {tab_id}] 📶 На странице «{why}» — меняю IP мобильного прокси.", flush=True)
+    return True
+
+
+def _row_tick_1591r69(base_dir, worker):
+    """Before the phase handlers: the order link is dropped once its client confirmed, a corporate number ends
+    the row, «что-то пошло не так» changes the IP when «📶 Мобильный прокси» is on. True when the row ended."""
+    phase, gen = worker.get("phase"), worker.get("generation")
+    if phase in _ORDER_TAKEN_PHASES_1591R69 and worker.get("order_taken_1591r69") != gen:
+        worker["order_taken_1591r69"] = gen
+        _forget_order_1591r69(worker, "клиент подтвердил вход — заказ занят этой строкой")
+    if phase == "CONFIRM" and worker.get("order_auth_1591r69") != gen:
+        worker["order_auth_1591r69"] = gen
+        _order_reached_auth_1591r69(worker)
+    if phase not in _PAGE_CHECK_PHASES_1591R69 | {"POST_AUTH_REVIEW", "ERROR_ASSIST"}:
+        return False
+    now = monotonic()
+    if now - float(worker.get("page_check_at_1591r69") or 0) < 2:
+        return False
+    worker["page_check_at_1591r69"] = now
+    page = worker.get("page")
+    try:
+        if page is None or page.is_closed():
+            return False
+        body = (page.locator("body").inner_text(timeout=1000) or "").lower().replace("ё", "е")
+    except Exception:
+        return False
+    if phase in _PAGE_CHECK_PHASES_1591R69 and any(text in body for text in _CORPORATE_TEXTS_1591R69):
+        return _corporate_row_1591r69(base_dir, worker)
+    if worker.get("ip_changed_1591r69") != gen:
+        hit = next((text for text in _IP_CHANGE_TEXTS_1591R69 if text in body), "")
+        if hit and _change_ip_1591r69(worker, hit):
+            worker["ip_changed_1591r69"] = gen
+    return False
+
+
+''' + OLD_ORDER_HEAD_R69
+OLD_ORDER_TICK_R69 = 'def tick_worker(base_dir, worker):\n    if worker["phase"] == "POST_CONTINUE":\n'
+NEW_ORDER_TICK_R69 = ('def tick_worker(base_dir, worker):\n'
+                      '    if _row_tick_1591r69(base_dir, worker):  # ORDER_REUSE_1591R69, CORPORATE_1591R69, MOBILE_PROXY_1591R69\n'
+                      '        return\n'
+                      '    if worker["phase"] == "POST_CONTINUE":\n')
+OLD_ORDER_START_R69 = ('    if not worker["form_ready"]:\n'
+                       '        worker["contact_digits"] = "791900011" + f"{secrets.randbelow(100):02d}"\n'
+                       '        digits = worker["contact_digits"]\n'
+                       '        worker["contact_phone"] = (\n'
+                       '            f"+7 {digits[1:4]} {digits[4:7]} {digits[7:9]} {digits[9:11]}"\n'
+                       '        )\n')
+NEW_ORDER_START_R69 = (OLD_ORDER_START_R69
+                       + '    # ORDER_REUSE_1591R69: a fresh tab opens this tab\'s saved order instead of the basket.\n'
+                       '    setattr(page, "_order_store_1591r69", (base_dir, tab_id))\n'
+                       '    worker.setdefault("base_dir", base_dir)\n'
+                       '    worker.setdefault("base_dir", base_dir)\n'
+                       '    if not worker["form_ready"] and _reuse_order_1591r69(worker):\n'
+                       '        worker["form_ready"] = True\n')
+OLD_ORDER_SAVE_R69 = ('        capture_esim_offer_page(\n'
+                      '            page,\n'
+                      '            diagnostic=diagnostic,\n'
+                      '            contact_phone=phone,\n'
+                      '            timeout=6,\n'
+                      '        )\n')
+NEW_ORDER_SAVE_R69 = OLD_ORDER_SAVE_R69 + '        _remember_order_1591r69(page, phone, digits)  # ORDER_REUSE_1591R69\n'
+OLD_GREY_RETRY_R69 = ('    if status == "INVALID_ROW" and _invalid_row_retry_1591r22(worker):  # ROW_SKIP_PERSIST_1591R22\n'
+                      '        return\n')
+NEW_GREY_RETRY_R69 = ('    # GREY_SAME_FORM_1591R69: a grey row is retried in a fresh tab only after a streak of them\n'
+                      '    if status == "INVALID_ROW" and _grey_streak_1591r69(worker) and _invalid_row_retry_1591r22(worker):  # ROW_SKIP_PERSIST_1591R22\n'
+                      '        return\n'
+                      '    if status != "INVALID_ROW":\n'
+                      '        worker["grey_streak_1591r69"] = None\n')
+OLD_GREY_NEXT_R69 = '        if _fresh_tab_for_next_row_1591r22(worker):\n            return\n'
+NEW_GREY_NEXT_R69 = ('        if not GREY_SAME_FORM_1591R69 and _fresh_tab_for_next_row_1591r22(worker):  # GREY_SAME_FORM_1591R69\n'
+                     '            return\n')
+OLD_RESEND_LABEL_R69 = '        r"^\\s*(?:отправить\\s+снова|отправить|повторить\\s+ещ[её])\\s*$",\n'
+NEW_RESEND_LABEL_R69 = ('        r"^\\s*(?:отправить\\s+снова|отправить|повторить\\s+ещ[её]|получить\\s+новый\\s+запрос)\\s*$",'
+                        '  # ORDER_REUSE_1591R69: «получить новый запрос»\n')
+OLD_PROXY_CTX_R69 = '        context = browser.new_context(no_viewport=True)\n'
+NEW_PROXY_CTX_R69 = '        context = browser.new_context(no_viewport=True, **_proxy_context_kwargs_1591r69(tab_id))  # MOBILE_PROXY_1591R69\n'
+ORDER_EDITS_R69 = ((OLD_ORDER_MARK_R69, NEW_ORDER_MARK_R69, "order reuse: marker"),
+                   (OLD_ORDER_HEAD_R69, NEW_ORDER_HEAD_R69, "order reuse: helpers"),
+                   (OLD_ORDER_TICK_R69, NEW_ORDER_TICK_R69, "order reuse: tick hook"),
+                   (OLD_ORDER_START_R69, NEW_ORDER_START_R69, "order reuse: fresh tab opens the order"),
+                   (OLD_ORDER_SAVE_R69, NEW_ORDER_SAVE_R69, "order reuse: the basket path saves the order"),
+                   (OLD_GREY_RETRY_R69, NEW_GREY_RETRY_R69, "grey rows: streak before a fresh tab"),
+                   (OLD_GREY_NEXT_R69, NEW_GREY_NEXT_R69, "grey rows: the next row in the same form"),
+                   (OLD_RESEND_LABEL_R69, NEW_RESEND_LABEL_R69, "resend: «получить новый запрос»"),
+                   (OLD_PROXY_CTX_R69, NEW_PROXY_CTX_R69, "mobile proxy: browser context"))
+# BASE_STRICT_1591R69 (controller): exactly one birth date, BEELINE_BIRTH_YEAR_MIN (1982) or later.
+BASE_STRICT_MARKER = "BASE_STRICT_1591R69"
+OLD_C_BIRTH_R69 = ('        if not any(year >= 1980 for year in _birth_years("|".join(parts[2:]))):\n'
+                   '            return None, "birth"\n')
+NEW_C_BIRTH_R69 = ('        # BASE_STRICT_1591R69: exactly one birth date, BIRTH_YEAR_MIN or later; several dates are skipped\n'
+                   '        years = _birth_years("|".join(parts[2:]))\n'
+                   '        if len(years) > 1:\n'
+                   '            return None, "dates"\n'
+                   '        if not years or years[0] < BIRTH_YEAR_MIN:\n'
+                   '            return None, "birth"\n')
+OLD_C_BIRTH_YEARS_R69 = 'def _birth_years(value):\n    """Years of the valid dates in «01.02.1985», «1.2.1985», «1985-02-01» form."""\n'
+NEW_C_BIRTH_YEARS_R69 = ('BIRTH_YEAR_MIN = int(os.environ.get("BEELINE_BIRTH_YEAR_MIN") or 1982)  # BASE_STRICT_1591R69\n\n\n'
+                         'def _birth_years(value):\n'
+                         '    """Years of the valid dates in «01.02.1985», «1.2.1985», «1985-02-01» form (one per distinct date)."""\n')
+OLD_C_BIRTH_RET_R69 = '        years.append(int(year))\n    return years\n'
+NEW_C_BIRTH_RET_R69 = ('        if (int(day), int(month), int(year)) not in seen:  # BASE_STRICT_1591R69: a repeated date is one date\n'
+                       '            seen.add((int(day), int(month), int(year)))\n'
+                       '            years.append(int(year))\n'
+                       '    return years\n')
+OLD_C_BIRTH_INIT_R69 = '    text, years = str(value or ""), []\n'
+NEW_C_BIRTH_INIT_R69 = '    text, years, seen = str(value or ""), [], set()\n'
+OLD_C_NOTE_R69 = '    parts = [f"{label}: {stats[key]}" for key, label in (("passport", "без паспорта"), ("birth", "не 1980+"),\n'
+NEW_C_NOTE_R69 = ('    parts = [f"{label}: {stats[key]}" for key, label in (("passport", "без паспорта"),\n'
+                  '                                                         ("birth", f"не {BIRTH_YEAR_MIN}+"), ("dates", "несколько дат"),\n')
+C_EDITS_R69 = ((OLD_C_BIRTH_YEARS_R69, NEW_C_BIRTH_YEARS_R69, "controller: birth year minimum"),
+               (OLD_C_BIRTH_INIT_R69, NEW_C_BIRTH_INIT_R69, "controller: distinct dates"),
+               (OLD_C_BIRTH_RET_R69, NEW_C_BIRTH_RET_R69, "controller: distinct dates (append)"),
+               (OLD_C_BIRTH_R69, NEW_C_BIRTH_R69, "controller: one date, 1982+"),
+               (OLD_C_NOTE_R69, NEW_C_NOTE_R69, "controller: filter note"))
+README_NOTE_R69 = ('\n\nРЕВИЗИЯ 69 (fix_package_1591.py)\nБыстрее поток строк. Вкладка запоминает ссылку своего заказа (23 часа): новая вкладка\n'
+                   'открывает её сразу, без корзины и тарифа, и идёт в «выбрать способ регистрации» → «с сим билайна».\n'
+                   'Ссылка выбрасывается, когда клиент подтвердил вход (заказ занят), когда форма по ней не открылась,\n'
+                   'после 3 открытий подряд без подтверждения и при смене тарифа. Серая «Продолжить» — следующая строка\n'
+                   'в той же форме; новая вкладка только после 3 серых подряд. «С корпоративным номером не получится» —\n'
+                   'строка пропускается сразу. «Получить новый запрос» — тоже кнопка повторной отправки. «⚙️ Настройки →\n'
+                   '📶 Мобильный прокси» (по умолчанию выключен): браузер через прокси, смена IP по ссылке при «что-то пошло\n'
+                   'не так». Загрузка базы «номер|паспорт|даты»: ровно одна дата рождения, 1982 и позже. Маркер:\n'
+                   'ORDER_REUSE_1591R69.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -6016,6 +6475,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if ORDER_REUSE_MARKER in source:
+        return 69
     if TOKEN_REENTER_MARKER in source:
         return 68
     if REENTER_MARKER in source:
@@ -6150,6 +6611,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 66 or AUTO_EXPIRE_MARKER in source)\
             and (MAX_REVISION < 67 or REENTER_MARKER in source)\
             and (MAX_REVISION < 68 or TOKEN_REENTER_MARKER in source)\
+            and (MAX_REVISION < 69 or ORDER_REUSE_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -7492,6 +7954,42 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 70 (r69). Order link reuse, grey rows in the same form, corporate rows, mobile proxy, strict base filter.
+    if ORDER_REUSE_MARKER not in source and MAX_REVISION >= 69:
+        for old, new, what in ORDER_EDITS_R69:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        if BASE_STRICT_MARKER not in ctrl_source:
+            for old, new, what in C_EDITS_R69:
+                new_ctrl = replace_once(new_ctrl, old, new, what)
+                if old in ctrl_source:
+                    add_edit(edits["server_controller.py"], ctrl_source, old, new, ctrl_reflected)
+                else:
+                    for change in edits["server_controller.py"]:
+                        joined = "".join(change["replacement"])
+                        if old in joined:
+                            change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                            break
+                    else:
+                        raise SystemExit(f"edits.json: earlier controller entry for {what} not found")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if "MOBILE_PROXY_1591R69" not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 69 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -7614,6 +8112,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 66", README_NOTE_R66),) if built_revision >= 66 else ()),
                           *((("РЕВИЗИЯ 67", README_NOTE_R67),) if built_revision >= 67 else ()),
                           *((("РЕВИЗИЯ 68", README_NOTE_R68),) if built_revision >= 68 else ()),
+                          *((("РЕВИЗИЯ 69", README_NOTE_R69),) if built_revision >= 69 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
