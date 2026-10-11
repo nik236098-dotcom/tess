@@ -403,7 +403,29 @@ def error_summary():
         print(f"{n:5d}  {key}\n       часы: {when}")
 
 
+def tab_journal(tab, start, minutes=30):
+    """One tab's journal from HH:MM (today, or yesterday when that is still ahead) for `minutes`,
+    without the captcha matcher's noise; DeepSeek's lines about that tab are kept too."""
+    now = time.localtime()
+    day = time.strftime("%Y-%m-%d", now)
+    if start > time.strftime("%H:%M", now):
+        day = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
+    since = f"{day} {start}:00"
+    until = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.mktime(time.strptime(since, "%Y-%m-%d %H:%M:%S")) + minutes * 60))
+    out = subprocess.run(["journalctl", "-u", "beeline", "--since", since, "--until", until, "--no-pager", "-o", "short-iso"],
+                         capture_output=True, text=True, timeout=120).stdout.splitlines()
+    noise = re.compile(r"SHAPE_|MATCH_|CAPTURE_|SPLIT_|SUBMIT_|ATTEMPT_\d|Выделен|дескриптор|образцов|растяжения|сопоставление|Выбор полного|dbus")
+    mine = [x for x in out if (f"[Вкладка {tab}]" in x or f"TAB {tab}" in x or f"Вкладка {tab} " in x
+                               or f"tab{tab}_" in x or f"вкладк{tab}" in x.lower()) and not noise.search(x)]
+    print(f"== Вкладка {tab}: {since[5:16]} + {minutes} мин, строк {len(mine)}")
+    for x in mine[:120]:
+        print("  " + x[11:19] + "  " + hide(x.split("]: ", 1)[-1])[:200])
+
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "tab":
+        tab_journal(sys.argv[2], sys.argv[3], int(sys.argv[4]) if len(sys.argv) > 4 else 30)
+        sys.exit(0)
     if len(sys.argv) > 1 and sys.argv[1] == "errors":
         HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 14.0
         SINCE = time.time() - HOURS * 3600
