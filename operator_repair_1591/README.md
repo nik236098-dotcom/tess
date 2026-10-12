@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 79 лежит в `beeline_integrated_io_15_91_r79/`; рядом
-`beeline_integrated_io_15_91_r79_lite/` — та же ревизия 79 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 80 лежит в `beeline_integrated_io_15_91_r80/`; рядом
+`beeline_integrated_io_15_91_r80_lite/` — та же ревизия 80 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r79
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r80
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r79_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r80_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -739,6 +739,12 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    посредник (SOCKS5 без пароля для браузера), который заходит на настоящий прокси с логином и паролем; формат —
    `socks5://логин:пароль@хост:порт`. HTTP/HTTPS-прокси с логином и SOCKS5 без логина работают как раньше. Если прокси задан,
    а применить его не вышло, в журнале появляется «⚠️ МОБИЛЬНЫЙ ПРОКСИ НЕ ПРИМЕНЁН». Маркер: `SOCKS_AUTH_1591R79`.
+
+86. **Ревизия 80: «🔎 Поиск по номеру».** Кнопка в «Мои eSIM», команда `/find` (или `/поиск`) и просто присланный боту номер. Номер
+   можно писать как угодно (`951 123-45-67`, `7951…`, `8 (951)…`, `+7…`, с тире, пробелами и скобками), хватит и последних 4–9
+   цифр; можно несколько: по одному в строке или через запятую. Бот присылает карточку eSIM сообщением так же, как «📤 Выгрузка»,
+   с теми же кнопками. Ищутся номер eSIM и исходный номер строки из базы. eSIM, ушедшая из списка (удалена или старше 5 дней),
+   показывается без кнопок с подсказкой. Если ждёт вопрос для DeepSeek, номер уходит ему, а не в поиск. Маркер: `FIND_ESIM_1591R80`.
 
 ## Использование
 

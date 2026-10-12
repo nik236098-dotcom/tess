@@ -227,6 +227,41 @@ def _digits(value):
     return re.sub(r"\D", "", str(value or ""))
 
 
+FIND_KEEP_SECONDS = 600  # FIND_ESIM_1591R80: «🔎 Поиск по номеру» waits for the number this long
+
+
+def _tail10_1591r80(value):
+    """The last ten digits of a number written in any way: 951…, 7951…, 8 951…, +7 (951) 123-45-67."""
+    d = _digits(value)
+    return d[-10:] if len(d) >= 10 else d
+
+
+def find_queries_1591r80(text):
+    """FIND_ESIM_1591R80: the numbers of a free text, one per line or separated by commas or semicolons, in any format.
+    A whole number (10 digits, or 11 with 7 or 8 in front, dashes and spaces anywhere) is exact; 4 to 9 digits are the
+    end of a number. Returns [(digits, exact)]."""
+    out, seen = [], set()
+    for chunk in re.split(r"[\n,;]+", str(text or "")):
+        d = _digits(chunk)
+        if len(d) >= 10:
+            d = d[-10:]
+            exact = True
+        elif 4 <= len(d) <= 9:
+            exact = False
+        else:
+            continue
+        if (d, exact) not in seen:
+            seen.add((d, exact))
+            out.append((d, exact))
+    return out
+
+
+def looks_like_phone_1591r80(text):
+    """A message that is only a phone number (10 or 11 digits, any separators): it is searched without a command."""
+    s = str(text or "").strip()
+    return bool(re.fullmatch(r"[+\d\s()\-.]+", s)) and len(_digits(s)) in (10, 11)
+
+
 def pretty_phone(value):
     d = _digits(value)
     if len(d) == 11 and d[0] in "78":
@@ -855,8 +890,71 @@ class TelegramMenu:
         hidden = self._hidden_count()
         if hidden:
             rows.append([_btn(f"↩️ Вернуть удалённые ({hidden})", f"m|restore|{page}")])
+        rows.append([_btn("🔎 Поиск по номеру", "m|find")])  # FIND_ESIM_1591R80
         rows.append([_btn("🏠 Меню", "m|menu")])
         return self._show(text, _kb(rows))
+
+    # FIND_ESIM_1591R80: a number in any format → the eSIM's card as the export gives it -------------
+    def ask_find(self):
+        self.state.update({"view": "find", "awaiting_find": True, "find_until": _now() + FIND_KEEP_SECONDS})
+        self._save()
+        return self._show("🔎 <b>Поиск по номеру</b>\n\nПришли номер в любом виде: 951 123-45-67, 7951…, 8 (951)…, +7…, "
+                          "с тире, пробелами и скобками. Можно несколько: каждый с новой строки или через запятую.\n"
+                          "Хватит и последних 4–9 цифр.\nИщу среди номеров eSIM и исходных номеров из базы.",
+                          _kb([[_btn("✖️ Отмена", "m|findx")]]))
+
+    def cancel_find(self):
+        self.state["awaiting_find"] = False
+        self._save()
+        return self.show_esims(self.state.get("page") or 0)
+
+    def _find_hits(self, digits, exact):
+        """(shown, hidden): records whose eSIM number or whose base number is this one (exact) or ends with it."""
+        shown, hidden = [], []
+        everything = self._esims(include_hidden=True)
+        visible = {r["_key"] for r in self._esims()}
+        for rec in everything:
+            tails = {_tail10_1591r80(rec.get("sim_number")), _tail10_1591r80(rec.get("active_digits"))} - {""}
+            if (digits in tails) if exact else any(x.endswith(digits) for x in tails):
+                (shown if rec["_key"] in visible else hidden).append(rec)
+        key = lambda r: r["_order"]
+        return sorted(shown, key=key), sorted(hidden, key=key)
+
+    def find_esims(self, text):
+        queries = find_queries_1591r80(text)
+        self.state["awaiting_find"] = False
+        self._save()
+        if not queries:
+            self.state.update({"awaiting_find": True, "find_until": _now() + FIND_KEEP_SECONDS})
+            self._save()
+            return self._show("🔎 Не вижу номера. Пришли его цифрами, например 951 123-45-67 или +7 951 123-45-67.",
+                              _kb([[_btn("✖️ Отмена", "m|findx")]]))
+        cards, missing, only_hidden = [], [], []
+        seen = set()
+        for digits, exact in queries:
+            shown, hidden = self._find_hits(digits, exact)
+            fresh = [r for r in shown if r["_key"] not in seen]
+            seen.update(r["_key"] for r in fresh)
+            cards.extend(fresh)
+            if hidden and not shown:
+                only_hidden.extend(hidden)
+            if not shown and not hidden:
+                missing.append(pretty_phone("7" + digits) if exact else f"…{digits}")
+        limit = 15
+        for rec in cards[:limit]:
+            self._send_msg(self._esim_text(rec, full=False), self._export_markup(rec, False))
+            time.sleep(EXPORT_SEND_GAP_SECONDS)
+        for rec in only_hidden[:limit]:
+            self._send_msg(self._esim_text(rec, full=False) + "\n\n🗑 Эта eSIM убрана из списка (удалена или старше "
+                           f"{ESIM_KEEP_DAYS} дн.): вернуть можно в «Мои eSIM» кнопкой «↩️ Вернуть удалённые».")
+            time.sleep(EXPORT_SEND_GAP_SECONDS)
+        lines = [f"🔎 Найдено: {len(cards) + len(only_hidden)}"]
+        if len(cards) > limit:
+            lines.append(f"Показаны первые {limit}: уточни номер, если нужна другая.")
+        if missing:
+            lines.append("Не найдено: " + ", ".join(missing))
+        return self._send_msg("\n".join(lines), _kb([[_btn("🔎 Искать ещё", "m|find"), _btn("📱 Мои eSIM", "m|esims|0")],
+                                                     [_btn("🏠 Меню", "m|menu")]]))
 
     def toggle_filter(self):
         self.state["esim_filter"] = "all" if (self.state.get("esim_filter") or "all") == "pay" else "pay"
@@ -1552,6 +1650,24 @@ class TelegramMenu:
         if first == "/recheck":
             self.recheck_command(t)
             return True
+        if first in ("/find", "/поиск", "/search"):  # FIND_ESIM_1591R80
+            arg = t.split(maxsplit=1)[1] if len(t.split(maxsplit=1)) > 1 else ""
+            if arg:
+                self.find_esims(arg)
+            else:
+                self.ask_find()
+            return True
+        if self.state.get("awaiting_find"):
+            if t.startswith("/") or _now() > float(self.state.get("find_until") or 0) or self.state.get("view") != "find":
+                self.state["awaiting_find"] = False
+                self._save()
+                return False
+            self.find_esims(t)
+            return True
+        if (looks_like_phone_1591r80(t) and not self.state.get("awaiting_ai") and not self.state.get("awaiting_setting")
+                and not self.state.get("awaiting_generation") and not (self.state.get("export") or {}).get("await")):
+            self.find_esims(t)  # a bare number is searched
+            return True
         if self.state.get("awaiting_setting"):  # MOBILE_PROXY_1591R69: the proxy or the IP change link
             if t.startswith("/"):
                 self.state["awaiting_setting"] = ""
@@ -2054,6 +2170,10 @@ class TelegramMenu:
                 self.show_status()
             elif action == "esims":
                 self.show_esims(args[0] if args else 0)
+            elif action == "find":  # FIND_ESIM_1591R80
+                self.ask_find()
+            elif action == "findx":
+                self.cancel_find()
             elif action == "eflt":  # BOT_TOOLS_1591R60: «Показать: Все» ⇄ «Только: 💳»
                 self.toggle_filter()
             elif action == "esim":

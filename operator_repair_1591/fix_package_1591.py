@@ -213,7 +213,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "b3a9b091cbe650e1a4c1683d4b9e4162e0f045cfc18ce713c831409c3e1ec212",  # r78 exp8 output
                          "a3d279dcc07a16374c387333d53718df99c42b6ebc5c6e93e18153ff2c781e41",  # r79 lite output
                          "911c98065552d41c48c3edac6bc8da9151af0f0cb0fe464522725f1b14da19d3",  # r79 output
-                         "31ccc19e992a79a7641fff1615d6983b568dcc01c6aeb188812aa85830434f9f"}  # r79 exp8 output
+                         "31ccc19e992a79a7641fff1615d6983b568dcc01c6aeb188812aa85830434f9f",  # r79 exp8 output
+                         "5d331e2b888bf6c1a86dd63e8ea348378bad70d57ad44eb416a7f0c23f7502cb",  # r80 lite output
+                         "70d1bc774344482cf15f2d51bf8bbe4def16e4d949c1af72d337d7f8c7f70d74",  # r80 output
+                         "f115c33ba0f1613bfe4481ba27b35ed2a75c50641d96127438b9d5166adce977"}  # r80 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -7104,6 +7107,21 @@ README_NOTE_R79 = ('\n\nРЕВИЗИЯ 79 (fix_package_1591.py)\nSOCKS5-прок
                    '127.0.0.1 небольшой посредник (SOCKS5 без пароля для браузера), который заходит на настоящий прокси с логином и\n'
                    'паролем. HTTP/HTTPS-прокси с логином и SOCKS5 без логина идут в браузер, как раньше. Маркер: SOCKS_AUTH_1591R79.\n')
 
+# Revision 80: «🔎 Поиск по номеру» in «Мои eSIM» (and /find, and a bare number sent to the bot): a number in any format
+# (951…, 7951…, 8 (951)…, +7…, with dashes, spaces, brackets; the last 4–9 digits are enough; several at once, one per line
+# or separated by commas) gives the eSIM's card as the export gives it, with the same buttons. The eSIM number and the base
+# number of the row are searched; an eSIM that left the list (deleted, older than 5 days) is shown without buttons with a hint.
+FIND_ESIM_MARKER = "FIND_ESIM_1591R80"
+OLD_FIND_MARK_R80 = NEW_SOCKS_MARK_R79.splitlines(keepends=True)[-1]
+NEW_FIND_MARK_R80 = (OLD_FIND_MARK_R80
+                     + '# FIND_ESIM_1591R80: «🔎 Поиск по номеру»: a number in any format gives the eSIM card as the export does.\n')
+FIND_EDITS_R80 = ((OLD_FIND_MARK_R80, NEW_FIND_MARK_R80, "find eSIM: marker"),)
+README_NOTE_R80 = ('\n\nРЕВИЗИЯ 80 (fix_package_1591.py)\nПоиск по номеру: кнопка «🔎 Поиск по номеру» в «Мои eSIM», команда /find и просто присланный номер. Номер можно\n'
+                   'писать как угодно (951…, 7951…, 8 (951)…, +7…, с тире, пробелами и скобками), хватит и последних 4–9 цифр; можно\n'
+                   'несколько, по одному в строке или через запятую. Бот присылает карточку eSIM так же, как выгрузка, с теми же\n'
+                   'кнопками. Ищется и номер eSIM, и исходный номер строки из базы; eSIM, ушедшая из списка (удалена или старше 5\n'
+                   'дней), показывается без кнопок с подсказкой. Маркер: FIND_ESIM_1591R80.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -7948,6 +7966,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if FIND_ESIM_MARKER in source:
+        return 80
     if SOCKS_AUTH_MARKER in source:
         return 79
     if EXPORT_ORDER_MARKER in source:
@@ -8115,6 +8135,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 77 or CONFIRM_TRACE_V2_MARKER in source)\
             and (MAX_REVISION < 78 or EXPORT_ORDER_MARKER in source)\
             and (MAX_REVISION < 79 or SOCKS_AUTH_MARKER in source)\
+            and (MAX_REVISION < 80 or FIND_ESIM_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -9667,6 +9688,29 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 81 (r80). «🔎 Поиск по номеру» (the menu module carries the change).
+    if FIND_ESIM_MARKER not in source and MAX_REVISION >= 80:
+        for old, new, what in FIND_EDITS_R80:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if FIND_ESIM_MARKER not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 80 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -9800,6 +9844,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 77", README_NOTE_R77),) if built_revision >= 77 else ()),
                           *((("РЕВИЗИЯ 78", README_NOTE_R78),) if built_revision >= 78 else ()),
                           *((("РЕВИЗИЯ 79", README_NOTE_R79),) if built_revision >= 79 else ()),
+                          *((("РЕВИЗИЯ 80", README_NOTE_R80),) if built_revision >= 80 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
