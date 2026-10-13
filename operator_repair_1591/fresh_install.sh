@@ -55,7 +55,9 @@ if [[ -z "${SKIP_APT:-}" ]]; then
   export DEBIAN_FRONTEND=noninteractive
   # A stalled mirror (mirror.yandex.ru on Cloud.ru hung for 15 minutes) must fail fast and be retried,
   # then the install goes on from the main Ubuntu archive.
-  printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-beeline-retries
+  # Another apt (unattended upgrades, an earlier interrupted install) may hold the package lock: wait for it up to 10 minutes
+  # instead of failing at once with «Could not get lock».
+  printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nDPkg::Lock::Timeout "600";\n' > /etc/apt/apt.conf.d/80-beeline-retries
   apt_packages() {
     apt-get update -y || return 1
     ASOUND_PKG="libasound2"
@@ -184,9 +186,19 @@ PY="$APP_DIR/venv/bin/python"
 if [[ -z "${SKIP_VENV:-}" ]]; then
   say "Python/Chromium"
   [[ -x "$PY" ]] || python3 -m venv "$APP_DIR/venv"
-  "$PY" -m pip install --upgrade pip wheel setuptools
-  "$APP_DIR/venv/bin/pip" install playwright "requests[socks]" numpy opencv-python-headless
-  "$PY" -m playwright install --with-deps chromium
+  # A download that stalls (pip, the Chromium archive) must not hang the install for half an hour: every step has a time
+  # limit and is repeated up to 3 times; what is already downloaded or installed is not fetched again.
+  retry_step() {  # retry_step "название" секунд команда...
+    local name="$1" limit="$2" n=0; shift 2
+    until timeout "$limit" "$@"; do
+      n=$((n + 1))
+      [[ $n -ge 3 ]] && die "не удалось: $name (3 попытки). Запусти установщик ещё раз: уже скачанное не качается заново."
+      say "$name: зависло или ошибка, повторяю ($n из 2)"; sleep 5
+    done
+  }
+  retry_step "обновление pip" 600 "$PY" -m pip install --default-timeout=30 --retries=5 --upgrade pip wheel setuptools
+  retry_step "пакеты Python" 1200 "$APP_DIR/venv/bin/pip" install --default-timeout=30 --retries=5 playwright "requests[socks]" numpy opencv-python-headless
+  retry_step "браузер Chromium" 1500 "$PY" -m playwright install --with-deps chromium
 else
   PY="$(command -v python3)"
 fi
