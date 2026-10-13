@@ -216,7 +216,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "31ccc19e992a79a7641fff1615d6983b568dcc01c6aeb188812aa85830434f9f",  # r79 exp8 output
                          "5d331e2b888bf6c1a86dd63e8ea348378bad70d57ad44eb416a7f0c23f7502cb",  # r80 lite output
                          "70d1bc774344482cf15f2d51bf8bbe4def16e4d949c1af72d337d7f8c7f70d74",  # r80 output
-                         "f115c33ba0f1613bfe4481ba27b35ed2a75c50641d96127438b9d5166adce977"}  # r80 exp8 output
+                         "f115c33ba0f1613bfe4481ba27b35ed2a75c50641d96127438b9d5166adce977",  # r80 exp8 output
+                         "733a325ec8f6f95a7e112e5bd693410156919cf6fd9bffcb341b8d718155d20e",  # r81 lite output
+                         "3f3b1fe39b8f3069ae45c9a9961cd48370e84d1aa529bc131137f979bef86dcc",  # r81 output
+                         "3884c1500d7da54403441a7105703beb03b1f848beefcc478ca90ad6c78257ab"}  # r81 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -7122,6 +7125,23 @@ README_NOTE_R80 = ('\n\nРЕВИЗИЯ 80 (fix_package_1591.py)\nПоиск по
                    'кнопками. Ищется и номер eSIM, и исходный номер строки из базы; eSIM, ушедшая из списка (удалена или старше 5\n'
                    'дней), показывается без кнопок с подсказкой. Маркер: FIND_ESIM_1591R80.\n')
 
+# Revision 81: «🔗 Проверить ссылки» / «🔄 Обновить статус ссылок» take seconds, not minutes. The check opened the links one by one
+# and on each waited up to 15 s for a quiet network (the site always loads something, so the wait ran out every time), then
+# 1.5 s more: 2-3 minutes for a few dozen links.
+# - LINK_SPEED_1591R81: 4 links at a time (LINK_CHECK_PARALLEL, 1..10), each is read as soon as the site's own order state
+#   has arrived (or the network is quiet, whichever is first, at most 8 s), and pictures, fonts and counters are not loaded
+#   (LINK_CHECK_LIGHT=0 loads everything). The answer for a link is the same as before.
+LINK_SPEED_MARKER = "LINK_SPEED_1591R81"
+OLD_LINK_MARK_R81 = NEW_FIND_MARK_R80.splitlines(keepends=True)[-1]
+NEW_LINK_MARK_R81 = (OLD_LINK_MARK_R81
+                     + '# LINK_SPEED_1591R81: the link check goes several links at a time and does not wait for a quiet network.\n')
+LINK_SPEED_EDITS_R81 = ((OLD_LINK_MARK_R81, NEW_LINK_MARK_R81, "link speed: marker"),)
+README_NOTE_R81 = ('\n\nРЕВИЗИЯ 81 (fix_package_1591.py)\nПроверка ссылок («🔗 Проверить ссылки», «🔄 Обновить статус ссылок») шла по одной ссылке и на каждой ждала до 15 с,\n'
+                   'пока «утихнет сеть» (сайт всегда что-то грузит, поэтому ждала всё время), ещё 1,5 с сверху: 2–3 минуты на\n'
+                   'несколько десятков ссылок. Теперь по 4 ссылки одновременно (LINK_CHECK_PARALLEL, от 1 до 10), каждая читается,\n'
+                   'как только сайт ответил о состоянии заказа (или сеть затихла, но не дольше 8 с), картинки, шрифты и счётчики не\n'
+                   'грузятся (LINK_CHECK_LIGHT=0 грузит всё). Результат по каждой ссылке тот же. Маркер: LINK_SPEED_1591R81.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -7966,6 +7986,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if LINK_SPEED_MARKER in source:
+        return 81
     if FIND_ESIM_MARKER in source:
         return 80
     if SOCKS_AUTH_MARKER in source:
@@ -8136,6 +8158,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 78 or EXPORT_ORDER_MARKER in source)\
             and (MAX_REVISION < 79 or SOCKS_AUTH_MARKER in source)\
             and (MAX_REVISION < 80 or FIND_ESIM_MARKER in source)\
+            and (MAX_REVISION < 81 or LINK_SPEED_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -9711,6 +9734,29 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 82 (r81). The link check goes several links at a time and does not wait for a quiet network (the menu module carries it).
+    if LINK_SPEED_MARKER not in source and MAX_REVISION >= 81:
+        for old, new, what in LINK_SPEED_EDITS_R81:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+        menu_source = TELEGRAM_MENU_SOURCE.read_text("utf-8")
+        if LINK_SPEED_MARKER not in menu_source or 'MENU_VERSION = "1591r38"' not in menu_source:
+            raise SystemExit("telegram_menu.py is not the revision 81 module; nothing changed")
+        compile(menu_source, "telegram_menu.py", "exec")
+        (package / "telegram_menu.py").write_text(menu_source, "utf-8")
+        manifest["files"]["telegram_menu.py"] = {
+            "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
+        }
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -9845,6 +9891,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 78", README_NOTE_R78),) if built_revision >= 78 else ()),
                           *((("РЕВИЗИЯ 79", README_NOTE_R79),) if built_revision >= 79 else ()),
                           *((("РЕВИЗИЯ 80", README_NOTE_R80),) if built_revision >= 80 else ()),
+                          *((("РЕВИЗИЯ 81", README_NOTE_R81),) if built_revision >= 81 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

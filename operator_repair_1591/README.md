@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 80 лежит в `beeline_integrated_io_15_91_r80/`; рядом
-`beeline_integrated_io_15_91_r80_lite/` — та же ревизия 80 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 81 лежит в `beeline_integrated_io_15_91_r81/`; рядом
+`beeline_integrated_io_15_91_r81_lite/` — та же ревизия 81 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r80
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r81
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r80_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r81_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -745,6 +745,13 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    цифр; можно несколько: по одному в строке или через запятую. Бот присылает карточку eSIM сообщением так же, как «📤 Выгрузка»,
    с теми же кнопками. Ищутся номер eSIM и исходный номер строки из базы. eSIM, ушедшая из списка (удалена или старше 5 дней),
    показывается без кнопок с подсказкой. Если ждёт вопрос для DeepSeek, номер уходит ему, а не в поиск. Маркер: `FIND_ESIM_1591R80`.
+
+87. **Ревизия 81: быстрая проверка ссылок.** «🔗 Проверить ссылки» и «🔄 Обновить статус ссылок» занимали 2–3 минуты: ссылки шли по
+   одной, и на каждой бот ждал до 15 с, пока «утихнет сеть» (сайт всегда что-то грузит, так что ожидание отрабатывало целиком),
+   ещё 1,5 с сверху. Теперь по 4 ссылки одновременно (`LINK_CHECK_PARALLEL`, от 1 до 10), каждая читается, как только сайт
+   ответил о состоянии заказа (или сеть затихла, но не дольше 8 с), картинки, шрифты и счётчики не грузятся
+   (`LINK_CHECK_LIGHT=0` грузит всё, `LINK_CHECK_PARALLEL=1` возвращает по одной). Результат по каждой ссылке тот же. На тестовых
+   страницах, которые никогда не затихают: было 17 с на ссылку, стало 0,6 с. Маркер: `LINK_SPEED_1591R81`.
 
 ## Использование
 

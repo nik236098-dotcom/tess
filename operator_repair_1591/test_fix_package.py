@@ -199,7 +199,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_80(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_81(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -383,18 +383,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 80 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 81 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
             for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69", "SIGN_QUADRANTS_1591R70", "AGENT_MEMORY_1591R71", "REGION_CAPTION_1591R72", "BASE_RESET_1591R73", "CONFIRM_PUSH_1591R74"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 80", run.stdout)
+            self.assertIn("Already revision 81", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 80 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 81 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -1027,7 +1027,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 80", run.stdout)
+            self.assertIn("Already revision 81", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1061,7 +1061,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 80)
+        self.assertEqual(manifest["revision"], 81)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1419,7 +1419,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 80); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 81); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1429,7 +1429,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 80", run.stdout)
+            self.assertIn("Already revision 81", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -1623,6 +1623,61 @@ class PackageTests(unittest.TestCase):
                 self.skipTest(f"no headless Chromium here: {got}")
             self.assertEqual([got[u]["kind"] for u in urls], ["pay", "ok", "dead", "unknown"], got)
             self.assertEqual(got[urls[3]]["text"], "Ваш заказ · selfregStatus=WAIT_SIGN", "the page's own words and the site's status")
+        finally:
+            srv.shutdown(); srv.server_close()
+
+    def test_r81_link_check_is_parallel_and_does_not_wait_for_a_quiet_network(self):
+        """LINK_SPEED_1591R81: several links at a time, each read when the site's state has arrived, the same answers."""
+        try:
+            from playwright.sync_api import sync_playwright  # noqa: F401
+        except ImportError:
+            self.skipTest("playwright not installed")
+        import http.server, threading as _th
+        tm = self._menu_module_r58()
+        self.assertIn("# LINK_SPEED_1591R81:", (self.pkg / "test_beeline.py").read_text("utf-8"))
+        self.assertEqual(tm.LINK_CHECK_PARALLEL, 4); self.assertTrue(tm.LINK_CHECK_LIGHT)
+        hits = {"image": 0, "tracker": 0}
+        chatty = ("<h1>Ваш заказ</h1><div id=s></div><img src='/big.png'>"
+                  "<script>fetch('/v1/esim-selfreg/status?%s').then(r=>r.json()).then(j=>{document.getElementById('s').textContent='шаг: '+j.data.selfregStatus});"
+                  "fetch('/hang');fetch('https://mc.yandex.ru/watch/1')</script>")
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/hang":          # a connection that never closes: the network is never quiet
+                    time.sleep(25); return
+                if self.path == "/big.png":
+                    hits["image"] += 1; time.sleep(5)
+                    self.send_response(200); self.send_header("content-type", "image/png"); self.end_headers(); self.wfile.write(b"x"); return
+                if self.path.startswith("/v1/esim-selfreg/status"):
+                    time.sleep(1.0)               # the site is not instant
+                    body, kind = b'{"data": {"selfregStatus": "DOCS_GENERATED", "errorCode": "NONE"}}', "application/json"
+                else:
+                    body, kind = (chatty % self.path.split("/")[-1]).encode("utf-8"), "text/html; charset=utf-8"
+                self.send_response(200); self.send_header("content-type", kind); self.send_header("content-length", str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+            def log_message(self, *a): pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H); port = srv.server_address[1]
+        srv.daemon_threads = True
+        _th.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            urls = [f"http://127.0.0.1:{port}/o{i}" for i in range(8)]
+            started = time.time()
+            try:
+                with unittest.mock.patch.dict(os.environ, {"LINK_CHECK_CHROMIUM": "/opt/pw-browsers/chromium"}):
+                    got = dict(tm.playwright_link_checker(urls))
+            except Exception as exc:
+                self.skipTest(f"no headless Chromium here: {exc}")
+            took = time.time() - started
+            if all(r["kind"] == "error" for r in got.values()):
+                self.skipTest(f"no headless Chromium here: {got}")
+            self.assertEqual(sorted(got), sorted(urls))
+            for url in urls:
+                self.assertEqual(got[url]["kind"], "pay", got[url])                       # the site's own state, as before
+                self.assertIn("selfregStatus=DOCS_GENERATED", got[url]["text"])
+            # one by one these 8 links would wait 8 x (8 s for a quiet network that never comes) = over a minute
+            self.assertLess(took, 20, f"8 links took {took:.1f} s")
+            self.assertEqual(hits["image"], 0, "pictures are not loaded")
         finally:
             srv.shutdown(); srv.server_close()
 

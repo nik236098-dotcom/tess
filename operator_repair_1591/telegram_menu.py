@@ -13,9 +13,11 @@ own: menu_state.json (panel message, current view) and esim_status.json (the mar
 """
 from __future__ import annotations
 
+import asyncio
 import html
 import json
 import os
+import queue
 import re
 import signal
 import subprocess
@@ -156,29 +158,141 @@ def check_order_link(browser, url, timeout=LINK_CHECK_TIMEOUT_SECONDS):
             pass
 
 
-def playwright_link_checker(urls, progress=None):
-    """Yield (url, result) for every url, one headless Chromium for the whole run."""
-    from playwright.sync_api import sync_playwright
-    with sync_playwright() as p:
+def _int_env(name, default, low, high):
+    try:
+        return max(low, min(high, int(str(os.environ.get(name) or default).strip())))
+    except ValueError:
+        return default
+
+
+# LINK_SPEED_1591R81: the links are checked several at a time, each as soon as the site has told its order state (not after
+# the network went quiet: the site always loads something, that wait took the whole 15 seconds), and without pictures, fonts
+# and counters. LINK_CHECK_PARALLEL=1 and LINK_CHECK_LIGHT=0 give the old behaviour.
+LINK_CHECK_PARALLEL = _int_env("LINK_CHECK_PARALLEL", 4, 1, 10)
+LINK_CHECK_LIGHT = str(os.environ.get("LINK_CHECK_LIGHT") or "1").strip().lower() not in {"0", "off", "no", "false"}
+LINK_CHECK_WAIT_SECONDS = 8      # for the site's order state, or for a quiet network when the page asks nothing
+_TRACKER_RE = re.compile(r"mc\.yandex|metrika|google-analytics|googletagmanager|doubleclick|top-fwz1|vk\.com/rtrg|"
+                         r"facebook\.net|hotjar|flocktory|criteo|adriver|tns-counter|mail\.ru/counter", re.I)
+
+
+async def _check_link_async(browser, url, timeout=LINK_CHECK_TIMEOUT_SECONDS):
+    """check_order_link for the async API: same answer, but it does not wait for a quiet network when the site's own
+    order state has arrived."""
+    context = await browser.new_context()
+    seen = {"status": "", "error": ""}
+    got = asyncio.Event()
+    try:
+        if LINK_CHECK_LIGHT:
+            async def route(r):
+                try:
+                    if r.request.resource_type in ("image", "media", "font") or _TRACKER_RE.search(r.request.url):
+                        await r.abort()
+                    else:
+                        await r.continue_()
+                except Exception:
+                    pass
+            await context.route("**/*", route)
+        page = await context.new_page()
+
+        async def read(resp):
+            try:
+                if "selfreg" not in resp.url and "order" not in resp.url.lower():
+                    return
+                if "json" not in str(resp.headers.get("content-type", "")):
+                    return
+                body = await resp.json()
+                status = _site_status(body)
+                data = body.get("data") if isinstance(body, dict) else None
+                code = (data or {}).get("errorCode") if isinstance(data, dict) else None
+                if _real_error(code):
+                    seen["error"] = str(code)
+                if status:
+                    seen["status"] = status
+                    got.set()
+            except Exception:
+                pass
+
+        page.on("response", lambda resp: asyncio.ensure_future(read(resp)))
+        resp = await page.goto(url, wait_until="domcontentloaded", timeout=int(timeout * 1000))
+        if LINK_CHECK_LIGHT:
+            quiet = asyncio.ensure_future(page.wait_for_load_state("networkidle", timeout=LINK_CHECK_WAIT_SECONDS * 1000))
+            state = asyncio.ensure_future(got.wait())
+            await asyncio.wait({quiet, state}, timeout=LINK_CHECK_WAIT_SECONDS, return_when=asyncio.FIRST_COMPLETED)
+            for task in (quiet, state):
+                if not task.done():
+                    task.cancel()
+                elif not task.cancelled():
+                    task.exception()  # a quiet-network timeout is not an error here: the words are read anyway
+            await page.wait_for_timeout(500)  # the same answer carries the error code; the page draws its words
+        else:
+            try:
+                await page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(1500)
+        body = await page.locator("body").inner_text(timeout=5000)
+        kind, short = classify_order_page(page.url, resp.status if resp else 0, body, seen["status"], seen["error"])
+        return {"kind": kind, "text": short, "final_url": page.url[:200]}
+    finally:
+        try:
+            await context.close()
+        except Exception:
+            pass
+
+
+async def _link_check_run_async(urls, out, parallel):
+    from playwright.async_api import async_playwright
+    async with async_playwright() as p:
         browser, last = None, None
         # the bundled headless shell, the bot's own Chromium, or LINK_CHECK_CHROMIUM (any Chromium binary)
         for exe in (None, p.chromium.executable_path, os.environ.get("LINK_CHECK_CHROMIUM")):
             try:
-                browser = p.chromium.launch(headless=True, **({"executable_path": exe} if exe else {}))
+                browser = await p.chromium.launch(headless=True, **({"executable_path": exe} if exe else {}))
                 break
             except Exception as exc:
                 last = exc
         if browser is None:
             raise last
-        try:
-            for url in urls:
+        gate = asyncio.Semaphore(parallel)
+
+        async def one(url):
+            async with gate:
                 try:
-                    result = check_order_link(browser, url)
+                    result = await _check_link_async(browser, url)
                 except Exception as exc:
                     result = {"kind": "error", "text": f"{type(exc).__name__}: {str(exc)[:100]}"}
-                yield url, result
+                out.put((url, result))
+
+        try:
+            await asyncio.gather(*(one(u) for u in urls))
         finally:
-            browser.close()
+            await browser.close()
+
+
+def playwright_link_checker(urls, progress=None):
+    """Yield (url, result) for every url as each is ready; LINK_CHECK_PARALLEL links at a time in one headless Chromium."""
+    urls = list(urls)
+    out = queue.Queue()
+    failure = []
+
+    def runner():
+        try:
+            asyncio.run(_link_check_run_async(urls, out, LINK_CHECK_PARALLEL))
+        except Exception as exc:
+            failure.append(exc)
+        finally:
+            out.put(None)
+
+    threading.Thread(target=runner, name="link-check-run", daemon=True).start()
+    delivered = 0
+    while True:
+        item = out.get()
+        if item is None:
+            break
+        delivered += 1
+        yield item
+    if failure and delivered < len(urls):
+        raise failure[0]
 
 # Journal lines worth showing in the log view: (regex, icon).
 LOG_PATTERNS = (
