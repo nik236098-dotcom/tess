@@ -219,7 +219,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "f115c33ba0f1613bfe4481ba27b35ed2a75c50641d96127438b9d5166adce977",  # r80 exp8 output
                          "733a325ec8f6f95a7e112e5bd693410156919cf6fd9bffcb341b8d718155d20e",  # r81 lite output
                          "3f3b1fe39b8f3069ae45c9a9961cd48370e84d1aa529bc131137f979bef86dcc",  # r81 output
-                         "3884c1500d7da54403441a7105703beb03b1f848beefcc478ca90ad6c78257ab"}  # r81 exp8 output
+                         "3884c1500d7da54403441a7105703beb03b1f848beefcc478ca90ad6c78257ab",  # r81 exp8 output
+                         "3dfd9c5b063a36baa9cb9b15cef23585dbc61671ebb42b4e395435ef0c1ecde0",  # r82 lite output
+                         "52d7cdcf5c50af430f102e6feacf3dbe89c9b73be1aa0226edf8da08e89f16c4",  # r82 output
+                         "7edaf77aea2c1f36afc49b49fca8dbfef188b91672c50c73e78327cf9f4e3da0"}  # r82 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -7142,6 +7145,62 @@ README_NOTE_R81 = ('\n\nРЕВИЗИЯ 81 (fix_package_1591.py)\nПроверк�
                    'как только сайт ответил о состоянии заказа (или сеть затихла, но не дольше 8 с), картинки, шрифты и счётчики не\n'
                    'грузятся (LINK_CHECK_LIGHT=0 грузит всё). Результат по каждой ссылке тот же. Маркер: LINK_SPEED_1591R81.\n')
 
+# Revision 82: a worker no longer ends on a single empty read of the shared queue. multiprocessing.Queue.get_nowait()
+# returns «empty» even when rows are still queued (its feeder thread lags behind under the load of 16 tabs), and a row is
+# re-queued when a tab defers it after 3 restarts. So one empty read made a fast tab stop forever («⚪ Очередь завершена»)
+# while hundreds of rows were still waiting, and a dead/restarted worker in phase DONE is never brought back.
+# - QUEUE_DRAIN_1591R82: a worker that finds the queue empty blocks on it (rows.get(timeout=5)) and declares the queue done
+#   only after it has stayed empty for QUEUE_DRAIN_SECONDS (120 s) — long enough to outlast the feeder lag and to catch a
+#   row another tab defers back. A planned restart or a stop still breaks the wait at once.
+QUEUE_DRAIN_MARKER = "QUEUE_DRAIN_1591R82"
+OLD_DRAIN_MARK_R82 = NEW_LINK_MARK_R81.splitlines(keepends=True)[-1]
+NEW_DRAIN_MARK_R82 = (OLD_DRAIN_MARK_R82
+                      + '# QUEUE_DRAIN_1591R82: a single empty read of the shared queue no longer ends a worker (the queue feeder lags, rows are re-queued).\n')
+OLD_DRAIN_GET_R82 = NEW_WORKER_GATE
+NEW_DRAIN_GET_R82 = '            else:\n                if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13\n                    # The current row was finished to the end above; do not take a new one.\n                    worker["phase"] = "RESTART_WAIT"\n                    external_heartbeat(worker, "restart_wait")\n                    set_tab_status(worker, "♻️", "Строка завершена; жду плановый перезапуск")\n                    print(f"[Вкладка {tab_id}] Плановый перезапуск: строка завершена, новую не беру.", flush=True)\n                    break\n                row = _next_queue_row_1591r82(base_dir, worker, rows)  # QUEUE_DRAIN_1591R82\n                if row is None:\n                    if restart_drain_requested(base_dir):\n                        worker["phase"] = "RESTART_WAIT"\n                    elif not worker["stopped"]:\n                        worker["phase"] = "DONE"\n'
+OLD_DRAIN_HELPER_R82 = 'def restart_drain_requested(base_dir):\n    return (Path(base_dir) / RESTART_DRAIN_FILE_NAME).is_file()\n'
+NEW_DRAIN_HELPER_R82 = (OLD_DRAIN_HELPER_R82 + '''
+
+# QUEUE_DRAIN_1591R82
+QUEUE_GET_SECONDS_1591R82 = 5         # one blocking read of the shared queue
+QUEUE_DRAIN_SECONDS_1591R82 = 120     # the queue is really done only after it has stayed empty this long
+
+
+def _next_queue_row_1591r82(base_dir, worker, rows):
+    """Next row of the shared queue, or None when it is truly drained (or a stop / planned restart is asked).
+
+    rows.get_nowait() raised «empty» even with rows still queued (the Queue feeder thread lags behind under load), and a
+    tab re-queues a row when it defers one, so a single empty read must not end the worker. Block on the queue and give up
+    only after it has been empty for QUEUE_DRAIN_SECONDS; a stop or a planned restart breaks the wait at once."""
+    empty_since = None
+    told = False
+    while not worker.get("stopped"):
+        try:
+            return rows.get(timeout=QUEUE_GET_SECONDS_1591R82)
+        except Exception:
+            pass
+        if worker.get("stopped") or restart_drain_requested(base_dir):
+            return None
+        now = monotonic()
+        if empty_since is None:
+            empty_since = now
+        if now - empty_since >= QUEUE_DRAIN_SECONDS_1591R82:
+            return None
+        if not told:
+            told = True
+            set_tab_status(worker, "⌛", "Очередь пуста — жду на случай, если вернутся отложенные строки.")
+            external_heartbeat(worker, "queue_wait")
+    return None
+''')
+DRAIN_EDITS_R82 = ((OLD_DRAIN_MARK_R82, NEW_DRAIN_MARK_R82, "queue drain: marker"),
+                   (OLD_DRAIN_HELPER_R82, NEW_DRAIN_HELPER_R82, "queue drain: the waiting helper"),
+                   (OLD_DRAIN_GET_R82, NEW_DRAIN_GET_R82, "queue drain: wait instead of ending on the first empty read"))
+README_NOTE_R82 = ('\n\nРЕВИЗИЯ 82 (fix_package_1591.py)\nВкладка больше не завершает работу по одному пустому чтению очереди. Очередь (multiprocessing.Queue) под нагрузкой 16\n'
+                   'вкладок отвечала «пусто», хотя строки ещё были (фоновый поток очереди не успевал), а отложенные строки возвращаются в\n'
+                   'очередь позже. Из-за этого быстрая вкладка «завершала очередь» навсегда, пока сотни строк ждали. Теперь вкладка ждёт\n'
+                   'на очереди и считает её законченной только после 120 с пустоты; стоп и плановый перезапуск прерывают ожидание сразу.\n'
+                   'Маркер: QUEUE_DRAIN_1591R82.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -7986,6 +8045,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if QUEUE_DRAIN_MARKER in source:
+        return 82
     if LINK_SPEED_MARKER in source:
         return 81
     if FIND_ESIM_MARKER in source:
@@ -8159,6 +8220,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 79 or SOCKS_AUTH_MARKER in source)\
             and (MAX_REVISION < 80 or FIND_ESIM_MARKER in source)\
             and (MAX_REVISION < 81 or LINK_SPEED_MARKER in source)\
+            and (MAX_REVISION < 82 or QUEUE_DRAIN_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -9757,6 +9819,21 @@ def main(argv: list[str]) -> int:
             "output_sha256": hashlib.sha256(menu_source.encode("utf-8")).hexdigest(),
         }
 
+    # 83 (r82). A worker no longer ends on a single empty read of the shared queue (the feeder lags, rows are re-queued).
+    if QUEUE_DRAIN_MARKER not in source and MAX_REVISION >= 82:
+        for old, new, what in DRAIN_EDITS_R82:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -9892,6 +9969,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 79", README_NOTE_R79),) if built_revision >= 79 else ()),
                           *((("РЕВИЗИЯ 80", README_NOTE_R80),) if built_revision >= 80 else ()),
                           *((("РЕВИЗИЯ 81", README_NOTE_R81),) if built_revision >= 81 else ()),
+                          *((("РЕВИЗИЯ 82", README_NOTE_R82),) if built_revision >= 82 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")

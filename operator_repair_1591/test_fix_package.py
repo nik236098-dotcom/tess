@@ -199,7 +199,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_81(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_82(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -383,18 +383,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 81 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 82 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
             for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69", "SIGN_QUADRANTS_1591R70", "AGENT_MEMORY_1591R71", "REGION_CAPTION_1591R72", "BASE_RESET_1591R73", "CONFIRM_PUSH_1591R74"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 81", run.stdout)
+            self.assertIn("Already revision 82", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 81 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 82 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -1027,7 +1027,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 81", run.stdout)
+            self.assertIn("Already revision 82", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1061,7 +1061,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 81)
+        self.assertEqual(manifest["revision"], 82)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1210,7 +1210,7 @@ class PackageTests(unittest.TestCase):
         self.assertIn('if info.get("phase") == "SUCCESS_STOP" and not draining:', self.source, "no replacement slot while draining")
         self.assertIn("raise SystemExit(RESTART_EXIT_CODE)", self.source)
         gate = self.source.index("if restart_drain_requested(base_dir):  # SCHEDULED_RESTART_1591R13")
-        self.assertLess(gate, self.source.index("row = rows.get_nowait()"), "the gate runs before a new row is taken")
+        self.assertLess(gate, self.source.index("_next_queue_row_1591r82(base_dir, worker, rows)"), "the gate runs before a new row is taken")  # QUEUE_DRAIN_1591R82
 
     def test_controller_restart_command_and_relaunch(self):
         control = (self.pkg / "server_controller.py").read_text("utf-8")
@@ -1419,7 +1419,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 81); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 82); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1429,7 +1429,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 81", run.stdout)
+            self.assertIn("Already revision 82", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -3105,6 +3105,54 @@ class PackageTests(unittest.TestCase):
             # a question for DeepSeek is not taken for a search
             menu.state["awaiting_ai"] = True
             self.assertFalse(menu.handle_text("9511234567"))
+
+    def test_r82_worker_waits_when_the_queue_reads_empty_then_takes_requeued_rows(self):
+        """QUEUE_DRAIN_1591R82: one empty read of the shared queue (the feeder lags, rows are re-queued) no longer ends a worker."""
+        import queue as _queue
+        src = (self.pkg / "test_beeline.py").read_text("utf-8")
+        self.assertIn("# QUEUE_DRAIN_1591R82", src)
+        # the worker loop no longer stops on the first empty read
+        loop = src[src.index("Воркер запущен"):src.index("Воркер завершил очередь")]
+        self.assertNotIn("rows.get_nowait()", loop, "the loop uses the waiting helper, not a single get_nowait")
+        self.assertIn("_next_queue_row_1591r82(base_dir, worker, rows)", loop)
+        clock = [1000.0]
+        drained = []
+        ns = {"monotonic": lambda: clock[0], "Path": Path,
+              "restart_drain_requested": lambda b: bool(drained and drained[0]),
+              "set_tab_status": lambda w, i, n: None, "external_heartbeat": lambda w, k: None}
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.Assign) and any(isinstance(t_, ast.Name) and t_.id in {
+                    "QUEUE_GET_SECONDS_1591R82", "QUEUE_DRAIN_SECONDS_1591R82"} for t_ in node.targets):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "pkg", "exec"), ns)
+        exec_functions(src, ["_next_queue_row_1591r82"], ns)
+        nxt = ns["_next_queue_row_1591r82"]
+        self.assertEqual(ns["QUEUE_DRAIN_SECONDS_1591R82"], 120)
+
+        class Q:
+            def __init__(self, script): self.script = list(script); self.reads = 0
+            def get(self, timeout=None):
+                self.reads += 1
+                clock[0] += timeout or 0        # each blocking read advances the fake clock by its timeout
+                step = self.script.pop(0) if self.script else "empty"
+                if step == "empty":
+                    raise _queue.Empty()
+                return step
+
+        # two empty reads (feeder lag / a moment between a tab deferring a row), then a real row
+        worker = {"stopped": False}
+        q = Q(["empty", "empty", {"row": 207}])
+        self.assertEqual(nxt("/b", worker, q), {"row": 207}, "a transient empty does not end the worker")
+        self.assertEqual(q.reads, 3)
+        # a queue that stays empty: done only after QUEUE_DRAIN_SECONDS, not on the first read
+        worker = {"stopped": False}; q = Q([])
+        self.assertIsNone(nxt("/b", worker, q))
+        self.assertGreaterEqual(q.reads, 120 // ns["QUEUE_GET_SECONDS_1591R82"], "it waited the whole drain window")
+        # a planned restart ends the wait at once
+        worker = {"stopped": False}; drained[:] = [True]; q = Q([])
+        self.assertIsNone(nxt("/b", worker, q)); self.assertEqual(q.reads, 1); drained[:] = []
+        # a stop ends the wait at once
+        worker = {"stopped": True}
+        self.assertIsNone(nxt("/b", worker, Q([{"row": 1}])), "a stopped worker takes nothing")
 
     def test_r66_esims_older_than_5_days_leave_the_list(self):
         """AUTO_EXPIRE_1591R66: «Мои eSIM» keeps 5 days; the files stay; «↩️ Вернуть» counts what it can bring back."""
