@@ -17,6 +17,17 @@ import unittest.mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fix_package_1591 as fix
 
+
+def _pid_alive(pid):
+    import os
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
 PACKAGE = os.environ.get("PACKAGE_1591_DIR")
 
 
@@ -199,7 +210,7 @@ class PackageTests(unittest.TestCase):
         ns["_signature_button_locator"] = lambda page: None
         self.assertFalse(ns["_sign_retry_if_unsent_1591r30"](page, {"id": 2, "sign_trace": {"responses": []}}), "button gone: nothing to click")
 
-    def test_prompt_only_revision_30_builds_and_upgrades_to_82(self):
+    def test_prompt_only_revision_30_builds_and_upgrades_to_83(self):
         with tempfile.TemporaryDirectory() as d:
             r30 = Path(d) / "r30"
             shutil.copytree(PACKAGE, r30, ignore=shutil.ignore_patterns("__pycache__"))
@@ -383,18 +394,18 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(PACKAGE, lite, ignore=shutil.ignore_patterns("__pycache__"))
             env = dict(os.environ, FIX_1591_WITHOUT_R31="1")
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 82 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 83 applied", run.stdout)
             src = (lite / "test_beeline.py").read_text("utf-8")
             for marker in ("AI_VERDICT_1591R30", "TARIFF_SCOPE_1591R32", "ROW_RESTART_LIMIT_1591R32", "DRAIN_DEADLINE_1591R32", "TARIFF_CHANGE_BUTTON_1591R33", "BROWSER_COUNT_ENV_1591R34", "TRACE_COMPACT_1591R35", "SIM_URL_PER_ROW_1591R36", "AI_ON_SIGN_FAIL_1591R37", "TELEGRAM_MENU_1591R38", "SIGN_REJECTED_1591R39", "ISOLATED_CONTEXT_1591R40", "TARIFF_CONFIG_1591R41", "TARIFF_LOG_1591R42", "BASKET_SUMMARY_1591R43", "CONFIGURATOR_DUMP_1591R44", "CONFIGURATOR_SELECT_1591R45", "OPERATOR_LIVE_1591R46", "STREET_RULE_1591R47", "RESIGN_LIMIT_1591R48", "EXHAUSTED_UNVERIFIED_1591R49", "CLEAR_BASE_1591R50", "PAYMENT_STRICT_1591R51", "CLEAR_SAFE_1591R52", "CONTACT_PHONE_FIELD_1591R53", "AUTO_TOOLS_1591R54", "REGION_FIELD_1591R55", "STALE_AUTO_1591R55", "AI_STATUS_1591R55", "GUARD_BROWSER_1591R55", "SHORT_REPORT_1591R56", "QUIET_AUTO_1591R57", "LINK_CHECK_1591R58", "LINK_STATUS_1591R59", "BOT_TOOLS_1591R60", "EXPORT_CARDS_1591R61", "ESIM_ISSUED_1591R62", "BASE_TOOLS_1591R64", "SETTING_RESTART_1591R65", "AUTO_EXPIRE_1591R66", "REENTER_ROW_1591R67", "TOKEN_REENTER_1591R68", "ORDER_REUSE_1591R69", "SIGN_QUADRANTS_1591R70", "AGENT_MEMORY_1591R71", "REGION_CAPTION_1591R72", "BASE_RESET_1591R73", "CONFIRM_PUSH_1591R74"):
                 self.assertIn(marker, src)
             self.assertNotIn("SIGN_ROBUST_1591R31", src); self.assertNotIn("_sign_retry_if_unsent_1591r30", src)
             self.assertNotIn("РЕВИЗИЯ 31", (lite / "README.txt").read_text("utf-8"))
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], env=env, capture_output=True, text=True)
-            self.assertIn("Already revision 82", run.stdout)
+            self.assertIn("Already revision 83", run.stdout)
             # the lite build is a reviewed input of the full build and upgrades to exactly it
             self.assertIn(hashlib.sha256((lite / "test_beeline.py").read_bytes()).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS)
             run = subprocess.run([sys.executable, fix.__file__, str(lite)], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 82 applied", run.stdout)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr); self.assertIn("Revision 83 applied", run.stdout)
             self.assertEqual((lite / "test_beeline.py").read_text("utf-8"), self.source)
 
     def test_tariff_change_button_is_the_tariff_one_not_the_region_one(self):
@@ -1027,7 +1038,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(self.pkg, r2, ignore=shutil.ignore_patterns("__pycache__"))
             run = subprocess.run([sys.executable, fix.__file__, str(r2)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn("Already revision 82", run.stdout)
+            self.assertIn("Already revision 83", run.stdout)
 
     def test_matcher_cpu_age_tracks_a_computing_child_process(self):
         import time as _t
@@ -1061,7 +1072,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(meta["input_sha256"], fix.SYMBOL_MATCHING_INPUT_SHA)
         self.assertEqual(meta["input_sha256"], hashlib.sha256(fix.SYMBOL_MATCHING_REFERENCE.read_bytes()).hexdigest())
         self.assertEqual(meta["output_sha256"], hashlib.sha256((self.pkg / "symbol_matching.py").read_bytes()).hexdigest())
-        self.assertEqual(manifest["revision"], 82)
+        self.assertEqual(manifest["revision"], 83)
         install = (self.pkg / "install.py").read_text("utf-8")
         self.assertIn("'server_controller.py', 'symbol_matching.py')", install)
         self.assertIn('assert s.MATCHER_VERSION == "14.1"', install)
@@ -1419,7 +1430,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("EXPERIMENT_BROWSERS8_1591", src); self.assertIn("BOT_TOOLS_1591R60", src); self.assertNotIn("SIGN_ROBUST_1591R31", src)
             self.assertIn("ЭКСПЕРИМЕНТ browsers8", src)
             manifest = json.loads((pkg / "manifest.json").read_text("utf-8"))
-            self.assertEqual(manifest["revision"], 82); self.assertEqual(manifest["experiment"], "browsers8")
+            self.assertEqual(manifest["revision"], 83); self.assertEqual(manifest["experiment"], "browsers8")
             self.assertIn(hashlib.sha256(src.encode("utf-8")).hexdigest(), fix.ACCEPTED_PACKAGE_SHAS, "an exp8 server can be moved back to a production build")
             ns = {"os": os}; exec_functions(src, ["_browser_count_1591r34"], ns)
             with unittest.mock.patch.dict(os.environ, {"BEELINE_BROWSERS": "7"}):
@@ -1429,7 +1440,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn('AI_DEFAULT_1591R48 = "0"', src, "RESIGN_LIMIT_1591R48: DeepSeek off by default in the experiment")
             self.assertLess(src.index('print("DeepSeek: "'), src.index('print(f"Тариф: «{TARIFF_NAME}»"')); self.assertLess(src.index('print(f"Тариф: «{TARIFF_NAME}»"'), src.index("ЭКСПЕРИМЕНТ browsers8: лимит"))
             run = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=env, capture_output=True, text=True, timeout=900)
-            self.assertIn("Already revision 82", run.stdout)
+            self.assertIn("Already revision 83", run.stdout)
             bad = subprocess.run([sys.executable, fix.__file__, str(pkg)], env=dict(env, FIX_1591_EXPERIMENT="other"), capture_output=True, text=True, timeout=120)
             self.assertNotEqual(bad.returncode, 0); self.assertIn("browsers8", bad.stdout + bad.stderr)
 
@@ -3154,6 +3165,38 @@ class PackageTests(unittest.TestCase):
         worker = {"stopped": True}
         self.assertIsNone(nxt("/b", worker, Q([{"row": 1}])), "a stopped worker takes nothing")
 
+    def test_r83_chromium_is_killed_as_a_group_so_children_do_not_leak(self):
+        """SNS_KILL_1591R83: a restarted Chromium is launched as its own process group and killed whole (os.killpg)."""
+        import os, signal, subprocess, time as _t
+        src = (self.pkg / "test_beeline.py").read_text("utf-8")
+        self.assertIn("# SNS_KILL_1591R83", src)
+        # both launch sites pass start_new_session=True; _relaunch uses the group launcher
+        self.assertIn("proc_i = subprocess.Popen(args_i, start_new_session=True)", src)
+        self.assertIn("return subprocess.Popen(args, start_new_session=True)", src)
+        self.assertIn("popen = popen or _popen_group_1591r83", src)
+        self.assertIn("import signal", src)
+        ns = {"subprocess": subprocess, "os": os, "signal": signal, "shutil": __import__("shutil")}
+        exec_functions(src, ["_popen_group_1591r83", "_kill_chromium_group_1591r83", "_terminate_chromium"], ns)
+        # a real tiny process tree: a shell spawns a child that sleeps. Killing only the parent leaves the child;
+        # killing the whole group kills both. This is exactly the Chromium-children leak.
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            pidfile = Path(d) / "child.pid"
+            proc = ns["_popen_group_1591r83"](["sh", "-c", f"sleep 120 & echo $! > {pidfile}; wait"])
+            for _ in range(50):
+                if pidfile.exists() and pidfile.read_text().strip():
+                    break
+                _t.sleep(0.1)
+            child = int(pidfile.read_text().strip())
+            self.assertTrue(_pid_alive(child), "the child sleep is running")
+            self.assertEqual(os.getpgid(proc.pid), proc.pid, "Chromium would be its own group leader")
+            ns["_terminate_chromium"]({"proc": proc, "profile": ""})
+            for _ in range(50):
+                if not _pid_alive(child):
+                    break
+                _t.sleep(0.1)
+            self.assertFalse(_pid_alive(child), "SNS_KILL_1591R83: the child process is killed with the group, not orphaned")
+
     def test_r66_esims_older_than_5_days_leave_the_list(self):
         """AUTO_EXPIRE_1591R66: «Мои eSIM» keeps 5 days; the files stay; «↩️ Вернуть» counts what it can bring back."""
         import importlib.util, types as _types
@@ -4147,10 +4190,14 @@ document.getElementById('go').onclick = () => { document.querySelector('.basket 
         self.assertIn("_note_cdp_result(cdp_url, None)", src[src.index("def _close_cdp_page_for_worker"):src.index("import time as _time")])
         self.assertIn("_note_cdp_result(cdp_url, exc)", src[src.index("def _close_cdp_page_for_worker"):src.index("import time as _time")])
         import subprocess as _sp, tempfile as _tf, shutil as _sh
+        import os as _os, signal as _signal
         ns = {"_CDP_UNREACHABLE_SINCE": {}, "monotonic": lambda: 1000.0, "subprocess": _sp,
-              "tempfile": _tf, "shutil": _sh, "_free_local_port": lambda: 45999, "_wait_cdp": lambda port: False}
+              "tempfile": _tf, "shutil": _sh, "_free_local_port": lambda: 45999, "_wait_cdp": lambda port: False,
+              "os": _os, "signal": _signal}
         exec_functions(src, ["_note_cdp_result", "cdp_unreachable_seconds", "_chromium_launch_args",
+                             "_popen_group_1591r83", "_kill_chromium_group_1591r83",
                              "_terminate_chromium", "_relaunch_chromium"], ns)
+        self.assertIn("# SNS_KILL_1591R83", src)
         class Timeout(Exception):
             pass
         url = "http://127.0.0.1:52495"
@@ -4166,6 +4213,7 @@ document.getElementById('go').onclick = () => { document.querySelector('.basket 
         self.assertEqual(args[-1], "about:blank")
         launched, made = [], []
         class FakeProc:
+            pid = -12345  # os.getpgid(-pid) fails -> the group-kill is skipped and terminate() still runs
             def poll(self): return None
             def terminate(self): launched.append("terminate")
             def wait(self, timeout=None): return 0

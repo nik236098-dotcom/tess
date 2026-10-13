@@ -1,7 +1,7 @@
 # operator_repair_1591 — ревизия 2 пакета beeline_integrated_io_15_91
 
-Готовый пакет ревизии 82 лежит в `beeline_integrated_io_15_91_r82/`; рядом
-`beeline_integrated_io_15_91_r82_lite/` — та же ревизия 82 без кода подписи ревизии 31 (собирается
+Готовый пакет ревизии 83 лежит в `beeline_integrated_io_15_91_r83/`; рядом
+`beeline_integrated_io_15_91_r83_lite/` — та же ревизия 83 без кода подписи ревизии 31 (собирается
 `FIX_1591_WITHOUT_R31=1`) и `beeline_integrated_io_15_91_r30/` —
 только промпт DeepSeek без изменений кода (собирается `FIX_1591_MAX_REVISION=30`). В нём нет
 логина и пароля прокси: `TELEGRAM_DEFAULT_PROXY = ""`, а прокси берётся из
@@ -80,7 +80,7 @@ PY
 
 ```
 cd /root && git clone -b codex/operator-observer-15.87 https://github.com/nik236098-dotcom/tess.git
-cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r82
+cd /root/tess/operator_repair_1591/beeline_integrated_io_15_91_r83
 python3 install.py --app /opt/beeline                      # только проверка, ничего не меняет
 sudo python3 install.py --app /opt/beeline --apply --restart
 ```
@@ -385,7 +385,7 @@ sudo python3 install.py --app /opt/beeline --apply --restart
 46. **Экспериментальная сборка `_exp8` (отдельно от рабочих).** Для мощного тестового сервера (32 vCPU / 64 GB):
    лимит `BEELINE_BROWSERS` поднят с 4 до 8 Chromium, с `BEELINE_TABS_PER_BROWSER=4` это до 32 вкладок.
    Всё остальное — та же ревизия 43 (lite). Собирается `FIX_1591_EXPERIMENT=browsers8`, лежит в
-   `beeline_integrated_io_15_91_r82_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
+   `beeline_integrated_io_15_91_r83_exp8/`; `fresh_install.sh` и `update.sh` её не берут, пока не сказано
    `BUILD=exp8`; раз поставленная, она остаётся при следующих `beeline-update` (маркер
    `EXPERIMENT_BROWSERS8_1591`). Назад на рабочую сборку: `BUILD=lite sudo -E beeline-update`.
    При старте в журнале строка «ЭКСПЕРИМЕНТ browsers8: … сейчас 7 × 4 вкладок».
@@ -761,6 +761,12 @@ sudo python3 install.py --app /opt/beeline --apply --restart
    плановый перезапуск прерывают ожидание сразу). Строки раньше шли «вразнобой» не из-за этого бага: общая очередь выдаёт
    их по порядку, но часть строк надолго застревает на повторах подтверждения, а быстрые вкладки уходят вперёд — это ожидаемо.
    Маркер: `QUEUE_DRAIN_1591R82`.
+
+89. **Ревизия 83: Chromium убивается целой группой — процессы не копятся.** При перезапуске зависшего браузера бот убивал только
+   главный процесс, а дочерние процессы вкладок/GPU оставались сиротами и продолжали висеть. Каждый перезапуск («CDP не отвечает»)
+   терял целое дерево Chromium, и за несколько часов накапливалось до ~100 процессов chrome — отсюда перегрузка процессора, лаги и
+   «падения». Теперь каждый Chromium запускается отдельной группой процессов (start_new_session), а при перезапуске убивается вся
+   группа (SIGTERM, затем SIGKILL). Маркер: `SNS_KILL_1591R83`.
 
 ## Использование
 

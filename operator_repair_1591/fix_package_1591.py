@@ -222,7 +222,10 @@ ACCEPTED_PACKAGE_SHAS = {EXPECTED_INPUT_OUTPUT_SHA,
                          "3884c1500d7da54403441a7105703beb03b1f848beefcc478ca90ad6c78257ab",  # r81 exp8 output
                          "3dfd9c5b063a36baa9cb9b15cef23585dbc61671ebb42b4e395435ef0c1ecde0",  # r82 lite output
                          "52d7cdcf5c50af430f102e6feacf3dbe89c9b73be1aa0226edf8da08e89f16c4",  # r82 output
-                         "7edaf77aea2c1f36afc49b49fca8dbfef188b91672c50c73e78327cf9f4e3da0"}  # r82 exp8 output
+                         "7edaf77aea2c1f36afc49b49fca8dbfef188b91672c50c73e78327cf9f4e3da0",  # r82 exp8 output
+                         "1a30e0093e899f7792ecc6d95e36493108de41d8511cc7382660d0b5218d2d61",  # r83 lite output
+                         "769185cf9905e6bb12bc25f26b5c11a4b54b0820d4771a67f5a8d31d6dc8f853",  # r83 output
+                         "58341a89114d390bb0e4a8b633f3e49a579097da733498cef97c9b3f60d60191"}  # r83 exp8 output
 
 # Revision 5: registration/error policy. After the detailed analysis and its report the
 # runtime closes the error page, opens a fresh one and retries the row once; a second
@@ -7201,6 +7204,76 @@ README_NOTE_R82 = ('\n\nРЕВИЗИЯ 82 (fix_package_1591.py)\nВкладка 
                    'на очереди и считает её законченной только после 120 с пустоты; стоп и плановый перезапуск прерывают ожидание сразу.\n'
                    'Маркер: QUEUE_DRAIN_1591R82.\n')
 
+# Revision 83: a restarted Chromium left its children alive. _terminate_chromium killed only the main browser process
+# (proc.kill()); the renderer, GPU and tab child processes, launched in the same process group, survived as orphans. Every
+# browser restart («CDP не отвечает») leaked a whole Chromium tree, so over hours ~100 chrome processes piled up, eating
+# CPU and memory, which caused more hangs and more restarts — the lag and the «падения» came from this.
+# - SNS_KILL_1591R83: each Chromium starts as its own process group (start_new_session=True) and _terminate_chromium kills
+#   the whole group (os.killpg SIGTERM, then SIGKILL), so no child survives a restart.
+SNS_KILL_MARKER = "SNS_KILL_1591R83"
+OLD_SNS_MARK_R83 = NEW_DRAIN_MARK_R82.splitlines(keepends=True)[-1]
+NEW_SNS_MARK_R83 = (OLD_SNS_MARK_R83
+                    + '# SNS_KILL_1591R83: a Chromium is its own process group and is killed whole, so renderer children do not pile up.\n')
+OLD_SNS_IMPORT_R83 = 'import os\nimport secrets\n'
+NEW_SNS_IMPORT_R83 = 'import os\nimport signal  # SNS_KILL_1591R83\nimport secrets\n'
+OLD_SNS_TERM_R83 = '''def _terminate_chromium(instance):
+    proc = instance.get("proc")
+    try:
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+    except Exception:
+        pass
+'''
+NEW_SNS_TERM_R83 = '''def _popen_group_1591r83(args):
+    """SNS_KILL_1591R83: start Chromium as its own process group (start_new_session=True) so _terminate_chromium can
+    kill the whole tree — the main browser process and every renderer/GPU/tab child. Without it a hung Chromium's
+    children survive proc.kill() as orphans and accumulate (≈100 chrome processes, CPU/RAM leak, more hangs)."""
+    return subprocess.Popen(args, start_new_session=True)
+
+
+def _kill_chromium_group_1591r83(proc, sig):
+    """Send `sig` to the whole process group of `proc`; ignored when it is not a group leader or already gone."""
+    try:
+        os.killpg(os.getpgid(proc.pid), sig)
+    except Exception:
+        pass
+
+
+def _terminate_chromium(instance):
+    proc = instance.get("proc")
+    try:
+        if proc is not None and proc.poll() is None:
+            _kill_chromium_group_1591r83(proc, signal.SIGTERM)  # SNS_KILL_1591R83: the whole tree, not just the main process
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                _kill_chromium_group_1591r83(proc, signal.SIGKILL)
+                proc.kill()
+                proc.wait(timeout=5)
+    except Exception:
+        pass
+'''
+OLD_SNS_RELAUNCH_R83 = '    popen = popen or subprocess.Popen\n'
+NEW_SNS_RELAUNCH_R83 = '    popen = popen or _popen_group_1591r83  # SNS_KILL_1591R83\n'
+OLD_SNS_SPAWN_R83 = '        proc_i = subprocess.Popen(args_i)\n'
+NEW_SNS_SPAWN_R83 = '        proc_i = subprocess.Popen(args_i, start_new_session=True)  # SNS_KILL_1591R83\n'
+SNS_EDITS_R83 = ((OLD_SNS_MARK_R83, NEW_SNS_MARK_R83, "sns kill: marker"),
+                 (OLD_SNS_IMPORT_R83, NEW_SNS_IMPORT_R83, "sns kill: import signal"),
+                 (OLD_SNS_TERM_R83, NEW_SNS_TERM_R83, "sns kill: terminate the whole group + helper"),
+                 (OLD_SNS_RELAUNCH_R83, NEW_SNS_RELAUNCH_R83, "sns kill: relaunch in a new group"),
+                 (OLD_SNS_SPAWN_R83, NEW_SNS_SPAWN_R83, "sns kill: initial spawn in a new group"))
+README_NOTE_R83 = ('\n\nРЕВИЗИЯ 83 (fix_package_1591.py)\nПри перезапуске Chromium бот убивал только главный процесс браузера, а дочерние процессы вкладок/GPU\n'
+                   'оставались сиротами и продолжали висеть. Каждый перезапуск («CDP не отвечает») терял целое дерево Chromium, и за\n'
+                   'несколько часов накапливалось до ~100 процессов chrome — отсюда перегрузка процессора, лаги и «падения». Теперь\n'
+                   'каждый Chromium запускается отдельной группой процессов, а при перезапуске убивается вся группа целиком (SIGTERM, затем\n'
+                   'SIGKILL), так что дочерние процессы не остаются. Маркер: SNS_KILL_1591R83.\n')
+
 # Experiment «browsers8»: a separate build for a big test server (32 vCPU / 64 GB), never the
 # production one. The cap of BEELINE_BROWSERS rises from 4 to 8 Chromium (up to 32 tabs with
 # BEELINE_TABS_PER_BROWSER=4); everything else is the same revision. Built with
@@ -8045,6 +8118,8 @@ def add_edit(edits: list, output_before: str, old_block: str, new_block: str, re
 
 def revision_of(source: str) -> int:
     """Revision of a test_beeline.py that carries every marker up to r30."""
+    if SNS_KILL_MARKER in source:
+        return 83
     if QUEUE_DRAIN_MARKER in source:
         return 82
     if LINK_SPEED_MARKER in source:
@@ -8221,6 +8296,7 @@ def main(argv: list[str]) -> int:
             and (MAX_REVISION < 80 or FIND_ESIM_MARKER in source)\
             and (MAX_REVISION < 81 or LINK_SPEED_MARKER in source)\
             and (MAX_REVISION < 82 or QUEUE_DRAIN_MARKER in source)\
+            and (MAX_REVISION < 83 or SNS_KILL_MARKER in source)\
             and (not EXPERIMENT or EXPERIMENT_MARKER in source):
         print(f"Already revision {revision_of(source)}; nothing changed.")
         return 0
@@ -9834,6 +9910,21 @@ def main(argv: list[str]) -> int:
                 else:
                     raise SystemExit(f"edits.json: earlier entry for {what} not found")
 
+    # 84 (r83). Each Chromium is its own process group and is killed whole on restart (no orphan children pile up).
+    if SNS_KILL_MARKER not in source and MAX_REVISION >= 83:
+        for old, new, what in SNS_EDITS_R83:
+            new_source = replace_once(new_source, old, new, what)
+            if old in source:
+                add_edit(edits["test_beeline.py"], source, old, new, reflected)
+            else:
+                for change in edits["test_beeline.py"]:
+                    joined = "".join(change["replacement"])
+                    if old in joined:
+                        change["replacement"] = joined.replace(old, new, 1).splitlines(keepends=True)
+                        break
+                else:
+                    raise SystemExit(f"edits.json: earlier entry for {what} not found")
+
     # Experiment browsers8 (a separate build): the Chromium cap 4 → 8 and a startup line.
     if EXPERIMENT == "browsers8" and EXPERIMENT_MARKER not in source:
         for old, new, what in ((OLD_BROWSER_CAP_EXP, NEW_BROWSER_CAP_EXP, "experiment: browser cap 8"),
@@ -9970,6 +10061,7 @@ def main(argv: list[str]) -> int:
                           *((("РЕВИЗИЯ 80", README_NOTE_R80),) if built_revision >= 80 else ()),
                           *((("РЕВИЗИЯ 81", README_NOTE_R81),) if built_revision >= 81 else ()),
                           *((("РЕВИЗИЯ 82", README_NOTE_R82),) if built_revision >= 82 else ()),
+                          *((("РЕВИЗИЯ 83", README_NOTE_R83),) if built_revision >= 83 else ()),
                           *((("ЭКСПЕРИМЕНТ browsers8", README_NOTE_EXP),) if EXPERIMENT == "browsers8" else ())):
         if heading not in readme.read_text("utf-8"):
             readme.write_text(readme.read_text("utf-8").rstrip("\n") + note, "utf-8")
