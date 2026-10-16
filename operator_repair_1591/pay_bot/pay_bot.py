@@ -232,38 +232,57 @@ def _click_by_words(scope, words, timeout_ms=8000):
     return False
 
 
+def _next_empty_card_input(scope, deadline):
+    """Следующее НЕЗАПОЛНЕННОЕ видимое поле карты. Поля с уже введённым значением (в т.ч.
+    замаскированный номер «*1936») и помеченные нами пропускаем — поэтому не зависим от того,
+    сколько полей на форме и как она перерисовывается."""
+    while True:
+        for h in _visible_inputs(scope):
+            try:
+                if h.get_attribute("data-pb-filled"):
+                    continue
+                if (h.input_value() or "").strip():
+                    continue
+                return h
+            except Exception:
+                continue
+        if time.monotonic() >= deadline:
+            return None
+        try:
+            scope.wait_for_timeout(300)
+        except Exception:
+            time.sleep(0.3)
+
+
+def _fill_card_field(h, value):
+    h.click()
+    h.type(value, delay=70)
+    try:
+        h.evaluate("e => e.setAttribute('data-pb-filled','1')")
+    except Exception:
+        pass
+
+
 def _type_card(page, card, tg, deadline):
-    """Форма «новая карта»: поля появляются по очереди (номер → срок → код)."""
+    """Форма «новая карта»: поля появляются по очереди (номер → срок → код). Ищем «следующее
+    пустое поле», а не «N-е по счёту» — форма перерисовывается, и счёт полей сбивается."""
     num, exp, cvv = card
     scope = _card_scope(page, deadline)
-    ins = _visible_inputs(scope)
-    if not ins:
+    f = _next_empty_card_input(scope, deadline)
+    if f is None:
         raise RuntimeError("форма карты не найдена")
-    ins[0].click()
-    ins[0].type(num, delay=70)
-    # ждём появления поля срока (до общего дедлайна — сайт может тормозить)
-    while time.monotonic() < deadline:
-        ins = _visible_inputs(scope)
-        if len(ins) >= 2:
-            break
-        page.wait_for_timeout(300)
-    if len(ins) < 2:
+    _fill_card_field(f, num)
+    f = _next_empty_card_input(scope, deadline)
+    if f is None:
         raise RuntimeError("поле срока не появилось после номера карты")
-    ins[1].click()
-    ins[1].type(exp, delay=70)
-    # ждём появления поля кода (CVV)
-    while time.monotonic() < deadline:
-        ins = _visible_inputs(scope)
-        if len(ins) >= 3:
-            break
-        page.wait_for_timeout(300)
-    if len(ins) < 3:
+    _fill_card_field(f, exp)
+    f = _next_empty_card_input(scope, deadline)
+    if f is None:
         raise RuntimeError("поле кода карты (CVV) не появилось")
-    ins[2].click()
-    ins[2].type(cvv, delay=70)
+    _fill_card_field(f, cvv)
     # увести фокус с CVV — у части форм кнопка «оплатить» загорается только после «потери фокуса»
     try:
-        ins[2].press("Tab")
+        f.press("Tab")
     except Exception:
         pass
     try:
