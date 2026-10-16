@@ -12339,3 +12339,4 @@ if __name__ == "__main__":
         print("\nОстановлено пользователем.")
     except Exception as exc:
         print(f"Ошибка запуска: {type(exc).__name__}: {exc}")
+# QUEUE_DONE_1591R84 — ревизия пакета r84 (функциональное изменение в server_controller.py)
