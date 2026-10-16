@@ -1,34 +1,27 @@
 #!/usr/bin/env python3
-"""r84 QUEUE_DONE: installs only server_controller.py (rest stays as on the server).
+"""r84 QUEUE_DONE — для кнопки «Обновить» / update.sh.
 
-Same flags as the full installer: --app, --apply, --restart.
-Used by update.sh / «⬆️ Обновить бота».
+Ставит правку server_controller.py через server_controller.patch из этой же папки.
+Флаги: --app /opt/beeline --apply --restart
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
-import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
 MARKER = "QUEUE_DONE_1591R84"
 ACCEPTED = {
-    "8a827f68aa4972f1c9ed1aeeec5f0de4b918dbb6e8bb1a4884f9abec2dd19935",  # r71–r83 controller
+    "8a827f68aa4972f1c9ed1aeeec5f0de4b918dbb6e8bb1a4884f9abec2dd19935",
 }
-TARGET = "a84fd73cd01b287ec67e89c18e8621298afc04a416c704445a95fc1102a8e25d"
 
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
-
-
-def service_cmd(action: str) -> None:
-    subprocess.run(["systemctl", action, "beeline"], check=False)
 
 
 def main() -> int:
@@ -39,71 +32,75 @@ def main() -> int:
     args = p.parse_args()
     app = Path(args.app)
     package = Path(__file__).resolve().parent
-    target_path = app / "server_controller.py"
-    new_path = package / "server_controller.py"
+    target = app / "server_controller.py"
+    patch_file = package / "server_controller.patch"
 
     if not (app / "test_beeline.py").is_file():
-        print("ERROR: not an installed beeline app:", app, file=sys.stderr)
+        print("ERROR: not a beeline app:", app, file=sys.stderr)
         return 1
-    if not new_path.is_file():
-        print("ERROR: package missing server_controller.py", file=sys.stderr)
+    if not target.is_file():
+        print("ERROR: missing", target, file=sys.stderr)
         return 1
-
-    new_raw = new_path.read_bytes()
-    if digest(new_raw) != TARGET:
-        print("ERROR: package server_controller.py checksum mismatch", file=sys.stderr)
-        return 1
-    if MARKER.encode() not in new_raw:
-        print("ERROR: package has no", MARKER, file=sys.stderr)
+    if not patch_file.is_file():
+        print("ERROR: missing", patch_file, file=sys.stderr)
         return 1
 
-    if not target_path.is_file():
-        print("ERROR: missing", target_path, file=sys.stderr)
-        return 1
-    cur = target_path.read_bytes()
-    cur_h = digest(cur)
-
-    if cur_h == TARGET and MARKER.encode() in cur:
-        print("Already at r84 (QUEUE_DONE). Nothing to do.")
+    cur = target.read_bytes()
+    if MARKER.encode() in cur:
+        print("Already r84 (QUEUE_DONE). Nothing to do.")
         return 0
 
-    if cur_h not in ACCEPTED and MARKER.encode() not in cur:
+    h = digest(cur)
+    if h not in ACCEPTED:
         print(
-            f"ERROR: installed server_controller.py SHA256={cur_h} is not a known r83 base.\n"
-            "Refusing to overwrite. Update to r83 first or apply patch manually.",
+            f"ERROR: server_controller SHA256={h} is not r83 base.\n"
+            "Update to r83 first.",
             file=sys.stderr,
         )
         return 1
 
-    print(f"Would replace server_controller.py ({cur_h[:12]}… → {TARGET[:12]}…)")
+    print(f"Would apply {patch_file.name} to server_controller.py ({h[:12]}…)")
     if not args.apply:
-        print("Dry-run OK. Re-run with --apply [--restart] to install.")
+        print("Dry-run OK. Use --apply --restart to install.")
         return 0
 
     if args.restart:
         print("Stopping beeline…")
-        service_cmd("stop")
+        subprocess.run(["systemctl", "stop", "beeline"], check=False)
         time.sleep(2)
 
     backup = app / "server_controller.py.bak_before_r84"
-    shutil.copy2(target_path, backup)
-    fd, tmp = tempfile.mkstemp(prefix=".server_controller.", dir=str(app))
-    try:
-        os.write(fd, new_raw)
-        os.close(fd)
-        os.chmod(tmp, 0o644)
-        os.replace(tmp, target_path)
-    except Exception:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    shutil.copy2(target, backup)
 
-    print("Installed server_controller.py r84. Backup:", backup)
+    # Normalize patch paths → server_controller.py
+    raw_patch = patch_file.read_text(encoding="utf-8", errors="replace")
+    raw_patch = raw_patch.replace("server_controller_r83.py", "server_controller.py")
+    raw_patch = raw_patch.replace("server_controller_r84.py", "server_controller.py")
+    fixed = package / ".server_controller.r84.fixed.patch"
+    fixed.write_text(raw_patch, encoding="utf-8")
+
+    r = subprocess.run(
+        ["patch", "-p0", "--forward", "--batch", "-i", str(fixed)],
+        cwd=str(app),
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode not in (0, 1):
+        print("patch stdout:", r.stdout, file=sys.stderr)
+        print("patch stderr:", r.stderr, file=sys.stderr)
+        print("ERROR: patch failed, restoring backup", file=sys.stderr)
+        shutil.copy2(backup, target)
+        return 1
+
+    if MARKER.encode() not in target.read_bytes():
+        print("ERROR: marker missing after patch, restoring", file=sys.stderr)
+        shutil.copy2(backup, target)
+        return 1
+
+    print("Installed r84. Backup:", backup)
     if args.restart:
         print("Starting beeline…")
-        service_cmd("start")
+        subprocess.run(["systemctl", "start", "beeline"], check=False)
         time.sleep(2)
         subprocess.run(["systemctl", "is-active", "beeline"], check=False)
     print("OK", MARKER)
