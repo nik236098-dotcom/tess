@@ -46,7 +46,7 @@ fi
 # The newest FULL package (one that carries the sources, i.e. test_beeline.py); thin patch-only packages
 # (r84+: just a .patch for the update button) are skipped here and applied on top of the base below.
 PACKAGE="$(for d in "$REPO"/operator_repair_1591/beeline_integrated_io_15_91_r*/; do
-    d="${d%/}"; [[ "$d" =~ _r[0-9]+$ && -f "$d/test_beeline.py" ]] && echo "$d"
+    d="${d%/}"; if [[ "$d" =~ _r[0-9]+$ && -f "$d/test_beeline.py" ]]; then echo "$d"; fi
   done | sort -t r -k 3 -n | tail -1)"   # the full package, not *_lite, not a thin patch
 [[ -n "$PACKAGE" && -f "$PACKAGE/install.py" ]] || die "в репозитории нет полной папки beeline_integrated_io_15_91_r*/ с исходниками"
 REVISION="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["revision"])' "$PACKAGE/manifest.json")"
@@ -99,7 +99,7 @@ install -m 0644 "$REPO/local_matcher.py" "$APP_DIR/local_matcher.py"
 # r84+: тонкие пакеты-заплатки (без исходников, только .patch для кнопки «Обновить») накладываем поверх базы,
 # по возрастанию ревизии. Каждая сама проверяет, что база подходит; если не легла — остаёмся на базовой ревизии.
 for patch_pkg in $(for d in "$REPO"/operator_repair_1591/beeline_integrated_io_15_91_r*/; do
-    d="${d%/}"; [[ "$d" =~ _r[0-9]+$ && ! -f "$d/test_beeline.py" && -f "$d/install.py" ]] && echo "$d"
+    d="${d%/}"; if [[ "$d" =~ _r[0-9]+$ && ! -f "$d/test_beeline.py" && -f "$d/install.py" ]]; then echo "$d"; fi
   done | sort -t r -k 3 -n); do
   prev="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["revision"])' "$patch_pkg/manifest.json" 2>/dev/null || echo 0)"
   (( prev > REVISION )) || continue
