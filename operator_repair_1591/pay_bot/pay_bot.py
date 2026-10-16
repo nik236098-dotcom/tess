@@ -254,6 +254,28 @@ def _next_empty_card_input(scope, deadline):
             time.sleep(0.3)
 
 
+def _inputs_debug(scope):
+    """Короткое описание всех полей на форме — чтобы понять, чем является «код» (вдруг не <input>)."""
+    out = []
+    try:
+        for h in scope.locator("input").element_handles():
+            try:
+                out.append("[vis=%s type=%s im=%s ph=%r name=%s val=%s]" % (
+                    h.is_visible(), h.get_attribute("type"), h.get_attribute("inputmode"),
+                    (h.get_attribute("placeholder") or "")[:16], h.get_attribute("name"),
+                    "да" if (h.input_value() or "").strip() else "пусто"))
+            except Exception:
+                out.append("[?]")
+    except Exception:
+        pass
+    extra = ""
+    try:
+        extra = " | contenteditable: %d" % scope.locator("[contenteditable=true]").count()
+    except Exception:
+        pass
+    return ("поля: " + (" ".join(out) if out else "НЕТ <input> в этой области")) + extra
+
+
 def _fill_card_field(h, value):
     h.click()
     h.type(value, delay=70)
@@ -270,15 +292,15 @@ def _type_card(page, card, tg, deadline):
     scope = _card_scope(page, deadline)
     f = _next_empty_card_input(scope, deadline)
     if f is None:
-        raise RuntimeError("форма карты не найдена")
+        raise RuntimeError("форма карты не найдена. " + _inputs_debug(scope))
     _fill_card_field(f, num)
     f = _next_empty_card_input(scope, deadline)
     if f is None:
-        raise RuntimeError("поле срока не появилось после номера карты")
+        raise RuntimeError("поле срока не появилось после номера карты. " + _inputs_debug(scope))
     _fill_card_field(f, exp)
     f = _next_empty_card_input(scope, deadline)
     if f is None:
-        raise RuntimeError("поле кода карты (CVV) не появилось")
+        raise RuntimeError("поле кода карты (CVV) не появилось. " + _inputs_debug(scope))
     _fill_card_field(f, cvv)
     # увести фокус с CVV — у части форм кнопка «оплатить» загорается только после «потери фокуса»
     try:
