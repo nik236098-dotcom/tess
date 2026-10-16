@@ -1,1 +1,14 @@
-placeholder
+{
+  "version": "15.91-io",
+  "revision": 84,
+  "files": {
+    "server_controller.py": {
+      "output_sha256": "a84fd73cd01b287ec67e89c18e8621298afc04a416c704445a95fc1102a8e25d",
+      "input_sha256": "708efce19cb404b19c1d74300f87d7658494a22591214e9b74c65d2a3b737673",
+      "previous_output_sha256": [
+        "8a827f68aa4972f1c9ed1aeeec5f0de4b918dbb6e8bb1a4884f9abec2dd19935"
+      ]
+    }
+  },
+  "note": "QUEUE_DONE_1591R84 thin package: only server_controller.py"
+}
