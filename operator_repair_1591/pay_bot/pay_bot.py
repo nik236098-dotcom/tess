@@ -241,28 +241,30 @@ def _type_card(page, card, tg, deadline):
         raise RuntimeError("форма карты не найдена")
     ins[0].click()
     ins[0].type(num, delay=70)
-    # ждём появления поля срока
-    for _ in range(40):
+    # ждём появления поля срока (до общего дедлайна — сайт может тормозить)
+    while time.monotonic() < deadline:
         ins = _visible_inputs(scope)
         if len(ins) >= 2:
             break
-        page.wait_for_timeout(200)
+        page.wait_for_timeout(300)
     if len(ins) < 2:
         raise RuntimeError("поле срока не появилось после номера карты")
     ins[1].click()
     ins[1].type(exp, delay=70)
     # ждём появления поля кода (CVV)
-    for _ in range(40):
+    while time.monotonic() < deadline:
         ins = _visible_inputs(scope)
         if len(ins) >= 3:
             break
-        page.wait_for_timeout(200)
+        page.wait_for_timeout(300)
     if len(ins) < 3:
         raise RuntimeError("поле кода карты (CVV) не появилось")
     ins[2].click()
     ins[2].type(cvv, delay=70)
     page.wait_for_timeout(500)
-    if not _click_by_words(scope, ("оплатить",), timeout_ms=8000):
+    # кнопка «оплатить» может стать активной не сразу — ждём до дедлайна
+    left_ms = max(8000, int((deadline - time.monotonic()) * 1000))
+    if not _click_by_words(scope, ("оплатить",), timeout_ms=left_ms):
         raise RuntimeError("кнопка «оплатить» не нажалась (возможно, неактивна)")
     return True
 
@@ -319,27 +321,30 @@ def _shot(page, name):
 # ── обработка одной ссылки ─────────────────────────────────────────────────
 def process_link(pw_browser, link, card, tg, cfg):
     code_wait = int(cfg.get("code_wait_seconds") or 300)
+    # Билайн сейчас может грузить форму/поле оплаты по 2-3 минуты — ждём терпеливо.
+    page_wait = int(cfg.get("page_wait_seconds") or 240)   # сек на появление кнопки/формы/кода
     ctx_kwargs = {"locale": "ru-RU"}
     bproxy = str(cfg.get("browser_proxy") or "").strip()
     if bproxy and bproxy.lower() not in ("direct", "none", "off", "no", "-"):
         ctx_kwargs["proxy"] = {"server": bproxy}
     context = pw_browser.new_context(**ctx_kwargs)
     page = context.new_page()
-    page.set_default_timeout(20000)
+    page.set_default_timeout(60000)
     try:
         tg.send(f"🔗 Открываю ссылку…\n{link}")
-        page.goto(link, wait_until="domcontentloaded", timeout=45000)
+        page.goto(link, wait_until="domcontentloaded", timeout=max(90000, page_wait * 1000))
         page.wait_for_timeout(2500)
 
-        # 1) страница «ждёт оплаты» — единственная кнопка «Оплатить»
-        if not _click_by_words(page.main_frame, PAY_BUTTON_WORDS, timeout_ms=9000):
+        # 1) страница «ждёт оплаты» — единственная кнопка «Оплатить» (ждём терпеливо, сайт лагает)
+        tg.send("⏳ Жду кнопку «Оплатить» (сайт может грузиться до нескольких минут)…")
+        if not _click_by_words(page.main_frame, PAY_BUTTON_WORDS, timeout_ms=page_wait * 1000):
             # возможно, форма карты уже открыта сразу
             log("кнопку «оплатить» не нашёл на первой странице — пробую сразу форму карты")
         page.wait_for_timeout(2000)
 
-        # 2) форма карты
-        tg.send(f"💳 Ввожу карту {mask_card(card[0])}…")
-        deadline = time.monotonic() + 30
+        # 2) форма карты (поле может грузиться минуты — ждём до page_wait)
+        tg.send(f"💳 Ввожу карту {mask_card(card[0])} (жду загрузку формы, это может занять минуты)…")
+        deadline = time.monotonic() + page_wait
         _type_card(page, card, tg, deadline)
         page.wait_for_timeout(3000)
 
@@ -348,7 +353,8 @@ def process_link(pw_browser, link, card, tg, cfg):
         code_ok = False
         for attempt in range(1, 6):
             fr = h = None
-            for _ in range(60):   # до ~30 c ждём появления поля кода / результата
+            step_deadline = time.monotonic() + page_wait
+            while time.monotonic() < step_deadline:   # ждём появления поля кода / результата (до page_wait)
                 low = _page_text(page)
                 if any(w in low for w in DECLINE_WORDS) and not any(w in low for w in CODE_FIELD_HINT):
                     tg.send("❌ Оплата не прошла (банк отклонил). Перехожу к следующей ссылке.")

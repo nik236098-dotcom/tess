@@ -30,7 +30,8 @@ sudo tee /opt/pay_bot/pay_bot_config.json >/dev/null <<'JSON'
   "chat_id": "ТВОЙ_CHAT_ID",
   "proxy": "socks5h://логин:пароль@хост:порт",
   "headless": true,
-  "code_wait_seconds": 300
+  "code_wait_seconds": 300,
+  "page_wait_seconds": 240
 }
 JSON
 sudo chmod 600 /opt/pay_bot/pay_bot_config.json
