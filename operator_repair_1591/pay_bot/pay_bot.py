@@ -261,11 +261,24 @@ def _type_card(page, card, tg, deadline):
         raise RuntimeError("поле кода карты (CVV) не появилось")
     ins[2].click()
     ins[2].type(cvv, delay=70)
-    page.wait_for_timeout(500)
+    # увести фокус с CVV — у части форм кнопка «оплатить» загорается только после «потери фокуса»
+    try:
+        ins[2].press("Tab")
+    except Exception:
+        pass
+    try:
+        page.keyboard.press("Tab")
+    except Exception:
+        pass
+    page.wait_for_timeout(800)
     # кнопка «оплатить» может стать активной не сразу — ждём до дедлайна
+    try:
+        tg.send("💳 Карта введена, жму «оплатить» (жду активации кнопки)…")
+    except Exception:
+        pass
     left_ms = max(8000, int((deadline - time.monotonic()) * 1000))
     if not _click_by_words(scope, ("оплатить",), timeout_ms=left_ms):
-        raise RuntimeError("кнопка «оплатить» не нажалась (возможно, неактивна)")
+        raise RuntimeError("кнопка «оплатить» не нажалась (кнопка осталась неактивной — проверь карту/срок/CVV)")
     return True
 
 
