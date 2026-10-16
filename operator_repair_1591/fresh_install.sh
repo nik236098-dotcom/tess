@@ -43,8 +43,8 @@ else
   REPO="$(mktemp -d /tmp/beeline-repo.XXXXXX)"
   git clone -q --depth 1 -b "$BRANCH" "$REPO_URL" "$REPO"
 fi
-# The newest FULL package (one that carries the sources, i.e. test_beeline.py); thin patch-only packages
-# (r84+: just a .patch for the update button) are skipped here and applied on top of the base below.
+# The newest FULL package (one that carries the sources, i.e. test_beeline.py). Thin patch-only packages
+# (a bare .patch for the update button, no sources) are ignored by a fresh install — it lays down the full base.
 PACKAGE="$(for d in "$REPO"/operator_repair_1591/beeline_integrated_io_15_91_r*/; do
     d="${d%/}"; if [[ "$d" =~ _r[0-9]+$ && -f "$d/test_beeline.py" ]]; then echo "$d"; fi
   done | sort -t r -k 3 -n | tail -1)"   # the full package, not *_lite, not a thin patch
@@ -65,7 +65,7 @@ if [[ -z "${SKIP_APT:-}" ]]; then
     apt-get update -y || return 1
     ASOUND_PKG="libasound2"
     if apt-cache show libasound2t64 >/dev/null 2>&1; then ASOUND_PKG="libasound2t64"; fi
-    timeout 1200 apt-get install -y python3 python3-venv python3-pip unzip patch curl git rsync xvfb ca-certificates fonts-liberation \
+    timeout 1200 apt-get install -y python3 python3-venv python3-pip unzip curl git rsync xvfb ca-certificates fonts-liberation \
       libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 "$ASOUND_PKG" libxss1 libxtst6 libx11-xcb1 libdrm2 \
       libxcomposite1 libxdamage1 libxrandr2 libxfixes3 libglib2.0-0 libgl1
   }
@@ -95,17 +95,6 @@ for name in test_beeline.py server_controller.py operator_runtime_io.py symbol_m
   install -m 0644 "$PACKAGE/$name" "$APP_DIR/$name"
 done
 install -m 0644 "$REPO/local_matcher.py" "$APP_DIR/local_matcher.py"
-
-# r84+: тонкие пакеты-заплатки (без исходников, только .patch для кнопки «Обновить») накладываем поверх базы,
-# по возрастанию ревизии. Каждая сама проверяет, что база подходит; если не легла — остаёмся на базовой ревизии.
-for patch_pkg in $(for d in "$REPO"/operator_repair_1591/beeline_integrated_io_15_91_r*/; do
-    d="${d%/}"; if [[ "$d" =~ _r[0-9]+$ && ! -f "$d/test_beeline.py" && -f "$d/install.py" ]]; then echo "$d"; fi
-  done | sort -t r -k 3 -n); do
-  prev="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["revision"])' "$patch_pkg/manifest.json" 2>/dev/null || echo 0)"
-  (( prev > REVISION )) || continue
-  say "Заплатка $(basename "$patch_pkg") (ревизия $prev)"
-  python3 "$patch_pkg/install.py" --app "$APP_DIR" --apply || say "заплатка $(basename "$patch_pkg") не легла — остаюсь на ревизии $REVISION"
-done
 [[ -f "$APP_DIR/PROJECT_RULES.md" ]] || install -m 0644 "$REPO/PROJECT_RULES.md" "$APP_DIR/PROJECT_RULES.md"
 if [[ ! -f "$APP_DIR/console_wait.py" ]]; then
 cat > "$APP_DIR/console_wait.py" <<'PY'
