@@ -1,0 +1,88 @@
+test_control_keys_not_sent_to_model (test_update.ControllerTests.test_control_keys_not_sent_to_model) ... ok
+test_failed_input_is_not_acknowledged (test_update.ControllerTests.test_failed_input_is_not_acknowledged) ... [CTRL RX] update=7 не сохранён/не обработан: fixture write failure
+ok
+test_successful_input_commits_next_offset (test_update.ControllerTests.test_successful_input_commits_next_offset) ... [CTRL→AI] update=7: hello
+ok
+test_apply_installs_connected_files_and_preserves_data (test_update.InstallerTests.test_apply_installs_connected_files_and_preserves_data) ... ok
+test_changed_source_refused_before_stop (test_update.InstallerTests.test_changed_source_refused_before_stop) ... ok
+test_import_failure_restores_original_code (test_update.InstallerTests.test_import_failure_restores_original_code) ... ok
+test_reapply_does_not_restart (test_update.InstallerTests.test_reapply_does_not_restart) ... ok
+test_running_service_requires_explicit_restart (test_update.InstallerTests.test_running_service_requires_explicit_restart) ... ok
+test_startup_failure_restores_code (test_update.InstallerTests.test_startup_failure_restores_code) ... ok
+test_actual_chat_http_payload_with_images (test_update.PromptTests.test_actual_chat_http_payload_with_images) ... [AI REQUEST 15.91] {"route": "chat", "system_count": 1, "system_chars": 7, "system_sha256": "e3cc57e193d6512e6debf0e925febe757e87e85d66150a2f212aa8641940b027"}
+ok
+test_actual_observer_saves_full_reply_without_browser (test_update.PromptTests.test_actual_observer_saves_full_reply_without_browser) ... [AI CHAT] Operator process стартовал PID=820.
+[AI CHAT] Обрабатываю update 7: привет
+[AI CHAT] update 7 завершён.
+ok
+test_actual_tools_payload_checkpoint_and_three_rounds (test_update.PromptTests.test_actual_tools_payload_checkpoint_and_three_rounds) ... [AI] Возобновляю checkpoint tg_25 с round=3.
+[AI REQUEST 15.91] {"route": "tools", "system_count": 1, "system_chars": 31, "system_sha256": "b419081dedbdab779eb893af7a1b2d300011470a57314f2d640e22fb56d1d61c"}
+[AI REQUEST 15.91] {"route": "tools", "system_count": 1, "system_chars": 31, "system_sha256": "b419081dedbdab779eb893af7a1b2d300011470a57314f2d640e22fb56d1d61c"}
+[AI REQUEST 15.91] {"route": "tools", "system_count": 1, "system_chars": 31, "system_sha256": "b419081dedbdab779eb893af7a1b2d300011470a57314f2d640e22fb56d1d61c"}
+ok
+test_api_length_limit_is_not_hidden (test_update.PromptTests.test_api_length_limit_is_not_hidden) ... [AI REQUEST 15.91] {"route": "chat", "system_count": 1, "system_chars": 1, "system_sha256": "043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89"}
+ok
+test_deep_copy_does_not_mutate_checkpoint (test_update.PromptTests.test_deep_copy_does_not_mutate_checkpoint) ... ok
+test_external_chat_and_standalone_routes (test_update.PromptTests.test_external_chat_and_standalone_routes) ... ok
+test_installed_priority_is_reused_not_rewritten (test_update.PromptTests.test_installed_priority_is_reused_not_rewritten) ... ok
+test_no_empty_system (test_update.PromptTests.test_no_empty_system) ... ok
+test_no_recursive_growth (test_update.PromptTests.test_no_recursive_growth) ... ok
+test_old_chat_role_text_not_inserted (test_update.PromptTests.test_old_chat_role_text_not_inserted) ... ok
+test_request_audit_does_not_print_secret_prompt (test_update.PromptTests.test_request_audit_does_not_print_secret_prompt) ... ok
+test_request_restored_after_checkpoint (test_update.PromptTests.test_request_restored_after_checkpoint) ... ok
+test_role_question_excludes_old_console (test_update.PromptTests.test_role_question_excludes_old_console) ... ok
+test_single_current_system (test_update.PromptTests.test_single_current_system) ... ok
+test_tools_images_and_reasoning_history_preserved (test_update.PromptTests.test_tools_images_and_reasoning_history_preserved) ... ok
+test_delivery_waits_for_all_parts (test_update.QueueTests.test_delivery_waits_for_all_parts) ... [TG ACK 15.91] update=1 part=1/3 message_id=1
+[TG ACK 15.91] update=1 part=2/3 message_id=2
+[TG ACK 15.91] update=1 part=3/3 message_id=3
+ok
+test_error_text_redacts_credentials (test_update.QueueTests.test_error_text_redacts_credentials) ... ok
+test_failed_inbox_transaction_does_not_advance_offset (test_update.QueueTests.test_failed_inbox_transaction_does_not_advance_offset) ... ok
+test_full_response_survives_reopen (test_update.QueueTests.test_full_response_survives_reopen) ... ok
+test_initialization_does_not_reroute_internal_tasks (test_update.QueueTests.test_initialization_does_not_reroute_internal_tasks) ... ok
+test_initialization_preserves_live_claim (test_update.QueueTests.test_initialization_preserves_live_claim) ... ok
+test_late_job_failure_does_not_overwrite_response (test_update.QueueTests.test_late_job_failure_does_not_overwrite_response) ... ok
+test_notification_is_really_queued_by_controller_send (test_update.QueueTests.test_notification_is_really_queued_by_controller_send) ... ok
+test_ok_without_message_id_is_not_ack (test_update.QueueTests.test_ok_without_message_id_is_not_ack) ... [TG RETRY 15.91] update=1 part=1/1 delay=3
+ok
+test_outbox_is_creation_order_not_negative_id_order (test_update.QueueTests.test_outbox_is_creation_order_not_negative_id_order) ... ok
+test_recompletion_does_not_replace_delivered_text (test_update.QueueTests.test_recompletion_does_not_replace_delivered_text) ... ok
+test_replaying_sent_item_has_no_network_call (test_update.QueueTests.test_replaying_sent_item_has_no_network_call) ... ok
+test_resume_sends_only_unconfirmed_parts (test_update.QueueTests.test_resume_sends_only_unconfirmed_parts) ... [TG ACK 15.91] update=1 part=1/3 message_id=1
+[TG RETRY 15.91] update=1 part=2/3 delay=3
+[TG ACK 15.91] update=1 part=2/3 message_id=2
+[TG ACK 15.91] update=1 part=3/3 message_id=3
+ok
+test_retry_after_is_respected (test_update.QueueTests.test_retry_after_is_respected) ... [TG RETRY 15.91] update=1 part=1/1 delay=60
+ok
+test_storage_connection_is_closed (test_update.QueueTests.test_storage_connection_is_closed) ... ok
+test_two_senders_cannot_deliver_same_chunk_simultaneously (test_update.QueueTests.test_two_senders_cannot_deliver_same_chunk_simultaneously) ... [TG ACK 15.91] update=1 part=1/1 message_id=1
+ok
+test_unicode_split_reassembles_exactly (test_update.QueueTests.test_unicode_split_reassembles_exactly) ... ok
+test_browser_contract_captcha_handlers_unchanged (test_update.SourceIntegrityTests.test_browser_contract_captcha_handlers_unchanged) ... ok
+test_complete_modules_import_and_link_without_starting_browser (test_update.SourceIntegrityTests.test_complete_modules_import_and_link_without_starting_browser) ... ok
+test_exact_payload_hashes (test_update.SourceIntegrityTests.test_exact_payload_hashes) ... ok
+test_main_version_not_claiming_runtime_tests (test_update.SourceIntegrityTests.test_main_version_not_claiming_runtime_tests) ... ok
+test_python310_syntax_and_compile (test_update.SourceIntegrityTests.test_python310_syntax_and_compile) ... ok
+test_real_calls_not_a_disconnected_library (test_update.SourceIntegrityTests.test_real_calls_not_a_disconnected_library) ... ok
+test_required_chromium_flags_preserved (test_update.SourceIntegrityTests.test_required_chromium_flags_preserved) ... ok
+test_actual_capture_writes_sender_field (test_update.StateTests.test_actual_capture_writes_sender_field) ... ok
+test_aliases_and_existing_data (test_update.StateTests.test_aliases_and_existing_data) ... ok
+test_assist_phases_are_really_tickable (test_update.StateTests.test_assist_phases_are_really_tickable) ... ok
+test_cdp_close_checks_guard_before_connecting (test_update.StateTests.test_cdp_close_checks_guard_before_connecting) ... ok
+test_guard_priority_even_when_phase_is_wrong (test_update.StateTests.test_guard_priority_even_when_phase_is_wrong) ... ok
+test_guarded_cancel_cannot_change_generation (test_update.StateTests.test_guarded_cancel_cannot_change_generation) ... ok
+test_guarded_restart_cannot_close (test_update.StateTests.test_guarded_restart_cannot_close) ... ok
+test_heartbeat_preserves_both_guards_and_matcher_clock (test_update.StateTests.test_heartbeat_preserves_both_guards_and_matcher_clock) ... ok
+test_merge_zero_and_false_are_not_empty (test_update.StateTests.test_merge_zero_and_false_are_not_empty) ... ok
+test_runtime_tick_invoked_instead_of_restart (test_update.StateTests.test_runtime_tick_invoked_instead_of_restart) ... [Вкладка 1] Воркер запущен.
+[Вкладка 1] Воркер завершил очередь.
+[Вкладка 1] Воркер запущен.
+[Вкладка 1] Воркер завершил очередь.
+ok
+
+----------------------------------------------------------------------
+Ran 58 tests in 11.452s
+
+OK
