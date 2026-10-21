@@ -86,9 +86,13 @@ if [[ -z "${SKIP_APT:-}" ]]; then
     apt-get update -y || return 1
     ASOUND_PKG="libasound2"
     if apt-cache show libasound2t64 >/dev/null 2>&1; then ASOUND_PKG="libasound2t64"; fi
+    # FAST_CHROMIUM_1591R98: полный набор библиотек Chromium ставим здесь, чтобы ниже не гонять apt второй раз
+    # через `playwright install --with-deps` (это и было «долго» — лишние шрифты). Многие тянутся как зависимости,
+    # но перечисляем явно, чтобы браузер точно запустился без медленного добора.
     timeout 1200 apt-get install -y python3 python3-venv python3-pip unzip curl git rsync xvfb ca-certificates fonts-liberation \
-      libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 "$ASOUND_PKG" libxss1 libxtst6 libx11-xcb1 libdrm2 \
-      libxcomposite1 libxdamage1 libxrandr2 libxfixes3 libglib2.0-0 libgl1
+      libnss3 libnspr4 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libgtk-3-0 libgbm1 "$ASOUND_PKG" libxss1 libxtst6 \
+      libx11-6 libx11-xcb1 libxcb1 libxext6 libdrm2 libxcomposite1 libxdamage1 libxrandr2 libxfixes3 libxkbcommon0 \
+      libglib2.0-0 libgl1 libcups2 libdbus-1-3 libpango-1.0-0 libcairo2
   }
   if ! apt_packages; then
     say "Зеркало пакетов не отвечает — переключаюсь на archive.ubuntu.com и повторяю"
@@ -230,7 +234,19 @@ if [[ -z "${SKIP_VENV:-}" ]]; then
   }
   retry_step "обновление pip" 600 "$PY" -m pip install --default-timeout=30 --retries=5 --upgrade pip wheel setuptools
   retry_step "пакеты Python" 1200 "$APP_DIR/venv/bin/pip" install --default-timeout=30 --retries=5 playwright "requests[socks]" numpy opencv-python-headless
-  retry_step "браузер Chromium" 1500 "$PY" -m playwright install --with-deps chromium
+  # FAST_CHROMIUM_1591R98: раньше `--with-deps` гонял apt ВТОРОЙ раз и ставил лишние шрифты (японские, unifont) —
+  # это и было «долго». Нужные библиотеки уже поставлены в шаге 2, поэтому качаем только сам браузер. Затем —
+  # быстрая проверка запуска; если какой-то библиотеки всё же не хватило, доставляем их штатным install-deps.
+  retry_step "браузер Chromium" 1500 "$PY" -m playwright install chromium
+  if "$PY" - <<'PY' 2>/dev/null
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    b = p.chromium.launch(args=["--no-sandbox", "--disable-setuid-sandbox"]); b.close()
+PY
+  then :; else
+    say "Chromium не запустился на имеющихся библиотеках — доставляю системные зависимости (это дольше)"
+    retry_step "библиотеки браузера" 1500 "$PY" -m playwright install-deps chromium
+  fi
 else
   PY="$(command -v python3)"
 fi
