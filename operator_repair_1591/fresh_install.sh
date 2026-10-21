@@ -41,7 +41,12 @@ else
   say "Клонирую $REPO_URL ($BRANCH)"
   command -v git >/dev/null || { [[ -n "${SKIP_APT:-}" ]] && die "нужен git"; apt-get update -y && apt-get install -y git; }
   REPO="$(mktemp -d /tmp/beeline-repo.XXXXXX)"
-  git clone -q --depth 1 -b "$BRANCH" "$REPO_URL" "$REPO"
+  # GIT_STALL_1591R98: клон с таймаутом, повторами и обрывом зависшей закачки (нет данных ~30 сек → стоп), с прогрессом.
+  gn=0
+  until timeout 600 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone --progress --depth 1 -b "$BRANCH" "$REPO_URL" "$REPO"; do
+    gn=$((gn + 1)); [[ $gn -ge 3 ]] && die "git clone не прошёл за 3 попытки (сеть/прокси?)"
+    say "Клонирование зависло или ошибка — повтор $gn из 2"; rm -rf "$REPO"; mkdir -p "$REPO"; sleep $((2 * gn))
+  done
 fi
 # The newest FULL package (one that carries the sources, i.e. test_beeline.py). Thin patch-only packages
 # (a bare .patch for the update button, no sources) are ignored by a fresh install — it lays down the full base.

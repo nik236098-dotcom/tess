@@ -29,6 +29,8 @@ SERVICE="beeline"
 
 say() { printf '\n== %s\n' "$*"; }
 die() { printf 'ОШИБКА: %s\n' "$*" >&2; exit 1; }
+# GIT_STALL_1591R98: сетевой git обрывает зависшую закачку (нет данных ~30 сек → стоп) вместо вечного ожидания.
+GIT_STALL=(-c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30)
 
 if [[ $EUID -ne 0 && -z "${CHECK:-}" ]]; then
   die "запусти через sudo (или CHECK=1 для проверки без установки)"
@@ -48,14 +50,24 @@ if [[ -z "${REPO:-}" ]]; then
   REPO=/root/tess
   say "Клонирую $REPO_URL ($BRANCH) в $REPO"
   command -v git >/dev/null || die "нужен git: apt-get install -y git"
-  git clone -q -b "$BRANCH" "$REPO_URL" "$REPO"
+  n=0
+  until timeout 600 git "${GIT_STALL[@]}" clone --progress --depth 1 -b "$BRANCH" "$REPO_URL" "$REPO"; do
+    n=$((n + 1)); [[ $n -ge 3 ]] && die "git clone не прошёл за 3 попытки (сеть/прокси?)"
+    say "Клонирование зависло или ошибка — повтор $n из 2"; rm -rf "$REPO"; sleep $((2 * n))
+  done
 elif [[ -z "${NO_PULL:-}" ]]; then
   say "Обновляю $REPO ($BRANCH)"
   OWNER="$(stat -c %U "$REPO")"
+  # GIT_STALL_1591R98: каждый вызов git с таймаутом (300 сек) — зависшая сеть больше не морозит обновление насмерть.
   git_as_owner() {
-    if [[ $EUID -eq 0 && "$OWNER" != root ]]; then sudo -u "$OWNER" git -C "$REPO" "$@"; else git -C "$REPO" -c safe.directory='*' "$@"; fi
+    if [[ $EUID -eq 0 && "$OWNER" != root ]]; then timeout 300 sudo -u "$OWNER" git -C "$REPO" "${GIT_STALL[@]}" "$@"
+    else timeout 300 git -C "$REPO" -c safe.directory='*' "${GIT_STALL[@]}" "$@"; fi
   }
-  git_as_owner fetch -q origin "$BRANCH" || die "git fetch не прошёл (сеть/прокси?)"
+  n=0
+  until git_as_owner fetch --progress origin "$BRANCH"; do
+    n=$((n + 1)); [[ $n -ge 3 ]] && die "git fetch не прошёл за 3 попытки (сеть/прокси?)"
+    say "fetch завис или ошибка — повтор $n из 2"; sleep $((2 * n))
+  done
   if [[ "$(git_as_owner rev-parse --abbrev-ref HEAD)" != "$BRANCH" ]]; then
     git_as_owner checkout -q "$BRANCH"
   fi
