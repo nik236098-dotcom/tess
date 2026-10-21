@@ -38,15 +38,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-/dev/null}")" 2>/dev/null && pwd 
 if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/fix_package_1591.py" ]]; then
   REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 else
-  say "Клонирую $REPO_URL ($BRANCH)"
+  say "Клонирую $REPO_URL ($BRANCH) — только последний пакет"
   command -v git >/dev/null || { [[ -n "${SKIP_APT:-}" ]] && die "нужен git"; apt-get update -y && apt-get install -y git; }
   REPO="$(mktemp -d /tmp/beeline-repo.XXXXXX)"
-  # GIT_STALL_1591R98: клон с таймаутом, повторами и обрывом зависшей закачки (нет данных ~30 сек → стоп), с прогрессом.
-  gn=0
-  until timeout 600 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone --progress --depth 1 -b "$BRANCH" "$REPO_URL" "$REPO"; do
-    gn=$((gn + 1)); [[ $gn -ge 3 ]] && die "git clone не прошёл за 3 попытки (сеть/прокси?)"
-    say "Клонирование зависло или ошибка — повтор $gn из 2"; rm -rf "$REPO"; mkdir -p "$REPO"; sleep $((2 * gn))
-  done
+  GS=(-c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30)   # обрыв зависшей закачки: нет данных ~30 сек → стоп
+  # FAST_CLONE_1591R98: репозиторий разросся до ~130 МБ (сотня копий пакетов) и полный клон тянулся минутами.
+  # Качаем ТОЛЬКО дерево без содержимого, потом доливаем один самый новый полный пакет — это пара секунд.
+  # Если git старый/не поддержал частичный клон — откат на обычный поверхностный клон.
+  clone_one_package() {
+    rm -rf "$REPO"; mkdir -p "$REPO"
+    timeout 300 git "${GS[@]}" clone --depth 1 --filter=blob:none --sparse -b "$BRANCH" "$REPO_URL" "$REPO" || return 1
+    local pkg
+    pkg="$(git -C "$REPO" ls-tree -d --name-only HEAD operator_repair_1591/ 2>/dev/null \
+          | grep -E 'beeline_integrated_io_15_91_r[0-9]+$' | sed -E 's#.*_r([0-9]+)$#\1 \0#' | sort -n | tail -1 | cut -d' ' -f2-)" || pkg=""
+    [[ -n "$pkg" ]] || return 1
+    timeout 300 git -C "$REPO" "${GS[@]}" sparse-checkout set "$pkg" || return 1
+    [[ -f "$REPO/$pkg/test_beeline.py" && -f "$REPO/local_matcher.py" ]] || return 1
+  }
+  clone_full() {
+    rm -rf "$REPO"; mkdir -p "$REPO"
+    timeout 900 git "${GS[@]}" clone --progress --depth 1 -b "$BRANCH" "$REPO_URL" "$REPO"
+  }
+  if ! clone_one_package; then
+    say "Быстрый клон не вышел — тяну полный репозиторий (дольше, но надёжно)"
+    cn=0; until clone_full; do cn=$((cn + 1)); [[ $cn -ge 3 ]] && die "git clone не прошёл за 3 попытки (сеть/прокси?)"; say "повтор $cn из 2"; sleep $((2 * cn)); done
+  fi
 fi
 # The newest FULL package (one that carries the sources, i.e. test_beeline.py). Thin patch-only packages
 # (a bare .patch for the update button, no sources) are ignored by a fresh install — it lays down the full base.
