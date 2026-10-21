@@ -173,15 +173,21 @@ PY
 fi
 
 # 5. Конфиги: из переезда, из переменных или с клавиатуры.
+# TTY_ASK_1591R98: при `curl ... | sudo bash` стандартный ввод — это труба curl, а не клавиатура, и прежний
+# `read` падал. Читаем прямо с терминала /dev/tty — тогда и в режиме «одной командой через curl» вопросы работают.
+_tty_ok() { { true < /dev/tty; } 2>/dev/null; }
 ask() {  # ask VAR "подсказка" [secret]
   local var="$1" prompt="$2" secret="${3:-}"
-  if [[ -z "${!var:-}" ]]; then
-    if [[ -t 0 ]]; then
-      if [[ -n "$secret" ]]; then read -r -s -p "$prompt: " "$var"; echo; else read -r -p "$prompt: " "$var"; fi
-    else
-      die "нет $var: задай переменную окружения или укажи MIGRATE_FROM"
-    fi
+  [[ -n "${!var:-}" ]] && return 0
+  if _tty_ok; then
+    printf '%s: ' "$prompt" > /dev/tty
+    if [[ -n "$secret" ]]; then read -r -s "$var" < /dev/tty; printf '\n' > /dev/tty; else read -r "$var" < /dev/tty; fi
+  elif [[ -t 0 ]]; then
+    if [[ -n "$secret" ]]; then read -r -s -p "$prompt: " "$var"; echo; else read -r -p "$prompt: " "$var"; fi
+  else
+    die "нет $var: нет терминала для ввода. Задай переменной окружения, укажи MIGRATE_FROM, или скачай и запусти отдельно: curl -fsSL <адрес fresh_install> -o /tmp/fi && sudo bash /tmp/fi"
   fi
+  [[ -n "${!var:-}" ]] || die "пустой $var"
 }
 if [[ ! -f "$APP_DIR/deepseek_config.json" ]]; then
   ask DEEPSEEK_API_KEY "DeepSeek API key" secret
@@ -193,8 +199,10 @@ fi
 if [[ ! -f "$APP_DIR/telegram_config.json" ]]; then
   ask TELEGRAM_BOT_TOKEN "Telegram bot token" secret
   ask TELEGRAM_CHAT_ID "Telegram chat_id"
-  if [[ -z "${TELEGRAM_PROXY:-}" && -t 0 ]]; then
-    read -r -p "Прокси для Telegram (socks5h://логин:пароль@хост:порт; Enter или direct — без прокси, сервер вне России): " TELEGRAM_PROXY
+  if [[ -z "${TELEGRAM_PROXY:-}" ]]; then  # TTY_ASK_1591R98: спрашиваем и при curl|bash (через /dev/tty)
+    PROXY_PROMPT="Прокси для Telegram (socks5h://логин:пароль@хост:порт; Enter или direct — без прокси, сервер вне России): "
+    if _tty_ok; then printf '%s' "$PROXY_PROMPT" > /dev/tty; read -r TELEGRAM_PROXY < /dev/tty
+    elif [[ -t 0 ]]; then read -r -p "$PROXY_PROMPT" TELEGRAM_PROXY; fi
   fi
   TELEGRAM_PROXY="${TELEGRAM_PROXY:-direct}"   # PROXY_DIRECT_1591R20
   python3 - "$APP_DIR/telegram_config.json" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" "$TELEGRAM_PROXY" <<'PY'
