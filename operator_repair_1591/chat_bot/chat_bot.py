@@ -122,7 +122,7 @@ def deepseek(messages, max_tokens=220, temperature=1.0):
     if not key:
         return None
     url = str(CFG.get("deepseek_url") or "https://api.deepseek.com/chat/completions")
-    model = str(CFG.get("deepseek_model") or "deepseek-chat")
+    model = str(CFG.get("deepseek_model") or "deepseek-flash")   # как в основном боте
     try:
         r = requests.post(url, headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
                           json={"model": model, "messages": messages, "max_tokens": max_tokens,
@@ -316,23 +316,24 @@ def find_duplicates(chat_id, since=0):
 
 # ---------------------------------------------------------------- логика запросов
 PENDING = {}            # chat_id -> {"ids":[...], "numbers":[...], "ts":...}
-THREADS = {}            # (chat_id, user_id) -> ts последнего ответа бота в ветке (для продолжения диалога)
-THREAD_TTL = 180        # сек: столько «ветка» живёт без нового обращения
+
+
+def _today_since():
+    return datetime.datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
 
 
 def is_triggered(chat_id, msg):
-    """True, если бот должен ответить: слово-триггер, @юзернейм, reply на бота, или активная ветка."""
-    text = (msg.get("text") or msg.get("caption") or "").lower()
-    if any(w in text for w in TRIGGERS):
+    """True только если к боту обратились: слово-триггер ОТДЕЛЬНЫМ словом, @юзернейм или reply на его сообщение.
+    Продолжение диалога — через reply на бота (настоящая ветка), а не по таймеру, чтобы не лезть в чужие сообщения."""
+    low = (msg.get("text") or msg.get("caption") or "").lower()
+    for w in TRIGGERS:
+        # отдельным словом: «дип» не сработает внутри «диплом», «deepseek» — внутри «deepseeker»
+        if re.search(r"(?<![0-9a-zа-яё])" + re.escape(w) + r"(?![0-9a-zа-яё])", low):
+            return True
+    if BOT_USERNAME and ("@" + BOT_USERNAME.lower()) in low:
         return True
-    if BOT_USERNAME and ("@" + BOT_USERNAME.lower()) in text:
-        return True
-    rep = msg.get("reply_to_message") or {}
-    if (rep.get("from") or {}).get("is_bot") and (rep.get("from") or {}).get("username", "").lower() == BOT_USERNAME.lower():
-        return True
-    frm = msg.get("from") or {}
-    key = (chat_id, frm.get("id"))
-    if key in THREADS and time.time() - THREADS[key] < THREAD_TTL:
+    rf = (msg.get("reply_to_message") or {}).get("from") or {}
+    if rf.get("is_bot") and str(rf.get("username", "")).lower() == BOT_USERNAME.lower():
         return True
     return False
 
@@ -356,24 +357,25 @@ def kb_yes_no():
 def handle_delete(chat_id, msg):
     text = msg.get("text") or msg.get("caption") or ""
     low = text.lower()
-    # 1) удалить указанное сообщение (reply «удали это»)
+    mid = msg.get("message_id")
     rep = msg.get("reply_to_message") or {}
-    if rep and ("это" in low or "его" in low or "сообщени" in low or not ("дубл" in low)):
-        if rep.get("message_id") and not ("дубл" in low):
-            PENDING[chat_id] = {"ids": [rep["message_id"]], "numbers": [], "ts": time.time()}
-            send(chat_id, random.choice([
-                "Эт сообщение в расход? Уверен?",
-                "Снести вот это? Подтверди, если не передумал.",
-            ]), reply_to=msg.get("message_id"), markup=kb_yes_no())
-            return
-    # 2) удалить дубли
-    since, _ = _window_since(text if is_stats_request(text) else "всё")
-    dups = find_duplicates(chat_id, 0)
+    wants_dups = "дубл" in low or "повтор" in low
+    # 1) reply на сообщение и это НЕ про дубли → удалить именно это сообщение
+    if rep.get("message_id") and not wants_dups:
+        PENDING[chat_id] = {"ids": [rep["message_id"]], "numbers": [], "ts": time.time()}
+        send(chat_id, random.choice([
+            "Эт сообщение в расход? Уверен?",
+            "Снести вот это нахрен? Подтверди.",
+        ]), reply_to=mid, markup=kb_yes_no())
+        return
+    # 2) удалить дубли (по умолчанию за сегодня; «всё/вообще» — за всё время)
+    since = 0 if any(w in low for w in ("всё", "все ", "всего", "вообще", "за всё")) else _today_since()
+    dups = find_duplicates(chat_id, since)
     if not dups:
         send(chat_id, random.choice([
             "Дублей нет, чисто. Расслабься.",
             "Нечего удалять — повторов не нашёл.",
-        ]), reply_to=msg.get("message_id"))
+        ]), reply_to=mid)
         return
     ids, nums = [], []
     for number, keep, extra in dups:
@@ -382,7 +384,7 @@ def handle_delete(chat_id, msg):
     PENDING[chat_id] = {"ids": ids, "numbers": nums, "ts": time.time()}
     listing = "\n".join("• " + n for n in nums[:40])
     send(chat_id, "Щас грохнем эту хуйню — уверен?\nВот чё собрал (%d дублей):\n%s" % (len(ids), listing),
-         reply_to=msg.get("message_id"), markup=kb_yes_no())
+         reply_to=mid, markup=kb_yes_no())
 
 
 def do_pending_delete(chat_id):
@@ -419,9 +421,6 @@ def persona_reply(chat_id, user_text, extra_context=""):
 def handle_trigger(chat_id, msg):
     text = msg.get("text") or msg.get("caption") or ""
     mid = msg.get("message_id")
-    frm = msg.get("from") or {}
-    THREADS[(chat_id, frm.get("id"))] = time.time()   # открыть ветку с этим человеком
-
     if is_delete_request(text):
         handle_delete(chat_id, msg)
         return
