@@ -254,48 +254,92 @@ def qr_status(kinds):
 
 
 # ---------------------------------------------------------------- статистика
+_PERIOD_RE = re.compile(r"(\d+)\s*(минут|мин|часов|часа|час|дней|дня|день|суток|сутки|сут|недел)", re.I)
+
+
 def _window_since(text):
     low = text.lower()
     now = time.time()
+    m = _PERIOD_RE.search(low)   # «за последние 2 часа / 30 минут / 3 дня / 2 недели»
+    if m:
+        n = int(m.group(1)); unit = m.group(2)
+        if unit.startswith("мин"):
+            return now - n * 60, "за последние %d мин" % n
+        if unit.startswith("час"):
+            return now - n * 3600, "за последние %d ч" % n
+        if unit.startswith("недел"):
+            return now - n * 7 * 86400, "за последние %d нед." % n
+        return now - n * 86400, "за последние %d дн." % n
     if "час" in low:
         return now - 3600, "за последний час"
-    if "сегодня" in low or "за день" in low or "за сутки" in low:
-        midnight = datetime.datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0)
-        return midnight.timestamp(), "за сегодня"
     if "недел" in low:
         return now - 7 * 86400, "за неделю"
-    if "всё" in low or "все" in low or "всего" in low:
+    if any(w in low for w in ("всё время", "за всё", "за все", "вообще", "всего", "всех")):
         return 0, "за всё время"
-    # по умолчанию — сегодня
     midnight = datetime.datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     return midnight.timestamp(), "за сегодня"
 
 
-def compute_stats(chat_id, since):
+def compute_stats(chat_id, since, uid=None, name=None):
+    """Статистика по присутствию реакций. uid/name — фильтр по человеку (None = все)."""
     con = db()
-    qrs = con.execute("SELECT msg_id,user,number FROM qr WHERE chat_id=? AND ts>=?", (chat_id, since)).fetchall()
+    rows = con.execute("SELECT msg_id,user,uid FROM qr WHERE chat_id=? AND ts>=?", (chat_id, since)).fetchall()
     per_user = collections.defaultdict(lambda: collections.Counter())
     total = collections.Counter()
-    for msg_id, user, number in qrs:
+    for msg_id, user, quid in rows:
+        if uid is not None and quid != uid:
+            continue
+        if name is not None and name.lower() not in str(user or "").lower():
+            continue
         kinds = _msg_reactions(con, chat_id, msg_id)
-        st = qr_status(kinds)
-        per_user[user]["всего"] += 1
-        per_user[user][st] += 1
-        total["всего"] += 1
-        total[st] += 1
+        for tgt in (per_user[user], total):
+            tgt["всего"] += 1
+            if "inwork" in kinds:
+                tgt["taken"] += 1      # ❤ — взято в работу (в т.ч. потом успех/неуспех)
+            if "success" in kinds:
+                tgt["success"] += 1
+            if "fail" in kinds:
+                tgt["fail"] += 1
+            if not kinds:
+                tgt["none"] += 1
     con.close()
     return total, per_user
 
 
-def stats_text(chat_id, text):
+def _fmt_line(name, c):
+    parts = ["взято в работу %d" % c["taken"]]
+    if c["success"]:
+        parts.append("успех %d" % c["success"])
+    if c["fail"]:
+        parts.append("неуспех %d" % c["fail"])
+    if c["none"]:
+        parts.append("без реакции %d" % c["none"])
+    if not c["success"] and not c["fail"]:
+        parts.append("других реакций не было")
+    return "%s: отправлено %d QR, %s" % (name, c["всего"], ", ".join(parts))
+
+
+def stats_answer(chat_id, text, frm):
     since, label = _window_since(text)
-    total, per_user = compute_stats(chat_id, since)
-    lines = ["Статистика %s:" % label,
-             "Всего QR: %d | 🔥 успех: %d | 👎 неуспех: %d | ❤ в работе: %d | без реакции: %d" %
-             (total["всего"], total["success"], total["fail"], total["inwork"], total["none"])]
+    low = text.lower()
+    uid = name = None
+    if re.search(r"(?<![а-яё])(мной|мои|меня|мне|у меня|себя|мой|моих)", low):
+        uid = (frm or {}).get("id")
+    else:
+        con = db()
+        users = [u for (u,) in con.execute("SELECT DISTINCT user FROM qr WHERE chat_id=?", (chat_id,)).fetchall()]
+        con.close()
+        for u in users:
+            if u and len(u) >= 3 and u.lower() in low:
+                name = u
+                break
+    total, per_user = compute_stats(chat_id, since, uid=uid, name=name)
+    if total["всего"] == 0:
+        return "%s: ничего. По нулям." % label.capitalize()
+    lines = ["📊 %s:" % label]
     for user, c in sorted(per_user.items(), key=lambda x: -x[1]["всего"]):
-        lines.append("  %s: %d (🔥%d 👎%d ❤%d —%d)" % (user, c["всего"], c["success"], c["fail"], c["inwork"], c["none"]))
-    return "\n".join(lines), total
+        lines.append(_fmt_line(user or "кто-то", c))
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------- дубли
@@ -345,8 +389,9 @@ def is_delete_request(text):
 
 def is_stats_request(text):
     low = text.lower()
-    return any(w in low for w in ("скольк", "статист", "залит", "за день", "за час", "за сегодня",
-                                  "итог", "процент", "успех", "сколько", "наработал", "сводк"))
+    return any(w in low for w in ("скольк", "статист", "залит", "залил", "за день", "за час", "за сегодня",
+                                  "итог", "процент", "успех", "наработал", "сводк", "чек", "куар", "отправ",
+                                  "за послед", "сколько"))
 
 
 def kb_yes_no():
@@ -425,11 +470,8 @@ def handle_trigger(chat_id, msg):
         handle_delete(chat_id, msg)
         return
     if is_stats_request(text):
-        table, total = stats_text(chat_id, text)
-        # даём цифры DeepSeek, чтобы ответил своими словами, с характером
-        ctx = "Вот точная статистика (не выдумывай цифры, бери эти):\n" + table
-        out = persona_reply(chat_id, text, extra_context=ctx)
-        send(chat_id, out, reply_to=mid)
+        # статистику отдаём точным кодом (цифры и формат всегда верные, без фантазий нейросети)
+        send(chat_id, stats_answer(chat_id, text, msg.get("from") or {}), reply_to=mid)
         return
     # свободный диалог
     out = persona_reply(chat_id, text)
