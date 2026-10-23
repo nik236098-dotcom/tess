@@ -666,7 +666,14 @@ def handle_update(upd):
         chat_id = chat.get("id")
         if (msg.get("from") or {}).get("is_bot"):
             return
-        record_qr(chat_id, msg)               # молча считаем QR
+        if msg.get("photo"):   # DEBUG_QR_1591: видно ли фото и читается ли номер из подписи
+            cap = msg.get("caption") or ""
+            print("[QR?] фото от %s | подпись=%r | номер=%s" % (
+                ((msg.get("from") or {}).get("username") or (msg.get("from") or {}).get("first_name")),
+                cap[:60], extract_number(cap) or "—НЕ НАЙДЕН"), flush=True)
+        num = record_qr(chat_id, msg)         # молча считаем QR
+        if msg.get("photo"):
+            print("[QR?] записан как QR: %s" % (num or "НЕТ (нет номера в подписи)"), flush=True)
         if is_triggered(chat_id, msg):
             try:
                 handle_trigger(chat_id, msg)
