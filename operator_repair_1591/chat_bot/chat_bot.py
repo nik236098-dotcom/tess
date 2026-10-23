@@ -337,19 +337,22 @@ def stats_answer(chat_id, period_text, who, frm):
 
 
 # ---------------------------------------------------------------- дубли
-def find_duplicates(chat_id, since=0):
-    """Номера, встреченные в >1 QR. Возвращает [(number, keep_msg_id, [dup_msg_ids...])]."""
+def find_duplicates(chat_id, since=0, last_n=None):
+    """Дубли по номеру. last_n — искать среди последних N QR; иначе за период с since.
+    Возвращает [(number, keep_msg_id, [dup_msg_ids...])] (keep — самый ранний)."""
     con = db()
-    rows = con.execute("SELECT number,msg_id,ts FROM qr WHERE chat_id=? AND ts>=? ORDER BY ts ASC", (chat_id, since)).fetchall()
+    if last_n:
+        rows = con.execute("SELECT number,msg_id FROM qr WHERE chat_id=? ORDER BY ts DESC, msg_id DESC LIMIT ?",
+                           (chat_id, int(last_n))).fetchall()
+        rows = list(reversed(rows))   # вернём хронологию: первый останется
+    else:
+        rows = con.execute("SELECT number,msg_id FROM qr WHERE chat_id=? AND ts>=? ORDER BY ts ASC, msg_id ASC",
+                           (chat_id, since)).fetchall()
     con.close()
     by_num = collections.OrderedDict()
-    for number, msg_id, ts in rows:
+    for number, msg_id in rows:
         by_num.setdefault(number, []).append(msg_id)
-    dups = []
-    for number, ids in by_num.items():
-        if len(ids) > 1:
-            dups.append((number, ids[0], ids[1:]))
-    return dups
+    return [(number, ids[0], ids[1:]) for number, ids in by_num.items() if len(ids) > 1]
 
 
 # ---------------------------------------------------------------- логика запросов
@@ -420,17 +423,36 @@ def _last_qr_ids(chat_id, n, uid=None, name=None):
     return out
 
 
-def do_delete_dups(chat_id, period_text, mid):
+def _dups_scope(chat_id, period_text, last_n):
+    if last_n:
+        return find_duplicates(chat_id, last_n=int(last_n)), "среди последних %d" % int(last_n)
     since = 0 if _window_since(period_text or "")[1] == "за всё время" else _today_since()
-    dups = find_duplicates(chat_id, since)
+    label = _window_since(period_text or "")[1] if period_text else "за сегодня"
+    return find_duplicates(chat_id, since=since), label
+
+
+def do_check_dups(chat_id, period_text, last_n, mid):
+    """Проверить (показать) дубли, НЕ удаляя."""
+    dups, scope = _dups_scope(chat_id, period_text, last_n)
     if not dups:
-        send(chat_id, random.choice(["Дублей нет, чисто.", "Повторов не нашёл, расслабься."]), reply_to=mid)
+        send(chat_id, "Дублей %s нет, чисто." % scope, reply_to=mid)
+        return
+    repeats = sum(len(extra) for _, _, extra in dups)
+    listing = "\n".join("• " + pretty_number(n) + " ×%d" % (len(extra) + 1) for n, _, extra in dups[:40])
+    send(chat_id, "Дубли %s (%d повторов):\n%s\n\nСкажи «удали дубли» — снесу лишние." % (scope, repeats, listing),
+         reply_to=mid)
+
+
+def do_delete_dups(chat_id, period_text, last_n, mid):
+    dups, scope = _dups_scope(chat_id, period_text, last_n)
+    if not dups:
+        send(chat_id, random.choice(["Дублей %s нет, чисто." % scope, "Повторов %s не нашёл." % scope]), reply_to=mid)
         return
     ids, nums = [], []
     for number, keep, extra in dups:
         ids += extra
         nums.append(pretty_number(number) + " ×%d" % (len(extra) + 1))
-    listing = "Вот чё собрал (%d дублей):\n%s" % (len(ids), "\n".join("• " + n for n in nums[:40]))
+    listing = "Вот чё собрал (%d дублей %s):\n%s" % (len(ids), scope, "\n".join("• " + n for n in nums[:40]))
     confirm_delete(chat_id, ids, listing, mid)
 
 
@@ -489,16 +511,23 @@ ROUTER_SYS = (
     "Ты — разборщик намерений для чат-бота учёта eSIM QR. Пойми ВОЛЬНУЮ речь и сленг пользователя "
     "(напр. «делитни последние 3», «снеси дубли», «скок я накидал за час», «чекни Гену», «убери вот это»). "
     "Верни СТРОГО один JSON без пояснений и без markdown:\n"
-    '{"action":"chat|stats|del_dups|del_last|del_this","args":{...}}\n'
+    '{"action":"chat|stats|check_dups|del_dups|del_last|del_this","args":{...}}\n'
     "Действия:\n"
     "- stats: статистика QR. args {\"period\":\"<напр 2 часа|30 минут|сегодня|неделю|всё>\",\"who\":\"me|all|<имя>\"}\n"
-    "- del_dups: удалить дубли (одинаковые номера). args {\"period\":\"<или пусто>\"}\n"
+    "- check_dups: ПОКАЗАТЬ дубли, НЕ удаляя («проверь/глянь дубли», «есть ли повторы»). "
+    "args {\"period\":\"<или пусто>\",\"last_n\":<сколько последних QR проверить, или 0>}\n"
+    "- del_dups: УДАЛИТЬ дубли. args {\"period\":\"<или пусто>\",\"last_n\":<или 0>}\n"
     "- del_last: удалить N последних QR. args {\"n\":<число>,\"who\":\"me|all|<имя>\"}\n"
     "- del_this: удалить сообщение, на которое пользователь ОТВЕТИЛ (reply). args {}\n"
     "- chat: просто поболтать/ответить. args {}\n"
-    "who=\"me\" если про себя («я/мной/мои»). Если не про удаление и не про статистику — action=\"chat\". "
-    "Только JSON."
+    "«проверь дубли последние 30» → check_dups last_n=30. «удали дубли» → del_dups. "
+    "who=\"me\" если про себя. Не про удаление/проверку/статистику — action=\"chat\". Только JSON."
 )
+
+
+def _extract_last_n(low):
+    m = re.search(r"(\d+)\s*(?:последн|куар|qr|штук|шт|сообщ)", low) or re.search(r"последни[ехй]*\s*(\d+)", low)
+    return int(m.group(1)) if m else 0
 
 
 def _json_from(s):
@@ -515,18 +544,26 @@ def route_intent(chat_id, text, has_reply):
     """DeepSeek разбирает намерение. Фолбэк на ключевые слова, если DeepSeek недоступен."""
     j = _json_from(deepseek([{"role": "system", "content": ROUTER_SYS},
                              {"role": "user", "content": text}], max_tokens=120, temperature=0) or "")
-    if isinstance(j, dict) and j.get("action") in ("chat", "stats", "del_dups", "del_last", "del_this"):
+    if isinstance(j, dict) and j.get("action") in ("chat", "stats", "check_dups", "del_dups", "del_last", "del_this"):
         return j.get("action"), (j.get("args") or {})
     # фолбэк без нейросети
     low = text.lower()
+    last_n = _extract_last_n(low)
+    is_dups = "дубл" in low or "повтор" in low or "одинаков" in low
+    is_check = any(w in low for w in ("провер", "глян", "посмотр", "есть ли", "покажи"))
+    if is_dups and is_check and not is_delete_request(text):
+        return "check_dups", {"period": "всё" if "всё" in low or "все " in low else "", "last_n": last_n}
     if is_delete_request(text):
-        m = re.search(r"(\d+)\s*(?:последн|посл)", low)
-        if m:
+        if is_dups:
+            return "del_dups", {"period": "всё" if "всё" in low or "все " in low else "", "last_n": last_n}
+        if last_n:
             who = "me" if re.search(r"(мной|мои|я |меня)", low) else "all"
-            return "del_last", {"n": int(m.group(1)), "who": who}
-        if has_reply and not ("дубл" in low or "повтор" in low):
+            return "del_last", {"n": last_n, "who": who}
+        if has_reply:
             return "del_this", {}
-        return "del_dups", {"period": "всё" if "всё" in low or "все " in low else ""}
+        return "del_dups", {"period": "", "last_n": 0}
+    if is_dups and is_check:
+        return "check_dups", {"period": "", "last_n": last_n}
     if is_stats_request(text):
         who = "me" if re.search(r"(?<![а-яё])(мной|мои|меня|я |у меня|мой)", low) else "all"
         return "stats", {"period": text, "who": who}
@@ -543,8 +580,11 @@ def handle_trigger(chat_id, msg):
     if action == "del_this" and rep_mid:
         do_delete_this(chat_id, rep_mid, mid)
         return
+    if action == "check_dups":
+        do_check_dups(chat_id, args.get("period", ""), args.get("last_n") or 0, mid)
+        return
     if action == "del_dups":
-        do_delete_dups(chat_id, args.get("period", ""), mid)
+        do_delete_dups(chat_id, args.get("period", ""), args.get("last_n") or 0, mid)
         return
     if action == "del_last":
         do_delete_last(chat_id, args.get("n", 1), args.get("who", "all"), frm, mid)
