@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/nik236098-dotcom/tess/codex/operator-observer-15.87/operator_repair_1591/chat_bot/install_chat_bot | sudo bash
 #
-# Спросит: токен бота; ключ DeepSeek и прокси предложит взять из /opt/beeline, если он тут стоит.
+# Полностью автономный бот (с beeline не связан). Спросит: токен бота, ключ DeepSeek, прокси.
 # Служебные переменные: TOKEN, DEEPSEEK_API_KEY, PROXY, TRIGGERS, TZ_OFFSET, SKIP_APT=1, NO_SERVICE=1.
 set -Eeuo pipefail
 export HOME="${HOME:-/root}"
@@ -40,15 +40,14 @@ command -v curl >/dev/null || { [[ -n "${SKIP_APT:-}" ]] || { apt-get update -y 
 curl -fsSL "$RAW" -o "$APP_DIR/chat_bot.py" || die "не скачался chat_bot.py (сеть/прокси?)"
 python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$APP_DIR/chat_bot.py" || die "chat_bot.py не разобрался"
 
-# 2. Конфиг. Ключ DeepSeek и прокси по возможности из /opt/beeline.
+# 2. Конфиг. Бот полностью автономный — спрашиваем всё сам, ни с чем не связан.
 if [[ ! -f "$APP_DIR/config.json" ]]; then
-  DS_DEFAULT="$(python3 -c "import json;print(json.load(open('/opt/beeline/deepseek_config.json')).get('api_key',''))" 2>/dev/null || true)"
-  PROXY_DEFAULT="$(python3 -c "import json;print(json.load(open('/opt/beeline/telegram_config.json')).get('proxy',''))" 2>/dev/null || true)"
   say "Настройка"
   ask TOKEN "Токен бота (@BotFather)" secret
   [[ -n "${TOKEN:-}" ]] || die "нужен токен бота"
-  ask DEEPSEEK_API_KEY "Ключ DeepSeek$( [[ -n "$DS_DEFAULT" ]] && echo ' (из /opt/beeline)')" secret "$DS_DEFAULT"
-  ask PROXY "Прокси для Telegram (socks5h://... или direct)$( [[ -n "$PROXY_DEFAULT" ]] && echo ' (из /opt/beeline)')" "" "${PROXY_DEFAULT:-direct}"
+  ask DEEPSEEK_API_KEY "Ключ DeepSeek" secret
+  [[ -n "${DEEPSEEK_API_KEY:-}" ]] || die "нужен ключ DeepSeek"
+  ask PROXY "Прокси для Telegram (socks5h://логин:пароль@хост:порт или direct)" "" "direct"
   TRIGGERS="${TRIGGERS:-дипсик, deepseek, дип}"
   TZ_OFFSET="${TZ_OFFSET:-3}"
   python3 - "$APP_DIR/config.json" "$TOKEN" "$DEEPSEEK_API_KEY" "$PROXY" "$TRIGGERS" "$TZ_OFFSET" <<'PY'
