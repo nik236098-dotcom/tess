@@ -319,20 +319,14 @@ def _fmt_line(name, c):
     return "%s: отправлено %d QR, %s" % (name, c["всего"], ", ".join(parts))
 
 
-def stats_answer(chat_id, text, frm):
-    since, label = _window_since(text)
-    low = text.lower()
+def stats_answer(chat_id, period_text, who, frm):
+    since, label = _window_since(period_text or "сегодня")
     uid = name = None
-    if re.search(r"(?<![а-яё])(мной|мои|меня|мне|у меня|себя|мой|моих)", low):
+    w = str(who or "all").strip().lower()
+    if w in ("me", "я", "мной", "мои", "сам"):
         uid = (frm or {}).get("id")
-    else:
-        con = db()
-        users = [u for (u,) in con.execute("SELECT DISTINCT user FROM qr WHERE chat_id=?", (chat_id,)).fetchall()]
-        con.close()
-        for u in users:
-            if u and len(u) >= 3 and u.lower() in low:
-                name = u
-                break
+    elif w not in ("all", "все", "всё", "всех", ""):
+        name = str(who)
     total, per_user = compute_stats(chat_id, since, uid=uid, name=name)
     if total["всего"] == 0:
         return "%s: ничего. По нулям." % label.capitalize()
@@ -384,14 +378,15 @@ def is_triggered(chat_id, msg):
 
 def is_delete_request(text):
     low = text.lower()
-    return any(w in low for w in ("удали", "удалить", "снеси", "убери", "почисти", "чисти"))
+    return any(w in low for w in ("удали", "удалить", "снеси", "снос", "убери", "почисти", "чисти",
+                                  "делит", "делет", "дроп", "грохни", "killн"))
 
 
 def is_stats_request(text):
     low = text.lower()
-    return any(w in low for w in ("скольк", "статист", "залит", "залил", "за день", "за час", "за сегодня",
-                                  "итог", "процент", "успех", "наработал", "сводк", "чек", "куар", "отправ",
-                                  "за послед", "сколько"))
+    return any(w in low for w in ("скольк", "скок", "статист", "залит", "залил", "накид", "за день", "за час",
+                                  "за сегодня", "итог", "процент", "успех", "наработал", "сводк", "чек", "куар",
+                                  "отправ", "за послед"))
 
 
 def kb_yes_no():
@@ -399,37 +394,64 @@ def kb_yes_no():
                                  {"text": "✖️ Нет", "callback_data": "del_no"}]]}
 
 
-def handle_delete(chat_id, msg):
-    text = msg.get("text") or msg.get("caption") or ""
-    low = text.lower()
-    mid = msg.get("message_id")
-    rep = msg.get("reply_to_message") or {}
-    wants_dups = "дубл" in low or "повтор" in low
-    # 1) reply на сообщение и это НЕ про дубли → удалить именно это сообщение
-    if rep.get("message_id") and not wants_dups:
-        PENDING[chat_id] = {"ids": [rep["message_id"]], "numbers": [], "ts": time.time()}
-        send(chat_id, random.choice([
-            "Эт сообщение в расход? Уверен?",
-            "Снести вот это нахрен? Подтверди.",
-        ]), reply_to=mid, markup=kb_yes_no())
+def confirm_delete(chat_id, ids, listing, mid, head="Щас грохнем эту хуйню — уверен?"):
+    ids = [i for i in ids if i]
+    if not ids:
+        send(chat_id, random.choice(["Нечего удалять.", "Пусто, удалять нечего."]), reply_to=mid)
         return
-    # 2) удалить дубли (по умолчанию за сегодня; «всё/вообще» — за всё время)
-    since = 0 if any(w in low for w in ("всё", "все ", "всего", "вообще", "за всё")) else _today_since()
+    PENDING[chat_id] = {"ids": ids, "ts": time.time()}
+    body = ("\n" + listing) if listing else ""
+    send(chat_id, "%s%s" % (head, body), reply_to=mid, markup=kb_yes_no())
+
+
+def _last_qr_ids(chat_id, n, uid=None, name=None):
+    con = db()
+    rows = con.execute("SELECT msg_id,user,uid,number FROM qr WHERE chat_id=? ORDER BY ts DESC", (chat_id,)).fetchall()
+    con.close()
+    out = []
+    for msg_id, user, quid, number in rows:
+        if uid is not None and quid != uid:
+            continue
+        if name is not None and name.lower() not in str(user or "").lower():
+            continue
+        out.append((msg_id, number))
+        if len(out) >= n:
+            break
+    return out
+
+
+def do_delete_dups(chat_id, period_text, mid):
+    since = 0 if _window_since(period_text or "")[1] == "за всё время" else _today_since()
     dups = find_duplicates(chat_id, since)
     if not dups:
-        send(chat_id, random.choice([
-            "Дублей нет, чисто. Расслабься.",
-            "Нечего удалять — повторов не нашёл.",
-        ]), reply_to=mid)
+        send(chat_id, random.choice(["Дублей нет, чисто.", "Повторов не нашёл, расслабься."]), reply_to=mid)
         return
     ids, nums = [], []
     for number, keep, extra in dups:
         ids += extra
         nums.append(pretty_number(number) + " ×%d" % (len(extra) + 1))
-    PENDING[chat_id] = {"ids": ids, "numbers": nums, "ts": time.time()}
-    listing = "\n".join("• " + n for n in nums[:40])
-    send(chat_id, "Щас грохнем эту хуйню — уверен?\nВот чё собрал (%d дублей):\n%s" % (len(ids), listing),
-         reply_to=mid, markup=kb_yes_no())
+    listing = "Вот чё собрал (%d дублей):\n%s" % (len(ids), "\n".join("• " + n for n in nums[:40]))
+    confirm_delete(chat_id, ids, listing, mid)
+
+
+def do_delete_last(chat_id, n, who, frm, mid):
+    n = max(1, min(int(n or 1), 50))
+    uid = name = None
+    w = str(who or "all").strip().lower()
+    if w in ("me", "я", "мной", "мои", "сам"):
+        uid = (frm or {}).get("id")
+    elif w not in ("all", "все", "всё", ""):
+        name = str(who)
+    items = _last_qr_ids(chat_id, n, uid=uid, name=name)
+    if not items:
+        send(chat_id, "Нет таких QR, нечего сносить.", reply_to=mid)
+        return
+    listing = "Последние %d:\n%s" % (len(items), "\n".join("• " + pretty_number(num) for _, num in items))
+    confirm_delete(chat_id, [mid_ for mid_, _ in items], listing, mid)
+
+
+def do_delete_this(chat_id, rep_mid, mid):
+    confirm_delete(chat_id, [rep_mid], "", mid, head="Снести это сообщение? Уверен?")
 
 
 def do_pending_delete(chat_id):
@@ -463,19 +485,76 @@ def persona_reply(chat_id, user_text, extra_context=""):
     return out
 
 
+ROUTER_SYS = (
+    "Ты — разборщик намерений для чат-бота учёта eSIM QR. Пойми ВОЛЬНУЮ речь и сленг пользователя "
+    "(напр. «делитни последние 3», «снеси дубли», «скок я накидал за час», «чекни Гену», «убери вот это»). "
+    "Верни СТРОГО один JSON без пояснений и без markdown:\n"
+    '{"action":"chat|stats|del_dups|del_last|del_this","args":{...}}\n'
+    "Действия:\n"
+    "- stats: статистика QR. args {\"period\":\"<напр 2 часа|30 минут|сегодня|неделю|всё>\",\"who\":\"me|all|<имя>\"}\n"
+    "- del_dups: удалить дубли (одинаковые номера). args {\"period\":\"<или пусто>\"}\n"
+    "- del_last: удалить N последних QR. args {\"n\":<число>,\"who\":\"me|all|<имя>\"}\n"
+    "- del_this: удалить сообщение, на которое пользователь ОТВЕТИЛ (reply). args {}\n"
+    "- chat: просто поболтать/ответить. args {}\n"
+    "who=\"me\" если про себя («я/мной/мои»). Если не про удаление и не про статистику — action=\"chat\". "
+    "Только JSON."
+)
+
+
+def _json_from(s):
+    m = re.search(r"\{.*\}", s or "", re.S)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+
+def route_intent(chat_id, text, has_reply):
+    """DeepSeek разбирает намерение. Фолбэк на ключевые слова, если DeepSeek недоступен."""
+    j = _json_from(deepseek([{"role": "system", "content": ROUTER_SYS},
+                             {"role": "user", "content": text}], max_tokens=120, temperature=0) or "")
+    if isinstance(j, dict) and j.get("action") in ("chat", "stats", "del_dups", "del_last", "del_this"):
+        return j.get("action"), (j.get("args") or {})
+    # фолбэк без нейросети
+    low = text.lower()
+    if is_delete_request(text):
+        m = re.search(r"(\d+)\s*(?:последн|посл)", low)
+        if m:
+            who = "me" if re.search(r"(мной|мои|я |меня)", low) else "all"
+            return "del_last", {"n": int(m.group(1)), "who": who}
+        if has_reply and not ("дубл" in low or "повтор" in low):
+            return "del_this", {}
+        return "del_dups", {"period": "всё" if "всё" in low or "все " in low else ""}
+    if is_stats_request(text):
+        who = "me" if re.search(r"(?<![а-яё])(мной|мои|меня|я |у меня|мой)", low) else "all"
+        return "stats", {"period": text, "who": who}
+    return "chat", {}
+
+
 def handle_trigger(chat_id, msg):
     text = msg.get("text") or msg.get("caption") or ""
     mid = msg.get("message_id")
-    if is_delete_request(text):
-        handle_delete(chat_id, msg)
+    frm = msg.get("from") or {}
+    rep_mid = (msg.get("reply_to_message") or {}).get("message_id")
+    action, args = route_intent(chat_id, text, bool(rep_mid))
+
+    if action == "del_this" and rep_mid:
+        do_delete_this(chat_id, rep_mid, mid)
         return
-    if is_stats_request(text):
-        # статистику отдаём точным кодом (цифры и формат всегда верные, без фантазий нейросети)
-        send(chat_id, stats_answer(chat_id, text, msg.get("from") or {}), reply_to=mid)
+    if action == "del_dups":
+        do_delete_dups(chat_id, args.get("period", ""), mid)
         return
-    # свободный диалог
-    out = persona_reply(chat_id, text)
-    send(chat_id, out, reply_to=mid)
+    if action == "del_last":
+        do_delete_last(chat_id, args.get("n", 1), args.get("who", "all"), frm, mid)
+        return
+    if action == "stats":
+        # статистику отдаём ТОЧНЫМ кодом (цифры и формат всегда верные)
+        send(chat_id, stats_answer(chat_id, args.get("period", "сегодня"), args.get("who", "all"), frm), reply_to=mid)
+        return
+    # свободный диалог — характерно, через DeepSeek
+    send(chat_id, persona_reply(chat_id, text), reply_to=mid)
 
 
 # ---------------------------------------------------------------- приём обновлений
