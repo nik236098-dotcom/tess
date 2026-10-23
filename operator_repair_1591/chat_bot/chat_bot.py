@@ -666,6 +666,10 @@ def handle_update(upd):
         chat_id = chat.get("id")
         if (msg.get("from") or {}).get("is_bot"):
             return
+        # DEBUG_RX_1591: видно ли боту ВООБЩЕ сообщения группы (по любой переписке)
+        _u = (msg.get("from") or {}).get("username") or (msg.get("from") or {}).get("first_name")
+        print("[RX] %s: %s%s" % (_u, "[ФОТО] " if msg.get("photo") else "",
+                                 (msg.get("text") or msg.get("caption") or "")[:30]), flush=True)
         if msg.get("photo"):   # DEBUG_QR_1591: видно ли фото и читается ли номер из подписи
             cap = msg.get("caption") or ""
             print("[QR?] фото от %s | подпись=%r | номер=%s" % (
