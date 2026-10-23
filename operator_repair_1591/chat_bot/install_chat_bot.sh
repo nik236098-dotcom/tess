@@ -57,7 +57,7 @@ trig = [w.strip() for w in triggers.replace(";", ",").split(",") if w.strip()]
 json.dump({"token": token, "proxy": proxy or "direct", "deepseek_api_key": key,
            "deepseek_model": "deepseek-flash", "deepseek_url": "https://api.deepseek.com/chat/completions",
            "ds_proxy": "direct", "triggers": trig or ["дипсик", "deepseek", "дип"],
-           "tz_offset_hours": float(tz or 3)},
+           "tz_offset_hours": float(tz or 3), "agent_context": 500},
           open(path, "w"), ensure_ascii=False, indent=2)
 PY
 fi

@@ -64,6 +64,7 @@ CFG = _load_config()
 TOKEN = str(CFG.get("token") or "").strip()
 TRIGGERS = [str(w).lower() for w in (CFG.get("triggers") or ["дипсик", "deepseek", "дип"])]
 TZ = datetime.timezone(datetime.timedelta(hours=float(CFG.get("tz_offset_hours", 3))))  # МСК по умолчанию
+AGENT_CONTEXT = int(CFG.get("agent_context", 500))   # сколько последних QR ИИ видит для разбора («память»)
 DB_PATH = os.path.join(HERE, "chat_bot.sqlite3")
 BOT_USERNAME = ""   # заполнится из getMe
 
@@ -274,7 +275,7 @@ def _window_since(text):
         return now - 3600, "за последний час"
     if "недел" in low:
         return now - 7 * 86400, "за неделю"
-    if any(w in low for w in ("всё время", "за всё", "за все", "вообще", "всего", "всех")):
+    if low.strip() in ("всё", "все", "all") or any(w in low for w in ("всё время", "все время", "за всё", "за все", "вообще", "всего", "всех", "за всю")):
         return 0, "за всё время"
     midnight = datetime.datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     return midnight.timestamp(), "за сегодня"
@@ -493,6 +494,48 @@ def do_pending_delete(chat_id):
     return "Готово, снёс %d. Чат чище, чем твоя совесть." % ok
 
 
+def _agent_data_block(chat_id, limit):
+    con = db()
+    rows = con.execute("SELECT msg_id,user,number,ts FROM qr WHERE chat_id=? ORDER BY ts DESC, msg_id DESC LIMIT ?",
+                       (chat_id, int(limit))).fetchall()
+    out = []
+    for msg_id, user, number, ts in rows:
+        kinds = _msg_reactions(con, chat_id, msg_id)
+        mark = "🔥" if "success" in kinds else ("👎" if "fail" in kinds else ("❤" if "inwork" in kinds else "—"))
+        t = datetime.datetime.fromtimestamp(ts, TZ).strftime("%d.%m %H:%M")
+        out.append("%s | %s | %s | %s" % (user or "?", t, pretty_number(number), mark))
+    con.close()
+    return "\n".join(reversed(out))   # в хронологическом порядке
+
+
+def _agent_summaries(chat_id):
+    lines = []
+    for period in ("сегодня", "неделю", "всё"):
+        since, label = _window_since(period)
+        total, _ = compute_stats(chat_id, since)
+        lines.append("%s: всего %d, 🔥%d 👎%d ❤взято %d, —без реакции %d" %
+                     (label, total["всего"], total["success"], total["fail"], total["taken"], total["none"]))
+    return "\n".join(lines)
+
+
+def analyst_reply(chat_id, text, frm):
+    """ИИ сам разбирает данные чата (до AGENT_CONTEXT последних QR) + точные сводки от кода."""
+    data = _agent_data_block(chat_id, AGENT_CONTEXT)
+    summ = _agent_summaries(chat_id)
+    sys = (PERSONA + "\nТы ведёшь учёт QR eSIM в этом чате. Отвечай коротко, по делу, с характером. "
+           "Для вопросов про ТОЧНОЕ количество бери числа из блока «Сводка». Для разбора (найди, сравни, кто, "
+           "странности) смотри блок «Последние QR». Реакции: ❤ взят в работу, 🔥 успех, 👎 неуспех, — без реакции. "
+           "Кто спрашивает: %s." % ((frm or {}).get("username") or (frm or {}).get("first_name") or "участник"))
+    ctx = "Сводка (точные цифры от кода):\n%s\n\nПоследние %d QR (кто | время | номер | реакция):\n%s" % (summ, AGENT_CONTEXT, data or "пусто")
+    msgs = [{"role": "system", "content": sys}, {"role": "system", "content": ctx}] + recall(chat_id) + [{"role": "user", "content": text}]
+    out = deepseek(msgs, max_tokens=450)
+    if not out:
+        out = "Чёт DeepSeek недоступен — повтори чуть позже."
+    remember(chat_id, "user", text)
+    remember(chat_id, "assistant", out)
+    return out
+
+
 def persona_reply(chat_id, user_text, extra_context=""):
     msgs = [{"role": "system", "content": PERSONA}]
     if extra_context:
@@ -511,9 +554,11 @@ ROUTER_SYS = (
     "Ты — разборщик намерений для чат-бота учёта eSIM QR. Пойми ВОЛЬНУЮ речь и сленг пользователя "
     "(напр. «делитни последние 3», «снеси дубли», «скок я накидал за час», «чекни Гену», «убери вот это»). "
     "Верни СТРОГО один JSON без пояснений и без markdown:\n"
-    '{"action":"chat|stats|check_dups|del_dups|del_last|del_this","args":{...}}\n'
+    '{"action":"chat|analyst|stats|check_dups|del_dups|del_last|del_this","args":{...}}\n'
     "Действия:\n"
-    "- stats: статистика QR. args {\"period\":\"<напр 2 часа|30 минут|сегодня|неделю|всё>\",\"who\":\"me|all|<имя>\"}\n"
+    "- stats: ТОЧНАЯ статистика-сводка за период. args {\"period\":\"<напр 2 часа|30 минут|сегодня|неделю|всё>\",\"who\":\"me|all|<имя>\"}\n"
+    "- analyst: любой другой вопрос/задача ПО ДАННЫМ чата (найди, сравни, кто лучший/худший, "
+    "уникальные, что странного, разбор). args {}\n"
     "- check_dups: ПОКАЗАТЬ дубли, НЕ удаляя («проверь/глянь дубли», «есть ли повторы»). "
     "args {\"period\":\"<или пусто>\",\"last_n\":<сколько последних QR проверить, или 0>}\n"
     "- del_dups: УДАЛИТЬ дубли. args {\"period\":\"<или пусто>\",\"last_n\":<или 0>}\n"
@@ -544,7 +589,7 @@ def route_intent(chat_id, text, has_reply):
     """DeepSeek разбирает намерение. Фолбэк на ключевые слова, если DeepSeek недоступен."""
     j = _json_from(deepseek([{"role": "system", "content": ROUTER_SYS},
                              {"role": "user", "content": text}], max_tokens=120, temperature=0) or "")
-    if isinstance(j, dict) and j.get("action") in ("chat", "stats", "check_dups", "del_dups", "del_last", "del_this"):
+    if isinstance(j, dict) and j.get("action") in ("chat", "analyst", "stats", "check_dups", "del_dups", "del_last", "del_this"):
         return j.get("action"), (j.get("args") or {})
     # фолбэк без нейросети
     low = text.lower()
@@ -567,6 +612,9 @@ def route_intent(chat_id, text, has_reply):
     if is_stats_request(text):
         who = "me" if re.search(r"(?<![а-яё])(мной|мои|меня|я |у меня|мой)", low) else "all"
         return "stats", {"period": text, "who": who}
+    if any(w in low for w in ("найд", "кто ", "у кого", "сравни", "проанализ", "анализ", "странн", "лучш",
+                              "худш", "уникальн", "номер", "есть ли", "разбер", "посмотр")):
+        return "analyst", {}
     return "chat", {}
 
 
@@ -590,10 +638,14 @@ def handle_trigger(chat_id, msg):
         do_delete_last(chat_id, args.get("n", 1), args.get("who", "all"), frm, mid)
         return
     if action == "stats":
-        # статистику отдаём ТОЧНЫМ кодом (цифры и формат всегда верные)
+        # статистику-сводку отдаём ТОЧНЫМ кодом (цифры и формат всегда верные)
         send(chat_id, stats_answer(chat_id, args.get("period", "сегодня"), args.get("who", "all"), frm), reply_to=mid)
         return
-    # свободный диалог — характерно, через DeepSeek
+    if action == "analyst":
+        # любой разбор по данным — ИИ сам, видя последние QR и точные сводки
+        send(chat_id, analyst_reply(chat_id, text, frm), reply_to=mid)
+        return
+    # просто поболтать — характерно, без тяжёлого контекста
     send(chat_id, persona_reply(chat_id, text), reply_to=mid)
 
 
