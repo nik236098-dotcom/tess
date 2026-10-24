@@ -661,11 +661,15 @@ def process_link(pw_browser, link, card, tg, cfg):
                 return "cancelled"
             if verdict == "timeout":
                 return "timeout"
-            if verdict in ("wrong_exhausted", "lost"):
-                tg.send("⚠️ Не удалось подтвердить код. Перехожу к следующей ссылке.")
-                return "code_failed"
             if verdict == "declined":
                 final = "fail"   # банк отклонил прямо на этапе кода
+            elif verdict in ("wrong_exhausted", "lost"):
+                # PAY_CARD_CHOICE_1591R103: код не подтверждён — ссылку НЕ пропускаем, ведём как обычный
+                # fail. Ждём страницу результата/«оплата не прошла», дальше те же кнопки «та же / новая карта».
+                tg.send("⏳ Код не подтверждён — жду страницу результата…")
+                final = _wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
+                if final == "unknown":
+                    final = "fail"
             else:
                 # verdict == accepted → ждём реальный ответ банка (страница «ждём ответ от банка» ~20-40 сек)
                 tg.send("⏳ Код принят, ждём ответ от банка (обычно 20-40 сек)…")
