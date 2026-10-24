@@ -436,7 +436,7 @@ def load_telegram_config():
     try: return json.loads(TELEGRAM_CONFIG_FILE.read_text(encoding="utf-8"))
     except Exception: return {}
 
-TELEGRAM_DEFAULT_PROXY = "socks5h://mcafdayvhr:Wr6pagwybn@4.211.190.112:50063"
+TELEGRAM_DEFAULT_PROXY = ""  # PROXY_FROM_CONFIG_1591R3: set "proxy" in telegram_config.json (or TELEGRAM_PROXY)
 
 
 def telegram_http_proxies(cfg):
