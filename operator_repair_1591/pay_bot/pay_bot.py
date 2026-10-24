@@ -12,6 +12,9 @@
        • отказ банка    → бот пишет «оплата не прошла» и переходит к следующей ссылке;
        • успех          → (ПОКА ЗАГЛУШКА) бот шлёт скрин страницы и ссылку; QR добавим позже.
 
+  Мгновенная «оплата не прошла» (ошибка на стороне Билайна, ДО ввода кода) — бот сам
+  жмёт «попробовать ещё раз» и вводит карту заново (до beeline_retry_max раз).
+
 Это ОТДЕЛЬНЫЙ бот, со своим токеном — не трогает основного beeline-бота.
 Карта хранится только в памяти процесса (CVV никуда не пишется). /stop — всё сбросить.
 
@@ -23,7 +26,8 @@
     // необязательно:
     // "browser_proxy": "socks5://логин:пароль@хост:порт"  // прокси ДЛЯ страниц оплаты (по умолчанию без прокси)
     // "headless": true,
-    // "code_wait_seconds": 300
+    // "code_wait_seconds": 300,
+    // "beeline_retry_max": 3   // сколько раз подряд жать «попробовать ещё раз» на мгновенную ошибку Билайна
   }
 """
 from __future__ import annotations
@@ -56,6 +60,12 @@ CODE_SUBMIT_WORDS = ("подтвердить", "оплатить", "продол
 WRONG_CODE_WORDS = ("неправильный", "неверн", "проверьте код", "wrong", "incorrect", "ошибка кода")
 DECLINE_WORDS = ("отклон", "недостаточно средств", "отказан", "declined")  # без «отмена» — это кнопка, а не отказ
 SUCCESS_WORDS = ("оплачен", "оплата прошла", "успешно", "спасибо", "договор", "esim", "qr", "готов")
+# PAY_3DS_1591R103: страница «оплата не прошла» со своей кнопкой «попробовать ещё раз» (ошибка Билайна).
+PAYMENT_FAILED_WORDS = ("оплата не прошла", "платёж не прошёл", "платеж не прошел",
+                        "не удалось оплатить", "не удалось выполнить оплату", "ошибка оплаты",
+                        "платёж отклонён", "платеж отклонен", "payment failed")
+RETRY_WORDS = ("попробовать ещё раз", "попробовать еще раз", "попробуйте снова", "попробовать снова",
+               "повторить попытку", "повторить оплату", "повторить", "try again", "retry")
 
 
 def log(msg):
@@ -341,29 +351,61 @@ def _on_card_form(page):
     return False
 
 
+# PAY_3DS_1591R103: усиленный детект поля кода 3DS — по ПРИЗНАКАМ самого инпута, а не только
+# по тексту рядом. Так ловятся формы без подписей и во вложенных iframe банка (ACS).
+def _otp_score(h):
+    """Насколько поле похоже на ввод 3DS/OTP-кода. Больше — вероятнее. -1 = это точно не код."""
+    try:
+        if not h.is_visible():
+            return -1
+        typ = (h.get_attribute("type") or "text").lower()
+        if typ in ("hidden", "checkbox", "radio", "submit", "button", "password", "email"):
+            return -1
+        ac = (h.get_attribute("autocomplete") or "").lower()
+        im = (h.get_attribute("inputmode") or "").lower()
+        ph = (h.get_attribute("placeholder") or "").lower()
+        name = ((h.get_attribute("name") or "") + " " + (h.get_attribute("id") or "")
+                + " " + (h.get_attribute("aria-label") or "")).lower()
+        ml = h.get_attribute("maxlength") or ""
+        score = 0
+        if "one-time-code" in ac:                       score += 6   # почти стандарт ACS/3DS
+        if im == "numeric":                             score += 3
+        if typ in ("tel", "number"):                    score += 2
+        try:
+            if ml and 3 <= int(ml) <= 8:                score += 2
+        except ValueError:
+            pass
+        if any(w in ph for w in ("код", "смс", "sms", "code", "otp", "пуш", "one-time")):   score += 4
+        if any(w in name for w in ("otp", "code", "sms", "pin", "код")):                    score += 4
+        if (h.input_value() or "").strip():             score -= 3   # уже заполнено — вряд ли то
+        return score
+    except Exception:
+        return -1
+
+
 def _find_code_field(page):
-    """Найти поле ввода 3DS-кода в любой рамке. Возвращает (frame, element) или (None, None)."""
+    """Найти поле ввода 3DS-кода в любой рамке. Возвращает (frame, element) или (None, None).
+
+    PAY_3DS_1591R103: ищем по признакам инпута (autocomplete=one-time-code, inputmode=numeric,
+    type tel/number, короткий maxlength, подписи), плюс запас — единственное видимое поле в рамке.
+    Больше не требуем, чтобы слово-подсказка было в тексте страницы."""
     if _on_card_form(page):   # пока открыта форма карты — поля 3DS ещё нет, CVV не путаем с кодом
         return None, None
+    best = None   # (score, frame, handle)
     for fr in _frames(page):
-        try:
-            body = (fr.locator("body").inner_text(timeout=800) or "").lower()
-        except Exception:
-            body = ""
-        if not any(h in body for h in CODE_FIELD_HINT):
-            continue
-        for h in _visible_inputs(fr):
-            try:
-                ph = (h.get_attribute("placeholder") or "").lower()
-                name = ((h.get_attribute("name") or "") + (h.get_attribute("id") or "")).lower()
-                if (any(w in ph for w in ("код", "смс", "sms", "code", "otp", "пуш"))
-                        or any(w in name for w in ("otp", "code", "sms", "pin"))):
-                    return fr, h
-            except Exception:
-                continue
         vis = _visible_inputs(fr)
-        if len(vis) == 1:   # на странице один ввод и это явно код
-            return fr, vis[0]
+        for h in vis:
+            s = _otp_score(h)
+            if s >= 4 and (best is None or s > best[0]):
+                best = (s, fr, h)
+        if len(vis) == 1:   # на рамке ровно одно видимое поле — это почти наверняка код
+            s = _otp_score(vis[0])
+            if s >= 0:
+                s += 2
+                if best is None or s > best[0]:
+                    best = (s, fr, vis[0])
+    if best is not None:
+        return best[1], best[2]
     return None, None
 
 
@@ -375,6 +417,30 @@ def _page_text(page):
         except Exception:
             pass
     return "\n".join(chunks)
+
+
+def _payment_failed(page):
+    """PAY_3DS_1591R103: страница «оплата не прошла» (ошибка Билайна со своей кнопкой «попробовать ещё раз»)."""
+    try:
+        low = _page_text(page)
+    except Exception:
+        low = ""
+    if any(w in low for w in PAYMENT_FAILED_WORDS):
+        return True
+    try:
+        if "/registration/error" in (page.url or "").lower():
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _click_retry(page):
+    """PAY_3DS_1591R103: нажать «попробовать ещё раз» в любой рамке."""
+    for fr in _frames(page):
+        if _click_by_words(fr, RETRY_WORDS, timeout_ms=4000):
+            return True
+    return False
 
 
 def _shot(page, name):
@@ -390,11 +456,82 @@ def _shot(page, name):
             return None
 
 
+def _send_shot(tg, page, name, caption):
+    shot = _shot(page, name)
+    if shot:
+        tg.send_photo(shot, caption=caption)
+        try:
+            os.unlink(shot)
+        except OSError:
+            pass
+    else:
+        tg.send(caption)
+
+
+# ── ввод 3DS-кода (вызывается, когда поле кода уже найдено) ─────────────────
+def _enter_3ds_code(page, tg, cfg, page_wait, code_wait):
+    """Цикл ввода кода из SMS/пуша. Возвращает один из вердиктов:
+       accepted / declined / wrong_exhausted / timeout / cancelled / lost."""
+    for attempt in range(1, 6):
+        fr = h = None
+        field_deadline = time.monotonic() + page_wait
+        while time.monotonic() < field_deadline:   # ждём появления поля кода
+            if _payment_failed(page) or any(w in _page_text(page) for w in DECLINE_WORDS):
+                return "declined"
+            fr, h = _find_code_field(page)
+            if h is not None:
+                break
+            page.wait_for_timeout(500)
+        if h is None:
+            return "lost"
+
+        tg.send(f"🔢 Пришли код из SMS/пуша (попытка {attempt}/5). Или напиши «отмена».")
+        code = _wait_user_code(tg, code_wait)
+        if code is None:
+            tg.send("⌛ Код не пришёл вовремя — отменяю эту ссылку.")
+            return "timeout"
+        if code.strip().lower() in ("отмена", "stop", "/stop", "cancel"):
+            tg.send("✖️ Отменил эту ссылку.")
+            return "cancelled"
+
+        try:
+            h.click()
+            try:
+                h.fill("")
+            except Exception:
+                pass
+            h.type(re.sub(r"\D", "", code), delay=90)
+        except Exception as exc:
+            tg.send(f"⚠️ Не смог вписать код: {type(exc).__name__}. Пробую снова.")
+            continue
+        page.wait_for_timeout(700)
+        # у части банков есть кнопка подтверждения, у Т-Банка нет (автоотправка после ввода)
+        _click_by_words(fr, CODE_SUBMIT_WORDS, timeout_ms=3000)
+
+        # ждём реакцию банка: неверный код / отказ / принят (поле кода исчезло)
+        react_deadline = time.monotonic() + 90
+        while time.monotonic() < react_deadline:
+            low = _page_text(page)
+            if any(w in low for w in WRONG_CODE_WORDS):
+                tg.send("↩️ Банк: код неверный. Пришли код заново.")
+                break   # на следующую попытку for
+            if _payment_failed(page) or any(w in low for w in DECLINE_WORDS):
+                return "declined"
+            _fr2, h2 = _find_code_field(page)
+            if h2 is None:
+                return "accepted"
+            page.wait_for_timeout(500)
+        else:
+            tg.send("⏳ Банк пока не ответил на код. Если придёт новый код — отправь его, или «отмена».")
+    return "wrong_exhausted"
+
+
 # ── обработка одной ссылки ─────────────────────────────────────────────────
 def process_link(pw_browser, link, card, tg, cfg):
     code_wait = int(cfg.get("code_wait_seconds") or 300)
     # Билайн сейчас может грузить форму/поле оплаты по 2-3 минуты — ждём терпеливо.
     page_wait = int(cfg.get("page_wait_seconds") or 240)   # сек на появление кнопки/формы/кода
+    max_beeline_retries = int(cfg.get("beeline_retry_max") or 3)   # PAY_3DS_1591R103
     ctx_kwargs = {"locale": "ru-RU"}
     bproxy = str(cfg.get("browser_proxy") or "").strip()
     if bproxy and bproxy.lower() not in ("direct", "none", "off", "no", "-"):
@@ -410,149 +547,111 @@ def process_link(pw_browser, link, card, tg, cfg):
         # 1) страница «ждёт оплаты» — единственная кнопка «Оплатить» (ждём терпеливо, сайт лагает)
         tg.send("⏳ Жду кнопку «Оплатить» (сайт может грузиться до нескольких минут)…")
         if not _click_by_words(page.main_frame, PAY_BUTTON_WORDS, timeout_ms=page_wait * 1000):
-            # возможно, форма карты уже открыта сразу
             log("кнопку «оплатить» не нашёл на первой странице — пробую сразу форму карты")
         page.wait_for_timeout(2000)
 
-        # 2) форма карты (поле может грузиться минуты — ждём до page_wait)
-        tg.send(f"💳 Ввожу карту {mask_card(card[0])} (жду загрузку формы, это может занять минуты)…")
-        deadline = time.monotonic() + page_wait
-        _type_card(page, card, tg, deadline)
-        page.wait_for_timeout(3000)
+        beeline_retries = 0        # PAY_3DS_1591R103: подряд пойманные мгновенные ошибки Билайна
+        reached_bank = False       # дошли до страницы банка (3DS) — дальше ошибка = проблема карты
 
-        # 3а) дождаться, что ушли с формы карты на страницу банка (а не выдумывать успех раньше)
-        tg.send("⏳ Оплата отправлена, жду страницу банка (3DS)…")
-        nav_deadline = time.monotonic() + page_wait
-        while time.monotonic() < nav_deadline and _on_card_form(page):
-            low = _page_text(page)
-            if any(w in low for w in DECLINE_WORDS):
-                tg.send("❌ Оплата не прошла (банк отклонил). Перехожу к следующей ссылке.")
-                return "declined"
-            page.wait_for_timeout(500)
+        while True:   # каждая итерация — одна попытка ввести карту
+            # A) мгновенная «оплата не прошла» ДО банка → ошибка Билайна, авто-ретрай
+            if _payment_failed(page) and not reached_bank:
+                beeline_retries += 1
+                tg.send(f"⚠️ Оплата не прошла моментально — ошибка на стороне Билайна, пробую ещё раз "
+                        f"({beeline_retries}/{max_beeline_retries}).")
+                if beeline_retries > max_beeline_retries:
+                    tg.send("❌ Билайн подряд отдаёт «оплата не прошла». Пропускаю ссылку — попробуй позже.")
+                    return "beeline_fail"
+                if not _click_retry(page):
+                    tg.send("⚠️ Не нашёл кнопку «попробовать ещё раз» — пропускаю ссылку.")
+                    return "error"
+                page.wait_for_timeout(3000)
+                continue   # загрузилась новая форма карты → по кругу
 
-        # 3б) ввод кода 3DS
-        code_ok = False
-        for attempt in range(1, 6):
-            fr = h = None
-            field_deadline = time.monotonic() + page_wait
-            while time.monotonic() < field_deadline:   # ждём появления поля кода (до page_wait)
+            # B) ввод карты
+            tg.send(f"💳 Ввожу карту {mask_card(card[0])} (жду загрузку формы, это может занять минуты)…")
+            deadline = time.monotonic() + page_wait
+            try:
+                _type_card(page, card, tg, deadline)
+            except RuntimeError as exc:
+                if _payment_failed(page) and not reached_bank:
+                    continue   # вместо формы вылезла мгновенная ошибка — на ретрай сверху
+                raise
+            page.wait_for_timeout(3000)
+
+            # C) ждём: страница банка (поле 3DS) / мгновенная ошибка / отказ до кода
+            tg.send("⏳ Оплата отправлена, жду страницу банка (3DS)…")
+            nav_deadline = time.monotonic() + page_wait
+            branch = "wait"
+            while time.monotonic() < nav_deadline:
+                if _payment_failed(page) and not reached_bank:
+                    branch = "instant_fail"
+                    break
                 low = _page_text(page)
                 if any(w in low for w in DECLINE_WORDS):
-                    tg.send("❌ Оплата не прошла (банк отклонил). Перехожу к следующей ссылке.")
-                    return "declined"
+                    branch = "declined_precode"
+                    break
                 fr, h = _find_code_field(page)
                 if h is not None:
+                    branch = "code"
                     break
                 page.wait_for_timeout(500)
-            if h is None:
-                # поле кода так и не появилось — НЕ выдаём это за успех
-                shot = _shot(page, "no_code")
-                msg = ("⚠️ Поле кода (3DS) не появилось за отведённое время. Оплату НЕ подтверждаю — "
-                       "возможно, страница ещё грузилась или банк не прислал код. Вот что на экране:")
-                if shot:
-                    tg.send_photo(shot, caption=msg)
-                    try: os.unlink(shot)
-                    except OSError: pass
-                else:
-                    tg.send(msg)
+
+            if branch == "instant_fail":
+                continue   # верх цикла сделает пуш и ретрай
+            if branch == "declined_precode":
+                tg.send("❌ Оплата не прошла — банк отклонил ещё до ввода кода. Перехожу к следующей ссылке.")
+                return "declined"
+            if branch == "wait":
+                _send_shot(tg, page, "no_code",
+                           "⚠️ Поле кода (3DS) не появилось за отведённое время. Оплату НЕ подтверждаю — "
+                           "возможно, страница ещё грузилась или банк не прислал код. Вот что на экране:")
                 return "no_code"
 
-            # просим код у пользователя
-            tg.send(f"🔢 Пришли код из SMS/пуша (попытка {attempt}/5). Или напиши «отмена».")
-            code = _wait_user_code(tg, code_wait)
-            if code is None:
-                tg.send("⌛ Код не пришёл вовремя — отменяю эту ссылку.")
-                return "timeout"
-            if code.strip().lower() in ("отмена", "stop", "/stop", "cancel"):
-                tg.send("✖️ Отменил эту ссылку.")
+            # D) дошли до банка — вводим 3DS-код
+            reached_bank = True
+            verdict = _enter_3ds_code(page, tg, cfg, page_wait, code_wait)
+            if verdict == "cancelled":
                 return "cancelled"
-
-            try:
-                h.click()
-                try:
-                    h.fill("")
-                except Exception:
-                    pass
-                h.type(re.sub(r"\D", "", code), delay=90)
-            except Exception as exc:
-                tg.send(f"⚠️ Не смог вписать код: {type(exc).__name__}. Пробую снова.")
-                continue
-            page.wait_for_timeout(700)
-            # у части банков есть кнопка подтверждения, у Т-Банка нет (автоотправка после ввода)
-            _click_by_words(fr, CODE_SUBMIT_WORDS, timeout_ms=3000)
-
-            # ждём реакцию банка: неверный код / отказ / принят (поле кода исчезло)
-            verdict = None
-            react_deadline = time.monotonic() + 90
-            while time.monotonic() < react_deadline:
-                low = _page_text(page)
-                if any(w in low for w in WRONG_CODE_WORDS):
-                    verdict = "wrong"
-                    break
-                if any(w in low for w in DECLINE_WORDS):
-                    verdict = "declined"
-                    break
-                _fr2, h2 = _find_code_field(page)
-                if h2 is None:
-                    verdict = "accepted"
-                    break
-                page.wait_for_timeout(500)
-            if verdict == "wrong":
-                tg.send("↩️ Банк: код неверный. Пришли код заново.")
-                continue
+            if verdict == "timeout":
+                return "timeout"
             if verdict == "declined":
-                tg.send("❌ Оплата не прошла (банк отклонил).")
+                # PAY_3DS_1591R103: отказ ПОСЛЕ кода → проблема карты, не Билайна
+                tg.send("❌ Оплата не прошла. Возможно, на карте недостаточно средств либо она заблокирована.\n"
+                        "⚠️ Если этой картой уже оплачивали Билайн более 3 раз — оплату может блокировать сам "
+                        "сервис. Лучше взять другую карту.")
+                _click_retry(page)   # вернуть сайт к форме карты
                 return "declined"
-            if verdict == "accepted":
-                code_ok = True
-                break
-            tg.send("⏳ Банк пока не ответил на код. Пришлю заново — если придёт новый код, отправь его, или «отмена».")
-        else:
-            tg.send("⚠️ Не удалось подтвердить код за 5 попыток.")
-            return "code_failed"
-
-        if not code_ok:
-            return "code_failed"
+            if verdict in ("wrong_exhausted", "lost"):
+                tg.send("⚠️ Не удалось подтвердить код. Перехожу к следующей ссылке.")
+                return "code_failed"
+            # verdict == accepted
+            break
 
         # 4) код реально принят — оплата отправлена. Страницу успеха/QR пока не трактуем (заглушка).
         page.wait_for_timeout(4000)
-        low = _page_text(page)
-        if any(w in low for w in DECLINE_WORDS):
-            tg.send("❌ Похоже, оплата всё же не прошла (после кода).")
+        if _payment_failed(page) or any(w in _page_text(page) for w in DECLINE_WORDS):
+            tg.send("❌ Оплата не прошла уже после кода. Возможно, на карте недостаточно средств либо она "
+                    "заблокирована.\n⚠️ Если этой картой уже оплачивали Билайн более 3 раз — оплату может "
+                    "блокировать сам сервис. Лучше взять другую карту.")
             return "declined"
-        shot = _shot(page, "result")
         try:
             cur = page.url
         except Exception:
             cur = link
-        caption = (f"✅ Код принят, оплата отправлена. Вот страница после оплаты.\nURL: {cur}\n\n"
+        _send_shot(tg, page, "result",
+                   f"✅ Код принят, оплата отправлена. Вот страница после оплаты.\nURL: {cur}\n\n"
                    "⚠️ Распознавание страницы успеха и автополучение QR пока не настроено — пришли мне "
                    "скрин+HTML этой страницы и кнопки «Получить QR», добавлю.")
-        if shot:
-            tg.send_photo(shot, caption=caption)
-            try:
-                os.unlink(shot)
-            except OSError:
-                pass
-        else:
-            tg.send(caption)
         return "paid"
     except PWTimeout as exc:
         tg.send(f"⚠️ Таймаут на странице: {exc}")
-        shot = _shot(page, "timeout")
-        if shot:
-            tg.send_photo(shot, caption="Где застряло (таймаут).")
-            try: os.unlink(shot)
-            except OSError: pass
+        _send_shot(tg, page, "timeout", "Где застряло (таймаут).")
         return "error"
     except Exception as exc:
         log("process_link error:\n" + traceback.format_exc())
         tg.send(f"⚠️ Ошибка: {type(exc).__name__}: {exc}")
-        shot = _shot(page, "error")
-        if shot:
-            tg.send_photo(shot, caption="Где застряло (ошибка).")
-            try: os.unlink(shot)
-            except OSError: pass
+        _send_shot(tg, page, "error", "Где застряло (ошибка).")
         return "error"
     finally:
         try:
