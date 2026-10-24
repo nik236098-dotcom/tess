@@ -389,7 +389,10 @@ def admin_menu_text():
          f"📑 В очереди: {links_count()}   🗄 Проблемных: {prob}\n"
          f"🧑‍🤝‍🧑 Оплатчиков: {n_ops} (в очереди {len(queue_list())})\n"
          f"💰 Всего к выплате: {owed:.2f} $\n{SEP}")
+    admin_in_q = ADMIN_ID in queue_list()
     rows = [
+        [btn("🚪 Выйти из очереди (оплата)", "adm_leaveq") if admin_in_q
+         else btn("💳 Оплатить самому (встать в очередь)", "adm_joinq")],
         [btn("📤 Загрузить ссылки", "adm_load")],
         [btn("🔴 Выключить приём" if accepting() else "🟢 Включить приём", "adm_toggle")],
         [btn("🧑‍🤝‍🧑 Оплатчики", "adm_ops")],
@@ -613,6 +616,10 @@ def handle_callback(tg, ev):
     if uid == ADMIN_ID:
         if data == "adm_menu":
             show_admin_menu(tg, chat_id, mid); return
+        if data == "adm_joinq":
+            queue_join(uid); show_admin_menu(tg, chat_id, mid); return
+        if data == "adm_leaveq":
+            queue_leave(uid); show_admin_menu(tg, chat_id, mid); return
         if data == "adm_load":
             PENDING[uid] = {"await": "links"}
             tg.send(uid, "📤 Пришли ссылки (можно пачкой, каждую с новой строки или в одном сообщении).")
