@@ -26,11 +26,14 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import queue as _queue
 import re
 import sqlite3
 import sys
+import threading
 import time
 import traceback
 from pathlib import Path
@@ -111,6 +114,17 @@ class Telegram:
 
     def answer_cb(self, cb_id, text=""):
         self._call("answerCallbackQuery", callback_query_id=cb_id, text=text[:180])
+
+    def send_photo(self, chat_id, path, caption=""):
+        try:
+            with open(path, "rb") as f:
+                r = self.session.post(f"{self.base}/sendPhoto",
+                                      data={"chat_id": chat_id, "caption": str(caption)[:1000]},
+                                      files={"photo": f}, timeout=120)
+            return r.ok
+        except Exception as exc:
+            log(f"send_photo error: {type(exc).__name__}: {exc}")
+            return False
 
     def get_chat_admins(self, chat_id):
         r = self._call("getChatAdministrators", chat_id=chat_id)
@@ -761,9 +775,481 @@ def handle_callback(tg, ev):
     guest_prompt(tg, uid)
 
 
+# ══════════════════════ ЭТАП 2: ДВИЖОК ОПЛАТЫ ══════════════════════════════════
+ACTIVE = None                      # {"payer": tg_id, "io": PayerIO, "thread": ...} или None
+ACTIVE_LOCK = threading.Lock()
+_ENGINE = None
+
+
+def engine():
+    """Ленивая загрузка движка оплаты из pay_bot.py (рядом). Нужен playwright."""
+    global _ENGINE
+    if _ENGINE is None:
+        sys.path.insert(0, str(BASE_DIR))
+        import pay_bot as _pb
+        _ENGINE = _pb
+    return _ENGINE
+
+
+class PayerIO:
+    """Мост между движком оплаты и Telegram: сообщения идут активному оплатчику, его входящие
+    события (код, кнопки) главный цикл кладёт в inbox."""
+    def __init__(self, tg, payer_id):
+        self.tg = tg
+        self.payer_id = payer_id
+        self.inbox = _queue.Queue()
+
+    # интерфейс, совместимый с pay_bot (send/send_photo/get_updates/answer_callback)
+    def send(self, text, reply_markup=None):
+        self.tg.send(self.payer_id, text, reply_markup)
+
+    def send_photo(self, path, caption=""):
+        self.tg.send_photo(self.payer_id, path, caption)
+
+    def get_updates(self, timeout=25):
+        try:
+            return [self.inbox.get(timeout=timeout)]
+        except _queue.Empty:
+            return []
+
+    def answer_callback(self, cb_id):
+        self.tg.answer_cb(cb_id)
+
+    # панельные помощники
+    def put(self, ev):
+        self.inbox.put(ev)
+
+    def wait(self, timeout):
+        try:
+            return self.inbox.get(timeout=max(0.5, timeout))
+        except _queue.Empty:
+            return None
+
+    def answer(self, ev):
+        if ev.get("kind") == "callback":
+            self.tg.answer_cb(ev.get("id"))
+
+
+# ── карты, ссылки, учёт ──────────────────────────────────────────────────────
+def card_hash(card):
+    return hashlib.sha256("".join(card).encode()).hexdigest()
+
+
+def card_uses(card):
+    con = db()
+    r = con.execute("SELECT success_count FROM cards WHERE card_hash=?", (card_hash(card),)).fetchone()
+    con.close()
+    return r["success_count"] if r else 0
+
+
+def mask_pan(card):
+    return "****" + card[0][-4:]
+
+
+def take_next_link():
+    con = db()
+    r = con.execute("SELECT * FROM links WHERE status='queued' ORDER BY id LIMIT 1").fetchone()
+    if r:
+        con.execute("UPDATE links SET status='in_progress' WHERE id=?", (r["id"],))
+        con.commit()
+    con.close()
+    return dict(r) if r else None
+
+
+def requeue_link(link):
+    con = db()
+    con.execute("UPDATE links SET status='queued' WHERE id=? AND status='in_progress'", (link["id"],))
+    con.commit()
+    con.close()
+
+
+def mark_problem(link, reason):
+    con = db()
+    con.execute("UPDATE links SET status='problem', reason=? WHERE id=?", (reason, link["id"]))
+    con.commit()
+    con.close()
+
+
+def record_success(tg, payer_id, link, card, is_admin, io):
+    con = db()
+    con.execute("UPDATE links SET status='paid', paid_by=? WHERE id=?", (payer_id, link["id"]))
+    ch = card_hash(card)
+    con.execute("INSERT INTO cards(card_hash,success_count) VALUES(?,1) "
+                "ON CONFLICT(card_hash) DO UPDATE SET success_count=success_count+1", (ch,))
+    uses = con.execute("SELECT success_count FROM cards WHERE card_hash=?", (ch,)).fetchone()["success_count"]
+    amount = 0.0
+    if not is_admin:
+        o = get_op(payer_id)
+        amount = op_rate(o)
+        ensure_stat_day(payer_id)
+        con.execute("UPDATE operators SET balance=balance+?, success_today=success_today+1, "
+                    "success_total=success_total+1, fail_streak=0 WHERE tg_id=?", (amount, payer_id))
+    con.execute("INSERT INTO payments(link_id,operator_id,card_mask,result,amount,url_final,at) VALUES(?,?,?,?,?,?,?)",
+                (link["id"], payer_id, mask_pan(card), "success", amount, link["url"], now()))
+    con.commit()
+    con.close()
+    if is_admin:
+        io.send(f"✅ ОПЛАТА ПРОШЛА!\n💳 Карта {mask_pan(card)} — {uses}/3\n📑 Ещё в очереди: {links_count()}")
+    else:
+        o = get_op(payer_id)
+        io.send(f"✅ ОПЛАТА ПРОШЛА!  +{amount:.2f} $\n{SEP}\n💰 Баланс: {o['balance']:.2f} $\n"
+                f"💳 Карта {mask_pan(card)} — {uses}/3\n📑 Ещё в очереди: {links_count()}")
+    log_payment(tg, payer_id, link, card, uses, "success")
+    return uses
+
+
+def record_decline(tg, payer_id, link, card, is_admin, io):
+    con = db()
+    con.execute("INSERT INTO payments(link_id,operator_id,card_mask,result,at) VALUES(?,?,?,?,?)",
+                (link["id"], payer_id, mask_pan(card), "decline", now()))
+    streak = 0
+    if not is_admin:
+        ensure_stat_day(payer_id)
+        con.execute("UPDATE operators SET decline_today=decline_today+1, fail_streak=fail_streak+1 WHERE tg_id=?", (payer_id,))
+        streak = con.execute("SELECT fail_streak FROM operators WHERE tg_id=?", (payer_id,)).fetchone()["fail_streak"]
+    con.commit()
+    con.close()
+    msg = ("❌ ОПЛАТА НЕ ПРОШЛА\n"
+           "Возможно, недостаточно средств либо карта заблокирована.\n"
+           "⚠️ Если этой картой уже платили раньше (сам или кому-то) — Билайн может отклонять сам; "
+           "3 оплаты с карты — его жёсткий лимит.\n"
+           f"Поддержка: {ADMIN_CONTACT}")
+    if (not is_admin) and streak >= 3:
+        msg += "\n\n⚠️ При множестве неудачных оплат ваш аккаунт может быть ограничен."
+    io.send(msg)
+
+
+def log_payment(tg, payer_id, link, card, uses, result):
+    ch = setting("log_channel")
+    if not ch:
+        return
+    o = get_op(payer_id)
+    who = op_display(o) if o else (f"АДМИН ({payer_id})" if payer_id == ADMIN_ID else str(payer_id))
+    head = "✅ УСПЕШНАЯ ОПЛАТА" if result == "success" else "❌ Оплата не прошла"
+    try:
+        tg.send(ch, f"{head}\n👤 {who}\n💳 {mask_pan(card)} ({uses}/3)\n🔗 {link['url']}\n🕒 {msk_ts()}")
+    except Exception as exc:
+        log(f"log_channel send failed: {exc}; fallback admin")
+        tg.send(ADMIN_ID, f"(канал логов недоступен) {head} — {who} — {link['url']}")
+
+
+# ── оплата одной ссылки (переиспользует pay_bot) ─────────────────────────────
+def pay_one_link(io, browser, url, card, cfg):
+    """Один заход: открыть ссылку → карта → банк/3DS/YooMoney → итог. Карту НЕ меняет (это делает
+    панель). Возвращает: success / decline / beeline / no_code / site / cancel / timeout."""
+    pb = engine()
+    page_wait = int(cfg.get("page_wait_seconds") or 240)
+    code_wait = int(cfg.get("code_wait_seconds") or 300)
+    ctx_kwargs = {"locale": "ru-RU"}
+    bproxy = str(cfg.get("browser_proxy") or "").strip()
+    if bproxy and bproxy.lower() not in ("direct", "none", "off", "no", "-"):
+        ctx_kwargs["proxy"] = {"server": bproxy}
+    ctx = browser.new_context(**ctx_kwargs)
+    page = ctx.new_page()
+    page.set_default_timeout(60000)
+    try:
+        io.send("🔗 Открываю ссылку…")
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=max(90000, page_wait * 1000))
+        except Exception:
+            return "site"
+        page.wait_for_timeout(2500)
+        io.send("⏳ Жду кнопку «Оплатить»…")
+        pb._click_by_words(page.main_frame, pb.PAY_BUTTON_WORDS, timeout_ms=page_wait * 1000)
+        page.wait_for_timeout(2000)
+        if pb._payment_failed(page) or pb._url_status(page) == "fail":
+            return "beeline"
+        io.send(f"💳 Ввожу карту {mask_pan(card)}…")
+        deadline = time.monotonic() + page_wait
+        try:
+            pb._type_card(page, card, io, deadline)
+        except RuntimeError:
+            if pb._payment_failed(page) or pb._url_status(page) == "fail":
+                return "beeline"
+            return "site"
+        page.wait_for_timeout(3000)
+        io.send("⏳ Жду ответ банка (3DS)…")
+        nav = time.monotonic() + page_wait
+        c0 = time.monotonic()
+        branch = "wait"
+        while time.monotonic() < nav:
+            if pb._payment_failed(page) or pb._url_status(page) == "fail":
+                return "beeline"
+            if pb._url_status(page) == "success":
+                return "success"
+            low = pb._page_text(page)
+            if any(w in low for w in pb.DECLINE_WORDS):
+                return "decline"
+            fr, h = pb._find_code_field(page)
+            if h is not None:
+                branch = "code"
+                break
+            if pb._is_yoomoney(page) and (time.monotonic() - c0) > 8:
+                branch = "yoomoney"
+                break
+            page.wait_for_timeout(500)
+        if branch == "wait":
+            return "no_code"
+        if branch == "yoomoney":
+            yoo = pb._yoomoney_push_flow(page, io, cfg)
+            if yoo == "success":
+                return "success"
+            if yoo == "fail":
+                return "decline"
+            if yoo == "timeout":
+                return "no_code"
+        verdict = pb._enter_3ds_code(page, io, cfg, page_wait, code_wait)
+        if verdict == "cancelled":
+            return "cancel"
+        if verdict == "timeout":
+            return "timeout"
+        if verdict == "declined":
+            return "decline"
+        final = pb._wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
+        if final == "success":
+            return "success"
+        if final == "fail":
+            return "decline"
+        return "no_code"
+    except Exception:
+        log("pay_one_link error:\n" + traceback.format_exc())
+        return "site"
+    finally:
+        try:
+            ctx.close()
+        except Exception:
+            pass
+
+
+# ── ожидания в сессии ────────────────────────────────────────────────────────
+def wait_card(io, timeout, prompt=True):
+    if prompt:
+        io.send("💳 Пришли карту одним сообщением: НОМЕР СРОК КОД (или «отмена»).",
+                kb([[btn("🚪 Выйти из очереди", "op_leave")]]))
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        ev = io.wait(min(20, deadline - time.monotonic()))
+        if ev is None:
+            continue
+        if ev.get("kind") == "callback":
+            io.answer(ev)
+            if ev.get("data") in ("op_leave", "sess_finish"):
+                return None
+            continue
+        t = (ev.get("text") or "").strip()
+        if t.lower() in ("отмена", "stop", "/stop", "cancel"):
+            return None
+        card, err = validate_card(t)
+        if err:
+            io.send(f"⚠️ Карта не принята: {err}.\nПришли заново: НОМЕР СРОК КОД")
+            continue
+        if card_uses(card) >= 3:
+            io.send("⛔ Эта карта уже использована 3/3 (лимит Билайна). Пришли другую карту.")
+            continue
+        return card
+    return None
+
+
+def ask_buttons(io, text, buttons, timeout, mapping):
+    io.send(text, kb(buttons))
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        ev = io.wait(min(20, deadline - time.monotonic()))
+        if ev is None:
+            continue
+        if ev.get("kind") == "callback":
+            io.answer(ev)
+            d = ev.get("data")
+            if d in mapping:
+                return mapping[d]
+            if d == "op_leave":
+                return "finish"
+        else:
+            t = (ev.get("text") or "").strip().lower()
+            if t in ("отмена", "stop", "/stop", "закончить"):
+                return "finish"
+    return None
+
+
+# ── сессия одного оплатчика ──────────────────────────────────────────────────
+def session_loop(tg, io, browser, payer_id, card, is_admin):
+    cur_card = card
+    beeline_tries = 0
+    link = None
+    while True:
+        # карта исчерпана → новая/закончить
+        if card_uses(cur_card) >= 3:
+            ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Лимит Билайна, больше нельзя.",
+                             [[btn("💳 Ввести новую карту", "sess_newcard")], [btn("🚪 Закончить работу", "sess_finish")]],
+                             int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
+            if ch == "new":
+                nc = wait_card(io, int(CFG["newcard_timeout_s"]))
+                if nc is None:
+                    break
+                cur_card = nc
+                beeline_tries = 0
+                continue
+            break
+        # взять ссылку
+        if link is None:
+            link = take_next_link()
+            if link is None:
+                io.send("📑 Ссылки кончились. Ты остаёшься в очереди — как появятся новые, продолжим.")
+                return   # НЕ выходим из очереди
+        res = pay_one_link(io, browser, link["url"], cur_card, CFG)
+
+        if res == "success":
+            uses = record_success(tg, payer_id, link, cur_card, is_admin, io)
+            link = None
+            beeline_tries = 0
+            if uses >= 3:
+                ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Нужна новая.",
+                                 [[btn("💳 Ввести новую карту", "sess_newcard")], [btn("🚪 Закончить работу", "sess_finish")]],
+                                 int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
+                if ch == "new":
+                    nc = wait_card(io, int(CFG["newcard_timeout_s"]))
+                    if nc is None:
+                        break
+                    cur_card = nc
+                    continue
+                break
+            ch = ask_buttons(io, "Продолжаем?",
+                             [[btn("💳 Брать карту дальше", "sess_next")], [btn("🚪 Закончить работу", "sess_finish")]],
+                             int(CFG["idle_timeout_s"]), {"sess_next": "next", "sess_finish": "finish"})
+            if ch != "next":
+                break
+            continue
+
+        if res == "beeline":
+            beeline_tries += 1
+            if beeline_tries <= 3:
+                io.send(f"⚠️ Оплата не прошла моментально — ошибка на стороне Билайна, пробую ещё раз ({beeline_tries}/3).")
+                continue   # та же ссылка, та же карта
+            io.send("❌ Билайн подряд не проводит эту ссылку — вернул её в очередь, беру следующую.")
+            requeue_link(link); link = None; beeline_tries = 0
+            continue
+
+        if res == "decline":
+            record_decline(tg, payer_id, link, cur_card, is_admin, io)
+            ch = ask_buttons(io, "Что делаем?",
+                             [[btn("🔁 Повторить этой картой", "sess_same")],
+                              [btn("💳 Ввести новую карту", "sess_newcard")],
+                              [btn("🚪 Закончить работу", "sess_finish")]],
+                             int(CFG["newcard_timeout_s"]),
+                             {"sess_same": "same", "sess_newcard": "new", "sess_finish": "finish"})
+            if ch == "same":
+                beeline_tries = 0
+                continue
+            if ch == "new":
+                nc = wait_card(io, int(CFG["newcard_timeout_s"]))
+                if nc is None:
+                    requeue_link(link); break
+                cur_card = nc; beeline_tries = 0
+                continue
+            requeue_link(link); break
+
+        if res == "no_code":
+            io.send(f"⚠️ Этот банк пока не поддерживается (не нашёл поле кода). Можно отдать на ручную "
+                    f"оплату — напиши {ADMIN_CONTACT}.\nПопробуй другую карту.")
+            requeue_link(link); link = None
+            ch = ask_buttons(io, "Что делаем?",
+                             [[btn("💳 Ввести новую карту", "sess_newcard")], [btn("🚪 Закончить работу", "sess_finish")]],
+                             int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
+            if ch == "new":
+                nc = wait_card(io, int(CFG["newcard_timeout_s"]))
+                if nc is None:
+                    break
+                cur_card = nc; beeline_tries = 0
+                continue
+            break
+
+        if res == "site":
+            io.send("🌐 Сайт Билайна сейчас недоступен — вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
+            requeue_link(link); link = None; beeline_tries = 0
+            continue
+
+        if res == "cancel":
+            requeue_link(link); link = None
+            ch = ask_buttons(io, "Отменил эту ссылку. Продолжаем?",
+                             [[btn("💳 Брать карту дальше", "sess_next")], [btn("🚪 Закончить работу", "sess_finish")]],
+                             int(CFG["idle_timeout_s"]), {"sess_next": "next", "sess_finish": "finish"})
+            if ch != "next":
+                break
+            continue
+
+        if res == "timeout":
+            io.send("⌛ Код не пришёл вовремя — освобождаю очередь.")
+            requeue_link(link)
+            queue_leave(payer_id)
+            io.send("Ты вышел из очереди (ответа не поступило). Нажми «Встать в очередь», когда будешь готов.")
+            return
+
+    # нормальный выход («закончить»/таймаут новой карты)
+    queue_leave(payer_id)
+    io.send("🚪 Работа завершена, ты вышел из очереди. Спасибо!")
+
+
+def session_thread(tg, payer_id, io):
+    global ACTIVE
+    is_admin = (payer_id == ADMIN_ID)
+    try:
+        try:
+            from playwright.sync_api import sync_playwright
+        except Exception:
+            io.send("⚠️ Движок оплаты не готов на сервере (нет playwright/Chromium). Сообщи админу.")
+            tg.send(ADMIN_ID, "⚠️ Не удалось запустить движок оплаты: нет playwright/Chromium.")
+            return
+        io.send("🟢 ТВОЯ ОЧЕРЕДЬ!\nПришли карту одним сообщением: НОМЕР СРОК КОД\n"
+                "(напр. 2200000000001036 06/34 123)\n⏱ Нет карты за 3 мин — место уйдёт дальше.",
+                kb([[btn("🚪 Выйти из очереди", "op_leave")]]))
+        card = wait_card(io, int(CFG["idle_timeout_s"]), prompt=False)
+        if card is None:
+            io.send("⌛ Карта не пришла — освобождаю очередь.")
+            queue_leave(payer_id)
+            return
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            try:
+                session_loop(tg, io, browser, payer_id, card, is_admin)
+            finally:
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+    except Exception:
+        log("session error:\n" + traceback.format_exc())
+        try:
+            io.send("⚠️ Ошибка в сессии оплаты. Попробуй встать в очередь снова.")
+        except Exception:
+            pass
+    finally:
+        with ACTIVE_LOCK:
+            ACTIVE = None
+
+
+def maybe_start_session(tg):
+    global ACTIVE
+    with ACTIVE_LOCK:
+        if ACTIVE is not None:
+            return
+        if not accepting() or links_count() <= 0:
+            return
+        q = queue_list()
+        if not q:
+            return
+        payer = q[0]
+        io = PayerIO(tg, payer)
+        ACTIVE = {"payer": payer, "io": io}
+    t = threading.Thread(target=session_thread, args=(tg, payer, io), daemon=True)
+    ACTIVE["thread"] = t
+    t.start()
+
+
 # ── главный цикл ─────────────────────────────────────────────────────────────
 def main():
     db_init()
+    # RESTART_RECOVERY: незавершённые при прошлом запуске ссылки — назад в очередь
+    con = db(); con.execute("UPDATE links SET status='queued' WHERE status='in_progress'"); con.commit(); con.close()
     tg = Telegram(CFG)
     me = tg._call("getMe")
     uname = (me.get("result") or {}).get("username", "?")
@@ -772,14 +1258,19 @@ def main():
     show_admin_menu(tg, ADMIN_ID)
     while True:
         try:
-            for ev in tg.get_updates(timeout=25):
+            for ev in tg.get_updates(timeout=5):
                 try:
+                    a = ACTIVE
+                    if a and ev.get("uid") == a["payer"] and ev["kind"] in ("text", "callback"):
+                        a["io"].put(ev)   # активному оплатчику — в сессию, не в меню
+                        continue
                     if ev["kind"] == "callback":
                         handle_callback(tg, ev)
                     elif ev["kind"] == "text":
                         handle_text(tg, ev)
                 except Exception:
                     log("handler error:\n" + traceback.format_exc())
+            maybe_start_session(tg)
         except Exception:
             log("loop error:\n" + traceback.format_exc())
             time.sleep(3)
