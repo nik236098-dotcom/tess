@@ -121,7 +121,8 @@ class Telegram:
             return False
 
     def get_updates(self, timeout=25):
-        """Long-poll; возвращает список текстов от нашего chat_id (по порядку)."""
+        """Long-poll. Список событий от нашего chat_id, по порядку:
+        {"kind":"text","text":...} или {"kind":"callback","data":...,"id":...} (нажатие inline-кнопки)."""
         params = {"timeout": timeout}
         if self.offset is not None:
             params["offset"] = self.offset
@@ -134,6 +135,13 @@ class Telegram:
         out = []
         for upd in data.get("result", []) or []:
             self.offset = upd["update_id"] + 1
+            cb = upd.get("callback_query")  # PAY_CARD_CHOICE_1591R103: нажатие inline-кнопки
+            if cb:
+                chat = str(((cb.get("message") or {}).get("chat") or {}).get("id") or "")
+                if self.chat_id and chat and chat != self.chat_id:
+                    continue
+                out.append({"kind": "callback", "data": str(cb.get("data") or ""), "id": cb.get("id")})
+                continue
             msg = upd.get("message") or upd.get("channel_post") or {}
             chat = str((msg.get("chat") or {}).get("id") or "")
             text = msg.get("text")
@@ -141,8 +149,14 @@ class Telegram:
                 continue
             if self.chat_id and chat != self.chat_id:
                 continue  # чужой чат — игнор
-            out.append(text.strip())
+            out.append({"kind": "text", "text": text.strip()})
         return out
+
+    def answer_callback(self, cbid):
+        try:
+            self._call("answerCallbackQuery", callback_query_id=cbid)
+        except Exception:
+            pass
 
 
 # ── разбор карты ───────────────────────────────────────────────────────────
@@ -586,8 +600,8 @@ def process_link(pw_browser, link, card, tg, cfg):
         reached_bank = False       # дошли до страницы банка (3DS) — дальше ошибка = проблема карты
 
         while True:   # каждая итерация — одна попытка ввести карту
-            # A) мгновенная «оплата не прошла» ДО банка → ошибка Билайна, авто-ретрай
-            if _payment_failed(page) and not reached_bank:
+            # A) мгновенная «оплата не прошла» ДО банка (текст ИЛИ status=fail в URL) → сбой Билайна, авто-ретрай
+            if (_payment_failed(page) or _url_status(page) == "fail") and not reached_bank:
                 beeline_retries += 1
                 tg.send(f"⚠️ Оплата не прошла моментально — ошибка на стороне Билайна, пробую ещё раз "
                         f"({beeline_retries}/{max_beeline_retries}).")
@@ -606,7 +620,7 @@ def process_link(pw_browser, link, card, tg, cfg):
             try:
                 _type_card(page, card, tg, deadline)
             except RuntimeError as exc:
-                if _payment_failed(page) and not reached_bank:
+                if (_payment_failed(page) or _url_status(page) == "fail") and not reached_bank:
                     continue   # вместо формы вылезла мгновенная ошибка — на ретрай сверху
                 raise
             page.wait_for_timeout(3000)
@@ -616,7 +630,7 @@ def process_link(pw_browser, link, card, tg, cfg):
             nav_deadline = time.monotonic() + page_wait
             branch = "wait"
             while time.monotonic() < nav_deadline:
-                if _payment_failed(page) and not reached_bank:
+                if (_payment_failed(page) or _url_status(page) == "fail") and not reached_bank:
                     branch = "instant_fail"
                     break
                 low = _page_text(page)
@@ -647,44 +661,50 @@ def process_link(pw_browser, link, card, tg, cfg):
                 return "cancelled"
             if verdict == "timeout":
                 return "timeout"
-            if verdict == "declined":
-                # PAY_3DS_1591R103: отказ ПОСЛЕ кода → проблема карты, не Билайна
-                tg.send("❌ Оплата не прошла. Возможно, на карте недостаточно средств либо она заблокирована.\n"
-                        "⚠️ Если этой картой уже оплачивали Билайн более 3 раз — оплату может блокировать сам "
-                        "сервис. Лучше взять другую карту.")
-                _click_retry(page)   # вернуть сайт к форме карты
-                return "declined"
             if verdict in ("wrong_exhausted", "lost"):
                 tg.send("⚠️ Не удалось подтвердить код. Перехожу к следующей ссылке.")
                 return "code_failed"
-            # verdict == accepted → банк принял код, но это ещё НЕ успех: ждём ответ банка
-            break
+            if verdict == "declined":
+                final = "fail"   # банк отклонил прямо на этапе кода
+            else:
+                # verdict == accepted → ждём реальный ответ банка (страница «ждём ответ от банка» ~20-40 сек)
+                tg.send("⏳ Код принят, ждём ответ от банка (обычно 20-40 сек)…")
+                final = _wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
+            try:
+                cur = page.url
+            except Exception:
+                cur = link
 
-        # 4) код принят — ждём реальный ответ банка (страница «ждём ответ от банка» ~20-40 сек) и
-        #    читаем итог из URL: status=success / status=fail. PAY_STATUS_1591R103.
-        tg.send("⏳ Код принят, ждём ответ от банка (обычно 20-40 сек)…")
-        final = _wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
-        try:
-            cur = page.url
-        except Exception:
-            cur = link
-        if final == "fail":
-            tg.send("❌ Оплата НЕ прошла (в ссылке status=fail).\n"
-                    "Возможно, на карте недостаточно средств либо она заблокирована. "
-                    "⚠️ Если этой картой уже оплачивали Билайн более 3 раз — оплату может блокировать сам "
-                    f"сервис. Лучше взять другую карту.\nURL: {cur}")
-            return "declined"
-        if final == "success":
-            _send_shot(tg, page, "result",
-                       f"✅ Оплата ПРОШЛА успешно (status=success).\nURL: {cur}\n\n"
-                       "Дальше — страница установки eSIM / QR. Автополучение QR пока не настроено: пришли "
-                       "скрин+HTML страницы с QR и кнопкой «Получить QR», добавлю.")
-            return "paid"
-        # итог не определился за отведённое время — НЕ выдаём за успех
-        _send_shot(tg, page, "unknown",
-                   f"⚠️ Код принят, но итог от банка не определился за отведённое время "
-                   f"(в URL нет status=success/fail). Посмотри вручную.\nURL: {cur}")
-        return "unknown"
+            if final == "success":
+                _send_shot(tg, page, "result",
+                           f"✅ Оплата ПРОШЛА успешно (status=success).\nURL: {cur}\n\n"
+                           "Дальше — страница установки eSIM / QR. Автополучение QR пока не настроено: пришли "
+                           "скрин+HTML страницы с QR и кнопкой «Получить QR», добавлю.")
+                return "paid"
+            if final == "unknown":
+                _send_shot(tg, page, "unknown",
+                           f"⚠️ Код принят, но итог от банка не определился за отведённое время "
+                           f"(в URL нет status=success/fail). Посмотри вручную.\nURL: {cur}")
+                return "unknown"
+
+            # final == "fail" → оплата не прошла ПОСЛЕ кода: спрашиваем кнопками «та же / новая карта»
+            # PAY_CARD_CHOICE_1591R103
+            choice, newcard = _ask_fail_choice(tg, cur, cfg)
+            if choice == "same":
+                tg.send("🔁 Повторяю этой же картой…")
+            elif choice == "new":
+                card = newcard
+                tg.send(f"💳 Беру новую карту {mask_card(card[0])}, повторяю…")
+            else:   # cancel / timeout
+                tg.send("✖️ Оставляю эту ссылку неоплаченной, иду дальше.")
+                return "declined"
+            if not _click_retry(page):
+                tg.send("⚠️ Не нашёл кнопку «попробовать ещё раз» на странице — пропускаю ссылку.")
+                return "declined"
+            reached_bank = False   # новая попытка — снова с нуля до банка
+            beeline_retries = 0
+            page.wait_for_timeout(3000)
+            continue
     except PWTimeout as exc:
         tg.send(f"⚠️ Таймаут на странице: {exc}")
         _send_shot(tg, page, "timeout", "Где застряло (таймаут).")
@@ -706,13 +726,83 @@ _TG = None
 
 
 def _wait_user_code(tg, timeout_seconds):
-    """Ждём следующее текстовое сообщение пользователя (код)."""
+    """Ждём следующее текстовое сообщение пользователя (код). Нажатия кнопок игнорируем."""
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
-        for text in tg.get_updates(timeout=25):
-            if text:
-                return text.strip()
+        for ev in tg.get_updates(timeout=25):
+            if ev.get("kind") == "callback":
+                tg.answer_callback(ev.get("id"))
+                continue
+            t = ev.get("text")
+            if t:
+                return t.strip()
     return None
+
+
+def _wait_fail_choice(tg, timeout_seconds):
+    """PAY_CARD_CHOICE_1591R103: после fail-после-кода ждём выбор. Возвращает:
+       'same' | 'new_wait' | ('new', card) | 'cancel' | 'timeout'."""
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        for ev in tg.get_updates(timeout=25):
+            if ev.get("kind") == "callback":
+                tg.answer_callback(ev.get("id"))
+                if ev.get("data") == "pay_same":
+                    return "same"
+                if ev.get("data") == "pay_new":
+                    return "new_wait"
+                continue
+            t = (ev.get("text") or "").strip()
+            low = t.lower()
+            if low in ("отмена", "stop", "/stop", "cancel", "пропустить", "дальше"):
+                return "cancel"
+            if low in ("ещё раз", "еще раз", "повторить", "та же", "той же", "ещераз"):
+                return "same"
+            c = parse_card(t)
+            if c:
+                return ("new", c)
+    return "timeout"
+
+
+def _wait_new_card(tg, timeout_seconds):
+    """Ждём новую карту (или «отмена»). Возвращает card-tuple или None."""
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        for ev in tg.get_updates(timeout=25):
+            if ev.get("kind") == "callback":
+                tg.answer_callback(ev.get("id"))
+                continue
+            t = (ev.get("text") or "").strip()
+            if t.lower() in ("отмена", "stop", "/stop", "cancel"):
+                return None
+            c = parse_card(t)
+            if c:
+                return c
+    return None
+
+
+def _ask_fail_choice(tg, cur, cfg):
+    """PAY_CARD_CHOICE_1591R103: оплата не прошла после кода — предлагаем кнопки «та же / новая карта».
+       Возвращает ('same', None) | ('new', card) | ('cancel'|'timeout', None)."""
+    kb = {"inline_keyboard": [
+        [{"text": "🔁 Повторить этой картой", "callback_data": "pay_same"}],
+        [{"text": "💳 Ввести новую карту", "callback_data": "pay_new"}],
+    ]}
+    tg.send("❌ Оплата НЕ прошла (status=fail).\n"
+            "Возможно, недостаточно средств либо карта заблокирована. ⚠️ Если этой картой уже оплачивали "
+            "Билайн более 3 раз — сервис может её блокировать.\n"
+            f"URL: {cur}\n\nЧто делаем? Нажми кнопку, пришли новую карту (НОМЕР СРОК КОД) или «отмена».",
+            reply_markup=kb)
+    choice = _wait_fail_choice(tg, int(cfg.get("choice_wait_seconds") or 300))
+    if isinstance(choice, tuple) and choice[0] == "new":
+        return ("new", choice[1])
+    if choice == "new_wait":
+        tg.send("💳 Пришли новую карту одним сообщением: НОМЕР СРОК КОД.")
+        card = _wait_new_card(tg, int(cfg.get("code_wait_seconds") or 300))
+        return ("new", card) if card else ("timeout", None)
+    if choice == "same":
+        return ("same", None)
+    return (choice if choice in ("cancel", "timeout") else "cancel", None)
 
 
 def main():
@@ -740,7 +830,11 @@ def main():
                 "3) когда банк спросит — пришлёшь код из SMS\n\n/stop — сбросить очередь и карту.")
         try:
             while True:
-                for text in tg.get_updates(timeout=25):
+                for ev in tg.get_updates(timeout=25):
+                    if ev.get("kind") == "callback":   # нажатия кнопок вне оплаты игнорируем
+                        tg.answer_callback(ev.get("id"))
+                        continue
+                    text = ev.get("text") or ""
                     low = text.lower().strip()
                     if low in ("/stop", "стоп", "сброс"):
                         pending.clear(); card = None
