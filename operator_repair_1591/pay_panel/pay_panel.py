@@ -388,6 +388,13 @@ BAD_LINK_WORDS = ("заказ не найден", "заказ не сущест�
                   "срок действия ссылки", "page not found", "заказ выполнен")
 
 
+# Статус заказа из JSON сайта (как в чекере ссылок beeline): selfregStatus/orderStatus/…
+STATUS_KEYS = ("selfregStatus", "orderStatus", "status", "state")
+NO_ERROR_CODES = {"", "NONE", "OK", "0", "NULL", "SUCCESS"}
+PAYABLE_STATUS = "DOCS_GENERATED"   # заказ ждёт оплаты — его и платим
+USED_STATUS = "ESIM_SUCCESS"        # eSIM уже выпущена/активирована — непригодна
+
+
 # ── валидация карты ──────────────────────────────────────────────────────────
 def validate_card(text):
     """Возвращает ((num,exp,cvv), '') либо (None, 'причина')."""
@@ -1246,20 +1253,50 @@ def pay_one_link(io, browser, url, card, cfg):
     ctx = browser.new_context(**ctx_kwargs)
     page = ctx.new_page()
     page.set_default_timeout(60000)
+    seen = {"status": "", "error": ""}
+
+    def _on_resp(resp):
+        try:
+            u = resp.url.lower()
+            if "selfreg" not in u and "order" not in u:
+                return
+            if "json" not in str(resp.headers.get("content-type", "")):
+                return
+            body = resp.json()
+            data = body.get("data") if isinstance(body, dict) and isinstance(body.get("data"), dict) else body
+            if isinstance(data, dict):
+                for k in STATUS_KEYS:
+                    v = data.get(k)
+                    if isinstance(v, (str, int)) and str(v).strip():
+                        seen["status"] = str(v).strip().upper()
+                        break
+                code = data.get("errorCode")
+                if code is not None and str(code).strip().upper() not in NO_ERROR_CODES:
+                    seen["error"] = str(code)
+        except Exception:
+            pass
+
     try:
-        io.send("🔗 Открываю ссылку…")
+        page.on("response", _on_resp)
+        io.send("🔎 Проверяю ссылку…")
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=90000)
         except Exception:
             if any(w in pb._page_text(page) for w in BAD_LINK_WORDS):
                 return "bad_link"
             return "site"
-        page.wait_for_timeout(2500)
-        # БЫСТРАЯ отбивка: уже оплачена/активирована/непригодна — за секунды, не ждём кнопку
+        # ждём, пока сайт сообщит статус заказа в JSON (как чекер ссылок) — до ~10 сек
+        sdeadline = time.monotonic() + 10
+        while time.monotonic() < sdeadline and not seen["status"] and not seen["error"]:
+            if STOP_EVENT.is_set():
+                return "stopped"
+            page.wait_for_timeout(300)
+        # eSIM уже выпущена/активирована или ошибка сайта → ссылка непригодна (за секунды)
+        if seen["error"] or seen["status"] == USED_STATUS:
+            return "bad_link"
         low = pb._page_text(page)
         if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
             return "bad_link"
-        io.send("🔎 Проверяю ссылку…")
         # Ищем ВХОДНУЮ кнопку «Перейти к оплате». На рабочей ссылке она есть почти сразу; на уже
         # оплаченной/активированной её нет — такую отбиваем за секунды, не ждём форму оплаты.
         pay_wait = int(cfg.get("pay_button_wait_s") or 20)
