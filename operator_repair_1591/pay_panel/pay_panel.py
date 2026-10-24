@@ -115,16 +115,20 @@ class Telegram:
     def answer_cb(self, cb_id, text=""):
         self._call("answerCallbackQuery", callback_query_id=cb_id, text=text[:180])
 
-    def send_photo(self, chat_id, path, caption=""):
+    def send_photo(self, chat_id, path, caption="", kb=None):
         try:
+            data = {"chat_id": chat_id, "caption": str(caption)[:1000]}
+            if kb is not None:
+                data["reply_markup"] = json.dumps(kb, ensure_ascii=False)
             with open(path, "rb") as f:
-                r = self.session.post(f"{self.base}/sendPhoto",
-                                      data={"chat_id": chat_id, "caption": str(caption)[:1000]},
-                                      files={"photo": f}, timeout=120)
-            return r.ok
+                r = self.session.post(f"{self.base}/sendPhoto", data=data, files={"photo": f}, timeout=120)
+            try:
+                return r.json()
+            except Exception:
+                return {"ok": bool(getattr(r, "ok", False))}
         except Exception as exc:
             log(f"send_photo error: {type(exc).__name__}: {exc}")
-            return False
+            return {"ok": False}
 
     def get_chat_admins(self, chat_id):
         r = self._call("getChatAdministrators", chat_id=chat_id)
@@ -998,7 +1002,7 @@ def mark_problem(link, reason):
     con.close()
 
 
-def record_success(tg, payer_id, link, card, is_admin, io):
+def record_success(tg, payer_id, link, card, is_admin, io, shot=None):
     con = db()
     con.execute("UPDATE links SET status='paid', paid_by=? WHERE id=?", (payer_id, link["id"]))
     ch = card_hash(card)
@@ -1024,14 +1028,15 @@ def record_success(tg, payer_id, link, card, is_admin, io):
         o = get_op(payer_id)
         io.send(f"✅ ОПЛАТА ПРОШЛА!  +{amount:.2f} $\n{SEP}\n💰 Баланс: {o['balance']:.2f} $\n"
                 f"💳 Карта {mask_pan(card)} — {uses}/3\n📑 Ещё в очереди: {links_count()}")
-    log_payment(tg, pay_id, payer_id, link, card, uses, amount, "success")
+    log_payment(tg, pay_id, payer_id, link, card, uses, amount, "success", shot)
     return uses
 
 
-def record_decline(tg, payer_id, link, card, is_admin, io):
+def record_decline(tg, payer_id, link, card, is_admin, io, shot=None):
     con = db()
-    con.execute("INSERT INTO payments(link_id,operator_id,card_mask,result,at) VALUES(?,?,?,?,?)",
-                (link["id"], payer_id, mask_pan(card), "decline", now()))
+    cur = con.execute("INSERT INTO payments(link_id,operator_id,card_mask,card_hash,result,at) VALUES(?,?,?,?,?,?)",
+                      (link["id"], payer_id, mask_pan(card), card_hash(card), "decline", now()))
+    pay_id = cur.lastrowid
     streak = 0
     if not is_admin:
         ensure_stat_day(payer_id)
@@ -1047,22 +1052,36 @@ def record_decline(tg, payer_id, link, card, is_admin, io):
     if (not is_admin) and streak >= 3:
         msg += "\n\n⚠️ При множестве неудачных оплат ваш аккаунт может быть ограничен."
     io.send(msg)
+    log_payment(tg, pay_id, payer_id, link, card, card_uses(card), 0.0, "decline", shot)
 
 
-def log_payment(tg, pay_id, payer_id, link, card, uses, amount, result):
+def log_payment(tg, pay_id, payer_id, link, card, uses, amount, result, shot=None):
     ch = setting("log_channel")
     o = get_op(payer_id)
     who = op_display(o) if o else (f"АДМИН ({payer_id})" if payer_id == ADMIN_ID else str(payer_id))
-    head = "✅ УСПЕШНАЯ ОПЛАТА" if result == "success" else "❌ Оплата не прошла"
+    head = "✅ УСПЕШНАЯ ОПЛАТА" if result == "success" else "❌ ОПЛАТА НЕ ПРОШЛА"
     text = f"{head}\n👤 {who}\n💳 {mask_pan(card)} ({uses}/3)" + (f"  (+{amount:.2f} $)" if amount else "") + \
            f"\n🔗 {link['url']}\n🕒 {msk_ts()}"
     markup = kb([[btn("🚫 Отмена оплаты", f"cancel_pay:{pay_id}")]]) if result == "success" else None
-    if ch:
-        r = tg.send(ch, text, markup)
-        if isinstance(r, dict) and r.get("ok"):
-            return
+    has_shot = bool(shot and os.path.exists(shot))
+
+    def _deliver(target, prefix=""):
+        if has_shot:
+            r = tg.send_photo(target, shot, (prefix + text)[:1000], markup)
+        else:
+            r = tg.send(target, prefix + text, markup)
+        return isinstance(r, dict) and r.get("ok")
+
+    ok = _deliver(ch) if ch else False
+    if ch and not ok:
         log("log_channel send failed; fallback admin")
-    tg.send(ADMIN_ID, "(канал логов не задан/недоступен)\n" + text, markup)
+    if not ok:
+        _deliver(ADMIN_ID, "(канал логов не задан/недоступен)\n")
+    if has_shot:
+        try:
+            os.unlink(shot)
+        except OSError:
+            pass
 
 
 # ── ИИ-агент для нераспознанного 3DS (строго ограниченный набор действий) ────
@@ -1254,9 +1273,10 @@ def do_backup():
 
 
 # ── оплата одной ссылки (переиспользует pay_bot) ─────────────────────────────
-def pay_one_link(io, browser, url, card, cfg):
+def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
     """Один заход: открыть ссылку → карта → банк/3DS/YooMoney → итог. Карту НЕ меняет (это делает
-    панель). Возвращает: success / decline / beeline / no_code / site / cancel / timeout."""
+    панель). Возвращает: success / decline / beeline / no_code / site / cancel / timeout.
+    В shot_holder["path"] кладёт скрин финальной страницы (для лога)."""
     pb = engine()
     page_wait = int(cfg.get("page_wait_seconds") or 240)
     code_wait = int(cfg.get("code_wait_seconds") or 300)
@@ -1393,6 +1413,11 @@ def pay_one_link(io, browser, url, card, cfg):
         log("pay_one_link error:\n" + traceback.format_exc())
         return "site"
     finally:
+        if shot_holder is not None:
+            try:
+                shot_holder["path"] = pb._shot(page, "final")
+            except Exception:
+                shot_holder["path"] = None
         try:
             ctx.close()
         except Exception:
@@ -1479,7 +1504,15 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             if link is None:
                 io.send("📑 Ссылки кончились. Ты остаёшься в очереди — как появятся новые, продолжим.")
                 return   # НЕ выходим из очереди
-        res = pay_one_link(io, browser, link["url"], cur_card, CFG)
+        shot_holder = {}
+        res = pay_one_link(io, browser, link["url"], cur_card, CFG, shot_holder)
+        shot = shot_holder.get("path")
+        if res not in ("success", "decline") and shot and os.path.exists(shot):
+            try:
+                os.unlink(shot)
+            except OSError:
+                pass
+            shot = None
 
         if res == "stopped":
             requeue_link(link)
@@ -1487,7 +1520,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             break
 
         if res == "success":
-            uses = record_success(tg, payer_id, link, cur_card, is_admin, io)
+            uses = record_success(tg, payer_id, link, cur_card, is_admin, io, shot)
             link = None
             beeline_tries = 0
             CONSEC_BEELINE = 0
@@ -1527,7 +1560,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             continue
 
         if res == "decline":
-            record_decline(tg, payer_id, link, cur_card, is_admin, io)
+            record_decline(tg, payer_id, link, cur_card, is_admin, io, shot)
             ch = ask_buttons(io, "Что делаем?",
                              [[btn("🔁 Повторить этой картой", "sess_same")],
                               [btn("💳 Ввести новую карту", "sess_newcard")],
