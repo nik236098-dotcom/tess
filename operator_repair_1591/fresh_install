@@ -67,8 +67,8 @@ fi
 # The newest FULL package (one that carries the sources, i.e. test_beeline.py). Thin patch-only packages
 # (a bare .patch for the update button, no sources) are ignored by a fresh install — it lays down the full base.
 PACKAGE="$(for d in "$REPO"/operator_repair_1591/beeline_integrated_io_15_91_r*/; do
-    d="${d%/}"; if [[ "$d" =~ _r[0-9]+$ && -f "$d/test_beeline.py" ]]; then echo "$d"; fi
-  done | sort -t r -k 3 -n | tail -1)"   # the full package, not *_lite, not a thin patch
+    d="${d%/}"; if [[ "$d" =~ _r([0-9]+)$ && -f "$d/test_beeline.py" ]]; then printf '%s %s\n' "${BASH_REMATCH[1]}" "$d"; fi
+  done | sort -n | tail -1 | cut -d' ' -f2-)"   # REV_SORT_1591R103: highest revision by number (r102>r99); full package only — not *_lite, not a thin patch
 [[ -n "$PACKAGE" && -f "$PACKAGE/install.py" ]] || die "в репозитории нет полной папки beeline_integrated_io_15_91_r*/ с исходниками"
 REVISION="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["revision"])' "$PACKAGE/manifest.json")"
 say "Пакет: $(basename "$PACKAGE") (ревизия $REVISION)"
