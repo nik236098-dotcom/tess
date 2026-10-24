@@ -130,6 +130,17 @@ class Telegram:
         r = self._call("getChatAdministrators", chat_id=chat_id)
         return r.get("result", []) if isinstance(r, dict) else []
 
+    def send_document(self, chat_id, path, caption=""):
+        try:
+            with open(path, "rb") as f:
+                r = self.session.post(f"{self.base}/sendDocument",
+                                      data={"chat_id": chat_id, "caption": str(caption)[:1000]},
+                                      files={"document": f}, timeout=120)
+            return r.ok
+        except Exception as exc:
+            log(f"send_document error: {type(exc).__name__}: {exc}")
+            return False
+
     def get_updates(self, timeout=25):
         params = {"timeout": timeout, "allowed_updates": json.dumps(["message", "callback_query", "my_chat_member"])}
         if self.offset is not None:
@@ -193,12 +204,18 @@ def db_init():
       added_at INTEGER, paid_by INTEGER DEFAULT 0, reason TEXT DEFAULT '');
     CREATE TABLE IF NOT EXISTS cards(card_hash TEXT PRIMARY KEY, success_count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS payments(id INTEGER PRIMARY KEY AUTOINCREMENT, link_id INTEGER, operator_id INTEGER,
-      card_mask TEXT, result TEXT, amount REAL DEFAULT 0, url_final TEXT DEFAULT '', at INTEGER, canceled INTEGER DEFAULT 0);
+      card_mask TEXT, card_hash TEXT DEFAULT '', result TEXT, amount REAL DEFAULT 0, url_final TEXT DEFAULT '', at INTEGER, canceled INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS channels(chat_id INTEGER PRIMARY KEY, title TEXT, seen_at INTEGER);
     CREATE TABLE IF NOT EXISTS payouts(id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER, amount REAL,
       status TEXT DEFAULT 'pending', requested_at INTEGER, decided_at INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS queue(operator_id INTEGER PRIMARY KEY, joined_at INTEGER, last_action INTEGER);
     CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT);
     """)
+    # миграции для старых баз
+    for tbl, col, decl in [("payments", "card_hash", "TEXT DEFAULT ''")]:
+        cols = [r["name"] for r in con.execute(f"PRAGMA table_info({tbl})").fetchall()]
+        if col not in cols:
+            con.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {decl}")
     # дефолтные настройки
     defaults = {"default_rate_usd": str(CFG["default_rate_usd"]), "tariff_rub": str(CFG["tariff_rub"]),
                 "accepting": "1", "log_channel": ""}
@@ -227,6 +244,33 @@ def default_rate():
         return float(setting("default_rate_usd", str(CFG["default_rate_usd"])))
     except ValueError:
         return float(CFG["default_rate_usd"])
+
+
+def record_channel(chat):
+    cid = chat.get("id")
+    if not cid:
+        return
+    title = chat.get("title") or chat.get("username") or str(cid)
+    con = db()
+    con.execute("INSERT INTO channels(chat_id,title,seen_at) VALUES(?,?,?) "
+                "ON CONFLICT(chat_id) DO UPDATE SET title=excluded.title, seen_at=excluded.seen_at",
+                (cid, title, now()))
+    con.commit()
+    con.close()
+
+
+def remove_channel(cid):
+    con = db()
+    con.execute("DELETE FROM channels WHERE chat_id=?", (cid,))
+    con.commit()
+    con.close()
+
+
+def list_channels():
+    con = db()
+    rows = con.execute("SELECT * FROM channels ORDER BY seen_at DESC").fetchall()
+    con.close()
+    return [dict(r) for r in rows]
 
 
 def get_op(tg_id):
@@ -336,7 +380,13 @@ def op_display(op):
     return ("@" + op["username"]) if op.get("username") else ("ID " + str(op["tg_id"]))
 
 
-# ── валидация карты (ЭТАП 2 использует) ──────────────────────────────────────
+# BAD_LINK: ссылка непригодна (не наказываем оператора, уходит в архив админу)
+BAD_LINK_WORDS = ("заказ не найден", "заказ не существует", "не найден", "истёк", "истек",
+                  "уже оплачен", "оплачен ранее", "страница не найдена", "ничего не найдено",
+                  "ссылка недействительна", "срок действия ссылки", "page not found")
+
+
+# ── валидация карты ──────────────────────────────────────────────────────────
 def validate_card(text):
     """Возвращает ((num,exp,cvv), '') либо (None, 'причина')."""
     toks = text.strip().split()
@@ -441,6 +491,13 @@ def handle_command(tg, uid, text):
     parts = text.split(maxsplit=1)
     cmd = parts[0].lower()
     arg = parts[1].strip() if len(parts) > 1 else ""
+    if cmd == "/backup":
+        path = do_backup()
+        if path:
+            tg.send_document(uid, path, "📦 Бэкап базы панели оплат.")
+        else:
+            tg.send(uid, "Не удалось сделать бэкап.")
+        return True
     if cmd == "/invite":
         code = arg.split()[0] if arg else ""
         if not code:
@@ -634,6 +691,27 @@ def handle_callback(tg, ev):
             queue_join(uid); show_admin_menu(tg, chat_id, mid); return
         if data == "adm_leaveq":
             queue_leave(uid); show_admin_menu(tg, chat_id, mid); return
+        if data.startswith("cancel_pay:"):
+            pid = int(data.split(":")[1])
+            con = db(); p = con.execute("SELECT * FROM payments WHERE id=?", (pid,)).fetchone()
+            if not p or p["result"] != "success" or p["canceled"]:
+                con.close(); tg.answer_cb(cb_id, "Уже отменено или не найдено"); return
+            con.execute("UPDATE payments SET canceled=1 WHERE id=?", (pid,))
+            if p["card_hash"]:
+                con.execute("UPDATE cards SET success_count=max(0, success_count-1) WHERE card_hash=?", (p["card_hash"],))
+            opid = p["operator_id"]; amt = p["amount"] or 0.0
+            if opid != ADMIN_ID and amt:
+                con.execute("UPDATE operators SET balance=balance-? WHERE tg_id=?", (amt, opid))
+            con.commit(); con.close()
+            tg.answer_cb(cb_id, "Оплата отменена")
+            if mid:
+                try:
+                    tg.edit(chat_id, mid, "🚫 ОПЛАТА ОТМЕНЕНА админом.", None)
+                except Exception:
+                    pass
+            if opid != ADMIN_ID:
+                tg.send(opid, f"❗️ Одна из оплат отменена, снято с баланса {amt:.2f} $. Оспорить: {ADMIN_CONTACT}")
+            return
         if data == "adm_load":
             PENDING[uid] = {"await": "links"}
             tg.send(uid, "📤 Пришли ссылки (можно пачкой, каждую с новой строки или в одном сообщении).")
@@ -732,8 +810,26 @@ def handle_callback(tg, ev):
         if data == "set_tariff":
             PENDING[uid] = {"await": "set_tariff"}; tg.send(uid, "Сумма за тариф в ₽ (напр. 300):"); return
         if data == "set_channel":
-            tg.edit(chat_id, mid, "📣 Добавь бота в канал АДМИНОМ, потом пришли сюда @юзернейм канала или перешли из него сообщение. (Выбор из списка подключим на этапе логов.)",
-                    kb([[btn("⬅️ Назад", "adm_settings")]])); return
+            chs = list_channels()
+            if not chs:
+                tg.edit(chat_id, mid, "📣 Пока не вижу каналов. Добавь бота в канал АДМИНОМ (право слать сообщения), "
+                        "потом нажми «Обновить».", kb([[btn("🔄 Обновить", "set_channel")], [btn("⬅️ Назад", "adm_settings")]]))
+                return
+            cur_ch = setting("log_channel")
+            krows = [[btn(("✅ " if str(c["chat_id"]) == cur_ch else "") + (c["title"] or str(c["chat_id"])),
+                          f"setch:{c['chat_id']}")] for c in chs]
+            krows.append([btn("⬅️ Назад", "adm_settings")])
+            tg.edit(chat_id, mid, "📣 Выбери канал логов (бот должен быть там админом):", kb(krows))
+            return
+        if data.startswith("setch:"):
+            cid = data.split(":")[1]
+            set_setting("log_channel", cid)
+            r = tg.send(int(cid), "✅ Этот канал выбран для логов панели оплат.")
+            ok = isinstance(r, dict) and r.get("ok")
+            tg.edit(chat_id, mid, ("📣 Канал логов установлен." if ok else
+                    "⚠️ Не смог отправить в канал — проверь, что бот там админ. Канал всё равно сохранён."),
+                    kb([[btn("⬅️ Назад", "adm_settings")]]))
+            return
         return
 
     # ── оплатчик ──
@@ -779,6 +875,7 @@ def handle_callback(tg, ev):
 ACTIVE = None                      # {"payer": tg_id, "io": PayerIO, "thread": ...} или None
 ACTIVE_LOCK = threading.Lock()
 _ENGINE = None
+CONSEC_BEELINE = 0                 # подряд «мгновенных сбоев Билайна» → подозрение на бан IP
 
 
 def engine():
@@ -884,8 +981,10 @@ def record_success(tg, payer_id, link, card, is_admin, io):
         ensure_stat_day(payer_id)
         con.execute("UPDATE operators SET balance=balance+?, success_today=success_today+1, "
                     "success_total=success_total+1, fail_streak=0 WHERE tg_id=?", (amount, payer_id))
-    con.execute("INSERT INTO payments(link_id,operator_id,card_mask,result,amount,url_final,at) VALUES(?,?,?,?,?,?,?)",
-                (link["id"], payer_id, mask_pan(card), "success", amount, link["url"], now()))
+    cur = con.execute("INSERT INTO payments(link_id,operator_id,card_mask,card_hash,result,amount,url_final,at) "
+                      "VALUES(?,?,?,?,?,?,?,?)",
+                      (link["id"], payer_id, mask_pan(card), ch, "success", amount, link["url"], now()))
+    pay_id = cur.lastrowid
     con.commit()
     con.close()
     if is_admin:
@@ -894,7 +993,7 @@ def record_success(tg, payer_id, link, card, is_admin, io):
         o = get_op(payer_id)
         io.send(f"✅ ОПЛАТА ПРОШЛА!  +{amount:.2f} $\n{SEP}\n💰 Баланс: {o['balance']:.2f} $\n"
                 f"💳 Карта {mask_pan(card)} — {uses}/3\n📑 Ещё в очереди: {links_count()}")
-    log_payment(tg, payer_id, link, card, uses, "success")
+    log_payment(tg, pay_id, payer_id, link, card, uses, amount, "success")
     return uses
 
 
@@ -919,18 +1018,208 @@ def record_decline(tg, payer_id, link, card, is_admin, io):
     io.send(msg)
 
 
-def log_payment(tg, payer_id, link, card, uses, result):
+def log_payment(tg, pay_id, payer_id, link, card, uses, amount, result):
     ch = setting("log_channel")
-    if not ch:
-        return
     o = get_op(payer_id)
     who = op_display(o) if o else (f"АДМИН ({payer_id})" if payer_id == ADMIN_ID else str(payer_id))
     head = "✅ УСПЕШНАЯ ОПЛАТА" if result == "success" else "❌ Оплата не прошла"
+    text = f"{head}\n👤 {who}\n💳 {mask_pan(card)} ({uses}/3)" + (f"  (+{amount:.2f} $)" if amount else "") + \
+           f"\n🔗 {link['url']}\n🕒 {msk_ts()}"
+    markup = kb([[btn("🚫 Отмена оплаты", f"cancel_pay:{pay_id}")]]) if result == "success" else None
+    if ch:
+        r = tg.send(ch, text, markup)
+        if isinstance(r, dict) and r.get("ok"):
+            return
+        log("log_channel send failed; fallback admin")
+    tg.send(ADMIN_ID, "(канал логов не задан/недоступен)\n" + text, markup)
+
+
+# ── ИИ-агент для нераспознанного 3DS (строго ограниченный набор действий) ────
+AI_SYS = ("Ты помогаешь ввести код 3DS на платёжной странице банка. Тебе дают список элементов "
+          "страницы (поля и кнопки с индексами) и просьбу оператора простыми словами. "
+          "Верни СТРОГО JSON без пояснений:\n"
+          '{"fill": <индекс поля для кода>, "click": <индекс кнопки подтверждения, или -1 если нет>}\n'
+          'Если не понял, где поле: {"status":"not_found","say":"<очень коротко по-русски, что непонятно>"}\n'
+          'Если просьба не про эту страницу (закрыть браузер, выключить сервер, болтовня): {"status":"off_topic"}\n'
+          "Отвечай ТОЛЬКО JSON. Без кода сайта, без терминов, по-русски. Коротко.")
+
+
+def deepseek_chat(cfg, system, user, timeout=25):
+    key = str(cfg.get("deepseek_api_key") or "").strip()
+    if not key:
+        return ""
+    url = cfg.get("deepseek_url") or "https://api.deepseek.com/chat/completions"
+    model = cfg.get("deepseek_model") or "deepseek-chat"
+    proxy = str(cfg.get("ds_proxy") or cfg.get("proxy") or "").strip()
+    proxies = None
+    if proxy and proxy.lower() not in ("direct", "none", "off", "no", "-"):
+        proxies = {"https": proxy, "http": proxy}
     try:
-        tg.send(ch, f"{head}\n👤 {who}\n💳 {mask_pan(card)} ({uses}/3)\n🔗 {link['url']}\n🕒 {msk_ts()}")
+        r = requests.post(url, headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                          json={"model": model, "temperature": 0, "max_tokens": 200,
+                                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
+                          proxies=proxies, timeout=timeout)
+        return ((r.json().get("choices") or [{}])[0].get("message") or {}).get("content", "") or ""
     except Exception as exc:
-        log(f"log_channel send failed: {exc}; fallback admin")
-        tg.send(ADMIN_ID, f"(канал логов недоступен) {head} — {who} — {link['url']}")
+        log(f"deepseek error: {exc}")
+        return ""
+
+
+def collect_elements(page):
+    pb = engine()
+    items, handles = [], []
+    for fr in pb._frames(page):
+        try:
+            for h in pb._visible_inputs(fr):
+                items.append({"i": len(items), "вид": "поле",
+                              "подпись": (h.get_attribute("placeholder") or h.get_attribute("name")
+                                          or h.get_attribute("id") or "")[:30],
+                              "тип": h.get_attribute("type") or "text"})
+                handles.append(h)
+        except Exception:
+            pass
+        for sel in ("button", "[role=button]", "a"):
+            try:
+                loc = fr.locator(sel); n = min(loc.count(), 12)
+            except Exception:
+                n = 0
+            for j in range(n):
+                el = loc.nth(j)
+                try:
+                    if not el.is_visible():
+                        continue
+                    txt = (el.inner_text(timeout=400) or "").strip()
+                    if not txt:
+                        continue
+                    items.append({"i": len(items), "вид": "кнопка", "текст": txt[:40]})
+                    handles.append(el)
+                except Exception:
+                    continue
+    return items, handles
+
+
+def _extract_code(text):
+    m = re.search(r"\b(\d{3,8})\b", text or "")
+    return m.group(1) if m else ""
+
+
+def ai_execute(handles, fill_idx, click_idx, code):
+    try:
+        h = handles[int(fill_idx)]
+        h.click()
+        try:
+            h.fill("")
+        except Exception:
+            pass
+        h.type(re.sub(r"\D", "", code), delay=80)
+    except Exception:
+        return False
+    try:
+        ci = int(click_idx)
+    except Exception:
+        ci = -1
+    if 0 <= ci < len(handles):
+        try:
+            handles[ci].click(timeout=3000)
+        except Exception:
+            pass
+    else:
+        try:
+            handles[int(fill_idx)].press("Enter")
+        except Exception:
+            pass
+    return True
+
+
+def ai_assist(io, page, cfg):
+    """Нераспознанный 3DS: скрин + «Вызвать ИИ-агента». Возвращает 'success'/'decline'/'give_up'."""
+    pb = engine()
+    shot = pb._shot(page, "unknown3ds")
+    if shot:
+        io.send_photo(shot, "⚠️ Не могу сам найти поле кода на этой странице банка.")
+        try:
+            os.unlink(shot)
+        except OSError:
+            pass
+    ch = ask_buttons(io, "Что делаем?",
+                     [[btn("🤖 Вызвать ИИ-агента", "ai_call")], [btn("🚫 Отменить оплату", "ai_cancel")]],
+                     int(cfg.get("newcard_timeout_s") or 300), {"ai_call": "call", "ai_cancel": "cancel"})
+    if ch != "call":
+        return "give_up"
+    tout = int(cfg.get("newcard_timeout_s") or 300)
+    for attempt in range(1, 3):
+        io.send("Подскажи простыми словами: где поле ввода кода и что нажать. "
+                "И пришли код из СМС (можно в этом же сообщении). Или «отмена».")
+        instr = None
+        deadline = time.monotonic() + tout
+        while time.monotonic() < deadline:
+            ev = io.wait(min(20, deadline - time.monotonic()))
+            if ev is None:
+                continue
+            if ev.get("kind") == "callback":
+                io.answer(ev)
+                if ev.get("data") in ("ai_cancel", "op_leave"):
+                    return "give_up"
+                continue
+            t = (ev.get("text") or "").strip()
+            if t.lower() in ("отмена", "stop", "/stop"):
+                return "give_up"
+            instr = t
+            break
+        if instr is None:
+            return "give_up"
+        io.send("🤖 ИИ-агент работает…")
+        code = _extract_code(instr)
+        items, handles = collect_elements(page)
+        user = "Элементы страницы:\n" + json.dumps(items, ensure_ascii=False) + f"\n\nПросьба оператора: {instr}"
+        out = deepseek_chat(cfg, AI_SYS, user)
+        data = {}
+        try:
+            data = json.loads(re.search(r"\{.*\}", out, re.S).group(0))
+        except Exception:
+            data = {}
+        if data.get("status") == "off_topic":
+            io.send("Поступил ответ от ИИ-агента: давай по теме — куда нажимать на этой странице.")
+            continue
+        if data.get("status") == "not_found" or "fill" not in data:
+            say = (data.get("say") or "не понял, где поле кода")[:120]
+            io.send(f"Поступил ответ от ИИ-агента: не получилось — {say}. Попробуй объяснить по-другому.")
+            continue
+        if not code:
+            io.send("Поступил ответ от ИИ-агента: не вижу кода из СМС — пришли код цифрами ещё раз с объяснением.")
+            continue
+        if not ai_execute(handles, data.get("fill"), data.get("click"), code):
+            io.send("Поступил ответ от ИИ-агента: не смог вписать/нажать по описанию. Попробуй по-другому.")
+            continue
+        final = pb._wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
+        if final == "success":
+            return "success"
+        if final == "fail":
+            return "decline"
+        io.send("Поступил ответ от ИИ-агента: нажал, но страница не ответила — возможно, есть другой вариант?")
+    io.send(f"🤖 Не получилось распознать эту форму. Оплата отменяется. Можно отдать на ручную оплату — напиши {ADMIN_CONTACT}.")
+    return "give_up"
+
+
+# ── бэкап базы ───────────────────────────────────────────────────────────────
+def do_backup():
+    import shutil
+    bdir = BASE_DIR / "backups"
+    bdir.mkdir(exist_ok=True)
+    dst = bdir / f"pay_panel_{time.strftime('%Y%m%d_%H%M')}.sqlite3"
+    try:
+        shutil.copy2(DB_PATH, dst)
+    except Exception as exc:
+        log(f"backup error: {exc}")
+        return None
+    # держим последние 10
+    files = sorted(bdir.glob("pay_panel_*.sqlite3"))
+    for old in files[:-10]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    return str(dst)
 
 
 # ── оплата одной ссылки (переиспользует pay_bot) ─────────────────────────────
@@ -955,8 +1244,10 @@ def pay_one_link(io, browser, url, card, cfg):
             return "site"
         page.wait_for_timeout(2500)
         io.send("⏳ Жду кнопку «Оплатить»…")
-        pb._click_by_words(page.main_frame, pb.PAY_BUTTON_WORDS, timeout_ms=page_wait * 1000)
+        found_pay = pb._click_by_words(page.main_frame, pb.PAY_BUTTON_WORDS, timeout_ms=page_wait * 1000)
         page.wait_for_timeout(2000)
+        if any(w in pb._page_text(page) for w in BAD_LINK_WORDS):
+            return "bad_link"
         if pb._payment_failed(page) or pb._url_status(page) == "fail":
             return "beeline"
         io.send(f"💳 Ввожу карту {mask_pan(card)}…")
@@ -966,6 +1257,8 @@ def pay_one_link(io, browser, url, card, cfg):
         except RuntimeError:
             if pb._payment_failed(page) or pb._url_status(page) == "fail":
                 return "beeline"
+            if any(w in pb._page_text(page) for w in BAD_LINK_WORDS) or not found_pay:
+                return "bad_link"   # ни кнопки оплаты, ни формы карты — ссылка непригодна
             return "site"
         page.wait_for_timeout(3000)
         io.send("⏳ Жду ответ банка (3DS)…")
@@ -989,7 +1282,8 @@ def pay_one_link(io, browser, url, card, cfg):
                 break
             page.wait_for_timeout(500)
         if branch == "wait":
-            return "no_code"
+            r = ai_assist(io, page, cfg)   # PAY_AI_1591: интерактивный ИИ-агент на незнакомом 3DS
+            return r if r in ("success", "decline") else "no_code"
         if branch == "yoomoney":
             yoo = pb._yoomoney_push_flow(page, io, cfg)
             if yoo == "success":
@@ -1073,6 +1367,7 @@ def ask_buttons(io, text, buttons, timeout, mapping):
 
 # ── сессия одного оплатчика ──────────────────────────────────────────────────
 def session_loop(tg, io, browser, payer_id, card, is_admin):
+    global CONSEC_BEELINE
     cur_card = card
     beeline_tries = 0
     link = None
@@ -1102,6 +1397,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             uses = record_success(tg, payer_id, link, cur_card, is_admin, io)
             link = None
             beeline_tries = 0
+            CONSEC_BEELINE = 0
             if uses >= 3:
                 ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Нужна новая.",
                                  [[btn("💳 Ввести новую карту", "sess_newcard")], [btn("🚪 Закончить работу", "sess_finish")]],
@@ -1127,6 +1423,14 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
                 continue   # та же ссылка, та же карта
             io.send("❌ Билайн подряд не проводит эту ссылку — вернул её в очередь, беру следующую.")
             requeue_link(link); link = None; beeline_tries = 0
+            CONSEC_BEELINE += 1
+            if CONSEC_BEELINE >= 4:
+                set_setting("accepting", "0")
+                tg.send(ADMIN_ID, "⚠️ Похоже на блокировку IP: Билайн подряд не проводит оплаты. "
+                                  "Приём оплат ВЫКЛЮЧЕН. Проверь прокси/IP, потом включи приём снова.")
+                io.send("⏸ Пауза: Билайн временно не проводит оплаты. Попробуй позже.")
+                queue_leave(payer_id)
+                return
             continue
 
         if res == "decline":
@@ -1162,6 +1466,15 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
                 cur_card = nc; beeline_tries = 0
                 continue
             break
+
+        if res == "bad_link":
+            mark_problem(link, "не удалось начать оплату (нет кнопки / заказ не найден / истёк)")
+            tg.send(ADMIN_ID, f"🗄 Проблемная ссылка\n{link['url']}\nПричина: не удалось начать оплату "
+                              f"(нет кнопки оплаты / заказ не найден / истёк)\n🕒 {msk_ts()}",
+                    kb([[btn("♻️ Вернуть в очередь", f"prob_ret:{link['id']}"),
+                         btn("🗑 Удалить", f"prob_del:{link['id']}")]]))
+            link = None; beeline_tries = 0
+            continue   # тихо для оператора — берём следующую
 
         if res == "site":
             io.send("🌐 Сайт Билайна сейчас недоступен — вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
@@ -1260,8 +1573,17 @@ def main():
         try:
             for ev in tg.get_updates(timeout=5):
                 try:
+                    if ev["kind"] == "chat_member":
+                        ch = ev.get("chat") or {}; st = ev.get("status")
+                        if st in ("administrator", "creator"):
+                            record_channel(ch)
+                        elif st in ("left", "kicked"):
+                            remove_channel(ch.get("id"))
+                        continue
                     a = ACTIVE
-                    if a and ev.get("uid") == a["payer"] and ev["kind"] in ("text", "callback"):
+                    _admin_act = (ev["kind"] == "callback" and
+                                  ev.get("data", "").startswith(("cancel_pay:", "pay_ok:", "pay_block:", "prob_ret:", "prob_del:")))
+                    if a and ev.get("uid") == a["payer"] and ev["kind"] in ("text", "callback") and not _admin_act:
                         a["io"].put(ev)   # активному оплатчику — в сессию, не в меню
                         continue
                     if ev["kind"] == "callback":
@@ -1271,6 +1593,11 @@ def main():
                 except Exception:
                     log("handler error:\n" + traceback.format_exc())
             maybe_start_session(tg)
+            try:
+                if now() - int(setting("last_backup", "0") or 0) > 86400:
+                    do_backup(); set_setting("last_backup", str(now()))
+            except Exception:
+                pass
         except Exception:
             log("loop error:\n" + traceback.format_exc())
             time.sleep(3)
