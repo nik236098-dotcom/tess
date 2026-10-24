@@ -38,6 +38,7 @@ import re
 import sys
 import time
 import traceback
+import urllib.parse
 from pathlib import Path
 
 import requests
@@ -443,6 +444,37 @@ def _click_retry(page):
     return False
 
 
+def _url_status(page):
+    """PAY_STATUS_1591R103: итог оплаты из финальной ссылки — Билайн пишет его в query:
+    ...&status=success&...  → оплата прошла;  ...&status=fail&...  → не прошла.
+    Возвращает 'success' / 'fail' / '' (ещё не определён)."""
+    try:
+        q = urllib.parse.urlparse(page.url or "").query
+        st = (urllib.parse.parse_qs(q).get("status") or [""])[0].strip().lower()
+    except Exception:
+        return ""
+    if st.startswith("succ"):
+        return "success"
+    if st.startswith("fail"):
+        return "fail"
+    return ""
+
+
+def _wait_final_result(page, timeout_s=70):
+    """PAY_STATUS_1591R103: после принятого кода страница показывает «ждём ответ от банка» ~20-40 сек,
+    затем итог. Читаем status из URL (авторитетно), либо ловим форму «оплата не прошла». Успех по
+    тексту НЕ определяем — на промежуточной странице есть и «установить eSIM», и «договора»."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        st = _url_status(page)
+        if st:
+            return st
+        if _payment_failed(page):   # появилась форма «оплата не прошла / попробовать ещё раз»
+            return "fail"
+        page.wait_for_timeout(1000)
+    return "unknown"
+
+
 def _shot(page, name):
     path = str(BASE_DIR / f"shot_{name}_{int(time.time())}.png")
     try:
@@ -625,25 +657,34 @@ def process_link(pw_browser, link, card, tg, cfg):
             if verdict in ("wrong_exhausted", "lost"):
                 tg.send("⚠️ Не удалось подтвердить код. Перехожу к следующей ссылке.")
                 return "code_failed"
-            # verdict == accepted
+            # verdict == accepted → банк принял код, но это ещё НЕ успех: ждём ответ банка
             break
 
-        # 4) код реально принят — оплата отправлена. Страницу успеха/QR пока не трактуем (заглушка).
-        page.wait_for_timeout(4000)
-        if _payment_failed(page) or any(w in _page_text(page) for w in DECLINE_WORDS):
-            tg.send("❌ Оплата не прошла уже после кода. Возможно, на карте недостаточно средств либо она "
-                    "заблокирована.\n⚠️ Если этой картой уже оплачивали Билайн более 3 раз — оплату может "
-                    "блокировать сам сервис. Лучше взять другую карту.")
-            return "declined"
+        # 4) код принят — ждём реальный ответ банка (страница «ждём ответ от банка» ~20-40 сек) и
+        #    читаем итог из URL: status=success / status=fail. PAY_STATUS_1591R103.
+        tg.send("⏳ Код принят, ждём ответ от банка (обычно 20-40 сек)…")
+        final = _wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
         try:
             cur = page.url
         except Exception:
             cur = link
-        _send_shot(tg, page, "result",
-                   f"✅ Код принят, оплата отправлена. Вот страница после оплаты.\nURL: {cur}\n\n"
-                   "⚠️ Распознавание страницы успеха и автополучение QR пока не настроено — пришли мне "
-                   "скрин+HTML этой страницы и кнопки «Получить QR», добавлю.")
-        return "paid"
+        if final == "fail":
+            tg.send("❌ Оплата НЕ прошла (в ссылке status=fail).\n"
+                    "Возможно, на карте недостаточно средств либо она заблокирована. "
+                    "⚠️ Если этой картой уже оплачивали Билайн более 3 раз — оплату может блокировать сам "
+                    f"сервис. Лучше взять другую карту.\nURL: {cur}")
+            return "declined"
+        if final == "success":
+            _send_shot(tg, page, "result",
+                       f"✅ Оплата ПРОШЛА успешно (status=success).\nURL: {cur}\n\n"
+                       "Дальше — страница установки eSIM / QR. Автополучение QR пока не настроено: пришли "
+                       "скрин+HTML страницы с QR и кнопкой «Получить QR», добавлю.")
+            return "paid"
+        # итог не определился за отведённое время — НЕ выдаём за успех
+        _send_shot(tg, page, "unknown",
+                   f"⚠️ Код принят, но итог от банка не определился за отведённое время "
+                   f"(в URL нет status=success/fail). Посмотри вручную.\nURL: {cur}")
+        return "unknown"
     except PWTimeout as exc:
         tg.send(f"⚠️ Таймаут на странице: {exc}")
         _send_shot(tg, page, "timeout", "Где застряло (таймаут).")
