@@ -392,6 +392,15 @@ BAD_LINK_WORDS = ("заказ не найден", "заказ не сущест�
                   "срок действия ссылки", "page not found", "заказ выполнен")
 
 
+# Временный сбой платёжного шлюза (504/502/503, «Gateway Timeout») — не вина оператора, ссылка в очередь
+GATEWAY_ERROR_WORDS = ('gateway timeout', 'bad gateway', 'service unavailable', 'internal server error',
+                       '"status_code": 5', '"status_code":5', 'шлюз', 'временно недоступ')
+
+
+def _gateway_error(low):
+    return any(w in low for w in GATEWAY_ERROR_WORDS)
+
+
 # Статус заказа из JSON сайта (как в чекере ссылок beeline): selfregStatus/orderStatus/…
 STATUS_KEYS = ("selfregStatus", "orderStatus", "status", "state")
 NO_ERROR_CODES = {"", "NONE", "OK", "0", "NULL", "SUCCESS"}
@@ -1329,6 +1338,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
         if seen["error"] or seen["status"] == USED_STATUS:
             return "bad_link"
         low = pb._page_text(page)
+        if _gateway_error(low):
+            return "site"   # 504/502/503 при открытии — временный сбой, ссылка в очередь
         if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
             return "bad_link"
         # Ищем ВХОДНУЮ кнопку «Перейти к оплате». На рабочей ссылке она есть почти сразу; на уже
@@ -1375,6 +1386,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             if pb._url_status(page) == "success":
                 return "success"
             low = pb._page_text(page)
+            if _gateway_error(low):
+                return "site"   # 504/502/503 — временный сбой шлюза, ссылка в очередь (не пуш)
             if any(w in low for w in pb.DECLINE_WORDS):
                 return "decline"
             fr, h = pb._find_code_field(page)
