@@ -678,13 +678,25 @@ def main():
     cfg = load_config()
     tg = Telegram(cfg)
     headless = cfg.get("headless", True)
-    tg.send("💳 Бот оплаты запущен.\n\nКак пользоваться:\n1) пришли ссылку(и) заказа\n"
-            "2) пришли карту одним сообщением: НОМЕР СРОК КОД (напр. 2200000000001036 06/34 123)\n"
-            "3) когда банк спросит — пришлёшь код из SMS\n\n/stop — сбросить очередь и карту.")
     pending = []          # очередь ссылок
     card = None           # (num, exp, cvv) в памяти
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        # PAY_3DS_1591R103: сначала поднимаем браузер, и только после успеха шлём «запущен» —
+        # иначе при отсутствии Chromium бот спамил бы «запущен» на каждом рестарте systemd.
+        try:
+            browser = pw.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        except Exception as exc:
+            log("chromium launch failed:\n" + traceback.format_exc())
+            tg.send("⚠️ Бот оплаты не смог запустить Chromium — браузер не установлен.\n"
+                    "Выполни на сервере одной строкой:\n"
+                    "sudo PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers /opt/beeline/venv/bin/python -m playwright install chromium\n"
+                    "потом: sudo systemctl restart pay_bot\n\n"
+                    f"Ошибка: {str(exc)[:300]}")
+            time.sleep(60)   # не спамить рестартами каждые 10 сек, пока не починят браузер
+            raise
+        tg.send("💳 Бот оплаты запущен.\n\nКак пользоваться:\n1) пришли ссылку(и) заказа\n"
+                "2) пришли карту одним сообщением: НОМЕР СРОК КОД (напр. 2200000000001036 06/34 123)\n"
+                "3) когда банк спросит — пришлёшь код из SMS\n\n/stop — сбросить очередь и карту.")
         try:
             while True:
                 for text in tg.get_updates(timeout=25):

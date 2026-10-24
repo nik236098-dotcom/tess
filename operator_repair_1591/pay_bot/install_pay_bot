@@ -69,7 +69,11 @@ chmod 600 "$APP_DIR/pay_bot_config.json"
 say "Python/Chromium"
 if [[ -x "$BEELINE_VENV/bin/python" ]] && "$BEELINE_VENV/bin/python" -c "import playwright" 2>/dev/null; then
   PY="$BEELINE_VENV/bin/python"
-  say "Использую venv beeline ($PY) — playwright и Chromium уже есть"
+  say "Использую venv beeline ($PY). Доустанавливаю Chromium (в т.ч. headless-shell для headless-режима)…"
+  # beeline гоняет Chromium под xvfb (не headless), и headless-shell может отсутствовать — pay_bot
+  # запускается headless, поэтому обязательно докачиваем. Уже скачанное не тянется повторно.
+  PLAYWRIGHT_BROWSERS_PATH="$PW_PATH" timeout 900 "$PY" -m playwright install chromium \
+    || say "⚠️ playwright install chromium не прошёл. Если бот не стартует — запусти вручную: sudo PLAYWRIGHT_BROWSERS_PATH=$PW_PATH $PY -m playwright install chromium"
 else
   PY="$APP_DIR/venv/bin/python"
   [[ -x "$PY" ]] || python3 -m venv "$APP_DIR/venv"
