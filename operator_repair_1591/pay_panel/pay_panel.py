@@ -1567,7 +1567,7 @@ def main():
     me = tg._call("getMe")
     uname = (me.get("result") or {}).get("username", "?")
     log(f"запущен как @{uname}. Админ: {ADMIN_ID}")
-    tg.send(ADMIN_ID, "🛠 Панель оплат запущена (Этап 1: каркас).")
+    tg.send(ADMIN_ID, "🛠 Панель оплат запущена.")
     show_admin_menu(tg, ADMIN_ID)
     while True:
         try:
