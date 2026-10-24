@@ -382,8 +382,10 @@ def op_display(op):
 
 # BAD_LINK: ссылка непригодна (не наказываем оператора, уходит в архив админу)
 BAD_LINK_WORDS = ("заказ не найден", "заказ не существует", "не найден", "истёк", "истек",
-                  "уже оплачен", "оплачен ранее", "страница не найдена", "ничего не найдено",
-                  "ссылка недействительна", "срок действия ссылки", "page not found")
+                  "уже оплачен", "оплачен ранее", "оплата получена", "оплата прошла", "уже оплачена",
+                  "заказ оплачен", "уже активирован", "esim активирован", "договор зарегистрирован",
+                  "страница не найдена", "ничего не найдено", "ссылка недействительна",
+                  "срок действия ссылки", "page not found", "заказ выполнен")
 
 
 # ── валидация карты ──────────────────────────────────────────────────────────
@@ -491,6 +493,13 @@ def handle_command(tg, uid, text):
     parts = text.split(maxsplit=1)
     cmd = parts[0].lower()
     arg = parts[1].strip() if len(parts) > 1 else ""
+    if cmd == "/stop":
+        if ACTIVE is not None:
+            STOP_EVENT.set()
+            tg.send(uid, "⏹ Останавливаю текущую оплату и освобождаю очередь…")
+        else:
+            tg.send(uid, "Сейчас активной оплаты нет.")
+        return True
     if cmd == "/backup":
         path = do_backup()
         if path:
@@ -874,6 +883,7 @@ def handle_callback(tg, ev):
 # ══════════════════════ ЭТАП 2: ДВИЖОК ОПЛАТЫ ══════════════════════════════════
 ACTIVE = None                      # {"payer": tg_id, "io": PayerIO, "thread": ...} или None
 ACTIVE_LOCK = threading.Lock()
+STOP_EVENT = threading.Event()     # аварийный стоп текущей сессии (/stop админом)
 _ENGINE = None
 CONSEC_BEELINE = 0                 # подряд «мгновенных сбоев Билайна» → подозрение на бан IP
 
@@ -1239,26 +1249,49 @@ def pay_one_link(io, browser, url, card, cfg):
     try:
         io.send("🔗 Открываю ссылку…")
         try:
-            page.goto(url, wait_until="domcontentloaded", timeout=max(90000, page_wait * 1000))
+            page.goto(url, wait_until="domcontentloaded", timeout=90000)
         except Exception:
+            if any(w in pb._page_text(page) for w in BAD_LINK_WORDS):
+                return "bad_link"
             return "site"
         page.wait_for_timeout(2500)
-        io.send("⏳ Жду кнопку «Оплатить»…")
-        found_pay = pb._click_by_words(page.main_frame, pb.PAY_BUTTON_WORDS, timeout_ms=page_wait * 1000)
-        page.wait_for_timeout(2000)
-        if any(w in pb._page_text(page) for w in BAD_LINK_WORDS):
+        # БЫСТРАЯ отбивка: уже оплачена/активирована/непригодна — за секунды, не ждём кнопку
+        low = pb._page_text(page)
+        if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
             return "bad_link"
-        if pb._payment_failed(page) or pb._url_status(page) == "fail":
-            return "beeline"
-        io.send(f"💳 Ввожу карту {mask_pan(card)}…")
-        deadline = time.monotonic() + page_wait
+        io.send("🔎 Проверяю ссылку…")
+        # Ищем ВХОДНУЮ кнопку «Перейти к оплате». На рабочей ссылке она есть почти сразу; на уже
+        # оплаченной/активированной её нет — такую отбиваем за секунды, не ждём форму оплаты.
+        pay_wait = int(cfg.get("pay_button_wait_s") or 20)
+        bdeadline = time.monotonic() + pay_wait
+        found_pay = False
+        while time.monotonic() < bdeadline:
+            if STOP_EVENT.is_set():
+                return "stopped"
+            low = pb._page_text(page)
+            if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
+                return "bad_link"
+            if pb._payment_failed(page) or pb._url_status(page) == "fail":
+                return "beeline"
+            if pb._on_card_form(page):   # форма карты уже открыта (без входной кнопки)
+                found_pay = True
+                break
+            if pb._click_by_words(page.main_frame, pb.PAY_BUTTON_WORDS, timeout_ms=2000):
+                found_pay = True
+                break
+            page.wait_for_timeout(1200)
+        if not found_pay:
+            return "bad_link"   # нет кнопки оплаты → ссылка уже оплачена/непригодна
+        # дальше (после входной кнопки) ждём форму/«оплатить» — тут Билайн может лагать, это нормально
+        io.send(f"💳 Перешёл к оплате, ввожу карту {mask_pan(card)}…")
+        deadline = time.monotonic() + int(cfg.get("card_form_wait_s") or 120)
         try:
             pb._type_card(page, card, io, deadline)
         except RuntimeError:
             if pb._payment_failed(page) or pb._url_status(page) == "fail":
                 return "beeline"
-            if any(w in pb._page_text(page) for w in BAD_LINK_WORDS) or not found_pay:
-                return "bad_link"   # ни кнопки оплаты, ни формы карты — ссылка непригодна
+            if any(w in pb._page_text(page) for w in BAD_LINK_WORDS):
+                return "bad_link"
             return "site"
         page.wait_for_timeout(3000)
         io.send("⏳ Жду ответ банка (3DS)…")
@@ -1322,6 +1355,8 @@ def wait_card(io, timeout, prompt=True):
                 kb([[btn("🚪 Выйти из очереди", "op_leave")]]))
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if STOP_EVENT.is_set():
+            return None
         ev = io.wait(min(20, deadline - time.monotonic()))
         if ev is None:
             continue
@@ -1348,6 +1383,8 @@ def ask_buttons(io, text, buttons, timeout, mapping):
     io.send(text, kb(buttons))
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if STOP_EVENT.is_set():
+            return "finish"
         ev = io.wait(min(20, deadline - time.monotonic()))
         if ev is None:
             continue
@@ -1392,6 +1429,11 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
                 io.send("📑 Ссылки кончились. Ты остаёшься в очереди — как появятся новые, продолжим.")
                 return   # НЕ выходим из очереди
         res = pay_one_link(io, browser, link["url"], cur_card, CFG)
+
+        if res == "stopped":
+            requeue_link(link)
+            io.send("⏹ Остановлено админом. Ты вышел из очереди.")
+            break
 
         if res == "success":
             uses = record_success(tg, payer_id, link, cur_card, is_admin, io)
@@ -1536,6 +1578,7 @@ def session_thread(tg, payer_id, io):
         except Exception:
             pass
     finally:
+        STOP_EVENT.clear()
         with ACTIVE_LOCK:
             ACTIVE = None
 
@@ -1583,7 +1626,8 @@ def main():
                     a = ACTIVE
                     _admin_act = (ev["kind"] == "callback" and
                                   ev.get("data", "").startswith(("cancel_pay:", "pay_ok:", "pay_block:", "prob_ret:", "prob_del:")))
-                    if a and ev.get("uid") == a["payer"] and ev["kind"] in ("text", "callback") and not _admin_act:
+                    _cmd = (ev["kind"] == "text" and ev.get("text", "").startswith("/"))  # команды не перехватываем
+                    if a and ev.get("uid") == a["payer"] and ev["kind"] in ("text", "callback") and not _admin_act and not _cmd:
                         a["io"].put(ev)   # активному оплатчику — в сессию, не в меню
                         continue
                     if ev["kind"] == "callback":
