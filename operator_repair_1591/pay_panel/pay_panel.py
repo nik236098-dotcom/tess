@@ -920,6 +920,7 @@ ACTIVE_LOCK = threading.Lock()
 STOP_EVENT = threading.Event()     # аварийный стоп текущей сессии (/stop админом)
 _ENGINE = None
 CONSEC_BEELINE = 0                 # подряд «мгновенных сбоев Билайна» → подозрение на бан IP
+CONSEC_GATEWAY = 0                 # подряд сбоев платёжного шлюза (504…) → шлюз лежит
 
 
 def engine():
@@ -1339,7 +1340,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             return "bad_link"
         low = pb._page_text(page)
         if _gateway_error(low):
-            return "site"   # 504/502/503 при открытии — временный сбой, ссылка в очередь
+            return "gateway"   # 504/502/503 при открытии — сбой платёжного шлюза
         if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
             return "bad_link"
         # Ищем ВХОДНУЮ кнопку «Перейти к оплате». На рабочей ссылке она есть почти сразу; на уже
@@ -1387,7 +1388,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
                 return "success"
             low = pb._page_text(page)
             if _gateway_error(low):
-                return "site"   # 504/502/503 — временный сбой шлюза, ссылка в очередь (не пуш)
+                return "gateway"   # 504/502/503 — сбой платёжного шлюза (не пуш)
             if any(w in low for w in pb.DECLINE_WORDS):
                 return "decline"
             fr, h = pb._find_code_field(page)
@@ -1493,7 +1494,7 @@ def ask_buttons(io, text, buttons, timeout, mapping):
 
 # ── сессия одного оплатчика ──────────────────────────────────────────────────
 def session_loop(tg, io, browser, payer_id, card, is_admin):
-    global CONSEC_BEELINE
+    global CONSEC_BEELINE, CONSEC_GATEWAY
     cur_card = card
     beeline_tries = 0
     link = None
@@ -1537,6 +1538,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             link = None
             beeline_tries = 0
             CONSEC_BEELINE = 0
+            CONSEC_GATEWAY = 0
             if uses >= 3:
                 ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Нужна новая.",
                                  [[btn("💳 Ввести новую карту", "sess_newcard")], [btn("🚪 Закончить работу", "sess_finish")]],
@@ -1615,8 +1617,22 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             link = None; beeline_tries = 0
             continue   # тихо для оператора — берём следующую
 
+        if res == "gateway":
+            io.send("🏦 Платёжный шлюз (YooMoney/банк) сейчас не отвечает (временный сбой 504) — "
+                    "вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
+            requeue_link(link); link = None; beeline_tries = 0
+            CONSEC_GATEWAY += 1
+            if CONSEC_GATEWAY >= 4:
+                set_setting("accepting", "0")
+                tg.send(ADMIN_ID, "⚠️ Платёжный шлюз (YooMoney/банк) подряд отдаёт 504 — похоже, он лежит. "
+                                  "Приём оплат ВЫКЛЮЧЕН. Попробуй позже и включи приём снова.")
+                io.send("⏸ Пауза: платёжный шлюз временно не отвечает. Попробуй позже.")
+                queue_leave(payer_id)
+                return
+            continue
+
         if res == "site":
-            io.send("🌐 Сайт Билайна сейчас недоступен — вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
+            io.send("🌐 Временный сбой (страница не ответила) — вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
             requeue_link(link); link = None; beeline_tries = 0
             continue
 
