@@ -500,6 +500,20 @@ def handle_command(tg, uid, text):
     parts = text.split(maxsplit=1)
     cmd = parts[0].lower()
     arg = parts[1].strip() if len(parts) > 1 else ""
+    if cmd == "/sms":
+        if not arg.strip():
+            tg.send(uid, "Формат: /sms текст рассылки")
+            return True
+        con = db(); rows = con.execute("SELECT tg_id FROM operators WHERE banned=0").fetchall(); con.close()
+        sent = 0
+        for r in rows:
+            try:
+                tg.send(r["tg_id"], f"📢 {arg.strip()}")
+                sent += 1
+            except Exception:
+                pass
+        tg.send(uid, f"✅ Рассылка отправлена: {sent} оплатчик(ам).")
+        return True
     if cmd == "/stop":
         if ACTIVE is not None:
             STOP_EVENT.set()
