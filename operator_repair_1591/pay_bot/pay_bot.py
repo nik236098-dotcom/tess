@@ -73,6 +73,11 @@ RESEND_WORDS = ("отправить код повторно", "выслать к
                 "отправить повторно", "выслать повторно", "повторная отправка", "повторить отправку",
                 "получить новый код", "получить код заново", "отправить смс повторно", "выслать смс",
                 "новый код", "resend code", "resend", "send again", "request new code")
+# PAY_YOOMONEY_1591R103: YooMoney сначала может просить подтверждение PUSH в приложении банка;
+# на странице есть переключение на ввод кода из СМС — эти слова его ищут.
+GET_SMS_WORDS = ("код из смс", "код по смс", "ввести код из смс", "получить код по смс", "получить код в смс",
+                 "код в смс", "через смс", "по смс", "не приходит пуш", "не приходит push", "ввести код вручную",
+                 "получить смс", "отправить смс", "получить код")
 
 
 def log(msg):
@@ -515,6 +520,66 @@ def _resend_timer_left(page):
     return m.group(1) if m else ""
 
 
+def _is_yoomoney(page):
+    """PAY_YOOMONEY_1591R103: это банк YooMoney (по URL или тексту страницы)."""
+    try:
+        if "yoomoney" in (page.url or "").lower():
+            return True
+    except Exception:
+        pass
+    try:
+        return "yoomoney" in _page_text(page)
+    except Exception:
+        return False
+
+
+def _click_get_sms(page):
+    """YooMoney: нажать «получить код по СМС / ввести код из СМС» в любой рамке."""
+    for fr in _frames(page):
+        if _click_by_words(fr, GET_SMS_WORDS, timeout_ms=3000):
+            return True
+    return False
+
+
+def _yoomoney_push_flow(page, tg, cfg):
+    """PAY_YOOMONEY_1591R103: YooMoney просит подтверждение PUSH в приложении банка (поля кода нет).
+    Шлём пуш + кнопку «📲 Получить код по СМС». Возвращает:
+       'code' (появилось поле кода — дальше обычный ввод) / 'success' / 'fail' / 'timeout'."""
+    kb = {"inline_keyboard": [[{"text": "📲 Получить код по СМС", "callback_data": "yoo_sms"}]]}
+    tg.send("🔔 Банк YooMoney запросил PUSH — подтвердите оплату в приложении своего банка.\n"
+            "Если пуш не приходит — нажми «📲 Получить код по СМС», переключу на ввод кода из SMS.",
+            reply_markup=kb)
+    wait = int(cfg.get("push_wait_seconds") or cfg.get("code_wait_seconds") or 300)
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        st = _url_status(page)
+        if st == "success":
+            return "success"
+        if st == "fail" or _payment_failed(page):
+            return "fail"
+        fr, h = _find_code_field(page)   # пользователь подтвердил пуш или переключил на СМС
+        if h is not None:
+            return "code"
+        for ev in tg.get_updates(timeout=2):
+            if ev.get("kind") == "callback":
+                tg.answer_callback(ev.get("id"))
+                if ev.get("data") == "yoo_sms":
+                    if _click_get_sms(page):
+                        tg.send("📨 Переключаю на код из СМС — жди СМС и пришли код.")
+                    else:
+                        tg.send("⚠️ На странице не нашёл переключение на СМС. Подтверди PUSH в банке, "
+                                "или пришли «отмена».")
+            else:
+                t = (ev.get("text") or "").strip().lower()
+                if t in ("отмена", "stop", "/stop", "cancel"):
+                    return "fail"
+                if t in ("смс", "sms", "код по смс", "получить смс", "по смс"):
+                    if _click_get_sms(page):
+                        tg.send("📨 Переключаю на код из СМС — жди СМС.")
+        page.wait_for_timeout(800)
+    return "timeout"
+
+
 def _url_status(page):
     """PAY_STATUS_1591R103: итог оплаты из финальной ссылки — Билайн пишет его в query:
     ...&status=success&...  → оплата прошла;  ...&status=fail&...  → не прошла.
@@ -728,13 +793,17 @@ def process_link(pw_browser, link, card, tg, cfg):
                 raise
             page.wait_for_timeout(3000)
 
-            # C) ждём: страница банка (поле 3DS) / мгновенная ошибка / отказ до кода
+            # C) ждём: страница банка (поле 3DS) / мгновенная ошибка / отказ до кода / YooMoney-PUSH
             tg.send("⏳ Оплата отправлена, жду страницу банка (3DS)…")
             nav_deadline = time.monotonic() + page_wait
+            c_start = time.monotonic()
             branch = "wait"
             while time.monotonic() < nav_deadline:
                 if (_payment_failed(page) or _url_status(page) == "fail") and not reached_bank:
                     branch = "instant_fail"
+                    break
+                if _url_status(page) == "success":
+                    branch = "success_direct"
                     break
                 low = _page_text(page)
                 if any(w in low for w in DECLINE_WORDS):
@@ -743,6 +812,10 @@ def process_link(pw_browser, link, card, tg, cfg):
                 fr, h = _find_code_field(page)
                 if h is not None:
                     branch = "code"
+                    break
+                # PAY_YOOMONEY_1591R103: YooMoney без поля кода дольше ~8с → ждёт PUSH в приложении банка
+                if _is_yoomoney(page) and (time.monotonic() - c_start) > 8:
+                    branch = "yoomoney"
                     break
                 page.wait_for_timeout(500)
 
@@ -757,26 +830,46 @@ def process_link(pw_browser, link, card, tg, cfg):
                            "возможно, страница ещё грузилась или банк не прислал код. Вот что на экране:")
                 return "no_code"
 
-            # D) дошли до банка — вводим 3DS-код
+            # D) дошли до банка
             reached_bank = True
-            verdict = _enter_3ds_code(page, tg, cfg, page_wait, code_wait)
-            if verdict == "cancelled":
-                return "cancelled"
-            if verdict == "timeout":
-                return "timeout"
-            if verdict == "declined":
-                final = "fail"   # банк отклонил прямо на этапе кода
-            elif verdict in ("wrong_exhausted", "lost"):
-                # PAY_CARD_CHOICE_1591R103: код не подтверждён — ссылку НЕ пропускаем, ведём как обычный
-                # fail. Ждём страницу результата/«оплата не прошла», дальше те же кнопки «та же / новая карта».
-                tg.send("⏳ Код не подтверждён — жду страницу результата…")
-                final = _wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
-                if final == "unknown":
+            verdict = None
+            final = None
+
+            if branch == "success_direct":
+                final = "success"
+            elif branch == "yoomoney":
+                # PAY_YOOMONEY_1591R103: сперва PUSH в приложении банка (+ кнопка «получить код по СМС»)
+                yoo = _yoomoney_push_flow(page, tg, cfg)
+                if yoo == "success":
+                    final = "success"
+                elif yoo == "fail":
                     final = "fail"
-            else:
-                # verdict == accepted → ждём реальный ответ банка (страница «ждём ответ от банка» ~20-40 сек)
-                tg.send("⏳ Код принят, ждём ответ от банка (обычно 20-40 сек)…")
-                final = _wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
+                elif yoo == "timeout":
+                    tg.send("⌛ YooMoney: подтверждение PUSH не завершено вовремя.")
+                    final = "fail"
+                else:   # 'code' — появилось поле кода, вводим как обычно
+                    verdict = _enter_3ds_code(page, tg, cfg, page_wait, code_wait)
+            else:   # branch == "code"
+                verdict = _enter_3ds_code(page, tg, cfg, page_wait, code_wait)
+
+            if verdict is not None:
+                if verdict == "cancelled":
+                    return "cancelled"
+                if verdict == "timeout":
+                    return "timeout"
+                if verdict == "declined":
+                    final = "fail"   # банк отклонил прямо на этапе кода
+                elif verdict in ("wrong_exhausted", "lost"):
+                    # PAY_CARD_CHOICE_1591R103: код не подтверждён — ссылку НЕ пропускаем, ведём как обычный
+                    # fail: ждём страницу результата, дальше кнопки «та же / новая карта».
+                    tg.send("⏳ Код не подтверждён — жду страницу результата…")
+                    final = _wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
+                    if final == "unknown":
+                        final = "fail"
+                else:
+                    # verdict == accepted → ждём реальный ответ банка («ждём ответ от банка» ~20-40 сек)
+                    tg.send("⏳ Код принят, ждём ответ от банка (обычно 20-40 сек)…")
+                    final = _wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
             try:
                 cur = page.url
             except Exception:
