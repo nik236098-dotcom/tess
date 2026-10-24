@@ -67,6 +67,12 @@ PAYMENT_FAILED_WORDS = ("оплата не прошла", "платёж не п�
                         "платёж отклонён", "платеж отклонен", "payment failed")
 RETRY_WORDS = ("попробовать ещё раз", "попробовать еще раз", "попробуйте снова", "попробовать снова",
                "повторить попытку", "повторить оплату", "повторить", "try again", "retry")
+# PAY_RESEND_1591R103: ссылки/кнопки «отправить код повторно» на 3DS-странице (запросить новую СМС).
+RESEND_WORDS = ("отправить код повторно", "выслать код повторно", "запросить код повторно",
+                "запросить новый код", "запросить код", "отправить код ещё раз", "отправить код еще раз",
+                "отправить повторно", "выслать повторно", "повторная отправка", "повторить отправку",
+                "получить новый код", "получить код заново", "отправить смс повторно", "выслать смс",
+                "новый код", "resend code", "resend", "send again", "request new code")
 
 
 def log(msg):
@@ -458,6 +464,57 @@ def _click_retry(page):
     return False
 
 
+def _click_resend(page):
+    """PAY_RESEND_1591R103: нажать «отправить код повторно» на 3DS-странице (во всех фреймах).
+    Возвращает 'clicked' (нажали) / 'timer' (есть, но заблокирована отсчётом) / 'notfound' (нет кнопки)."""
+    rx = re.compile("|".join(re.escape(w) for w in RESEND_WORDS), re.I)
+    found_disabled = False
+    for fr in _frames(page):
+        for sel in ("button", "[role=button]", "a", "span", "div"):
+            try:
+                loc = fr.locator(sel).filter(has_text=rx)
+                n = min(loc.count(), 8)
+            except Exception:
+                continue
+            for i in range(n):
+                el = loc.nth(i)
+                try:
+                    if not el.is_visible():
+                        continue
+                    enabled = True
+                    try:
+                        enabled = el.is_enabled()
+                    except Exception:
+                        enabled = True
+                    # кнопка/элемент с отсчётом времени в тексте («0:59», «через 59 сек») — ещё нельзя
+                    try:
+                        etxt = (el.inner_text(timeout=600) or "")
+                    except Exception:
+                        etxt = ""
+                    if re.search(r"\b\d{1,2}:\d{2}\b|через\s+\d|\d+\s*сек", etxt, re.I):
+                        found_disabled = True
+                        continue
+                    if not enabled:
+                        found_disabled = True
+                        continue
+                    el.scroll_into_view_if_needed(timeout=1500)
+                    el.click(timeout=2500)
+                    return "clicked"
+                except Exception:
+                    continue
+    return "timer" if found_disabled else "notfound"
+
+
+def _resend_timer_left(page):
+    """Остаток отсчёта повтора кода («0:59» или «59 сек»), если виден на странице — для подсказки."""
+    try:
+        txt = _page_text(page)
+    except Exception:
+        return ""
+    m = re.search(r"\b(\d{1,2}:\d{2})\b", txt) or re.search(r"(\d{1,3})\s*сек", txt)
+    return m.group(1) if m else ""
+
+
 def _url_status(page):
     """PAY_STATUS_1591R103: итог оплаты из финальной ссылки — Билайн пишет его в query:
     ...&status=success&...  → оплата прошла;  ...&status=fail&...  → не прошла.
@@ -515,14 +572,40 @@ def _send_shot(tg, page, name, caption):
 
 
 # ── ввод 3DS-кода (вызывается, когда поле кода уже найдено) ─────────────────
+def _wait_code_or_resend(tg, timeout_seconds):
+    """PAY_RESEND_1591R103: ждём код (текст), кнопку «повторить СМС» или «отмена». Возвращает
+       ('code', код) | ('resend', None) | ('cancel', None) | ('timeout', None)."""
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        for ev in tg.get_updates(timeout=25):
+            if ev.get("kind") == "callback":
+                tg.answer_callback(ev.get("id"))
+                if ev.get("data") == "resend_sms":
+                    return ("resend", None)
+                continue
+            t = (ev.get("text") or "").strip()
+            if not t:
+                continue
+            low = t.lower()
+            if low in ("отмена", "stop", "/stop", "cancel"):
+                return ("cancel", None)
+            if low in ("повтор", "повтор смс", "повторить смс", "ещё смс", "еще смс", "новый код", "ещё код", "еще код"):
+                return ("resend", None)
+            return ("code", t)
+    return ("timeout", None)
+
+
 def _enter_3ds_code(page, tg, cfg, page_wait, code_wait):
     """Цикл ввода кода из SMS/пуша. Возвращает один из вердиктов:
-       accepted / declined / wrong_exhausted / timeout / cancelled / lost."""
+       accepted / declined / wrong_exhausted / timeout / cancelled / lost.
+    На каждом шаге есть кнопка «📨 Повторить СМС» (PAY_RESEND_1591R103)."""
+    resend_kb = {"inline_keyboard": [[{"text": "📨 Повторить СМС (запросить код заново)",
+                                       "callback_data": "resend_sms"}]]}
     for attempt in range(1, 6):
         fr = h = None
         field_deadline = time.monotonic() + page_wait
         while time.monotonic() < field_deadline:   # ждём появления поля кода
-            if _payment_failed(page) or any(w in _page_text(page) for w in DECLINE_WORDS):
+            if _payment_failed(page) or _url_status(page) == "fail" or any(w in _page_text(page) for w in DECLINE_WORDS):
                 return "declined"
             fr, h = _find_code_field(page)
             if h is not None:
@@ -531,15 +614,35 @@ def _enter_3ds_code(page, tg, cfg, page_wait, code_wait):
         if h is None:
             return "lost"
 
-        tg.send(f"🔢 Пришли код из SMS/пуша (попытка {attempt}/5). Или напиши «отмена».")
-        code = _wait_user_code(tg, code_wait)
-        if code is None:
-            tg.send("⌛ Код не пришёл вовремя — отменяю эту ссылку.")
-            return "timeout"
-        if code.strip().lower() in ("отмена", "stop", "/stop", "cancel"):
-            tg.send("✖️ Отменил эту ссылку.")
-            return "cancelled"
+        tg.send(f"🔢 Пришли код из SMS/пуша (попытка {attempt}/5). Кнопка ниже — запросить код заново. "
+                "Или «отмена».", reply_markup=resend_kb)
+        code = None
+        while code is None:
+            kind, value = _wait_code_or_resend(tg, code_wait)
+            if kind == "timeout":
+                tg.send("⌛ Код не пришёл вовремя — отменяю эту ссылку.")
+                return "timeout"
+            if kind == "cancel":
+                tg.send("✖️ Отменил эту ссылку.")
+                return "cancelled"
+            if kind == "resend":
+                res = _click_resend(page)
+                if res == "clicked":
+                    tg.send("📨 Запросил код заново — жди новую СМС и пришли код сюда.")
+                elif res == "timer":
+                    left = _resend_timer_left(page)
+                    tg.send("⏳ Повтор кода пока недоступен" + (f" (осталось ~{left})" if left else "") +
+                            " — на странице идёт отсчёт. Подожди и нажми «📨 Повторить СМС» снова.")
+                else:
+                    tg.send("⚠️ Кнопку повтора кода на странице не нашёл. Если код не приходит — пришли «отмена», "
+                            "или дождись СМС и введи код.")
+                continue   # ждём код/повтор дальше
+            code = value   # kind == 'code'
 
+        # после повтора СМС поле могло перерисоваться — перечитаем его
+        fr, h = _find_code_field(page)
+        if h is None:
+            return "lost"
         try:
             h.click()
             try:
@@ -559,16 +662,16 @@ def _enter_3ds_code(page, tg, cfg, page_wait, code_wait):
         while time.monotonic() < react_deadline:
             low = _page_text(page)
             if any(w in low for w in WRONG_CODE_WORDS):
-                tg.send("↩️ Банк: код неверный. Пришли код заново.")
+                tg.send("↩️ Банк: код неверный. Пришли код заново (или «📨 Повторить СМС»).")
                 break   # на следующую попытку for
-            if _payment_failed(page) or any(w in low for w in DECLINE_WORDS):
+            if _payment_failed(page) or _url_status(page) == "fail" or any(w in low for w in DECLINE_WORDS):
                 return "declined"
             _fr2, h2 = _find_code_field(page)
             if h2 is None:
                 return "accepted"
             page.wait_for_timeout(500)
         else:
-            tg.send("⏳ Банк пока не ответил на код. Если придёт новый код — отправь его, или «отмена».")
+            tg.send("⏳ Банк пока не ответил на код. Пришли новый код, «📨 Повторить СМС» или «отмена».")
     return "wrong_exhausted"
 
 
