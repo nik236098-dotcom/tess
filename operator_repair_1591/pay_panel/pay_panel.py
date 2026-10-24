@@ -1618,18 +1618,28 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             continue   # тихо для оператора — берём следующую
 
         if res == "gateway":
-            io.send("🏦 Платёжный шлюз (YooMoney/банк) сейчас не отвечает (временный сбой 504) — "
-                    "вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
-            requeue_link(link); link = None; beeline_tries = 0
             CONSEC_GATEWAY += 1
+            beeline_tries = 0
             if CONSEC_GATEWAY >= 4:
+                requeue_link(link)
                 set_setting("accepting", "0")
-                tg.send(ADMIN_ID, "⚠️ Платёжный шлюз (YooMoney/банк) подряд отдаёт 504 — похоже, он лежит. "
+                tg.send(ADMIN_ID, "⚠️ Платёжный шлюз (банк ЮMoney) подряд отдаёт 504 — похоже, он лежит. "
                                   "Приём оплат ВЫКЛЮЧЕН. Попробуй позже и включи приём снова.")
-                io.send("⏸ Пауза: платёжный шлюз временно не отвечает. Попробуй позже.")
+                io.send("⏸ Банк ЮMoney временно недоступен. Ставлю на паузу — попробуй позже.")
                 queue_leave(payer_id)
                 return
-            continue
+            ch = ask_buttons(io, "🏦 Банк ЮMoney временно недоступен (временный сбой на их стороне, 504).\n"
+                                 "Воспользуйся картой ДРУГОГО банка — попробуем эту же ссылку ещё раз.",
+                             [[btn("💳 Ввести карту другого банка", "sess_newcard")],
+                              [btn("🚪 Закончить работу", "sess_finish")]],
+                             int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
+            if ch == "new":
+                nc = wait_card(io, int(CFG["newcard_timeout_s"]))
+                if nc is None:
+                    requeue_link(link); break
+                cur_card = nc
+                continue   # та же ссылка, карта другого банка
+            requeue_link(link); break
 
         if res == "site":
             io.send("🌐 Временный сбой (страница не ответила) — вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
