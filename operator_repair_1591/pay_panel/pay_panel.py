@@ -100,34 +100,63 @@ class Telegram:
             return {}
 
     def send(self, chat_id, text, kb=None, silent=False):
-        data = {"chat_id": chat_id, "text": str(text)[:4000], "disable_web_page_preview": True}
+        text, ents = _emoji_payload(text, 4000)
+        data = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
         if silent:
             data["disable_notification"] = "true"
         if kb is not None:
             data["reply_markup"] = json.dumps(kb, ensure_ascii=False)
-        return self._call("sendMessage", **data)
+        if ents:
+            data["entities"] = ents
+        r = self._call("sendMessage", **data)
+        if ents and isinstance(r, dict) and not r.get("ok"):
+            log(f"custom emoji rejected: {r.get('description')}")
+            data.pop("entities", None)
+            r = self._call("sendMessage", **data)
+        return r
 
     def edit(self, chat_id, message_id, text, kb=None):
-        data = {"chat_id": chat_id, "message_id": message_id, "text": str(text)[:4000],
+        text, ents = _emoji_payload(text, 4000)
+        data = {"chat_id": chat_id, "message_id": message_id, "text": text,
                 "disable_web_page_preview": True}
         if kb is not None:
             data["reply_markup"] = json.dumps(kb, ensure_ascii=False)
-        return self._call("editMessageText", **data)
+        if ents:
+            data["entities"] = ents
+        r = self._call("editMessageText", **data)
+        if ents and isinstance(r, dict) and not r.get("ok"):
+            log(f"custom emoji rejected: {r.get('description')}")
+            data.pop("entities", None)
+            r = self._call("editMessageText", **data)
+        return r
 
     def answer_cb(self, cb_id, text=""):
         self._call("answerCallbackQuery", callback_query_id=cb_id, text=text[:180])
 
     def send_photo(self, chat_id, path, caption="", kb=None):
-        try:
-            data = {"chat_id": chat_id, "caption": str(caption)[:1000]}
+        caption, ents = _emoji_payload(caption, 1000)
+        def _post(with_ents):
+            data = {"chat_id": chat_id, "caption": caption}
             if kb is not None:
                 data["reply_markup"] = json.dumps(kb, ensure_ascii=False)
+            if with_ents and ents:
+                data["caption_entities"] = ents
             with open(path, "rb") as f:
-                r = self.session.post(f"{self.base}/sendPhoto", data=data, files={"photo": f}, timeout=120)
+                return self.session.post(f"{self.base}/sendPhoto", data=data, files={"photo": f}, timeout=120)
+        try:
+            r = _post(True)
             try:
-                return r.json()
+                body = r.json()
             except Exception:
                 return {"ok": bool(getattr(r, "ok", False))}
+            if ents and isinstance(body, dict) and not body.get("ok"):
+                log(f"custom emoji rejected: {body.get('description')}")
+                r = _post(False)
+                try:
+                    return r.json()
+                except Exception:
+                    return {"ok": bool(getattr(r, "ok", False))}
+            return body
         except Exception as exc:
             log(f"send_photo error: {type(exc).__name__}: {exc}")
             return {"ok": False}
@@ -137,11 +166,24 @@ class Telegram:
         return r.get("result", []) if isinstance(r, dict) else []
 
     def send_document(self, chat_id, path, caption=""):
-        try:
+        caption, ents = _emoji_payload(caption, 1000)
+        def _post(with_ents):
+            data = {"chat_id": chat_id, "caption": caption}
+            if with_ents and ents:
+                data["caption_entities"] = ents
             with open(path, "rb") as f:
-                r = self.session.post(f"{self.base}/sendDocument",
-                                      data={"chat_id": chat_id, "caption": str(caption)[:1000]},
-                                      files={"document": f}, timeout=120)
+                return self.session.post(f"{self.base}/sendDocument", data=data,
+                                         files={"document": f}, timeout=120)
+        try:
+            r = _post(True)
+            if ents:
+                try:
+                    body = r.json()
+                except Exception:
+                    body = {}
+                if isinstance(body, dict) and not body.get("ok"):
+                    log(f"custom emoji rejected: {body.get('description')}")
+                    r = _post(False)
             return r.ok
         except Exception as exc:
             log(f"send_document error: {type(exc).__name__}: {exc}")
@@ -370,11 +412,88 @@ def add_links(urls):
 SEP = "━━━━━━━━━━━━━━━━━━"
 
 
+# Кастомные эмодзи (те же, что на кнопках меню, плюс соседние из тех же паков).
+# В тексте остаётся обычный знак — Telegram рисует поверх него премиум-иконку.
+EMOJI_IDS = {
+    "💳": "5927169041595634481",
+    "🚪": "5226953054380659263",
+    "💸": "5409048419211682843",
+    "💰": "5409048419211682843",
+    "💵": "5409048419211682843",
+    "🔄": "5877410604225924969",
+    "🔁": "5877410604225924969",
+    "🔗": "5877465816030515018",
+    "🟢": "5810051751654460532",
+    "🔴": "5807626765874499116",
+    "🚫": "5807626765874499116",
+    "⛔": "5807626765874499116",
+    "👥": "5942877472163892475",
+    "🧑‍🤝‍🧑": "5942877472163892475",
+    "⚠️": "5447644880824181073",
+    "⚙️": "5877260593903177342",
+    "⚙": "5877260593903177342",
+    "⬅️": "5877536313623711363",
+    "✅": "5920052658743283381",
+    "❌": "5778527486270770928",
+    "👤": "5879770735999717115",
+    "🔎": "5874960879434338403",
+    "🗄": "5967456680940671207",
+    "📑": "5839323457015256759",
+    "📄": "5839323457015256759",
+    "📊": "5931472654660800739",
+    "📈": "5776219138917668486",
+    "📥": "5877307202888273539",
+    "📤": "5877540355187937244",
+    "🏷": "5985433648810171091",
+    "🗑": "5879896690210639947",
+    "🔒": "5832546462478635761",
+    "🌐": "5879585266426973039",
+    "🤖": "5931415565955503486",
+    "🛠": "5988023995125993550",
+    "📢": "5771695636411847302",
+    "📣": "5260268501515377807",
+    "❗️": "5879813604068298387",
+    "🕒": "5778605968208170641",
+    "💱": "5402186569006210455",
+    "⚪️": "5994324703559290598",
+    "⏸": "5359543311897998264",
+    "⏹": "5807622114424924272",
+    "⏳": "5440621591387980068",
+    "⌛": "5440621591387980068",
+}
+_EMOJI_RE = re.compile("|".join(re.escape(k) for k in sorted(EMOJI_IDS, key=len, reverse=True)))
+
+
+def emoji_entities(text):
+    ents = []
+    for m in _EMOJI_RE.finditer(text or ""):
+        ents.append({
+            "type": "custom_emoji",
+            "offset": len(text[:m.start()].encode("utf-16-le")) // 2,
+            "length": len(m.group().encode("utf-16-le")) // 2,
+            "custom_emoji_id": EMOJI_IDS[m.group()],
+        })
+    return ents
+
+
+def _emoji_payload(text, limit):
+    text = str(text)[:limit]
+    ents = emoji_entities(text)
+    return text, (json.dumps(ents, ensure_ascii=False) if ents else None)
+
+
 def kb(rows):
     return {"inline_keyboard": rows}
 
 
 def btn(text, data, icon=None):
+    text = str(text)
+    if not icon:
+        for em in sorted(EMOJI_IDS, key=len, reverse=True):
+            if text.startswith(em):
+                icon = EMOJI_IDS[em]
+                text = text[len(em):].lstrip()
+                break
     b = {"text": text, "callback_data": data}
     if icon:
         b["icon_custom_emoji_id"] = str(icon)
