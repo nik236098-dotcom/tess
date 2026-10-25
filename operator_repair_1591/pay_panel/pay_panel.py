@@ -1178,10 +1178,12 @@ def record_success(tg, payer_id, link, card, is_admin, io, shot=None):
     return uses
 
 
-def record_decline(tg, payer_id, link, card, is_admin, io, shot=None):
+def record_decline(tg, payer_id, link, card, is_admin, io, shot=None, page_url=None):
+    shown = (page_url or "").strip() or link["url"]
     con = db()
-    cur = con.execute("INSERT INTO payments(link_id,operator_id,card_mask,card_hash,result,at) VALUES(?,?,?,?,?,?)",
-                      (link["id"], payer_id, mask_pan(card), card_hash(card), "decline", now()))
+    cur = con.execute("INSERT INTO payments(link_id,operator_id,card_mask,card_hash,result,url_final,at) "
+                      "VALUES(?,?,?,?,?,?,?)",
+                      (link["id"], payer_id, mask_pan(card), card_hash(card), "decline", shown, now()))
     pay_id = cur.lastrowid
     streak = 0
     if not is_admin:
@@ -1198,24 +1200,37 @@ def record_decline(tg, payer_id, link, card, is_admin, io, shot=None):
     if (not is_admin) and streak >= 3:
         msg += "\n\n⚠️ При множестве неудачных оплат ваш аккаунт может быть ограничен."
     io.send(msg)
-    log_payment(tg, pay_id, payer_id, link, card, card_uses(card), 0.0, "decline", shot)
+    log_payment(tg, pay_id, payer_id, link, card, card_uses(card), 0.0, "decline", shot, page_url=shown)
 
 
-def log_payment(tg, pay_id, payer_id, link, card, uses, amount, result, shot=None):
+def log_payment(tg, pay_id, payer_id, link, card, uses, amount, result, shot=None, page_url=None):
     ch = setting("log_channel")
     o = get_op(payer_id)
     who = op_display(o) if o else (f"АДМИН ({payer_id})" if payer_id == ADMIN_ID else str(payer_id))
     head = "✅ УСПЕШНАЯ ОПЛАТА" if result == "success" else "❌ ОПЛАТА НЕ ПРОШЛА"
-    text = f"{head}\n👤 {who}\n💳 {mask_pan(card)} ({uses}/3)" + (f"  (+{amount:.2f} $)" if amount else "") + \
-           f"\n🔗 {link['url']}\n🕒 {msk_ts()}"
+    meta = f"{head}\n👤 {who}\n💳 {mask_pan(card)} ({uses}/3)" + (f"  (+{amount:.2f} $)" if amount else "") + \
+           f"\n🕒 {msk_ts()}"
+    stopped = (page_url or "").strip()
+    if result != "success":
+        links = f"🔗 Исходная: {link['url']}"
+        if stopped:
+            links += f"\n🔗 Сейчас: {stopped}"
+    else:
+        links = f"🔗 {link['url']}"
+    text = meta + "\n" + links
     markup = kb([[btn("🚫 Отмена оплаты", f"cancel_pay:{pay_id}")]]) if result == "success" else None
     has_shot = bool(shot and os.path.exists(shot))
 
     def _deliver(target, prefix=""):
+        body = prefix + text
+        if has_shot and len(body) > 1000:
+            r = tg.send_photo(target, shot, (prefix + meta)[:1000])
+            r2 = tg.send(target, links)
+            return (isinstance(r, dict) and r.get("ok")) or (isinstance(r2, dict) and r2.get("ok"))
         if has_shot:
-            r = tg.send_photo(target, shot, (prefix + text)[:1000], markup)
+            r = tg.send_photo(target, shot, body[:1000], markup)
         else:
-            r = tg.send(target, prefix + text, markup)
+            r = tg.send(target, body, markup)
         return isinstance(r, dict) and r.get("ok")
 
     ok = _deliver(ch) if ch else False
@@ -1565,6 +1580,10 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
     finally:
         if shot_holder is not None:
             try:
+                shot_holder["url"] = _stopped_url(page)
+            except Exception:
+                shot_holder["url"] = ""
+            try:
                 shot_holder["path"] = pb._shot(page, "final")
             except Exception:
                 shot_holder["path"] = None
@@ -1572,6 +1591,17 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             ctx.close()
         except Exception:
             pass
+
+
+def _stopped_url(page, fallback=""):
+    """Адрес, на котором браузер реально остановился. about:blank и ошибки хрома не берём."""
+    try:
+        u = (page.url or "").strip()
+    except Exception:
+        return fallback
+    if not u or u.startswith(("about:", "chrome-error:", "data:")):
+        return fallback
+    return u
 
 
 # ── ожидания в сессии ────────────────────────────────────────────────────────
@@ -1657,6 +1687,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
         shot_holder = {}
         res = pay_one_link(io, browser, link["url"], cur_card, CFG, shot_holder)
         shot = shot_holder.get("path")
+        page_url = (shot_holder.get("url") or "").strip()
         if res not in ("success", "decline") and shot and os.path.exists(shot):
             try:
                 os.unlink(shot)
@@ -1712,7 +1743,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             continue
 
         if res == "decline":
-            record_decline(tg, payer_id, link, cur_card, is_admin, io, shot)
+            record_decline(tg, payer_id, link, cur_card, is_admin, io, shot, page_url)
             ch = ask_buttons(io, "Что делаем?",
                              [[btn("🔁 Повторить этой картой", "sess_same")],
                               [btn("💳 Ввести новую карту", "sess_newcard")],
