@@ -374,8 +374,11 @@ def kb(rows):
     return {"inline_keyboard": rows}
 
 
-def btn(text, data):
-    return {"text": text, "callback_data": data}
+def btn(text, data, icon=None):
+    b = {"text": text, "callback_data": data}
+    if icon:
+        b["icon_custom_emoji_id"] = str(icon)
+    return b
 
 
 def accepting():
@@ -449,10 +452,11 @@ def operator_menu_text(op):
          f"🏷 Сумма за 1 тариф: ~{setting('tariff_rub')} ₽ (своей картой)\n{SEP}")
     rows = []
     if in_q:
-        rows.append([btn("🚪 Выйти из очереди", "op_leave")])
+        rows.append([btn("Выйти из очереди", "op_leave", "5226953054380659263")])
     else:
-        rows.append([btn("▶️ Встать в очередь", "op_join")])
-    rows.append([btn("💸 Запросить выплату", "op_payout"), btn("🔄 Обновить", "op_refresh")])
+        rows.append([btn("Встать в очередь", "op_join", "5348125953090403204")])
+    rows.append([btn("Запросить выплату", "op_payout", "5409048419211682843"),
+                 btn("Обновить", "op_refresh", "5877410604225924969")])
     return t, kb(rows)
 
 
@@ -479,14 +483,15 @@ def admin_menu_text():
          f"💰 Всего к выплате: {owed:.2f} $\n{SEP}")
     admin_in_q = ADMIN_ID in queue_list()
     rows = [
-        [btn("🚪 Выйти из очереди (оплата)", "adm_leaveq") if admin_in_q
-         else btn("💳 Оплатить самому (встать в очередь)", "adm_joinq")],
-        [btn("📤 Загрузить ссылки", "adm_load")],
-        [btn("🔴 Выключить приём" if accepting() else "🟢 Включить приём", "adm_toggle")],
-        [btn("🧑‍🤝‍🧑 Оплатчики", "adm_ops")],
-        [btn(f"💸 Запросы на выплаты · {n_pay}", "adm_payouts")],
-        [btn(f"🗄 Проблемные ссылки · {prob}", "adm_prob")],
-        [btn("⚙️ Настройки", "adm_settings")],
+        [btn("Выйти из очереди (оплата)", "adm_leaveq", "5226953054380659263") if admin_in_q
+         else btn("Оплатить самому (встать в очередь)", "adm_joinq", "5927169041595634481")],
+        [btn("Загрузить ссылки", "adm_load", "5877465816030515018")],
+        [btn("Выключить приём", "adm_toggle", "5807626765874499116") if accepting()
+         else btn("Включить приём", "adm_toggle", "5810051751654460532")],
+        [btn("Оплатчики", "adm_ops", "5942877472163892475")],
+        [btn(f"Запросы на выплаты · {n_pay}", "adm_payouts", "5409048419211682843")],
+        [btn(f"Проблемные ссылки · {prob}", "adm_prob", "5447644880824181073")],
+        [btn("Настройки", "adm_settings", "5877260593903177342")],
     ]
     return t, kb(rows)
 
