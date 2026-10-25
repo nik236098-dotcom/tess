@@ -732,42 +732,8 @@ def _kb(rows):
     return json.dumps({"inline_keyboard": rows}, ensure_ascii=False)
 
 
-def _btn(text, data, icon=None):
-    b = {"text": text, "callback_data": data[:64]}
-    if icon:
-        b["icon_custom_emoji_id"] = str(icon)
-    return b
-
-
-# Кастомные эмодзи главного меню (кнопка — icon_custom_emoji_id, текст панели — tg-emoji).
-MENU_EMOJI = {
-    "🎛": "5875033614705495771",
-    "📂": "6017174676898321263",
-    "💳": "5927169041595634481",
-    "📅": "5413879192267805083",
-    "⬆️": "6005807101056651268",
-    "📱": "5985833664884250583",
-    "📤": "5877540355187937244",
-    "🔳": "5987917196469213507",
-    "🔢": "5226513232549664618",
-    "📜": "5886330010054168711",
-    "🖥": "5282843764451195532",
-    "⚙️": "5877260593903177342",
-    "🤖": "5931415565955503486",
-    "▶️": "5348125953090403204",
-    "⏹": "5807622114424924272",
-    "🔄": "5877410604225924969",
-    "📊": "5931472654660800739",
-    "🟢": "5810051751654460532",
-    "🔴": "5210952531676504517",
-}
-
-
-def _ce(emoji):
-    eid = MENU_EMOJI.get(emoji)
-    if not eid:
-        return emoji
-    return f'<tg-emoji emoji-id="{eid}">{emoji}</tg-emoji>'
+def _btn(text, data):
+    return {"text": text, "callback_data": data[:64]}
 
 
 def _clip(text, limit=TEXT_LIMIT):
@@ -1134,38 +1100,35 @@ class TelegramMenu:
         today = time.strftime("%Y-%m-%d")  # MENU_DELETE_1591R57: eSIMs made today, deleted ones included
         made_today = sum(1 for rec in self._esims(include_hidden=True) if str(rec.get("time") or "").startswith(today))
         icon, _, word = str(running).partition(" ")  # EXPORT_CARDS_1591R61: «🔴 Процесс остановлен»
-        if word:
-            process = f"{_ce(icon)} Процесс {_esc(word[:1].lower() + word[1:])}"
-        else:
-            process = f"{_ce('⚙️')} Процесс: {_esc(running)}"
+        process = f"{icon} Процесс {word[:1].lower()}{word[1:]}" if word else f"⚙️ Процесс: {running}"
         lines = [
-            f"{_ce('🎛')} <b>beeline eSIM — панель</b>",
+            "🎛 <b>beeline eSIM — панель</b>",
             "",
-            process,
-            f"{_ce('📂')} База: {base} • Обработано: {done}",
-            f"{_ce('💳')} Ждут оплаты: {statuses.count('pay')} • Готово: {statuses.count('done')}",
-            f"{_ce('📅')} Новых eSIM сегодня: {made_today}",
+            _esc(process),
+            f"📂 База: {base} • Обработано: {done}",
+            f"💳 Ждут оплаты: {statuses.count('pay')} • Готово: {statuses.count('done')}",
+            f"📅 Новых eSIM сегодня: {made_today}",
         ]
         rev, _ = self._revision()
         latest = int(self.state.get("latest_rev") or 0)
         if latest > rev:
-            lines.append(f"{_ce('⬆️')} Доступно обновление: r{rev} → r{latest}")
+            lines.append(f"⬆️ Доступно обновление: r{rev} → r{latest}")
         return "\n".join(lines)
 
     def _menu_markup(self):
         rev, _ = self._revision()
         latest = int(self.state.get("latest_rev") or 0)
         return _kb([  # EXPORT_CARDS_1591R61: the layout the owner drew
-            [_btn("Мои eSIM", "m|esims|0", "5985833664884250583")],
-            [_btn("Выгрузка", "m|exp", "5877540355187937244"), _btn("База", "m|base", "6017174676898321263")],
-            [_btn("Выгрузка QR", "m|qr", "5987917196469213507")],
-            [_btn("Генерация", "m|gen", "5226513232549664618")],
-            [_btn("Логи", "m|logs|0", "5886330010054168711"), _btn("Сервер", "m|srv", "5282843764451195532")],
-            [_btn("Настройки", "m|cfg", "5877260593903177342"), _btn("Спросить DeepSeek", "m|ask", "5931415565955503486")],
-            [_btn("Запустить", "m|start", "5348125953090403204"), _btn("Остановить", "m|stop", "5807622114424924272")],
-            [_btn("Перезапуск", "m|restart", "5877410604225924969")],
-            [_btn("Статус", "m|status", "5931472654660800739"), _btn("Обновить статус", "m|recheck", "5877410604225924969")],
-            [_btn("Обновить бота" + (f" (r{latest})" if latest > rev else ""), "m|upd", "6005807101056651268")],
+            [_btn("📱 Мои eSIM", "m|esims|0")],
+            [_btn("📤 Выгрузка", "m|exp"), _btn("📂 База", "m|base")],
+            [_btn("🔳 Выгрузка QR", "m|qr")],  # QR_EXPORT_1591R95
+            [_btn("🔢 Генерация", "m|gen")],
+            [_btn("📜 Логи", "m|logs|0"), _btn("🖥 Сервер", "m|srv")],
+            [_btn("⚙️ Настройки", "m|cfg"), _btn("🤖 Спросить DeepSeek", "m|ask")],
+            [_btn("▶️ Запустить", "m|start"), _btn("⏹ Остановить", "m|stop")],
+            [_btn("🔄 Перезапуск", "m|restart")],
+            [_btn("📊 Статус", "m|status"), _btn("🔄 Обновить статус", "m|recheck")],
+            [_btn("⬆️ Обновить бота" + (f" (r{latest})" if latest > rev else ""), "m|upd")],
         ])
 
     def show_menu(self, fresh=False, note=""):
