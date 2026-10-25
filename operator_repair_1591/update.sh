@@ -110,11 +110,6 @@ if [[ $EUID -eq 0 || -n "${BIN_DIR_FORCE:-}" ]] && mkdir -p "$BIN_DIR" 2>/dev/nu
 fi
 
 # 4. Проверка без изменений, затем установка с перезапуском.
-if [[ -x "$APP_DIR/venv/bin/pip" ]]; then
-  say "Pillow для карточки меню (не дольше 45 секунд)"
-  timeout 45 "$APP_DIR/venv/bin/pip" install --disable-pip-version-check --default-timeout=15 --only-binary=:all: -q pillow \
-    || say "Pillow не поставился — меню останется текстом, обновление идёт дальше"
-fi
 say "Проверка"
 python3 "$PACKAGE/install.py" --app "$APP_DIR"
 if [[ -n "${CHECK:-}" ]]; then
