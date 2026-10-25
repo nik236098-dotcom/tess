@@ -111,9 +111,9 @@ fi
 
 # 4. Проверка без изменений, затем установка с перезапуском.
 if [[ -x "$APP_DIR/venv/bin/pip" ]]; then
-  say "Pillow для карточки меню"
-  "$APP_DIR/venv/bin/pip" install --disable-pip-version-check --default-timeout=30 -q pillow \
-    || say "Pillow не поставился — меню останется текстом"
+  say "Pillow для карточки меню (не дольше 45 секунд)"
+  timeout 45 "$APP_DIR/venv/bin/pip" install --disable-pip-version-check --default-timeout=15 --only-binary=:all: -q pillow \
+    || say "Pillow не поставился — меню останется текстом, обновление идёт дальше"
 fi
 say "Проверка"
 python3 "$PACKAGE/install.py" --app "$APP_DIR"
