@@ -424,6 +424,8 @@ EMOJI_IDS = {
     "🔁": "5877410604225924969",
     "🔗": "5877465816030515018",
     "🟢": "5810051751654460532",
+    "💡": "5193127592764394874",
+    "🚨": "5220214598585568818",
     "🔴": "5807626765874499116",
     "🚫": "5807626765874499116",
     "⛔": "5807626765874499116",
@@ -559,7 +561,7 @@ def operator_menu_text(op):
     q = queue_list()
     pos = (q.index(op["tg_id"]) + 1) if op["tg_id"] in q else 0
     in_q = op["tg_id"] in q
-    status = "🟢 оплаты требуются" if (accepting() and links_count()) else "⚪️ оплат нет"
+    status = "💡 оплаты требуются" if (accepting() and links_count()) else "⚪️ оплат нет"
     t = (f"💳 ПАНЕЛЬ ОПЛАТЧИКА\n{SEP}\n"
          f"👤 {op_display(op)}\n"
          f"💰 Баланс: {op['balance']:.2f} $" + (f"  (🔒 заморожено {op['frozen']:.2f} $)" if op['frozen'] else "") + "\n"
@@ -596,7 +598,7 @@ def admin_menu_text():
     con.close()
     prob = links_count("problem")
     t = (f"🛠 ПАНЕЛЬ АДМИНА\n{SEP}\n"
-         f"📥 Приём оплат: {'🟢 включён' if accepting() else '🔴 выключен'}\n"
+         f"📥 Приём оплат: {'💡 включён' if accepting() else '🚨 выключен'}\n"
          f"📑 В очереди: {links_count()}   🗄 Проблемных: {prob}\n"
          f"🧑‍🤝‍🧑 Оплатчиков: {n_ops} (в очереди {len(queue_list())})\n"
          f"💰 Всего к выплате: {owed:.2f} $\n{SEP}")
@@ -605,8 +607,8 @@ def admin_menu_text():
         [btn("Выйти из очереди (оплата)", "adm_leaveq", "5226953054380659263") if admin_in_q
          else btn("Оплатить самому (встать в очередь)", "adm_joinq", "5927169041595634481")],
         [btn("Загрузить ссылки", "adm_load", "5877465816030515018")],
-        [btn("Выключить приём", "adm_toggle", "5807626765874499116") if accepting()
-         else btn("Включить приём", "adm_toggle", "5810051751654460532")],
+        [btn("Выключить приём", "adm_toggle", "5220214598585568818") if accepting()
+         else btn("Включить приём", "adm_toggle", "5193127592764394874")],
         [btn("Оплатчики", "adm_ops", "5942877472163892475")],
         [btn(f"Запросы на выплаты · {n_pay}", "adm_payouts", "5409048419211682843")],
         [btn(f"Проблемные ссылки · {prob}", "adm_prob", "5447644880824181073")],
