@@ -1332,7 +1332,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
 
     try:
         page.on("response", _on_resp)
-        io.bg(f"Проверяю ссылку…\n{url}")
+        io.send("🔎Открываю оплату...")
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=90000)
         except Exception:
