@@ -1594,14 +1594,11 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
 
 
 def _stopped_url(page, fallback=""):
-    """Адрес, на котором браузер реально остановился. about:blank и ошибки хрома не берём."""
+    """Адрес, на котором браузер остановился, как есть: в том числе about:blank и chrome-error."""
     try:
-        u = (page.url or "").strip()
+        return (page.url or "").strip()
     except Exception:
         return fallback
-    if not u or u.startswith(("about:", "chrome-error:", "data:")):
-        return fallback
-    return u
 
 
 # ── ожидания в сессии ────────────────────────────────────────────────────────
