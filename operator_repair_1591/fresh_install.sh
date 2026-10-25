@@ -119,6 +119,10 @@ say "Код"
 for name in test_beeline.py server_controller.py operator_runtime_io.py symbol_matching.py telegram_menu.py; do
   install -m 0644 "$PACKAGE/$name" "$APP_DIR/$name"
 done
+if [[ -d "$PACKAGE/panel_assets" ]]; then
+  mkdir -p "$APP_DIR/panel_assets"
+  cp -a "$PACKAGE/panel_assets/." "$APP_DIR/panel_assets/"
+fi
 install -m 0644 "$REPO/local_matcher.py" "$APP_DIR/local_matcher.py"
 [[ -f "$APP_DIR/PROJECT_RULES.md" ]] || install -m 0644 "$REPO/PROJECT_RULES.md" "$APP_DIR/PROJECT_RULES.md"
 if [[ ! -f "$APP_DIR/console_wait.py" ]]; then
@@ -233,7 +237,7 @@ if [[ -z "${SKIP_VENV:-}" ]]; then
     done
   }
   retry_step "обновление pip" 600 "$PY" -m pip install --default-timeout=30 --retries=5 --upgrade pip wheel setuptools
-  retry_step "пакеты Python" 1200 "$APP_DIR/venv/bin/pip" install --default-timeout=30 --retries=5 playwright "requests[socks]" numpy opencv-python-headless
+  retry_step "пакеты Python" 1200 "$APP_DIR/venv/bin/pip" install --default-timeout=30 --retries=5 playwright "requests[socks]" numpy opencv-python-headless pillow
   # FAST_CHROMIUM_1591R98: раньше `--with-deps` гонял apt ВТОРОЙ раз и ставил лишние шрифты (японские, unifont) —
   # это и было «долго». Нужные библиотеки уже поставлены в шаге 2, поэтому качаем только сам браузер. Затем —
   # быстрая проверка запуска; если какой-то библиотеки всё же не хватило, доставляем их штатным install-deps.
