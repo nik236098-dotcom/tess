@@ -99,8 +99,10 @@ class Telegram:
             log(f"{method} error: {type(exc).__name__}: {exc}")
             return {}
 
-    def send(self, chat_id, text, kb=None):
+    def send(self, chat_id, text, kb=None, silent=False):
         data = {"chat_id": chat_id, "text": str(text)[:4000], "disable_web_page_preview": True}
+        if silent:
+            data["disable_notification"] = "true"
         if kb is not None:
             data["reply_markup"] = json.dumps(kb, ensure_ascii=False)
         return self._call("sendMessage", **data)
@@ -945,6 +947,14 @@ class PayerIO:
     def send(self, text, reply_markup=None):
         self.tg.send(self.payer_id, text, reply_markup)
 
+    def bg(self, text):
+        """Служебный статус в фон: оператору не пишем и не пушим.
+        Тихая копия — только в канал логов, если он задан."""
+        log(f"фон uid={self.payer_id}: {text}")
+        ch = setting("log_channel")
+        if ch:
+            self.tg.send(ch, f"🕯 {text}", silent=True)
+
     def send_photo(self, path, caption=""):
         self.tg.send_photo(self.payer_id, path, caption)
 
@@ -1322,7 +1332,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
 
     try:
         page.on("response", _on_resp)
-        io.send("🔎 Проверяю ссылку…")
+        io.bg(f"Проверяю ссылку…\n{url}")
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=90000)
         except Exception:
@@ -1560,7 +1570,8 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
         if res == "beeline":
             beeline_tries += 1
             if beeline_tries <= 3:
-                io.send(f"⚠️ Оплата не прошла моментально — ошибка на стороне Билайна, пробую ещё раз ({beeline_tries}/3).")
+                io.bg(f"Оплата не прошла моментально — ошибка на стороне Билайна, "
+                      f"пробую ещё раз ({beeline_tries}/3).\n{link['url']}")
                 continue   # та же ссылка, та же карта
             io.send("❌ Билайн подряд не проводит эту ссылку — вернул её в очередь, беру следующую.")
             requeue_link(link); link = None; beeline_tries = 0
