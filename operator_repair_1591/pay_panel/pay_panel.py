@@ -260,7 +260,8 @@ def db_init():
     CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY, v TEXT);
     """)
     # миграции для старых баз
-    for tbl, col, decl in [("payments", "card_hash", "TEXT DEFAULT ''")]:
+    for tbl, col, decl in [("payments", "card_hash", "TEXT DEFAULT ''"),
+                           ("payments", "exported", "INTEGER DEFAULT 0")]:
         cols = [r["name"] for r in con.execute(f"PRAGMA table_info({tbl})").fetchall()]
         if col not in cols:
             con.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {decl}")
@@ -597,9 +598,11 @@ def admin_menu_text():
     n_pay = con.execute("SELECT COUNT(*) c FROM payouts WHERE status='pending'").fetchone()["c"]
     con.close()
     prob = links_count("problem")
+    n_exp = export_pending_count()
     t = (f"🛠 ПАНЕЛЬ АДМИНА\n{SEP}\n"
          f"📥 Приём оплат: {'✔️ включён' if accepting() else '✖️ выключен'}\n"
          f"📑 В очереди: {links_count()}   🗄 Проблемных: {prob}\n"
+         f"📤 К выгрузке: {n_exp}\n"
          f"🧑‍🤝‍🧑 Оплатчиков: {n_ops} (в очереди {len(queue_list())})\n"
          f"💰 Всего к выплате: {owed:.2f} $\n{SEP}")
     admin_in_q = ADMIN_ID in queue_list()
@@ -607,6 +610,7 @@ def admin_menu_text():
         [btn("Выйти из очереди (оплата)", "adm_leaveq", "5226953054380659263") if admin_in_q
          else btn("Оплатить самому (встать в очередь)", "adm_joinq", "5927169041595634481")],
         [btn("Загрузить ссылки", "adm_load", "5877465816030515018")],
+        [btn(f"Выгрузка · {n_exp}", "adm_export", "5877540355187937244")],
         [btn("Выключить приём", "adm_toggle", "5210952531676504517") if accepting()
          else btn("Включить приём", "adm_toggle", "5206607081334906820")],
         [btn("Оплатчики", "adm_ops", "5942877472163892475")],
@@ -623,6 +627,42 @@ def show_admin_menu(tg, chat_id, message_id=None):
         tg.edit(chat_id, message_id, t, k)
     else:
         tg.send(chat_id, t, k)
+
+
+def export_pending_count():
+    con = db()
+    n = con.execute(
+        "SELECT COUNT(*) c FROM payments WHERE result='success' AND canceled=0 AND COALESCE(exported,0)=0"
+    ).fetchone()["c"]
+    con.close()
+    return n
+
+
+def export_success_links(tg, uid):
+    """Успешные ссылки текстом админу. После отправки счётчик обнуляется."""
+    con = db()
+    rows = con.execute(
+        "SELECT p.id, COALESCE(NULLIF(l.url, ''), p.url_final) url "
+        "FROM payments p LEFT JOIN links l ON l.id = p.link_id "
+        "WHERE p.result='success' AND p.canceled=0 AND COALESCE(p.exported,0)=0 "
+        "ORDER BY p.id"
+    ).fetchall()
+    if not rows:
+        con.close()
+        tg.send(uid, "📤 Успешных ссылок пока нет.")
+        return 0
+    ids = [r["id"] for r in rows]
+    urls = [str(r["url"]).strip() for r in rows if str(r["url"] or "").strip()]
+    marks = ",".join("?" * len(ids))
+    con.execute(f"UPDATE payments SET exported=1 WHERE id IN ({marks})", ids)
+    con.commit()
+    con.close()
+    body = "\n".join(urls)
+    while body:
+        tg.send(uid, body[:3500])
+        body = body[3500:]
+    tg.send(uid, f"📤 Выгружено: {len(urls)}. Счётчик обнулён.")
+    return len(urls)
 
 
 # ── pending-состояния многошагового ввода ────────────────────────────────────
@@ -886,6 +926,10 @@ def handle_callback(tg, ev):
         if data == "adm_load":
             PENDING[uid] = {"await": "links"}
             tg.send(uid, "📤 Пришли ссылки (можно пачкой, каждую с новой строки или в одном сообщении).")
+            return
+        if data == "adm_export":
+            export_success_links(tg, uid)
+            show_admin_menu(tg, chat_id, mid)
             return
         if data == "adm_toggle":
             set_setting("accepting", "0" if accepting() else "1")

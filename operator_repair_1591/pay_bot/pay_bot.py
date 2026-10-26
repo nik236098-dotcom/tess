@@ -157,18 +157,17 @@ def is_export(text):
 
 
 def export_paid(tg):
-    """Отдать накопленные успешные ссылки файлом и обнулить счётчик."""
+    """Отдать накопленные успешные ссылки текстом в чат и обнулить счётчик."""
     links = load_paid()
     if not links:
         tg.send("📤 Успешных ссылок пока нет.", reply_markup=menu_kb(0))
         return 0
-    body = "\n".join(links) + "\n"
-    name = f"paid_{time.strftime('%Y%m%d_%H%M%S')}.txt"
-    caption = f"📤 Успешных ссылок: {len(links)}. Счётчик обнулён."
-    ok = tg.send_document(name, body, caption=caption, reply_markup=menu_kb(0))
+    body = "\n".join(links)
+    while body:
+        tg.send(body[:3500])
+        body = body[3500:]
     save_paid([])
-    if not ok:
-        tg.send(body[:4000], reply_markup=menu_kb(0))
+    tg.send(f"📤 Выгружено: {len(links)}. Счётчик обнулён.", reply_markup=menu_kb(0))
     return len(links)
 
 
@@ -1179,14 +1178,7 @@ def main():
             time.sleep(60)   # не спамить рестартами каждые 10 сек, пока не починят браузер
             raise
         n = len(load_paid())
-        tg.drop_reply_keyboard()
-        tg.send("💳 Бот оплаты запущен.\n\nКак пользоваться:\n1) пришли ссылку(и) заказа\n"
-                "2) пришли карту одним сообщением: НОМЕР СРОК КОД (напр. 2200000000001036 06/34 123)\n"
-                "3) когда банк спросит — пришлёшь код из SMS\n\n"
-                f"📤 Успешных к выгрузке: {n}\n"
-                "Кнопка «Выгрузка» пришлёт эти ссылки файлом и обнулит счётчик.\n\n"
-                "/stop — сбросить очередь и карту.",
-                reply_markup=menu_kb(n))
+        tg.send(f"📤 Успешных к выгрузке: {n}", reply_markup=menu_kb(n))
         try:
             while True:
                 for ev in tg.get_updates(timeout=25):
