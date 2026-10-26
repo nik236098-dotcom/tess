@@ -947,7 +947,11 @@ def handle_callback(tg, ev):
                 con.execute("UPDATE operators SET frozen=frozen-? WHERE tg_id=?", (r["amount"], r["operator_id"]))
                 con.commit(); con.close()
                 tg.edit(chat_id, mid, f"✅ Выплата {r['amount']:.2f} $ отмечена как выплаченная.", None)
-                tg.send(r["operator_id"], f"✅ Выплата {r['amount']:.2f} $ выполнена.")
+                tg.send(r["operator_id"],
+                        f"✅ ВЫПЛАТА ОДОБРЕНА\n{SEP}\n"
+                        f"💰 {r['amount']:.2f} $\n"
+                        f"✔️ Сумма подтверждена и отправлена\n{SEP}\n"
+                        f"Если перевод не пришёл — напиши {ADMIN_CONTACT}")
             else:
                 con.execute("UPDATE payouts SET status='blocked', decided_at=? WHERE id=?", (now(), pid))
                 con.execute("UPDATE operators SET balance=balance+?, frozen=frozen-? WHERE tg_id=?", (r["amount"], r["amount"], r["operator_id"]))
