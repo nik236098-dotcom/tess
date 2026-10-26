@@ -1665,6 +1665,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             held = []
             stuck = None
             restarts = 0
+            alfa_clicked = [False]
 
             def _release_held():
                 for ev in held:
@@ -1695,6 +1696,13 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
                     reached_bank = True
                     branch = "code"
                     break
+                if pb._is_alfa_app_push(page) and (time.monotonic() - c0) > 3 and not alfa_clicked[0]:
+                    reached_bank = True
+                    alfa_clicked[0] = True
+                    io.send("📲 Альфа-Банк просит приложение. Жму «Подтвердить другим способом», затем код из СМС.")
+                    if not pb._click_alfa_other(page):
+                        io.send("⚠️ Не нашёл «Подтвердить другим способом».")
+                    continue
                 if pb._is_yoomoney(page) and (time.monotonic() - c0) > 8:
                     reached_bank = True
                     branch = "yoomoney"

@@ -651,6 +651,36 @@ def _resend_timer_left(page):
     return m.group(1) if m else ""
 
 
+def _is_alfa_app_push(page):
+    """Альфа-Банк: пуш в приложение, поля кода ещё нет. Узнаём по ссылке 3DS и по тексту."""
+    blob = ""
+    try:
+        blob += " " + (page.url or "")
+    except Exception:
+        pass
+    for fr in _frames(page):
+        try:
+            blob += " " + (fr.url or "")
+        except Exception:
+            pass
+    low_url = blob.lower()
+    try:
+        low = _page_text(page)
+    except Exception:
+        low = ""
+    if "подтвердить другим способом" in low or "откройте мобильное приложение банка" in low:
+        return True
+    return "alfabank" in low_url
+
+
+def _click_alfa_other(page):
+    """Нажать именно «Подтвердить другим способом», не «Отменить оплату»."""
+    for fr in _frames(page):
+        if _click_by_words(fr, ("подтвердить другим способом",), timeout_ms=4000):
+            return True
+    return False
+
+
 def _is_yoomoney(page):
     """PAY_YOOMONEY_1591R103: это банк YooMoney (по URL или тексту страницы)."""
     try:
