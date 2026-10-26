@@ -2264,9 +2264,14 @@ def session_thread(tg, payer_id, io, slot):
             io.send("⚠️ Движок оплаты не готов на сервере (нет playwright/Chromium). Сообщи админу.")
             tg.send(ADMIN_ID, "⚠️ Не удалось запустить движок оплаты: нет playwright/Chromium.")
             return
-        place = "первое место, основной IP" if slot == 0 else "второе место, IP второго сервера"
-        io.send(f"🟢 ТВОЯ ОЧЕРЕДЬ! ({place})\nПришли карту одним сообщением: НОМЕР СРОК КОД\n"
-                "(напр. 2200000000001036 06/34 123)\n⏱ Нет карты за 3 мин — место уйдёт дальше.",
+        place = "1 · основной IP" if slot == 0 else "2 · второй IP"
+        mins = max(1, int(CFG.get("idle_timeout_s") or 180) // 60)
+        io.send(f"🟢 ТВОЯ ОЧЕРЕДЬ\n{SEP}\n"
+                f"🌐 Место: {place}\n\n"
+                f"💳 Пришли карту одним сообщением\n"
+                f"НОМЕР   СРОК   КОД\n"
+                f"2200000000001036  06/34  123\n\n"
+                f"⌛ {mins} мин без карты — место уйдёт дальше\n{SEP}",
                 kb([[btn("🚪 Выйти из очереди", "op_leave")]]))
         card = wait_card(io, int(CFG["idle_timeout_s"]), prompt=False)
         if card is None:
