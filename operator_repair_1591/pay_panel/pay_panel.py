@@ -1610,6 +1610,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
         branch = "wait"
         held = []
         stuck = None
+        restarts = 0
 
         def _release_held():
             for ev in held:
@@ -1640,11 +1641,27 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             if pb._is_yoomoney(page) and (time.monotonic() - c0) > 8:
                 branch = "yoomoney"
                 break
+            # Страница уже открыта. Не возвращаем ссылку в очередь — жмём «оплатить картой» и идём дальше.
             if _back_on_start(pb, page):
                 stuck = stuck or time.monotonic()
-                if time.monotonic() - stuck > 20:
-                    _release_held()
-                    return "nobank"
+                if time.monotonic() - stuck > 8 and restarts < 3:
+                    restarts += 1
+                    stuck = None
+                    io.send("💳 Снова стартовая страница, жму «оплатить картой»…")
+                    clicked = False
+                    for frs in pb._frames(page):
+                        if pb._click_by_words(frs, ("оплатить картой",), timeout_ms=4000):
+                            clicked = True
+                            break
+                    if clicked:
+                        try:
+                            pb._type_card(page, card, io, time.monotonic() + int(cfg.get("card_form_wait_s") or 120))
+                        except RuntimeError:
+                            pass
+                        page.wait_for_timeout(2000)
+                        nav = time.monotonic() + page_wait
+                        c0 = time.monotonic()
+                    continue
             else:
                 stuck = None
             page.wait_for_timeout(500)
@@ -1913,12 +1930,6 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
                 cur_card = nc
                 continue   # та же ссылка, карта другого банка
             requeue_link(link); break
-
-        if res == "nobank":
-            io.send("⚠️ Банк не открылся: на экране снова начальная страница «оплатить картой». "
-                    "Вернул ссылку в очередь, беру следующую.")
-            requeue_link(link); link = None; beeline_tries = 0
-            continue
 
         if res == "site":
             io.send("🌐 Временный сбой (страница не ответила) — вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
