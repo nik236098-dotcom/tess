@@ -1937,8 +1937,18 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
                     continue
                 break
             ch = ask_buttons(io, "Продолжаем?",
-                             [[btn("💳 Брать карту дальше", "sess_next")], [btn("🚪 Закончить работу", "sess_finish")]],
-                             int(CFG["idle_timeout_s"]), {"sess_next": "next", "sess_finish": "finish"})
+                             [[btn("💳 Брать карту дальше", "sess_next")],
+                              [btn("💳 Новая карта", "sess_newcard")],
+                              [btn("🚪 Закончить работу", "sess_finish")]],
+                             int(CFG["idle_timeout_s"]),
+                             {"sess_next": "next", "sess_newcard": "new", "sess_finish": "finish"})
+            if ch == "new":
+                nc = wait_card(io, int(CFG["newcard_timeout_s"]))
+                if nc is None:
+                    break
+                cur_card = nc
+                beeline_tries = 0
+                continue
             if ch != "next":
                 break
             continue
@@ -2032,8 +2042,18 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
         if res == "cancel":
             requeue_link(link); link = None
             ch = ask_buttons(io, "Отменил эту ссылку. Продолжаем?",
-                             [[btn("💳 Брать карту дальше", "sess_next")], [btn("🚪 Закончить работу", "sess_finish")]],
-                             int(CFG["idle_timeout_s"]), {"sess_next": "next", "sess_finish": "finish"})
+                             [[btn("💳 Брать карту дальше", "sess_next")],
+                              [btn("💳 Новая карта", "sess_newcard")],
+                              [btn("🚪 Закончить работу", "sess_finish")]],
+                             int(CFG["idle_timeout_s"]),
+                             {"sess_next": "next", "sess_newcard": "new", "sess_finish": "finish"})
+            if ch == "new":
+                nc = wait_card(io, int(CFG["newcard_timeout_s"]))
+                if nc is None:
+                    break
+                cur_card = nc
+                beeline_tries = 0
+                continue
             if ch != "next":
                 break
             continue
