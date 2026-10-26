@@ -504,7 +504,7 @@ def _emoji_rejected(r):
     return "emoji" in d or "entity" in d or "entities" in d
 
 
-def btn(text, data, icon=None):
+def btn(text, data, icon=None, style=None):
     text = str(text)
     if not icon:
         for em in sorted(EMOJI_IDS, key=len, reverse=True):
@@ -515,6 +515,8 @@ def btn(text, data, icon=None):
     b = {"text": text, "callback_data": data}
     if icon:
         b["icon_custom_emoji_id"] = str(icon)
+    if style:
+        b["style"] = style
     return b
 
 
@@ -600,7 +602,7 @@ def operator_menu_text(op):
     if in_q:
         rows.append([btn("Выйти из очереди", "op_leave", "5226953054380659263")])
     elif not q:
-        rows.append([btn("Начать оплату", "op_join", "5927169041595634481")])
+        rows.append([btn("Начать оплату", "op_join", "5339135753316222622", "success")])
     else:
         rows.append([btn("Встать в очередь", "op_join", "5348125953090403204")])
     rows.append([btn("Запросить выплату", "op_payout", "5409048419211682843"),
