@@ -392,7 +392,10 @@ def _click_by_words(scope, words, timeout_ms=8000):
                         continue
             except Exception:
                 continue
-        scope.wait_for_timeout(300)
+        try:
+            scope.wait_for_timeout(300)
+        except Exception:
+            return False
     return False
 
 
@@ -847,22 +850,37 @@ def _enter_3ds_code(page, tg, cfg, page_wait, code_wait):
             tg.send(f"⚠️ Не смог вписать код: {type(exc).__name__}. Пробую снова.")
             continue
         page.wait_for_timeout(700)
-        # у части банков есть кнопка подтверждения, у Т-Банка нет (автоотправка после ввода)
-        _click_by_words(fr, CODE_SUBMIT_WORDS, timeout_ms=3000)
+        # у части банков есть кнопка подтверждения, у Т-Банка нет (автоотправка после ввода).
+        # Если страница уже ушла (код принят и банк перенаправил) — клик не валим в ошибку.
+        try:
+            _click_by_words(fr, CODE_SUBMIT_WORDS, timeout_ms=3000)
+        except Exception:
+            pass
 
         # ждём реакцию банка: неверный код / отказ / принят (поле кода исчезло)
         react_deadline = time.monotonic() + 90
         while time.monotonic() < react_deadline:
-            low = _page_text(page)
+            try:
+                low = _page_text(page)
+            except Exception:
+                low = ""
             if any(w in low for w in WRONG_CODE_WORDS):
                 tg.send("↩️ Банк: код неверный. Пришли код заново (или «📨 Повторить СМС»).")
                 break   # на следующую попытку for
             if _payment_failed(page) or _url_status(page) == "fail" or any(w in low for w in DECLINE_WORDS):
                 return "declined"
-            _fr2, h2 = _find_code_field(page)
+            if _url_status(page) == "success":
+                return "accepted"
+            try:
+                _fr2, h2 = _find_code_field(page)
+            except Exception:
+                return "accepted"
             if h2 is None:
                 return "accepted"
-            page.wait_for_timeout(500)
+            try:
+                page.wait_for_timeout(500)
+            except Exception:
+                return "accepted"
         else:
             tg.send("⏳ Банк пока не ответил на код. Пришли новый код, «📨 Повторить СМС» или «отмена».")
     return "wrong_exhausted"

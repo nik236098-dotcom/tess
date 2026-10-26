@@ -1624,6 +1624,15 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
         return "no_code"
     except Exception:
         log("pay_one_link error:\n" + traceback.format_exc())
+        # Код уже могли принять, и страница банка закрылась. Это не «страница не ответила».
+        try:
+            final = pb._wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
+        except Exception:
+            final = ""
+        if final == "success":
+            return "success"
+        if final == "fail":
+            return "decline"
         return "site"
     finally:
         if shot_holder is not None:
