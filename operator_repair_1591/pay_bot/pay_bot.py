@@ -51,6 +51,7 @@ except Exception as exc:  # pragma: no cover
 
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = Path(os.environ.get("PAY_BOT_CONFIG") or (BASE_DIR / "pay_bot_config.json"))
+PAID_PATH = BASE_DIR / "paid_links.json"  # успешные ссылки до выгрузки
 
 # ── слова/признаки страниц (легко подправить) ──────────────────────────────
 PAY_BUTTON_WORDS = ("оплатить", "перейти к оплате", "оплата картой", "оплатить картой")
@@ -78,6 +79,59 @@ RESEND_WORDS = ("отправить код повторно", "выслать к
 GET_SMS_WORDS = ("код из смс", "код по смс", "ввести код из смс", "получить код по смс", "получить код в смс",
                  "код в смс", "через смс", "по смс", "не приходит пуш", "не приходит push", "ввести код вручную",
                  "получить смс", "отправить смс", "получить код")
+
+
+def load_paid():
+    try:
+        data = json.loads(PAID_PATH.read_text("utf-8"))
+        if isinstance(data, list):
+            return [str(x).strip() for x in data if str(x).strip()]
+    except Exception:
+        pass
+    return []
+
+
+def save_paid(links):
+    PAID_PATH.write_text(json.dumps(list(links), ensure_ascii=False, indent=2) + "\n", "utf-8")
+    try:
+        os.chmod(PAID_PATH, 0o600)
+    except OSError:
+        pass
+
+
+def remember_paid(url):
+    links = load_paid()
+    links.append(str(url).strip())
+    save_paid(links)
+    return len(links)
+
+
+def menu_kb(n=None):
+    """Нижняя кнопка меню: счётчик успешных ссылок, которые ещё не выгружали."""
+    if n is None:
+        n = len(load_paid())
+    return {"keyboard": [[{"text": f"📤 Выгрузка · {n}"}]], "resize_keyboard": True, "is_persistent": True}
+
+
+def is_export(text):
+    t = (text or "").strip().lower()
+    return t.startswith("/export") or "выгруз" in t or t.startswith("📤")
+
+
+def export_paid(tg):
+    """Отдать накопленные успешные ссылки файлом и обнулить счётчик."""
+    links = load_paid()
+    if not links:
+        tg.send("Успешных ссылок пока нет.", reply_markup=menu_kb(0))
+        return 0
+    body = "\n".join(links) + "\n"
+    name = f"paid_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+    caption = f"Успешных ссылок: {len(links)}. Счётчик обнулён."
+    ok = tg.send_document(name, body, caption=caption, reply_markup=menu_kb(0))
+    save_paid([])
+    if not ok:
+        tg.send(body[:4000], reply_markup=menu_kb(0))
+    return len(links)
 
 
 def log(msg):
@@ -120,15 +174,29 @@ class Telegram:
         except Exception as exc:
             log(f"send error: {type(exc).__name__}: {exc}")
 
-    def send_photo(self, path, caption=""):
+    def send_photo(self, path, caption="", reply_markup=None):
         try:
+            data = {"chat_id": self.chat_id, "caption": str(caption)[:1000]}
+            if reply_markup:
+                data["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
             with open(path, "rb") as f:
-                r = self.session.post(f"{self.base}/sendPhoto",
-                                      data={"chat_id": self.chat_id, "caption": str(caption)[:1000]},
-                                      files={"photo": f}, timeout=120)
+                r = self.session.post(f"{self.base}/sendPhoto", data=data, files={"photo": f}, timeout=120)
             return r.ok
         except Exception as exc:
             log(f"send_photo error: {type(exc).__name__}: {exc}")
+            return False
+
+    def send_document(self, name, text, caption="", reply_markup=None):
+        try:
+            data = {"chat_id": self.chat_id, "caption": str(caption)[:1000]}
+            if reply_markup:
+                data["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
+            r = self.session.post(
+                f"{self.base}/sendDocument", data=data,
+                files={"document": (name, text.encode("utf-8"), "text/plain")}, timeout=120)
+            return bool(r.ok and r.json().get("ok"))
+        except Exception as exc:
+            log(f"send_document error: {type(exc).__name__}: {exc}")
             return False
 
     def get_updates(self, timeout=25):
@@ -624,16 +692,16 @@ def _shot(page, name):
             return None
 
 
-def _send_shot(tg, page, name, caption):
+def _send_shot(tg, page, name, caption, reply_markup=None):
     shot = _shot(page, name)
     if shot:
-        tg.send_photo(shot, caption=caption)
+        tg.send_photo(shot, caption=caption, reply_markup=reply_markup)
         try:
             os.unlink(shot)
         except OSError:
             pass
     else:
-        tg.send(caption)
+        tg.send(caption, reply_markup=reply_markup)
 
 
 # ── ввод 3DS-кода (вызывается, когда поле кода уже найдено) ─────────────────
@@ -876,10 +944,14 @@ def process_link(pw_browser, link, card, tg, cfg):
                 cur = link
 
             if final == "success":
+                saved = cur if str(cur).startswith("http") else link
+                n = remember_paid(saved)
                 _send_shot(tg, page, "result",
-                           f"✅ Оплата ПРОШЛА успешно (status=success).\nURL: {cur}\n\n"
+                           f"✅ Оплата ПРОШЛА успешно (status=success).\nURL: {cur}\n"
+                           f"К выгрузке: {n}.\n\n"
                            "Дальше — страница установки eSIM / QR. Автополучение QR пока не настроено: пришли "
-                           "скрин+HTML страницы с QR и кнопкой «Получить QR», добавлю.")
+                           "скрин+HTML страницы с QR и кнопкой «Получить QR», добавлю.",
+                           reply_markup=menu_kb(n))
                 return "paid"
             if final == "unknown":
                 _send_shot(tg, page, "unknown",
@@ -935,6 +1007,9 @@ def _wait_user_code(tg, timeout_seconds):
                 continue
             t = ev.get("text")
             if t:
+                if is_export(t):
+                    export_paid(tg)
+                    continue
                 return t.strip()
     return None
 
@@ -953,6 +1028,9 @@ def _wait_fail_choice(tg, timeout_seconds):
                     return "new_wait"
                 continue
             t = (ev.get("text") or "").strip()
+            if is_export(t):
+                export_paid(tg)
+                continue
             low = t.lower()
             if low in ("отмена", "stop", "/stop", "cancel", "пропустить", "дальше"):
                 return "cancel"
@@ -973,6 +1051,9 @@ def _wait_new_card(tg, timeout_seconds):
                 tg.answer_callback(ev.get("id"))
                 continue
             t = (ev.get("text") or "").strip()
+            if is_export(t):
+                export_paid(tg)
+                continue
             if t.lower() in ("отмена", "stop", "/stop", "cancel"):
                 return None
             c = parse_card(t)
@@ -1025,9 +1106,14 @@ def main():
                     f"Ошибка: {str(exc)[:300]}")
             time.sleep(60)   # не спамить рестартами каждые 10 сек, пока не починят браузер
             raise
+        n = len(load_paid())
         tg.send("💳 Бот оплаты запущен.\n\nКак пользоваться:\n1) пришли ссылку(и) заказа\n"
                 "2) пришли карту одним сообщением: НОМЕР СРОК КОД (напр. 2200000000001036 06/34 123)\n"
-                "3) когда банк спросит — пришлёшь код из SMS\n\n/stop — сбросить очередь и карту.")
+                "3) когда банк спросит — пришлёшь код из SMS\n\n"
+                f"Успешных к выгрузке: {n}\n"
+                "Кнопка «Выгрузка» пришлёт эти ссылки файлом и обнулит счётчик.\n\n"
+                "/stop — сбросить очередь и карту.",
+                reply_markup=menu_kb(n))
         try:
             while True:
                 for ev in tg.get_updates(timeout=25):
@@ -1036,26 +1122,35 @@ def main():
                         continue
                     text = ev.get("text") or ""
                     low = text.lower().strip()
+                    if is_export(text):
+                        export_paid(tg)
+                        continue
                     if low in ("/stop", "стоп", "сброс"):
                         pending.clear(); card = None
-                        tg.send("🧹 Очередь и карта сброшены.")
+                        tg.send("🧹 Очередь и карта сброшены.", reply_markup=menu_kb())
                         continue
                     if low in ("/start", "/help", "старт", "помощь"):
-                        tg.send("Пришли ссылку(и), потом карту «НОМЕР СРОК КОД». /stop — сброс.")
+                        n = len(load_paid())
+                        tg.send(f"Пришли ссылку(и), потом карту «НОМЕР СРОК КОД». /stop — сброс.\n"
+                                f"Успешных к выгрузке: {n}.", reply_markup=menu_kb(n))
                         continue
                     if low in ("/links", "очередь"):
-                        tg.send(f"В очереди ссылок: {len(pending)}" + ("\n" + "\n".join(pending) if pending else ""))
+                        tg.send(f"В очереди ссылок: {len(pending)}"
+                                + ("\n" + "\n".join(pending) if pending else "")
+                                + f"\nУспешных к выгрузке: {len(load_paid())}.",
+                                reply_markup=menu_kb())
                         continue
                     links = extract_links(text)
                     if links:
                         pending.extend(links)
                         tg.send(f"➕ Добавлено ссылок: {len(links)} (в очереди {len(pending)}).\n"
-                                "Теперь пришли карту: НОМЕР СРОК КОД.")
+                                "Теперь пришли карту: НОМЕР СРОК КОД.", reply_markup=menu_kb())
                         continue
                     if looks_like_card(text):
                         card = parse_card(text)
                         if not pending:
-                            tg.send(f"🗂 Карта принята ({mask_card(card[0])}), но очередь пуста. Пришли ссылку(и).")
+                            tg.send(f"🗂 Карта принята ({mask_card(card[0])}), но очередь пуста. Пришли ссылку(и).",
+                                    reply_markup=menu_kb())
                             continue
                         tg.send(f"🚀 Карта {mask_card(card[0])}. Начинаю оплату {len(pending)} ссылок по очереди.")
                         queue = list(pending); pending.clear()
@@ -1065,10 +1160,14 @@ def main():
                             res = process_link(browser, link, card, tg, cfg)
                             done[res if res in done else "other"] = done.get(res if res in done else "other", 0) + 1
                         card = None   # карту из памяти убираем после прогона
+                        n = len(load_paid())
                         tg.send(f"🏁 Готово. Оплачено: {done['paid']}, отклонено: {done['declined']}, "
-                                f"ошибок: {done['error']}, прочее: {done['other']}.\nКарта очищена из памяти.")
+                                f"ошибок: {done['error']}, прочее: {done['other']}.\n"
+                                f"Успешных к выгрузке: {n}.\nКарта очищена из памяти.",
+                                reply_markup=menu_kb(n))
                         continue
-                    tg.send("Не понял. Пришли ссылку (http...) или карту «НОМЕР СРОК КОД». /help")
+                    tg.send("Не понял. Пришли ссылку (http...) или карту «НОМЕР СРОК КОД». /help",
+                            reply_markup=menu_kb())
         finally:
             try:
                 browser.close()
