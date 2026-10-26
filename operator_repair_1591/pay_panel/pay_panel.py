@@ -1293,14 +1293,17 @@ def log_payment(tg, pay_id, payer_id, link, card, uses, amount, result, shot=Non
             pass
 
 
-# ── ИИ-агент для нераспознанного 3DS (строго ограниченный набор действий) ────
-AI_SYS = ("Ты помогаешь ввести код 3DS на платёжной странице банка. Тебе дают список элементов "
-          "страницы (поля и кнопки с индексами) и просьбу оператора простыми словами. "
+# ── ИИ-агент для нераспознанной страницы оплаты ─────────────────────────────
+AI_SYS = ("Ты управляешь платёжной страницей банка. Тебе дают список элементов "
+          "(поля и кнопки с индексами) и просьбу оператора. "
+          "Можно нажимать любые элементы из списка и, если оператор прислал код, вписать его в поле. "
+          "Не отказывайся только потому, что поля кода ещё нет: сначала нажми то, что просят.\n"
           "Верни СТРОГО JSON без пояснений:\n"
-          '{"fill": <индекс поля для кода>, "click": <индекс кнопки подтверждения, или -1 если нет>}\n'
-          'Если не понял, где поле: {"status":"not_found","say":"<очень коротко по-русски, что непонятно>"}\n'
+          '{"clicks": [<индексы кнопок по порядку нажатия>], "fill": <индекс поля или -1>}\n'
+          "fill=-1, если код вводить не нужно.\n"
+          'Если подходящего элемента нет: {"status":"not_found","say":"<очень коротко по-русски>"}\n'
           'Если просьба не про эту страницу (закрыть браузер, выключить сервер, болтовня): {"status":"off_topic"}\n'
-          "Отвечай ТОЛЬКО JSON. Без кода сайта, без терминов, по-русски. Коротко.")
+          "Отвечай ТОЛЬКО JSON.")
 
 
 def deepseek_chat(cfg, system, user, timeout=25):
@@ -1315,7 +1318,7 @@ def deepseek_chat(cfg, system, user, timeout=25):
         proxies = {"https": proxy, "http": proxy}
     try:
         r = requests.post(url, headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                          json={"model": model, "temperature": 0, "max_tokens": 200,
+                          json={"model": model, "temperature": 0, "max_tokens": 300,
                                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
                           proxies=proxies, timeout=timeout)
         return ((r.json().get("choices") or [{}])[0].get("message") or {}).get("content", "") or ""
@@ -1337,9 +1340,9 @@ def collect_elements(page):
                 handles.append(h)
         except Exception:
             pass
-        for sel in ("button", "[role=button]", "a"):
+        for sel in ("button", "[role=button]", "a", "div", "span"):
             try:
-                loc = fr.locator(sel); n = min(loc.count(), 12)
+                loc = fr.locator(sel); n = min(loc.count(), 15)
             except Exception:
                 n = 0
             for j in range(n):
@@ -1347,8 +1350,8 @@ def collect_elements(page):
                 try:
                     if not el.is_visible():
                         continue
-                    txt = (el.inner_text(timeout=400) or "").strip()
-                    if not txt:
+                    txt = (el.inner_text(timeout=400) or "").strip().replace("\n", " ")
+                    if not txt or len(txt) > 40:
                         continue
                     items.append({"i": len(items), "вид": "кнопка", "текст": txt[:40]})
                     handles.append(el)
@@ -1362,32 +1365,38 @@ def _extract_code(text):
     return m.group(1) if m else ""
 
 
-def ai_execute(handles, fill_idx, click_idx, code):
-    try:
-        h = handles[int(fill_idx)]
-        h.click()
+def ai_execute(handles, fill_idx, click_idxs, code):
+    """Сначала нажимает элементы, потом вписывает код, если он есть. Код не обязателен."""
+    did = False
+    for raw in click_idxs or []:
         try:
-            h.fill("")
-        except Exception:
-            pass
-        h.type(re.sub(r"\D", "", code), delay=80)
-    except Exception:
-        return False
-    try:
-        ci = int(click_idx)
-    except Exception:
-        ci = -1
-    if 0 <= ci < len(handles):
+            ci = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if ci < 0 or ci >= len(handles):
+            continue
         try:
             handles[ci].click(timeout=3000)
+            did = True
         except Exception:
-            pass
-    else:
+            continue
+    try:
+        fi = int(fill_idx)
+    except (TypeError, ValueError):
+        fi = -1
+    if code and 0 <= fi < len(handles):
         try:
-            handles[int(fill_idx)].press("Enter")
+            h = handles[fi]
+            h.click()
+            try:
+                h.fill("")
+            except Exception:
+                pass
+            h.type(re.sub(r"\D", "", code), delay=80)
+            did = True
         except Exception:
             pass
-    return True
+    return did
 
 
 def ai_assist(io, page, cfg):
@@ -1407,8 +1416,8 @@ def ai_assist(io, page, cfg):
         return "give_up"
     tout = int(cfg.get("newcard_timeout_s") or 300)
     for attempt in range(1, 3):
-        io.send("Подскажи простыми словами: где поле ввода кода и что нажать. "
-                "И пришли код из СМС (можно в этом же сообщении). Или «отмена».")
+        io.send("Напиши, что нажать на странице. Если код из СМС уже есть — пришли его в том же сообщении. "
+                "Или «отмена».")
         instr = None
         deadline = time.monotonic() + tout
         while time.monotonic() < deadline:
@@ -1440,16 +1449,32 @@ def ai_assist(io, page, cfg):
         if data.get("status") == "off_topic":
             io.send("Поступил ответ от ИИ-агента: давай по теме — куда нажимать на этой странице.")
             continue
-        if data.get("status") == "not_found" or "fill" not in data:
-            say = (data.get("say") or "не понял, где поле кода")[:120]
+        clicks = data.get("clicks")
+        if clicks is None and data.get("click") not in (None, ""):
+            clicks = [data.get("click")]
+        if not isinstance(clicks, list):
+            clicks = []
+        fill = data.get("fill", -1)
+        try:
+            fill_i = int(fill)
+        except (TypeError, ValueError):
+            fill_i = -1
+        if data.get("status") == "not_found" or (not clicks and fill_i < 0):
+            say = (data.get("say") or "не нашёл, что нажать")[:120]
             io.send(f"Поступил ответ от ИИ-агента: не получилось — {say}. Попробуй объяснить по-другому.")
             continue
+        if fill_i >= 0 and not code and not clicks:
+            io.send("Поступил ответ от ИИ-агента: нужно вписать код, а цифр в сообщении нет. Пришли код.")
+            continue
+        if not ai_execute(handles, fill_i, clicks, code):
+            io.send("Поступил ответ от ИИ-агента: не смог нажать или вписать. Попробуй назвать кнопку точнее.")
+            continue
+        page.wait_for_timeout(1500)
         if not code:
-            io.send("Поступил ответ от ИИ-агента: не вижу кода из СМС — пришли код цифрами ещё раз с объяснением.")
-            continue
-        if not ai_execute(handles, data.get("fill"), data.get("click"), code):
-            io.send("Поступил ответ от ИИ-агента: не смог вписать/нажать по описанию. Попробуй по-другому.")
-            continue
+            _fr, h = pb._find_code_field(page)
+            if h is not None:
+                io.send("Нажал. Поле кода появилось — пришли код из СМС.")
+                continue
         final = pb._wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
         if final == "success":
             return "success"
