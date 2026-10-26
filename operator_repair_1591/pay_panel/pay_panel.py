@@ -109,7 +109,7 @@ class Telegram:
         if ents:
             data["entities"] = ents
         r = self._call("sendMessage", **data)
-        if ents and isinstance(r, dict) and not r.get("ok"):
+        if _emoji_rejected(r):
             log(f"custom emoji rejected: {r.get('description')}")
             data.pop("entities", None)
             r = self._call("sendMessage", **data)
@@ -124,7 +124,7 @@ class Telegram:
         if ents:
             data["entities"] = ents
         r = self._call("editMessageText", **data)
-        if ents and isinstance(r, dict) and not r.get("ok"):
+        if _emoji_rejected(r):
             log(f"custom emoji rejected: {r.get('description')}")
             data.pop("entities", None)
             r = self._call("editMessageText", **data)
@@ -491,6 +491,16 @@ def _emoji_payload(text, limit):
 
 def kb(rows):
     return {"inline_keyboard": rows}
+
+
+def _emoji_rejected(r):
+    """Повтор без значков только если Телеграм отверг сами эмодзи. «Сообщение не изменено» — не ошибка значков."""
+    if not isinstance(r, dict) or r.get("ok"):
+        return False
+    d = (r.get("description") or "").lower()
+    if "not modified" in d:
+        return False
+    return "emoji" in d or "entity" in d or "entities" in d
 
 
 def btn(text, data, icon=None):
@@ -1142,7 +1152,8 @@ def handle_callback(tg, ev):
             show_operator_menu(tg, op, chat_id, mid); return
         if data == "op_join":
             if not accepting():
-                tg.answer_cb(cb_id, "Приём оплат выключен");
+                tg.answer_cb(cb_id, "Приём оплат выключен")
+                return
             queue_join(uid); show_operator_menu(tg, op, chat_id, mid); return
         if data == "op_leave":
             queue_leave(uid); show_operator_menu(tg, op, chat_id, mid); return
@@ -1601,8 +1612,11 @@ def _poll_cancel(io, held):
     except _queue.Empty:
         return False
     text = (ev.get("text") or "").strip().lower()
+    data = ev.get("data") or ""
+    if ev.get("kind") == "callback" and data in ("op_leave", "sess_finish", "ai_cancel"):
+        return "leave" if data == "op_leave" else "cancel"
     if ev.get("kind") == "text" and text in ("отмена", "stop", "/stop", "cancel", "закончить"):
-        return True
+        return "cancel"
     held.append(ev)
     return False
 
@@ -1633,7 +1647,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
         ctx_kwargs["proxy"] = {"server": bproxy}
     ctx = browser.new_context(**ctx_kwargs)
     page = ctx.new_page()
-    page.set_default_timeout(60000)
+    page.set_default_timeout(3000)
     seen = {"status": "", "error": ""}
 
     def _on_resp(resp):
@@ -1685,8 +1699,24 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
         beeline_retries = 0
         reached_bank = False
 
+        def _is_decline():
+            try:
+                low = pb._page_text(page)
+            except Exception:
+                return False
+            return any(w in low for w in pb.DECLINE_WORDS)
+
         def _instant_fail():
-            return (not reached_bank) and (pb._payment_failed(page) or pb._url_status(page) == "fail")
+            # «Оплата не прошла» Билайна — повтор. Отказ банка («отклонено») — не он.
+            if reached_bank or _is_decline():
+                return False
+            try:
+                low = pb._page_text(page)
+            except Exception:
+                low = ""
+            if "оплата не прошла" in low or "попробовать ещё раз" in low or "попробовать еще раз" in low:
+                return True
+            return pb._url_status(page) == "fail" or pb._payment_failed(page)
 
         def _click_beeline_retry():
             """Нет поля карты и снова «оплата не прошла» — жмём кнопку, максимум 3 раза."""
@@ -1724,6 +1754,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
                 low = pb._page_text(page)
                 if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
                     return "bad_link"
+                if _is_decline():
+                    return "decline"
                 if _instant_fail():
                     retry_now = True
                     break
@@ -1744,6 +1776,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             # Поля карты нет, а на экране снова ошибка — не ждём 2 минуты, жмём кнопку ещё раз.
             form_deadline = time.monotonic() + int(cfg.get("card_form_wait_s") or 120)
             while not pb._on_card_form(page) and time.monotonic() < form_deadline:
+                if _is_decline():
+                    return "decline"
                 if _instant_fail():
                     if not _click_beeline_retry():
                         return "beeline"
@@ -1753,6 +1787,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
                     continue
                 page.wait_for_timeout(400)
             if not pb._on_card_form(page):
+                if _is_decline():
+                    return "decline"
                 if _instant_fail():
                     return "beeline"
                 return "site"
@@ -1760,6 +1796,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             try:
                 pb._type_card(page, card, io, deadline)
             except RuntimeError:
+                if _is_decline():
+                    return "decline"
                 if _instant_fail() and not pb._on_card_form(page):
                     if not _click_beeline_retry():
                         return "beeline"
@@ -1784,7 +1822,11 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
 
             retry_now = False
             while time.monotonic() < nav:
-                if _poll_cancel(io, held):
+                why = _poll_cancel(io, held)
+                if why == "leave":
+                    _release_held()
+                    return "leave"
+                if why:
                     _release_held()
                     return "cancel"
                 if _instant_fail():
@@ -1829,9 +1871,21 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
                                 clicked = True
                                 break
                         if clicked:
+                            page.wait_for_timeout(700)
+                            if _is_decline():
+                                _release_held()
+                                return "decline"
+                            if _instant_fail():
+                                retry_now = True
+                                break
+                            if not pb._on_card_form(page):
+                                continue
                             try:
                                 pb._type_card(page, card, io, time.monotonic() + int(cfg.get("card_form_wait_s") or 120))
                             except RuntimeError:
+                                if _is_decline():
+                                    _release_held()
+                                    return "decline"
                                 if _instant_fail():
                                     retry_now = True
                                     break
@@ -2124,6 +2178,12 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             requeue_link(link); link = None; beeline_tries = 0
             continue
 
+        if res == "leave":
+            requeue_link(link)
+            queue_leave(payer_id)
+            io.send("Ты вышел из очереди.")
+            return
+
         if res == "cancel":
             requeue_link(link); link = None
             ch = ask_buttons(io, "Отменил эту ссылку. Продолжаем?",
@@ -2235,11 +2295,15 @@ def main():
                             remove_channel(ch.get("id"))
                         continue
                     a = ACTIVE
-                    _admin_act = (ev["kind"] == "callback" and
-                                  ev.get("data", "").startswith(("cancel_pay:", "pay_ok:", "pay_block:", "prob_ret:", "prob_del:")))
-                    _cmd = (ev["kind"] == "text" and ev.get("text", "").startswith("/"))  # команды не перехватываем
-                    if a and ev.get("uid") == a["payer"] and ev["kind"] in ("text", "callback") and not _admin_act and not _cmd:
-                        a["io"].put(ev)   # активному оплатчику — в сессию, не в меню
+                    _pay_cb = {
+                        "sess_next", "sess_same", "sess_newcard", "sess_finish",
+                        "ai_call", "ai_cancel", "resend_sms", "yoo_sms", "op_leave",
+                    }
+                    _cmd = (ev["kind"] == "text" and ev.get("text", "").startswith("/"))
+                    _data = ev.get("data") or ""
+                    _for_pay = ev["kind"] == "text" or _data in _pay_cb or _data.startswith("sess_")
+                    if a and ev.get("uid") == a["payer"] and ev["kind"] in ("text", "callback") and _for_pay and not _cmd:
+                        a["io"].put(ev)   # код, отмена и кнопки оплаты — в сессию
                         continue
                     if ev["kind"] == "callback":
                         handle_callback(tg, ev)
