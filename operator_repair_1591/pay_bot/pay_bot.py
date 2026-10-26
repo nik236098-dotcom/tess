@@ -81,6 +81,40 @@ GET_SMS_WORDS = ("код из смс", "код по смс", "ввести ко�
                  "получить смс", "отправить смс", "получить код")
 
 
+# Те же премиум-эмодзи, что в меню beeline: в тексте — сущность custom_emoji,
+# на кнопке «Выгрузка» — icon_custom_emoji_id (обычный знак в подписи не оставляем).
+EMOJI_IDS = {
+    "💳": "5927169041595634481",
+    "📤": "5877540355187937244",
+    "✅": "5206607081334906820",
+    "❌": "5210952531676504517",
+    "✖️": "5210952531676504517",
+    "⚠️": "5447644880824181073",
+    "🔗": "5877465816030515018",
+    "🔁": "5877410604225924969",
+    "⏳": "5440621591387980068",
+    "⌛": "5440621591387980068",
+    "➕": "5877219383691972108",
+    "🗂": "5875462364110787088",
+    "🔢": "5226513232549664618",
+    "🧹": "5879896690210639947",
+}
+_EMOJI_RE = re.compile("|".join(re.escape(k) for k in sorted(EMOJI_IDS, key=len, reverse=True)))
+EXPORT_ICON = EMOJI_IDS["📤"]
+
+
+def emoji_entities(text):
+    ents = []
+    for m in _EMOJI_RE.finditer(text or ""):
+        ents.append({
+            "type": "custom_emoji",
+            "offset": len(text[:m.start()].encode("utf-16-le")) // 2,
+            "length": len(m.group().encode("utf-16-le")) // 2,
+            "custom_emoji_id": EMOJI_IDS[m.group()],
+        })
+    return ents
+
+
 def load_paid():
     try:
         data = json.loads(PAID_PATH.read_text("utf-8"))
@@ -107,10 +141,14 @@ def remember_paid(url):
 
 
 def menu_kb(n=None):
-    """Нижняя кнопка меню: счётчик успешных ссылок, которые ещё не выгружали."""
+    """Кнопка выгрузки с кастомным эмодзи. Счётчик — в подписи, без обычного значка."""
     if n is None:
         n = len(load_paid())
-    return {"keyboard": [[{"text": f"📤 Выгрузка · {n}"}]], "resize_keyboard": True, "is_persistent": True}
+    return {"inline_keyboard": [[{
+        "text": f"Выгрузка · {n}",
+        "callback_data": "pay_export",
+        "icon_custom_emoji_id": EXPORT_ICON,
+    }]]}
 
 
 def is_export(text):
@@ -122,11 +160,11 @@ def export_paid(tg):
     """Отдать накопленные успешные ссылки файлом и обнулить счётчик."""
     links = load_paid()
     if not links:
-        tg.send("Успешных ссылок пока нет.", reply_markup=menu_kb(0))
+        tg.send("📤 Успешных ссылок пока нет.", reply_markup=menu_kb(0))
         return 0
     body = "\n".join(links) + "\n"
     name = f"paid_{time.strftime('%Y%m%d_%H%M%S')}.txt"
-    caption = f"Успешных ссылок: {len(links)}. Счётчик обнулён."
+    caption = f"📤 Успешных ссылок: {len(links)}. Счётчик обнулён."
     ok = tg.send_document(name, body, caption=caption, reply_markup=menu_kb(0))
     save_paid([])
     if not ok:
@@ -167,7 +205,11 @@ class Telegram:
 
     def send(self, text, reply_markup=None):
         try:
-            data = {"chat_id": self.chat_id, "text": str(text)[:4000], "disable_web_page_preview": True}
+            text = str(text)[:4000]
+            data = {"chat_id": self.chat_id, "text": text, "disable_web_page_preview": True}
+            ents = emoji_entities(text)
+            if ents:
+                data["entities"] = json.dumps(ents, ensure_ascii=False)
             if reply_markup:
                 data["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
             self._call("sendMessage", **data)
@@ -176,7 +218,11 @@ class Telegram:
 
     def send_photo(self, path, caption="", reply_markup=None):
         try:
-            data = {"chat_id": self.chat_id, "caption": str(caption)[:1000]}
+            caption = str(caption)[:1000]
+            data = {"chat_id": self.chat_id, "caption": caption}
+            ents = emoji_entities(caption)
+            if ents:
+                data["caption_entities"] = json.dumps(ents, ensure_ascii=False)
             if reply_markup:
                 data["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
             with open(path, "rb") as f:
@@ -188,7 +234,11 @@ class Telegram:
 
     def send_document(self, name, text, caption="", reply_markup=None):
         try:
-            data = {"chat_id": self.chat_id, "caption": str(caption)[:1000]}
+            caption = str(caption)[:1000]
+            data = {"chat_id": self.chat_id, "caption": caption}
+            ents = emoji_entities(caption)
+            if ents:
+                data["caption_entities"] = json.dumps(ents, ensure_ascii=False)
             if reply_markup:
                 data["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
             r = self.session.post(
@@ -198,6 +248,17 @@ class Telegram:
         except Exception as exc:
             log(f"send_document error: {type(exc).__name__}: {exc}")
             return False
+
+    def drop_reply_keyboard(self):
+        """Убрать старую нижнюю кнопку, если она осталась от прошлой версии."""
+        try:
+            res = self._call("sendMessage", chat_id=self.chat_id, text="·",
+                             reply_markup=json.dumps({"remove_keyboard": True}))
+            mid = ((res or {}).get("result") or {}).get("message_id")
+            if mid:
+                self._call("deleteMessage", chat_id=self.chat_id, message_id=mid)
+        except Exception:
+            pass
 
     def get_updates(self, timeout=25):
         """Long-poll. Список событий от нашего chat_id, по порядку:
@@ -948,7 +1009,7 @@ def process_link(pw_browser, link, card, tg, cfg):
                 n = remember_paid(saved)
                 _send_shot(tg, page, "result",
                            f"✅ Оплата ПРОШЛА успешно (status=success).\nURL: {cur}\n"
-                           f"К выгрузке: {n}.\n\n"
+                           f"📤 К выгрузке: {n}.\n\n"
                            "Дальше — страница установки eSIM / QR. Автополучение QR пока не настроено: пришли "
                            "скрин+HTML страницы с QR и кнопкой «Получить QR», добавлю.",
                            reply_markup=menu_kb(n))
@@ -1003,6 +1064,10 @@ def _wait_user_code(tg, timeout_seconds):
     while time.monotonic() < deadline:
         for ev in tg.get_updates(timeout=25):
             if ev.get("kind") == "callback":
+                if ev.get("data") == "pay_export":
+                    tg.answer_callback(ev.get("id"))
+                    export_paid(tg)
+                    continue
                 tg.answer_callback(ev.get("id"))
                 continue
             t = ev.get("text")
@@ -1022,6 +1087,9 @@ def _wait_fail_choice(tg, timeout_seconds):
         for ev in tg.get_updates(timeout=25):
             if ev.get("kind") == "callback":
                 tg.answer_callback(ev.get("id"))
+                if ev.get("data") == "pay_export":
+                    export_paid(tg)
+                    continue
                 if ev.get("data") == "pay_same":
                     return "same"
                 if ev.get("data") == "pay_new":
@@ -1048,6 +1116,10 @@ def _wait_new_card(tg, timeout_seconds):
     while time.monotonic() < deadline:
         for ev in tg.get_updates(timeout=25):
             if ev.get("kind") == "callback":
+                if ev.get("data") == "pay_export":
+                    tg.answer_callback(ev.get("id"))
+                    export_paid(tg)
+                    continue
                 tg.answer_callback(ev.get("id"))
                 continue
             t = (ev.get("text") or "").strip()
@@ -1107,18 +1179,23 @@ def main():
             time.sleep(60)   # не спамить рестартами каждые 10 сек, пока не починят браузер
             raise
         n = len(load_paid())
+        tg.drop_reply_keyboard()
         tg.send("💳 Бот оплаты запущен.\n\nКак пользоваться:\n1) пришли ссылку(и) заказа\n"
                 "2) пришли карту одним сообщением: НОМЕР СРОК КОД (напр. 2200000000001036 06/34 123)\n"
                 "3) когда банк спросит — пришлёшь код из SMS\n\n"
-                f"Успешных к выгрузке: {n}\n"
+                f"📤 Успешных к выгрузке: {n}\n"
                 "Кнопка «Выгрузка» пришлёт эти ссылки файлом и обнулит счётчик.\n\n"
                 "/stop — сбросить очередь и карту.",
                 reply_markup=menu_kb(n))
         try:
             while True:
                 for ev in tg.get_updates(timeout=25):
-                    if ev.get("kind") == "callback":   # нажатия кнопок вне оплаты игнорируем
-                        tg.answer_callback(ev.get("id"))
+                    if ev.get("kind") == "callback":
+                        if ev.get("data") == "pay_export":
+                            tg.answer_callback(ev.get("id"))
+                            export_paid(tg)
+                        else:
+                            tg.answer_callback(ev.get("id"))
                         continue
                     text = ev.get("text") or ""
                     low = text.lower().strip()
@@ -1132,12 +1209,12 @@ def main():
                     if low in ("/start", "/help", "старт", "помощь"):
                         n = len(load_paid())
                         tg.send(f"Пришли ссылку(и), потом карту «НОМЕР СРОК КОД». /stop — сброс.\n"
-                                f"Успешных к выгрузке: {n}.", reply_markup=menu_kb(n))
+                                f"📤 Успешных к выгрузке: {n}.", reply_markup=menu_kb(n))
                         continue
                     if low in ("/links", "очередь"):
                         tg.send(f"В очереди ссылок: {len(pending)}"
                                 + ("\n" + "\n".join(pending) if pending else "")
-                                + f"\nУспешных к выгрузке: {len(load_paid())}.",
+                                + f"\n📤 Успешных к выгрузке: {len(load_paid())}.",
                                 reply_markup=menu_kb())
                         continue
                     links = extract_links(text)
@@ -1163,7 +1240,7 @@ def main():
                         n = len(load_paid())
                         tg.send(f"🏁 Готово. Оплачено: {done['paid']}, отклонено: {done['declined']}, "
                                 f"ошибок: {done['error']}, прочее: {done['other']}.\n"
-                                f"Успешных к выгрузке: {n}.\nКарта очищена из памяти.",
+                                f"📤 Успешных к выгрузке: {n}.\nКарта очищена из памяти.",
                                 reply_markup=menu_kb(n))
                         continue
                     tg.send("Не понял. Пришли ссылку (http...) или карту «НОМЕР СРОК КОД». /help",
