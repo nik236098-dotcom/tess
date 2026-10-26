@@ -612,7 +612,7 @@ def operator_menu_text(op):
     if in_q:
         rows.append([btn("Выйти из очереди", "op_leave", "5226953054380659263")])
     elif not q:
-        rows.append([btn("Начать оплату 💳", "op_join", "5445353829304387411", "success")])
+        rows.append([btn("Начать оплату", "op_join", "5445353829304387411", "success")])
     else:
         rows.append([btn("Встать в очередь", "op_join", "5348125953090403204")])
     rows.append([btn("Запросить выплату", "op_payout", "5409048419211682843"),
