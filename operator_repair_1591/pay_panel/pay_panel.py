@@ -577,16 +577,31 @@ def operator_menu_text(op):
     q = queue_list()
     pos = (q.index(op["tg_id"]) + 1) if op["tg_id"] in q else 0
     in_q = op["tg_id"] in q
-    status = "✔️ оплаты требуются" if (accepting() and links_count()) else "⚪️ оплат нет"
+    if not accepting():
+        status = "⏸ Приём: стоп"
+    elif links_count():
+        status = "✔️ Приём: идёт"
+    else:
+        status = "⚪️ Приём: идёт, ссылок нет"
+    places = []
+    for i in range(slot_count()):
+        n = i + 1
+        if i in SLOT_PAUSED:
+            places.append(f"⏸ Место {n}: пауза")
+        elif i in ACTIVE_SLOTS:
+            places.append(f"🔴 Место {n}: занято")
+        else:
+            places.append(f"🟢 Место {n}: свободно")
+    you = f"✔️ Ты в очереди: {pos}" if in_q else "⚪️ Ты не в очереди"
     t = (f"💳 ПАНЕЛЬ ОПЛАТЧИКА\n{SEP}\n"
          f"👤 {op_display(op)}\n"
          f"💰 Баланс: {op['balance']:.2f} $" + (f"  (🔒 заморожено {op['frozen']:.2f} $)" if op['frozen'] else "") + "\n"
          f"📊 Ставка: {op_rate(op):.2f} $ / оплата\n\n"
-         f"📥 Статус: {status}\n"
-         f"📑 В очереди ссылок: {links_count()}\n"
-         f"🧑‍🤝‍🧑 Оплатчиков в очереди: {len(q)}\n"
-         f"👥 Мест одновременно: {slot_count()}\n"
-         f"🎯 Ты в очереди: {'да, позиция ' + str(pos) if in_q else 'нет'}\n"
+         f"📥 {status}\n"
+         f"📑 Ссылок: {links_count()}\n"
+         + "\n".join(places) + "\n"
+         f"👥 Ждут: {len(q)}\n"
+         f"{you}\n"
          f"🏷 Сумма за 1 тариф: ~{setting('tariff_rub')} ₽ (своей картой)\n{SEP}")
     rows = []
     if in_q:
@@ -1157,10 +1172,9 @@ def handle_callback(tg, ev):
         if data == "op_refresh":
             show_operator_menu(tg, op, chat_id, mid); return
         if data == "op_join":
-            if not accepting():
-                tg.answer_cb(cb_id, "Приём оплат выключен")
-                return
-            queue_join(uid); show_operator_menu(tg, op, chat_id, mid); return
+            queue_join(uid)
+            show_operator_menu(tg, op, chat_id, mid)
+            return
         if data == "op_leave":
             queue_leave(uid); show_operator_menu(tg, op, chat_id, mid); return
         if data == "op_payout":
