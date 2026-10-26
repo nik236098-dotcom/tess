@@ -1482,6 +1482,34 @@ def do_backup():
 
 
 # ── оплата одной ссылки (переиспользует pay_bot) ─────────────────────────────
+def _poll_cancel(io, held):
+    """«Отмена» во время ожидания банка. Чужое сообщение не съедаем."""
+    if held:
+        return False
+    try:
+        ev = io.inbox.get_nowait()
+    except _queue.Empty:
+        return False
+    text = (ev.get("text") or "").strip().lower()
+    if ev.get("kind") == "text" and text in ("отмена", "stop", "/stop", "cancel", "закончить"):
+        return True
+    held.append(ev)
+    return False
+
+
+def _back_on_start(pb, page):
+    """Главная Билайна «оплатить картой», без формы карты и без поля кода."""
+    try:
+        if pb._on_card_form(page) or pb._is_yoomoney(page):
+            return False
+        if pb._find_code_field(page)[1] is not None:
+            return False
+        low = pb._page_text(page)
+    except Exception:
+        return False
+    return ("оплатить картой" in low) and ("порядок" in low or "подтвердите данные" in low)
+
+
 def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
     """Один заход: открыть ссылку → карта → банк/3DS/YooMoney → итог. Карту НЕ меняет (это делает
     панель). Возвращает: success / decline / beeline / no_code / site / cancel / timeout.
@@ -1580,15 +1608,30 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
         nav = time.monotonic() + page_wait
         c0 = time.monotonic()
         branch = "wait"
+        held = []
+        stuck = None
+
+        def _release_held():
+            for ev in held:
+                io.inbox.put(ev)
+            held.clear()
+
         while time.monotonic() < nav:
+            if _poll_cancel(io, held):
+                _release_held()
+                return "cancel"
             if pb._payment_failed(page) or pb._url_status(page) == "fail":
+                _release_held()
                 return "beeline"
             if pb._url_status(page) == "success":
+                _release_held()
                 return "success"
             low = pb._page_text(page)
             if _gateway_error(low):
+                _release_held()
                 return "gateway"   # 504/502/503 — сбой платёжного шлюза (не пуш)
             if any(w in low for w in pb.DECLINE_WORDS):
+                _release_held()
                 return "decline"
             fr, h = pb._find_code_field(page)
             if h is not None:
@@ -1597,7 +1640,15 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             if pb._is_yoomoney(page) and (time.monotonic() - c0) > 8:
                 branch = "yoomoney"
                 break
+            if _back_on_start(pb, page):
+                stuck = stuck or time.monotonic()
+                if time.monotonic() - stuck > 20:
+                    _release_held()
+                    return "nobank"
+            else:
+                stuck = None
             page.wait_for_timeout(500)
+        _release_held()
         if branch == "wait":
             r = ai_assist(io, page, cfg)   # PAY_AI_1591: интерактивный ИИ-агент на незнакомом 3DS
             return r if r in ("success", "decline") else "no_code"
@@ -1862,6 +1913,12 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
                 cur_card = nc
                 continue   # та же ссылка, карта другого банка
             requeue_link(link); break
+
+        if res == "nobank":
+            io.send("⚠️ Банк не открылся: на экране снова начальная страница «оплатить картой». "
+                    "Вернул ссылку в очередь, беру следующую.")
+            requeue_link(link); link = None; beeline_tries = 0
+            continue
 
         if res == "site":
             io.send("🌐 Временный сбой (страница не ответила) — вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
