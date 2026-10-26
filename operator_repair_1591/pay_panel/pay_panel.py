@@ -261,10 +261,14 @@ def db_init():
     """)
     # миграции для старых баз
     for tbl, col, decl in [("payments", "card_hash", "TEXT DEFAULT ''"),
-                           ("payments", "exported", "INTEGER DEFAULT 0")]:
+                           ("payments", "exported", "INTEGER DEFAULT 0"),
+                           ("invites", "max_uses", "INTEGER DEFAULT 1"),
+                           ("invites", "used_count", "INTEGER DEFAULT 0")]:
         cols = [r["name"] for r in con.execute(f"PRAGMA table_info({tbl})").fetchall()]
         if col not in cols:
             con.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {decl}")
+    con.execute("UPDATE invites SET used_count=1 WHERE used_by!=0 AND used_count=0")
+    con.execute("UPDATE invites SET max_uses=1 WHERE max_uses IS NULL OR max_uses<1")
     # дефолтные настройки
     defaults = {"default_rate_usd": str(CFG["default_rate_usd"]), "tariff_rub": str(CFG["tariff_rub"]),
                 "accepting": "1", "log_channel": ""}
@@ -710,18 +714,45 @@ def handle_command(tg, uid, text):
             tg.send(uid, "Не удалось сделать бэкап.")
         return True
     if cmd == "/invite":
-        code = arg.split()[0] if arg else ""
-        if not code:
-            tg.send(uid, "Формат: /invite <код>")
+        toks = arg.split()
+        if not toks:
+            tg.send(uid, "Формат: /invite <код> [активаций]\nНапример: /invite 123456 2")
             return True
+        code = toks[0]
+        uses = 1
+        if len(toks) >= 2:
+            if not toks[1].isdigit() or int(toks[1]) < 1:
+                tg.send(uid, "Число активаций — целое от 1. Пример: /invite 123456 2")
+                return True
+            uses = min(int(toks[1]), 10000)
         con = db()
         try:
-            con.execute("INSERT INTO invites(code,created_by,created_at) VALUES(?,?,?)", (code, uid, now()))
+            con.execute("INSERT INTO invites(code,created_by,created_at,max_uses,used_count) VALUES(?,?,?,?,0)",
+                        (code, uid, now(), uses))
             con.commit()
-            tg.send(uid, f"✅ Код приглашения создан: {code}\nОтдай его одному человеку — первый, кто введёт, станет оплатчиком.")
+            tg.send(uid, f"✅ Код {code} — на {_uses_word(uses)}.")
         except sqlite3.IntegrityError:
             tg.send(uid, "Такой код уже существует.")
         con.close()
+        return True
+    if cmd == "/autostart":
+        low = arg.lower().strip()
+        if low in ("off", "0", "стоп", "отмена", "cancel"):
+            set_setting("autostart_at", "")
+            tg.send(uid, "⏹ Таймер включения приёма снят.")
+            return True
+        secs = _parse_delay(arg)
+        if secs is None:
+            pending = setting("autostart_at", "")
+            extra = ""
+            if pending.isdigit():
+                extra = f"\nСейчас включится в {msk_ts(int(pending))}."
+            tg.send(uid, "Формат: /autostart 1h 1m, или 1h, или 1m.\n"
+                         "Снять таймер: /autostart off" + extra)
+            return True
+        at = now() + secs
+        set_setting("autostart_at", str(at))
+        tg.send(uid, f"⏳ Приём оплат включится через {_fmt_delay(secs)} ({msk_ts(at)}).")
         return True
     if cmd in ("/ban", "/unban"):
         if not arg:
@@ -765,11 +796,65 @@ def resolve_operator(target):
     return dict(row) if row else None
 
 
+def _uses_word(n):
+    n = abs(int(n))
+    if 11 <= (n % 100) <= 14:
+        word = "активаций"
+    elif n % 10 == 1:
+        word = "активацию"
+    elif n % 10 in (2, 3, 4):
+        word = "активации"
+    else:
+        word = "активаций"
+    return f"{n} {word}"
+
+
+def _parse_delay(text):
+    """'1h 1m', '1h', '1m', '2ч 30м' → секунды. Пусто или без единиц → None."""
+    raw = (text or "").lower()
+    if not raw.strip():
+        return None
+    hours = sum(int(x) for x in re.findall(r"(\d+)\s*h", raw))
+    hours += sum(int(x) for x in re.findall(r"(\d+)\s*ч", raw))
+    minutes = sum(int(x) for x in re.findall(r"(\d+)\s*m", raw))
+    minutes += sum(int(x) for x in re.findall(r"(\d+)\s*м", raw))
+    if hours == 0 and minutes == 0:
+        return None
+    return hours * 3600 + minutes * 60
+
+
+def _fmt_delay(seconds):
+    h, m = divmod(int(seconds) // 60, 60)
+    parts = []
+    if h:
+        parts.append(f"{h} ч")
+    if m or not parts:
+        parts.append(f"{m} мин")
+    return " ".join(parts)
+
+
+def maybe_autostart(tg):
+    raw = setting("autostart_at", "")
+    if not raw:
+        return
+    try:
+        at = int(raw)
+    except ValueError:
+        set_setting("autostart_at", "")
+        return
+    if now() < at:
+        return
+    set_setting("autostart_at", "")
+    set_setting("accepting", "1")
+    tg.send(ADMIN_ID, "🟢 Приём оплат включён по таймеру.")
+
+
 def try_invite(tg, uid, username, name, code):
-    """Пробуем активировать инвайт атомарно (первый победил)."""
+    """Активировать инвайт, пока не кончились активации."""
     con = db()
-    cur = con.execute("UPDATE invites SET used_by=?, used_at=? WHERE code=? AND used_by=0",
-                      (uid, now(), code))
+    cur = con.execute(
+        "UPDATE invites SET used_count=used_count+1, used_by=?, used_at=? WHERE code=? AND used_count < max_uses",
+        (uid, now(), code))
     con.commit()
     ok = cur.rowcount == 1
     con.close()
@@ -2162,6 +2247,7 @@ def main():
                         handle_text(tg, ev)
                 except Exception:
                     log("handler error:\n" + traceback.format_exc())
+            maybe_autostart(tg)
             maybe_start_session(tg)
             try:
                 if now() - int(setting("last_backup", "0") or 0) > 86400:
