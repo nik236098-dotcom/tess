@@ -14,7 +14,8 @@
     "admin_id": 123456789,                 // твой Telegram ID (числом)
     "admin_contact": "@gennadiy_cc",
     "proxy": "socks5h://логин:пароль@хост:порт",   // для Telegram; "direct" если не нужен
-    "browser_proxy": "",                   // для страниц оплаты (обычно пусто)
+    "browser_proxy": "",                   // для страниц оплаты, слот 1 (обычно пусто — IP этого сервера)
+    "browser_proxy_2": "",                 // слот 2: socks5://хост:1080 второго сервера. Пусто — второго места нет.
     "deepseek_api_key": "sk-...",
     "deepseek_model": "deepseek-chat",
     "default_rate_usd": 4.5,
@@ -584,6 +585,7 @@ def operator_menu_text(op):
          f"📥 Статус: {status}\n"
          f"📑 В очереди ссылок: {links_count()}\n"
          f"🧑‍🤝‍🧑 Оплатчиков в очереди: {len(q)}\n"
+         f"👥 Мест одновременно: {slot_count()}\n"
          f"🎯 Ты в очереди: {'да, позиция ' + str(pos) if in_q else 'нет'}\n"
          f"🏷 Сумма за 1 тариф: ~{setting('tariff_rub')} ₽ (своей картой)\n{SEP}")
     rows = []
@@ -617,7 +619,7 @@ def admin_menu_text():
          f"📥 Приём оплат: {'✔️ включён' if accepting() else '✖️ выключен'}\n"
          f"📑 В очереди: {links_count()}   🗄 Проблемных: {prob}\n"
          f"📤 К выгрузке: {n_exp}\n"
-         f"🧑‍🤝‍🧑 Оплатчиков: {n_ops} (в очереди {len(queue_list())})\n"
+         f"🧑‍🤝‍🧑 Оплатчиков: {n_ops} (в очереди {len(queue_list())}, в работе {len(ACTIVE_SLOTS)}/{slot_count()})\n"
          f"💰 Всего к выплате: {owed:.2f} $\n{SEP}")
     admin_in_q = ADMIN_ID in queue_list()
     rows = [
@@ -710,9 +712,9 @@ def handle_command(tg, uid, text):
         tg.send(uid, f"✅ Рассылка отправлена: {sent} оплатчик(ам).")
         return True
     if cmd == "/stop":
-        if ACTIVE is not None:
+        if ACTIVE_SLOTS:
             STOP_EVENT.set()
-            tg.send(uid, "⏹ Останавливаю текущую оплату и освобождаю очередь…")
+            tg.send(uid, "⏹ Останавливаю текущие оплаты и освобождаю очередь…")
         else:
             tg.send(uid, "Сейчас активной оплаты нет.")
         return True
@@ -1027,7 +1029,11 @@ def handle_callback(tg, ev):
             show_admin_menu(tg, chat_id, mid)
             return
         if data == "adm_toggle":
+            turning_on = not accepting()
             set_setting("accepting", "0" if accepting() else "1")
+            if turning_on:
+                SLOT_PAUSED.clear()
+                SLOT_FAILS.clear()
             show_admin_menu(tg, chat_id, mid); return
         if data == "adm_ops":
             con = db(); rows = con.execute("SELECT * FROM operators ORDER BY created_at").fetchall(); con.close()
@@ -1187,12 +1193,24 @@ def handle_callback(tg, ev):
 
 
 # ══════════════════════ ЭТАП 2: ДВИЖОК ОПЛАТЫ ══════════════════════════════════
-ACTIVE = None                      # {"payer": tg_id, "io": PayerIO, "thread": ...} или None
+ACTIVE_SLOTS = {}               # slot -> {"payer": tg_id, "io": PayerIO, "thread": ...}
 ACTIVE_LOCK = threading.Lock()
-STOP_EVENT = threading.Event()     # аварийный стоп текущей сессии (/stop админом)
+STOP_EVENT = threading.Event()     # аварийный стоп всех текущих сессий (/stop админом)
 _ENGINE = None
-CONSEC_BEELINE = 0                 # подряд «мгновенных сбоев Билайна» → подозрение на бан IP
 CONSEC_GATEWAY = 0                 # подряд сбоев платёжного шлюза (504…) → шлюз лежит
+SLOT_FAILS = {}                    # подряд сбоев Билайна на конкретном выходе
+SLOT_PAUSED = set()                # выход, который Билайн перестал пускать
+
+
+def slot_count():
+    """Сколько мест. Второе есть только если задан прокси второго сервера."""
+    return 2 if str(CFG.get("browser_proxy_2") or "").strip() else 1
+
+
+def slot_proxy(slot):
+    if slot == 0:
+        return ""
+    return str(CFG.get("browser_proxy_2") or "").strip()
 
 
 def engine():
@@ -1269,11 +1287,19 @@ def mask_pan(card):
 
 
 def take_next_link():
+    """Следующая ссылка строго по порядку. Два места не могут взять одну и ту же."""
     con = db()
-    r = con.execute("SELECT * FROM links WHERE status='queued' ORDER BY id LIMIT 1").fetchone()
-    if r:
-        con.execute("UPDATE links SET status='in_progress' WHERE id=?", (r["id"],))
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        r = con.execute("SELECT * FROM links WHERE status='queued' ORDER BY id LIMIT 1").fetchone()
+        if r:
+            cur = con.execute("UPDATE links SET status='in_progress' WHERE id=? AND status='queued'", (r["id"],))
+            if cur.rowcount != 1:
+                r = None
         con.commit()
+    except Exception:
+        con.rollback()
+        r = None
     con.close()
     return dict(r) if r else None
 
@@ -2017,12 +2043,17 @@ def ask_buttons(io, text, buttons, timeout, mapping):
 
 
 # ── сессия одного оплатчика ──────────────────────────────────────────────────
-def session_loop(tg, io, browser, payer_id, card, is_admin):
-    global CONSEC_BEELINE, CONSEC_GATEWAY
+def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
+    global CONSEC_GATEWAY
     cur_card = card
     beeline_tries = 0
     link = None
+    pay_cfg = dict(CFG)
+    pay_cfg["browser_proxy"] = slot_proxy(slot)
     while True:
+        with ACTIVE_LOCK:
+            if slot in ACTIVE_SLOTS:
+                ACTIVE_SLOTS[slot]["holding"] = link is not None
         # карта исчерпана → новая/закончить
         if card_uses(cur_card) >= 3:
             ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Лимит Билайна, больше нельзя.",
@@ -2039,11 +2070,14 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
         # взять ссылку
         if link is None:
             link = take_next_link()
+            with ACTIVE_LOCK:
+                if slot in ACTIVE_SLOTS:
+                    ACTIVE_SLOTS[slot]["holding"] = link is not None
             if link is None:
                 io.send("📑 Ссылки кончились. Ты остаёшься в очереди — как появятся новые, продолжим.")
                 return   # НЕ выходим из очереди
         shot_holder = {}
-        res = pay_one_link(io, browser, link["url"], cur_card, CFG, shot_holder)
+        res = pay_one_link(io, browser, link["url"], cur_card, pay_cfg, shot_holder)
         shot = shot_holder.get("path")
         page_url = (shot_holder.get("url") or "").strip()
         if res not in ("success", "decline") and shot and os.path.exists(shot):
@@ -2062,7 +2096,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             uses = record_success(tg, payer_id, link, cur_card, is_admin, io, shot)
             link = None
             beeline_tries = 0
-            CONSEC_BEELINE = 0
+            SLOT_FAILS[slot] = 0
             CONSEC_GATEWAY = 0
             if uses >= 3:
                 ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Нужна новая.",
@@ -2096,13 +2130,19 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             # Повторы кнопкой «попробовать ещё раз» уже сделаны на той же вкладке.
             io.send("❌ Билайн подряд не проводит эту ссылку — вернул её в очередь, беру следующую.")
             requeue_link(link); link = None; beeline_tries = 0
-            CONSEC_BEELINE += 1
-            if CONSEC_BEELINE >= 4:
-                set_setting("accepting", "0")
-                tg.send(ADMIN_ID, "⚠️ Похоже на блокировку IP: Билайн подряд не проводит оплаты. "
-                                  "Приём оплат ВЫКЛЮЧЕН. Проверь прокси/IP, потом включи приём снова.")
-                io.send("⏸ Пауза: Билайн временно не проводит оплаты. Попробуй позже.")
-                queue_leave(payer_id)
+            SLOT_FAILS[slot] = SLOT_FAILS.get(slot, 0) + 1
+            if SLOT_FAILS[slot] >= 4:
+                SLOT_PAUSED.add(slot)
+                where = "основной IP" if slot == 0 else "второй IP"
+                other_alive = any(i not in SLOT_PAUSED for i in range(slot_count()))
+                if not other_alive:
+                    set_setting("accepting", "0")
+                    tg.send(ADMIN_ID, "⚠️ Билайн не пускает ни один выход. Приём оплат ВЫКЛЮЧЕН.")
+                    io.send("⏸ Пауза: Билайн временно не проводит оплаты. Попробуй позже.")
+                    queue_leave(payer_id)
+                    return
+                tg.send(ADMIN_ID, f"⚠️ Билайн не пускает {where}. Это место на паузе, другое продолжает.")
+                io.send("⏸ Этот выход Билайн не пускает. Ты остаёшься в очереди и продолжишь с другого места.")
                 return
             continue
 
@@ -2215,8 +2255,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
     io.send("🚪 Работа завершена, ты вышел из очереди. Спасибо!")
 
 
-def session_thread(tg, payer_id, io):
-    global ACTIVE
+def session_thread(tg, payer_id, io, slot):
     is_admin = (payer_id == ADMIN_ID)
     try:
         try:
@@ -2225,7 +2264,8 @@ def session_thread(tg, payer_id, io):
             io.send("⚠️ Движок оплаты не готов на сервере (нет playwright/Chromium). Сообщи админу.")
             tg.send(ADMIN_ID, "⚠️ Не удалось запустить движок оплаты: нет playwright/Chromium.")
             return
-        io.send("🟢 ТВОЯ ОЧЕРЕДЬ!\nПришли карту одним сообщением: НОМЕР СРОК КОД\n"
+        place = "первое место, основной IP" if slot == 0 else "второе место, IP второго сервера"
+        io.send(f"🟢 ТВОЯ ОЧЕРЕДЬ! ({place})\nПришли карту одним сообщением: НОМЕР СРОК КОД\n"
                 "(напр. 2200000000001036 06/34 123)\n⏱ Нет карты за 3 мин — место уйдёт дальше.",
                 kb([[btn("🚪 Выйти из очереди", "op_leave")]]))
         card = wait_card(io, int(CFG["idle_timeout_s"]), prompt=False)
@@ -2236,7 +2276,7 @@ def session_thread(tg, payer_id, io):
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
             try:
-                session_loop(tg, io, browser, payer_id, card, is_admin)
+                session_loop(tg, io, browser, payer_id, card, is_admin, slot)
             finally:
                 try:
                     browser.close()
@@ -2249,27 +2289,29 @@ def session_thread(tg, payer_id, io):
         except Exception:
             pass
     finally:
-        STOP_EVENT.clear()
         with ACTIVE_LOCK:
-            ACTIVE = None
+            ACTIVE_SLOTS.pop(slot, None)
+            if not ACTIVE_SLOTS:
+                STOP_EVENT.clear()
 
 
 def maybe_start_session(tg):
-    global ACTIVE
+    """Заполняет свободные места следующими людьми из очереди. Ссылки они берут уже внутри, по одной."""
     with ACTIVE_LOCK:
-        if ACTIVE is not None:
-            return
         if not accepting() or links_count() <= 0:
             return
-        q = queue_list()
-        if not q:
-            return
-        payer = q[0]
-        io = PayerIO(tg, payer)
-        ACTIVE = {"payer": payer, "io": io}
-    t = threading.Thread(target=session_thread, args=(tg, payer, io), daemon=True)
-    ACTIVE["thread"] = t
-    t.start()
+        busy = {s["payer"] for s in ACTIVE_SLOTS.values()}
+        waiting = [p for p in queue_list() if p not in busy]
+        free = [i for i in range(slot_count()) if i not in ACTIVE_SLOTS and i not in SLOT_PAUSED]
+        # ссылка уже у того, кто её держит; место ждём только под ещё не взятые
+        pending = sum(1 for s in ACTIVE_SLOTS.values() if not s.get("holding"))
+        room = max(0, links_count() - pending)
+        for slot, payer in zip(free, waiting[:room]):
+            io = PayerIO(tg, payer)
+            ACTIVE_SLOTS[slot] = {"payer": payer, "io": io}
+            t = threading.Thread(target=session_thread, args=(tg, payer, io, slot), daemon=True)
+            ACTIVE_SLOTS[slot]["thread"] = t
+            t.start()
 
 
 # ── главный цикл ─────────────────────────────────────────────────────────────
@@ -2294,7 +2336,7 @@ def main():
                         elif st in ("left", "kicked"):
                             remove_channel(ch.get("id"))
                         continue
-                    a = ACTIVE
+                    hit = next((s for s in ACTIVE_SLOTS.values() if s["payer"] == ev.get("uid")), None)
                     _pay_cb = {
                         "sess_next", "sess_same", "sess_newcard", "sess_finish",
                         "ai_call", "ai_cancel", "resend_sms", "yoo_sms", "op_leave",
@@ -2302,8 +2344,8 @@ def main():
                     _cmd = (ev["kind"] == "text" and ev.get("text", "").startswith("/"))
                     _data = ev.get("data") or ""
                     _for_pay = ev["kind"] == "text" or _data in _pay_cb or _data.startswith("sess_")
-                    if a and ev.get("uid") == a["payer"] and ev["kind"] in ("text", "callback") and _for_pay and not _cmd:
-                        a["io"].put(ev)   # код, отмена и кнопки оплаты — в сессию
+                    if hit and ev["kind"] in ("text", "callback") and _for_pay and not _cmd:
+                        hit["io"].put(ev)   # код, отмена и кнопки оплаты — в его сессию
                         continue
                     if ev["kind"] == "callback":
                         handle_callback(tg, ev)
