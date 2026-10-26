@@ -378,7 +378,16 @@ def queue_pos(tg_id):
     return q.index(tg_id) + 1 if tg_id in q else 0
 
 
+DIRECT_START = set()
+
+
 def queue_join(tg_id):
+    q = queue_list()
+    if tg_id not in q:
+        if not q:
+            DIRECT_START.add(tg_id)
+        else:
+            DIRECT_START.discard(tg_id)
     con = db()
     con.execute("INSERT OR IGNORE INTO queue(operator_id,joined_at,last_action) VALUES(?,?,?)", (tg_id, now(), now()))
     con.commit()
@@ -386,6 +395,7 @@ def queue_join(tg_id):
 
 
 def queue_leave(tg_id):
+    DIRECT_START.discard(tg_id)
     con = db()
     con.execute("DELETE FROM queue WHERE operator_id=?", (tg_id,))
     con.commit()
@@ -602,7 +612,7 @@ def operator_menu_text(op):
     if in_q:
         rows.append([btn("Выйти из очереди", "op_leave", "5226953054380659263")])
     elif not q:
-        rows.append([btn("Начать оплату", "op_join", "5339135753316222622", "success")])
+        rows.append([btn("Начать оплату 💳", "op_join", "5927169041595634481", "success")])
     else:
         rows.append([btn("Встать в очередь", "op_join", "5348125953090403204")])
     rows.append([btn("Запросить выплату", "op_payout", "5409048419211682843"),
@@ -2276,13 +2286,14 @@ def session_thread(tg, payer_id, io, slot):
             tg.send(ADMIN_ID, "⚠️ Не удалось запустить движок оплаты: нет playwright/Chromium.")
             return
         mins = max(1, int(CFG.get("idle_timeout_s") or 180) // 60)
-        io.send(f"{SEP}\n"
-                f"🟢 ТВОЯ ОЧЕРЕДЬ\n\n"
-                f"⌛ {mins} мин без карты — место уйдёт дальше\n"
-                f"{SEP}\n\n"
-                f"💳 Пришли карту одним сообщением\n"
-                f"НОМЕР   СРОК   КОД\n"
-                f"2200000000001036  06/34  123",
+        direct = payer_id in DIRECT_START
+        DIRECT_START.discard(payer_id)
+        head = "" if direct else "❗️Ваша очередь❗️\n"
+        io.send(f"{head}{SEP}\n\n"
+                f"⌛ {mins} мин — потом место уйдёт дальше\n\n"
+                f"💳 Пришли данные карты одним сообщением:\n\n"
+                f"НОМЕР  СРОК  CVV\n\n"
+                f"{SEP}",
                 kb([[btn("🚪 Выйти из очереди", "op_leave")]]))
         card = wait_card(io, int(CFG["idle_timeout_s"]), prompt=False)
         if card is None:
