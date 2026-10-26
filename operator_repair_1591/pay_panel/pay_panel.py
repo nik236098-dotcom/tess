@@ -1579,15 +1579,26 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             return (not reached_bank) and (pb._payment_failed(page) or pb._url_status(page) == "fail")
 
         def _click_beeline_retry():
+            """Нет поля карты и снова «оплата не прошла» — жмём кнопку, максимум 3 раза."""
             nonlocal beeline_retries
+            if pb._on_card_form(page):
+                return True
             beeline_retries += 1
-            io.send(f"⚠️ Оплата не прошла моментально — ошибка Билайна, жму «попробовать ещё раз» "
+            io.send(f"⚠️ Поля карты нет, снова «оплата не прошла». Жму «попробовать ещё раз» "
                     f"({beeline_retries}/{max_beeline}).")
             if beeline_retries > max_beeline or not pb._click_retry(page):
                 if beeline_retries <= max_beeline:
                     io.send("⚠️ Не нашёл кнопку «попробовать ещё раз».")
                 return False
-            page.wait_for_timeout(3000)
+            # старая ошибка ещё на экране пару секунд — это не новое появление
+            page.wait_for_timeout(4000)
+            deadline = time.monotonic() + 12
+            while time.monotonic() < deadline:
+                if pb._on_card_form(page) or STOP_EVENT.is_set():
+                    break
+                if _instant_fail():
+                    break
+                page.wait_for_timeout(400)
             return True
 
         branch = "wait"
@@ -1620,11 +1631,26 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             if not found_pay:
                 return "bad_link"
             io.send(f"💳 Перешёл к оплате, ввожу карту {mask_pan(card)}…")
+            # Поля карты нет, а на экране снова ошибка — не ждём 2 минуты, жмём кнопку ещё раз.
+            form_deadline = time.monotonic() + int(cfg.get("card_form_wait_s") or 120)
+            while not pb._on_card_form(page) and time.monotonic() < form_deadline:
+                if _instant_fail():
+                    if not _click_beeline_retry():
+                        return "beeline"
+                    if pb._on_card_form(page):
+                        break
+                    form_deadline = time.monotonic() + int(cfg.get("card_form_wait_s") or 120)
+                    continue
+                page.wait_for_timeout(400)
+            if not pb._on_card_form(page):
+                if _instant_fail():
+                    return "beeline"
+                return "site"
             deadline = time.monotonic() + int(cfg.get("card_form_wait_s") or 120)
             try:
                 pb._type_card(page, card, io, deadline)
             except RuntimeError:
-                if _instant_fail():
+                if _instant_fail() and not pb._on_card_form(page):
                     if not _click_beeline_retry():
                         return "beeline"
                     continue
