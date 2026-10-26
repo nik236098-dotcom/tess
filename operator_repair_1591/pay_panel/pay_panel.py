@@ -429,7 +429,7 @@ EMOJI_IDS = {
     "🔄": "5877410604225924969",
     "🔁": "5877410604225924969",
     "🔗": "5877465816030515018",
-    "🟢": "5810051751654460532",
+    "🟢": "5339135753316222622",
     "✔️": "5206607081334906820",
     "✖️": "5210952531676504517",
     "🔴": "5807626765874499116",
@@ -578,34 +578,29 @@ def operator_menu_text(op):
     pos = (q.index(op["tg_id"]) + 1) if op["tg_id"] in q else 0
     in_q = op["tg_id"] in q
     if not accepting():
-        status = "⏸ Приём: стоп"
+        queue_line = "✖️ Закрыто"
+        status = "⏸ стоп"
     elif links_count():
-        status = "✔️ Приём: идёт"
+        queue_line = "🟢 В очереди: 0" if not q else f"🔴 В очереди: {len(q)}"
+        status = "✔️ оплаты требуются"
     else:
-        status = "⚪️ Приём: идёт, ссылок нет"
-    places = []
-    for i in range(slot_count()):
-        n = i + 1
-        if i in SLOT_PAUSED:
-            places.append(f"⏸ Место {n}: пауза")
-        elif i in ACTIVE_SLOTS:
-            places.append(f"🔴 Место {n}: занято")
-        else:
-            places.append(f"🟢 Место {n}: свободно")
-    you = f"✔️ Ты в очереди: {pos}" if in_q else "⚪️ Ты не в очереди"
+        queue_line = "🟢 В очереди: 0" if not q else f"🔴 В очереди: {len(q)}"
+        status = "⚪️ оплат нет"
+    you = f"да, позиция {pos}" if in_q else "нет"
     t = (f"💳 ПАНЕЛЬ ОПЛАТЧИКА\n{SEP}\n"
          f"👤 {op_display(op)}\n"
          f"💰 Баланс: {op['balance']:.2f} $" + (f"  (🔒 заморожено {op['frozen']:.2f} $)" if op['frozen'] else "") + "\n"
          f"📊 Ставка: {op_rate(op):.2f} $ / оплата\n\n"
-         f"📥 {status}\n"
-         f"📑 Ссылок: {links_count()}\n"
-         + "\n".join(places) + "\n"
-         f"👥 Ждут: {len(q)}\n"
-         f"{you}\n"
+         f"{queue_line}\n"
+         f"📥 Статус: {status}\n"
+         f"📑 Требуется оплат: {links_count()}\n"
+         f"🎯 Ты в очереди: {you}\n"
          f"🏷 Сумма за 1 тариф: ~{setting('tariff_rub')} ₽ (своей картой)\n{SEP}")
     rows = []
     if in_q:
         rows.append([btn("Выйти из очереди", "op_leave", "5226953054380659263")])
+    elif not q:
+        rows.append([btn("Начать оплату", "op_join", "5927169041595634481")])
     else:
         rows.append([btn("Встать в очередь", "op_join", "5348125953090403204")])
     rows.append([btn("Запросить выплату", "op_payout", "5409048419211682843"),
@@ -2278,14 +2273,14 @@ def session_thread(tg, payer_id, io, slot):
             io.send("⚠️ Движок оплаты не готов на сервере (нет playwright/Chromium). Сообщи админу.")
             tg.send(ADMIN_ID, "⚠️ Не удалось запустить движок оплаты: нет playwright/Chromium.")
             return
-        place = "1 · основной IP" if slot == 0 else "2 · второй IP"
         mins = max(1, int(CFG.get("idle_timeout_s") or 180) // 60)
-        io.send(f"🟢 ТВОЯ ОЧЕРЕДЬ\n{SEP}\n"
-                f"🌐 Место: {place}\n\n"
+        io.send(f"{SEP}\n"
+                f"🟢 ТВОЯ ОЧЕРЕДЬ\n\n"
+                f"⌛ {mins} мин без карты — место уйдёт дальше\n"
+                f"{SEP}\n\n"
                 f"💳 Пришли карту одним сообщением\n"
                 f"НОМЕР   СРОК   КОД\n"
-                f"2200000000001036  06/34  123\n\n"
-                f"⌛ {mins} мин без карты — место уйдёт дальше\n{SEP}",
+                f"2200000000001036  06/34  123",
                 kb([[btn("🚪 Выйти из очереди", "op_leave")]]))
         card = wait_card(io, int(CFG["idle_timeout_s"]), prompt=False)
         if card is None:
