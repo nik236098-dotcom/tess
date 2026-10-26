@@ -1570,102 +1570,140 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             return "gateway"   # 504/502/503 при открытии — сбой платёжного шлюза
         if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
             return "bad_link"
-        # Ищем ВХОДНУЮ кнопку «Перейти к оплате». На рабочей ссылке она есть почти сразу; на уже
-        # оплаченной/активированной её нет — такую отбиваем за секунды, не ждём форму оплаты.
-        pay_wait = int(cfg.get("pay_button_wait_s") or 20)
-        bdeadline = time.monotonic() + pay_wait
-        found_pay = False
-        while time.monotonic() < bdeadline:
-            if STOP_EVENT.is_set():
-                return "stopped"
-            low = pb._page_text(page)
-            if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
-                return "bad_link"
-            if pb._payment_failed(page) or pb._url_status(page) == "fail":
-                return "beeline"
-            if pb._on_card_form(page):   # форма карты уже открыта (без входной кнопки)
-                found_pay = True
-                break
-            if pb._click_by_words(page.main_frame, pb.PAY_BUTTON_WORDS, timeout_ms=2000):
-                found_pay = True
-                break
-            page.wait_for_timeout(1200)
-        if not found_pay:
-            return "bad_link"   # нет кнопки оплаты → ссылка уже оплачена/непригодна
-        # дальше (после входной кнопки) ждём форму/«оплатить» — тут Билайн может лагать, это нормально
-        io.send(f"💳 Перешёл к оплате, ввожу карту {mask_pan(card)}…")
-        deadline = time.monotonic() + int(cfg.get("card_form_wait_s") or 120)
-        try:
-            pb._type_card(page, card, io, deadline)
-        except RuntimeError:
-            if pb._payment_failed(page) or pb._url_status(page) == "fail":
-                return "beeline"
-            if any(w in pb._page_text(page) for w in BAD_LINK_WORDS):
-                return "bad_link"
-            return "site"
-        page.wait_for_timeout(3000)
-        io.send("⏳ Жду ответ банка (3DS)…")
-        nav = time.monotonic() + page_wait
-        c0 = time.monotonic()
+        # «Оплата не прошла» — жмём «попробовать ещё раз» на этой же вкладке, ссылку заново не открываем.
+        max_beeline = int(cfg.get("beeline_retry_max") or 3)
+        beeline_retries = 0
+        reached_bank = False
+
+        def _instant_fail():
+            return (not reached_bank) and (pb._payment_failed(page) or pb._url_status(page) == "fail")
+
+        def _click_beeline_retry():
+            nonlocal beeline_retries
+            beeline_retries += 1
+            io.send(f"⚠️ Оплата не прошла моментально — ошибка Билайна, жму «попробовать ещё раз» "
+                    f"({beeline_retries}/{max_beeline}).")
+            if beeline_retries > max_beeline or not pb._click_retry(page):
+                if beeline_retries <= max_beeline:
+                    io.send("⚠️ Не нашёл кнопку «попробовать ещё раз».")
+                return False
+            page.wait_for_timeout(3000)
+            return True
+
         branch = "wait"
-        held = []
-        stuck = None
-        restarts = 0
-
-        def _release_held():
-            for ev in held:
-                io.inbox.put(ev)
-            held.clear()
-
-        while time.monotonic() < nav:
-            if _poll_cancel(io, held):
-                _release_held()
-                return "cancel"
-            if pb._payment_failed(page) or pb._url_status(page) == "fail":
-                _release_held()
-                return "beeline"
-            if pb._url_status(page) == "success":
-                _release_held()
-                return "success"
-            low = pb._page_text(page)
-            if _gateway_error(low):
-                _release_held()
-                return "gateway"   # 504/502/503 — сбой платёжного шлюза (не пуш)
-            if any(w in low for w in pb.DECLINE_WORDS):
-                _release_held()
-                return "decline"
-            fr, h = pb._find_code_field(page)
-            if h is not None:
-                branch = "code"
-                break
-            if pb._is_yoomoney(page) and (time.monotonic() - c0) > 8:
-                branch = "yoomoney"
-                break
-            # Страница уже открыта. Не возвращаем ссылку в очередь — жмём «оплатить картой» и идём дальше.
-            if _back_on_start(pb, page):
-                stuck = stuck or time.monotonic()
-                if time.monotonic() - stuck > 8 and restarts < 3:
-                    restarts += 1
-                    stuck = None
-                    io.send("💳 Снова стартовая страница, жму «оплатить картой»…")
-                    clicked = False
-                    for frs in pb._frames(page):
-                        if pb._click_by_words(frs, ("оплатить картой",), timeout_ms=4000):
-                            clicked = True
-                            break
-                    if clicked:
-                        try:
-                            pb._type_card(page, card, io, time.monotonic() + int(cfg.get("card_form_wait_s") or 120))
-                        except RuntimeError:
-                            pass
-                        page.wait_for_timeout(2000)
-                        nav = time.monotonic() + page_wait
-                        c0 = time.monotonic()
+        while True:
+            # Ищем входную кнопку «оплатить картой». На уже оплаченной её нет — отбиваем сразу.
+            pay_wait = int(cfg.get("pay_button_wait_s") or 20)
+            bdeadline = time.monotonic() + pay_wait
+            found_pay = False
+            retry_now = False
+            while time.monotonic() < bdeadline:
+                if STOP_EVENT.is_set():
+                    return "stopped"
+                low = pb._page_text(page)
+                if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
+                    return "bad_link"
+                if _instant_fail():
+                    retry_now = True
+                    break
+                if pb._on_card_form(page):
+                    found_pay = True
+                    break
+                if pb._click_by_words(page.main_frame, pb.PAY_BUTTON_WORDS, timeout_ms=2000):
+                    found_pay = True
+                    break
+                page.wait_for_timeout(1200)
+            if retry_now:
+                if not _click_beeline_retry():
+                    return "beeline"
+                continue
+            if not found_pay:
+                return "bad_link"
+            io.send(f"💳 Перешёл к оплате, ввожу карту {mask_pan(card)}…")
+            deadline = time.monotonic() + int(cfg.get("card_form_wait_s") or 120)
+            try:
+                pb._type_card(page, card, io, deadline)
+            except RuntimeError:
+                if _instant_fail():
+                    if not _click_beeline_retry():
+                        return "beeline"
                     continue
-            else:
-                stuck = None
-            page.wait_for_timeout(500)
-        _release_held()
+                if any(w in pb._page_text(page) for w in BAD_LINK_WORDS):
+                    return "bad_link"
+                return "site"
+            page.wait_for_timeout(3000)
+            io.send("⏳ Жду ответ банка (3DS)…")
+            nav = time.monotonic() + page_wait
+            c0 = time.monotonic()
+            branch = "wait"
+            held = []
+            stuck = None
+            restarts = 0
+
+            def _release_held():
+                for ev in held:
+                    io.inbox.put(ev)
+                held.clear()
+
+            retry_now = False
+            while time.monotonic() < nav:
+                if _poll_cancel(io, held):
+                    _release_held()
+                    return "cancel"
+                if _instant_fail():
+                    _release_held()
+                    retry_now = True
+                    break
+                if pb._url_status(page) == "success":
+                    _release_held()
+                    return "success"
+                low = pb._page_text(page)
+                if _gateway_error(low):
+                    _release_held()
+                    return "gateway"
+                if any(w in low for w in pb.DECLINE_WORDS):
+                    _release_held()
+                    return "decline"
+                fr, h = pb._find_code_field(page)
+                if h is not None:
+                    reached_bank = True
+                    branch = "code"
+                    break
+                if pb._is_yoomoney(page) and (time.monotonic() - c0) > 8:
+                    reached_bank = True
+                    branch = "yoomoney"
+                    break
+                if _back_on_start(pb, page):
+                    stuck = stuck or time.monotonic()
+                    if time.monotonic() - stuck > 8 and restarts < 3:
+                        restarts += 1
+                        stuck = None
+                        io.send("💳 Снова стартовая страница, жму «оплатить картой»…")
+                        clicked = False
+                        for frs in pb._frames(page):
+                            if pb._click_by_words(frs, ("оплатить картой",), timeout_ms=4000):
+                                clicked = True
+                                break
+                        if clicked:
+                            try:
+                                pb._type_card(page, card, io, time.monotonic() + int(cfg.get("card_form_wait_s") or 120))
+                            except RuntimeError:
+                                if _instant_fail():
+                                    retry_now = True
+                                    break
+                            page.wait_for_timeout(2000)
+                            nav = time.monotonic() + page_wait
+                            c0 = time.monotonic()
+                        continue
+                else:
+                    stuck = None
+                page.wait_for_timeout(500)
+            _release_held()
+            if retry_now:
+                if not _click_beeline_retry():
+                    return "beeline"
+                continue
+            break
         if branch == "wait":
             r = ai_assist(io, page, cfg)   # PAY_AI_1591: интерактивный ИИ-агент на незнакомом 3DS
             return r if r in ("success", "decline") else "no_code"
@@ -1847,11 +1885,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin):
             continue
 
         if res == "beeline":
-            beeline_tries += 1
-            if beeline_tries <= 3:
-                io.bg(f"Оплата не прошла моментально — ошибка на стороне Билайна, "
-                      f"пробую ещё раз ({beeline_tries}/3).\n{link['url']}")
-                continue   # та же ссылка, та же карта
+            # Повторы кнопкой «попробовать ещё раз» уже сделаны на той же вкладке.
             io.send("❌ Билайн подряд не проводит эту ссылку — вернул её в очередь, беру следующую.")
             requeue_link(link); link = None; beeline_tries = 0
             CONSEC_BEELINE += 1
