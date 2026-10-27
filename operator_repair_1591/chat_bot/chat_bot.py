@@ -304,34 +304,47 @@ _PERIOD_RE = re.compile(r"(\d+)\s*(минут|мин|часов|часа|час|
 
 
 def _window_since(text):
-    low = text.lower()
+    """Возвращает (since, until, подпись). until=None — до текущего момента."""
+    low = (text or "").lower()
     now = time.time()
+    midnight = datetime.datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     m = _PERIOD_RE.search(low)   # «за последние 2 часа / 30 минут / 3 дня / 2 недели»
     if m:
         n = int(m.group(1)); unit = m.group(2)
         if unit.startswith("мин"):
-            return now - n * 60, "за последние %d мин" % n
+            return now - n * 60, None, "за последние %d мин" % n
         if unit.startswith("час"):
-            return now - n * 3600, "за последние %d ч" % n
+            return now - n * 3600, None, "за последние %d ч" % n
         if unit.startswith("недел"):
-            return now - n * 7 * 86400, "за последние %d нед." % n
-        return now - n * 86400, "за последние %d дн." % n
+            return now - n * 7 * 86400, None, "за последние %d нед." % n
+        return now - n * 86400, None, "за последние %d дн." % n
+    if "позавчера" in low:
+        start = midnight - datetime.timedelta(days=2)
+        end = midnight - datetime.timedelta(days=1)
+        return start.timestamp(), end.timestamp(), "за позавчера"
+    if "вчера" in low:
+        start = midnight - datetime.timedelta(days=1)
+        return start.timestamp(), midnight.timestamp(), "за вчера"
     if "час" in low:
-        return now - 3600, "за последний час"
+        return now - 3600, None, "за последний час"
     if "недел" in low and "номер" not in low:
-        return now - 7 * 86400, "за неделю"
+        return now - 7 * 86400, None, "за неделю"
     if any(w in low for w in ("всё время", "все время", "за всю историю", "за всю")) or low.strip() in ("всё", "все", "all"):
-        return 0, "за всё время"
-    midnight = datetime.datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0)
-    return midnight.timestamp(), "за сегодня"
+        return 0, None, "за всё время"
+    return midnight.timestamp(), None, "за сегодня"
 
 
-def compute_stats(chat_id, since, uid=None, name=None):
+def compute_stats(chat_id, since, uid=None, name=None, until=None):
     """Один QR — один итог: успех, неуспех, в работе или без реакции. Сумма сходится с «всего»."""
     con = db()
-    rows = con.execute(
-        "SELECT msg_id,user,uid,number FROM qr WHERE chat_id=? AND ts>=? ORDER BY ts ASC, msg_id ASC",
-        (chat_id, since)).fetchall()
+    if until is None:
+        rows = con.execute(
+            "SELECT msg_id,user,uid,number FROM qr WHERE chat_id=? AND ts>=? ORDER BY ts ASC, msg_id ASC",
+            (chat_id, since)).fetchall()
+    else:
+        rows = con.execute(
+            "SELECT msg_id,user,uid,number FROM qr WHERE chat_id=? AND ts>=? AND ts<? ORDER BY ts ASC, msg_id ASC",
+            (chat_id, since, until)).fetchall()
     per_user = collections.defaultdict(lambda: collections.Counter())
     total = collections.Counter()
     numbers = []
@@ -364,14 +377,14 @@ _WHO_SKIP = {
 
 
 def stats_answer(chat_id, period_text, who, frm):
-    since, label = _window_since(period_text or "сегодня")
+    since, until, label = _window_since(period_text or "сегодня")
     uid = name = None
     w = str(who or "all").strip().lower()
     if w in ("me", "я", "мной", "мои", "сам"):
         uid = (frm or {}).get("id")
     elif w not in _WHO_SKIP and not any(x in w for x in ("номер", "общ", "статист", "сегодня", "все")):
         name = str(who)
-    total, per_user, numbers = compute_stats(chat_id, since, uid=uid, name=name)
+    total, per_user, numbers = compute_stats(chat_id, since, uid=uid, name=name, until=until)
     head = "📊 %s" % label.capitalize()
     if total["всего"] == 0:
         return head + "\nОбщая: 0 QR. За этот срок записей нет."
@@ -488,8 +501,9 @@ def _last_qr_ids(chat_id, n, uid=None, name=None):
 def _dups_scope(chat_id, period_text, last_n):
     if last_n:
         return find_duplicates(chat_id, last_n=int(last_n)), "среди последних %d" % int(last_n)
-    since = 0 if _window_since(period_text or "")[1] == "за всё время" else _today_since()
-    label = _window_since(period_text or "")[1] if period_text else "за сегодня"
+    win = _window_since(period_text or "")
+    since = 0 if win[2] == "за всё время" else _today_since()
+    label = win[2] if period_text else "за сегодня"
     return find_duplicates(chat_id, since=since), label
 
 
@@ -572,8 +586,8 @@ def _agent_data_block(chat_id, limit):
 def _agent_summaries(chat_id):
     lines = []
     for period in ("сегодня", "неделю", "всё"):
-        since, label = _window_since(period)
-        total, _, _ = compute_stats(chat_id, since)
+        since, until, label = _window_since(period)
+        total, _, _ = compute_stats(chat_id, since, until=until)
         lines.append("%s: всего %d, успех %d, неуспех %d, в работе %d, без реакции %d" %
                      (label, total["всего"], total["success"], total["fail"], total["inwork"], total["none"]))
     return "\n".join(lines)
