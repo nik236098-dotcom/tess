@@ -836,9 +836,12 @@ def _wait_code_or_resend(tg, timeout_seconds):
     while time.monotonic() < deadline:
         for ev in tg.get_updates(timeout=25):
             if ev.get("kind") == "callback":
-                tg.answer_callback(ev.get("id"))
+                if ev.get("id"):
+                    tg.answer_callback(ev.get("id"))
                 if ev.get("data") == "resend_sms":
                     return ("resend", None)
+                if ev.get("data") in ("op_leave", "ai_cancel", "sess_finish"):
+                    return ("cancel", None)
                 continue
             t = (ev.get("text") or "").strip()
             if not t:

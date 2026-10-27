@@ -1253,6 +1253,7 @@ class PayerIO:
         self.tg = tg
         self.payer_id = payer_id
         self.inbox = _queue.Queue()
+        self.leave = threading.Event()
 
     # интерфейс, совместимый с pay_bot (send/send_photo/get_updates/answer_callback)
     def send(self, text, reply_markup=None):
@@ -1653,21 +1654,30 @@ def do_backup():
 
 # ── оплата одной ссылки (переиспользует pay_bot) ─────────────────────────────
 def _poll_cancel(io, held):
-    """«Отмена» во время ожидания банка. Чужое сообщение не съедаем."""
-    if held:
-        return False
-    try:
-        ev = io.inbox.get_nowait()
-    except _queue.Empty:
-        return False
-    text = (ev.get("text") or "").strip().lower()
-    data = ev.get("data") or ""
-    if ev.get("kind") == "callback" and data in ("op_leave", "sess_finish", "ai_cancel"):
-        return "leave" if data == "op_leave" else "cancel"
-    if ev.get("kind") == "text" and text in ("отмена", "stop", "/stop", "cancel", "закончить"):
-        return "cancel"
-    held.append(ev)
-    return False
+    """«Отмена» и «выйти» во время ожидания банка. Выход читаем сразу, даже если в очереди уже лежит чужое сообщение."""
+    if getattr(io, "leave", None) and io.leave.is_set():
+        return "leave"
+    pending = list(held)
+    held.clear()
+    while True:
+        try:
+            pending.append(io.inbox.get_nowait())
+        except _queue.Empty:
+            break
+    found = None
+    for ev in pending:
+        text = (ev.get("text") or "").strip().lower()
+        data = ev.get("data") or ""
+        if ev.get("kind") == "callback" and data in ("op_leave", "sess_finish", "ai_cancel"):
+            found = "leave" if data == "op_leave" else "cancel"
+            if ev.get("id"):
+                io.answer(ev)
+            continue
+        if ev.get("kind") == "text" and text in ("отмена", "stop", "/stop", "cancel", "закончить"):
+            found = found or "cancel"
+            continue
+        held.append(ev)
+    return found or False
 
 
 def _back_on_start(pb, page):
@@ -1831,6 +1841,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             while time.monotonic() < bdeadline:
                 if STOP_EVENT.is_set():
                     return "stopped"
+                if getattr(io, "leave", None) and io.leave.is_set():
+                    return "leave"
                 low = pb._page_text(page)
                 if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
                     return "bad_link"
@@ -1902,6 +1914,9 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
 
             retry_now = False
             while time.monotonic() < nav:
+                if getattr(io, "leave", None) and io.leave.is_set():
+                    _release_held()
+                    return "leave"
                 why = _poll_cancel(io, held)
                 if why == "leave":
                     _release_held()
@@ -1999,6 +2014,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 return "no_code"
         verdict = pb._enter_3ds_code(page, io, cfg, page_wait, code_wait)
         if verdict == "cancelled":
+            if getattr(io, "leave", None) and io.leave.is_set():
+                return "leave"
             return "cancel"
         if verdict == "timeout":
             return "timeout"
@@ -2060,12 +2077,16 @@ def wait_card(io, timeout, prompt=True):
     while time.monotonic() < deadline:
         if STOP_EVENT.is_set():
             return None
+        if getattr(io, "leave", None) and io.leave.is_set():
+            return "leave"
         ev = io.wait(min(20, deadline - time.monotonic()))
         if ev is None:
             continue
         if ev.get("kind") == "callback":
             io.answer(ev)
-            if ev.get("data") in ("op_leave", "sess_finish"):
+            if ev.get("data") == "op_leave":
+                return "leave"
+            if ev.get("data") == "sess_finish":
                 return None
             continue
         t = (ev.get("text") or "").strip()
@@ -2086,7 +2107,7 @@ def ask_buttons(io, text, buttons, timeout, mapping):
     io.send(text, kb(buttons))
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if STOP_EVENT.is_set():
+        if STOP_EVENT.is_set() or (getattr(io, "leave", None) and io.leave.is_set()):
             return "finish"
         ev = io.wait(min(20, deadline - time.monotonic()))
         if ev is None:
@@ -2338,6 +2359,9 @@ def session_thread(tg, payer_id, io, slot):
                 f"{SEP}",
                 kb([[btn("🚪 Выйти из очереди", "op_leave")]]))
         card = wait_card(io, int(CFG["idle_timeout_s"]), prompt=False)
+        if card == "leave":
+            queue_leave(payer_id)
+            return
         if card is None:
             io.send("⌛ Карта не пришла — освобождаю очередь.")
             queue_leave(payer_id)
@@ -2411,6 +2435,16 @@ def main():
                             remove_channel(ch.get("id"))
                         continue
                     hit = next((s for s in ACTIVE_SLOTS.values() if s["payer"] == ev.get("uid")), None)
+                    if ev["kind"] == "callback" and (ev.get("data") or "") == "op_leave":
+                        tg.answer_cb(ev.get("id"))
+                        queue_leave(ev.get("uid"))
+                        op = get_op(ev.get("uid"))
+                        if op and ev.get("chat_id"):
+                            show_operator_menu(tg, op, ev["chat_id"], ev.get("message_id"))
+                        if hit:
+                            hit["io"].leave.set()
+                            hit["io"].put({"kind": "callback", "data": "op_leave", "id": "", "uid": ev["uid"]})
+                        continue
                     _pay_cb = {
                         "sess_next", "sess_same", "sess_newcard", "sess_finish",
                         "ai_call", "ai_cancel", "resend_sms", "yoo_sms", "op_leave",
