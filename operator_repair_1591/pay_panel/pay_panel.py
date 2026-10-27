@@ -2437,13 +2437,18 @@ def main():
                     hit = next((s for s in ACTIVE_SLOTS.values() if s["payer"] == ev.get("uid")), None)
                     if ev["kind"] == "callback" and (ev.get("data") or "") == "op_leave":
                         tg.answer_cb(ev.get("id"))
-                        queue_leave(ev.get("uid"))
-                        op = get_op(ev.get("uid"))
-                        if op and ev.get("chat_id"):
-                            show_operator_menu(tg, op, ev["chat_id"], ev.get("message_id"))
+                        uid = ev.get("uid")
+                        queue_leave(uid)
+                        if ev.get("chat_id"):
+                            if uid == ADMIN_ID:
+                                show_admin_menu(tg, ev["chat_id"], ev.get("message_id"))
+                            else:
+                                op = get_op(uid)
+                                if op:
+                                    show_operator_menu(tg, op, ev["chat_id"], ev.get("message_id"))
                         if hit:
                             hit["io"].leave.set()
-                            hit["io"].put({"kind": "callback", "data": "op_leave", "id": "", "uid": ev["uid"]})
+                            hit["io"].put({"kind": "callback", "data": "op_leave", "id": "", "uid": uid})
                         continue
                     _pay_cb = {
                         "sess_next", "sess_same", "sess_newcard", "sess_finish",
