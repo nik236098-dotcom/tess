@@ -1681,7 +1681,37 @@ def _back_on_start(pb, page):
     return ("оплатить картой" in low) and ("порядок" in low or "подтвердите данные" in low)
 
 
-def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
+# Успешная вкладка не закрывается сразу: висит 3 минуты, потом закрывается сама.
+_PARKED = {}
+_PARK_LOCK = threading.Lock()
+
+
+def _park_tab(ctx, slot, seconds=180):
+    ev = threading.Event()
+    with _PARK_LOCK:
+        _PARKED.setdefault(slot, []).append(ev)
+
+    def _run():
+        try:
+            time.sleep(seconds)
+            try:
+                ctx.close()
+            except Exception:
+                pass
+        finally:
+            ev.set()
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _wait_parked(slot, timeout=185):
+    with _PARK_LOCK:
+        evs = _PARKED.pop(slot, [])
+    for ev in evs:
+        ev.wait(timeout)
+
+
+def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
     """Один заход: открыть ссылку → карта → банк/3DS/YooMoney → итог. Карту НЕ меняет (это делает
     панель). Возвращает: success / decline / beeline / no_code / site / cancel / timeout.
     В shot_holder["path"] кладёт скрин финальной страницы (для лога)."""
@@ -1719,6 +1749,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             pass
 
     try:
+        hold_tab = False
         page.on("response", _on_resp)
         io.send("🔎Открываю оплату...")
         try:
@@ -1882,6 +1913,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
                     break
                 if pb._url_status(page) == "success":
                     _release_held()
+                    hold_tab = True
                     return "success"
                 low = pb._page_text(page)
                 if _gateway_error(low):
@@ -1951,10 +1983,13 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             break
         if branch == "wait":
             r = ai_assist(io, page, cfg)   # PAY_AI_1591: интерактивный ИИ-агент на незнакомом 3DS
+            if r == "success":
+                hold_tab = True
             return r if r in ("success", "decline") else "no_code"
         if branch == "yoomoney":
             yoo = pb._yoomoney_push_flow(page, io, cfg)
             if yoo == "success":
+                hold_tab = True
                 return "success"
             if yoo == "fail":
                 return "decline"
@@ -1969,6 +2004,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             return "decline"
         final = pb._wait_final_result(page, timeout_s=int(cfg.get("final_wait_seconds") or 70))
         if final == "success":
+            hold_tab = True
             return "success"
         if final == "fail":
             return "decline"
@@ -1981,6 +2017,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
         except Exception:
             final = ""
         if final == "success":
+            hold_tab = True
             return "success"
         if final == "fail":
             return "decline"
@@ -1996,7 +2033,10 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None):
             except Exception:
                 shot_holder["path"] = None
         try:
-            ctx.close()
+            if hold_tab:
+                _park_tab(ctx, slot)
+            else:
+                ctx.close()
         except Exception:
             pass
 
@@ -2098,7 +2138,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
                 io.send("📑 Ссылки кончились. Ты остаёшься в очереди — как появятся новые, продолжим.")
                 return   # НЕ выходим из очереди
         shot_holder = {}
-        res = pay_one_link(io, browser, link["url"], cur_card, pay_cfg, shot_holder)
+        res = pay_one_link(io, browser, link["url"], cur_card, pay_cfg, shot_holder, slot)
         shot = shot_holder.get("path")
         page_url = (shot_holder.get("url") or "").strip()
         if res not in ("success", "decline") and shot and os.path.exists(shot):
@@ -2305,6 +2345,11 @@ def session_thread(tg, payer_id, io, slot):
             try:
                 session_loop(tg, io, browser, payer_id, card, is_admin, slot)
             finally:
+                with ACTIVE_LOCK:
+                    ACTIVE_SLOTS.pop(slot, None)
+                    if not ACTIVE_SLOTS:
+                        STOP_EVENT.clear()
+                _wait_parked(slot)
                 try:
                     browser.close()
                 except Exception:
