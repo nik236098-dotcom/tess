@@ -516,15 +516,17 @@ def _otp_score(h):
         if not h.is_visible():
             return -1
         typ = (h.get_attribute("type") or "text").lower()
-        if typ in ("hidden", "checkbox", "radio", "submit", "button", "password", "email"):
+        if typ in ("hidden", "checkbox", "radio", "submit", "button", "email"):
             return -1
         ac = (h.get_attribute("autocomplete") or "").lower()
         im = (h.get_attribute("inputmode") or "").lower()
         ph = (h.get_attribute("placeholder") or "").lower()
         name = ((h.get_attribute("name") or "") + " " + (h.get_attribute("id") or "")
                 + " " + (h.get_attribute("aria-label") or "")).lower()
+        if typ == "password" and any(w in name for w in ("cvc", "cvv", "secure")):
+            return -1
         ml = h.get_attribute("maxlength") or ""
-        score = 0
+        score = 1 if typ == "password" else 0
         if "one-time-code" in ac:                       score += 6   # почти стандарт ACS/3DS
         if im == "numeric":                             score += 3
         if typ in ("tel", "number"):                    score += 2
@@ -561,8 +563,37 @@ def _find_code_field(page):
                 s += 2
                 if best is None or s > best[0]:
                     best = (s, fr, vis[0])
-    if best is not None:
+    if best is not None and best[0] >= 2:
         return best[1], best[2]
+    # Сбер (acs3.sbrf.ru): большое поле кода часто type=password и без подписи в атрибутах.
+    try:
+        url = (page.url or "").lower()
+    except Exception:
+        url = ""
+    try:
+        low = _page_text(page)
+    except Exception:
+        low = ""
+    if "sbrf.ru" in url or "sberbank" in url or any(w in low for w in (
+            "введите код", "отправили код", "код для оплаты", "код из смс", "код из sms")):
+        pick = None
+        for fr in _frames(page):
+            for h in _visible_inputs(fr):
+                if _otp_score(h) < 0:
+                    continue
+                area = 0
+                try:
+                    box = h.bounding_box()
+                    if box:
+                        area = box["width"] * box["height"]
+                except Exception:
+                    area = 0
+                if area < 40:
+                    continue
+                if pick is None or area > pick[0]:
+                    pick = (area, fr, h)
+        if pick is not None:
+            return pick[1], pick[2]
     return None, None
 
 
