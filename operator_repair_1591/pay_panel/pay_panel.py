@@ -575,8 +575,10 @@ def validate_card(text):
         return None, "номер должен начинаться с 2 (Мир), 4 (Visa) или 5 (Mastercard)"
     if len(num) != 16:
         return None, "в номере карты должно быть 16 цифр"
+    if len(exp) == 6:          # MMYYYY, например 09/2036
+        exp = exp[:2] + exp[4:]
     if len(exp) != 4 or not (1 <= int(exp[:2]) <= 12):
-        return None, "срок в формате MM/YY, месяц 01–12"
+        return None, "срок в формате MM/YY или MM/YYYY, месяц 01–12"
     if len(cvv) != 3:
         return None, "CVV должен быть из 3 цифр"
     return (num, exp, cvv), ""
