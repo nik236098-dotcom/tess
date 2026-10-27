@@ -1223,17 +1223,63 @@ _ENGINE = None
 CONSEC_GATEWAY = 0                 # подряд сбоев платёжного шлюза (504…) → шлюз лежит
 SLOT_FAILS = {}                    # подряд сбоев Билайна на конкретном выходе
 SLOT_PAUSED = set()                # выход, который Билайн перестал пускать
+SLOT_PROXY = {}                    # slot -> запасной socks, если основной IP этого места уже отрубили
+SPARES = []                        # ещё не использованные запасные прокси
+_SPARES_READY = False
+_SPARE_LOCK = threading.Lock()
 
 
 def slot_count():
-    """Сколько мест. Второе есть только если задан прокси второго сервера."""
+    """Сколько мест. Второе и третье есть, только если задан их прокси."""
+    if str(CFG.get("browser_proxy_3") or "").strip():
+        return 3
     return 2 if str(CFG.get("browser_proxy_2") or "").strip() else 1
 
 
+def _load_spares():
+    global _SPARES_READY
+    if _SPARES_READY:
+        return
+    raw = CFG.get("browser_proxy_spares") or []
+    if isinstance(raw, str):
+        raw = [x.strip() for x in raw.replace(";", ",").split(",") if x.strip()]
+    for item in raw:
+        item = str(item or "").strip()
+        if item and item not in SPARES:
+            SPARES.append(item)
+    _SPARES_READY = True
+
+
 def slot_proxy(slot):
-    if slot == 0:
-        return ""
-    return str(CFG.get("browser_proxy_2") or "").strip()
+    if slot in SLOT_PROXY:
+        return SLOT_PROXY[slot]
+    if slot == 1:
+        return str(CFG.get("browser_proxy_2") or "").strip()
+    if slot == 2:
+        return str(CFG.get("browser_proxy_3") or "").strip()
+    return ""
+
+
+def slot_name(slot):
+    return ("основной IP", "второй IP", "третий IP")[slot] if slot < 3 else f"место {slot + 1}"
+
+
+def take_spare(slot):
+    """Сменить выход места на следующий запасной IP. Пусто — запасных больше нет."""
+    _load_spares()
+    with _SPARE_LOCK:
+        current = slot_proxy(slot)
+        nxt = ""
+        while SPARES:
+            cand = SPARES.pop(0)
+            if cand and cand != current:
+                nxt = cand
+                break
+        if not nxt:
+            return ""
+        SLOT_PROXY[slot] = nxt
+        SLOT_FAILS[slot] = 0
+        return nxt
 
 
 def engine():
@@ -2216,8 +2262,15 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
             requeue_link(link); link = None; beeline_tries = 0
             SLOT_FAILS[slot] = SLOT_FAILS.get(slot, 0) + 1
             if SLOT_FAILS[slot] >= 4:
+                spare = take_spare(slot)
+                where = slot_name(slot)
+                if spare:
+                    pay_cfg["browser_proxy"] = spare
+                    host = spare.split("@")[-1]
+                    tg.send(ADMIN_ID, f"⚠️ Билайн не пускает {where}. Переключил это место на запасной IP {host}.")
+                    io.send("⏸ Этот выход Билайн не пускает. Переключаюсь на запасной IP, продолжаем.")
+                    continue
                 SLOT_PAUSED.add(slot)
-                where = "основной IP" if slot == 0 else "второй IP"
                 other_alive = any(i not in SLOT_PAUSED for i in range(slot_count()))
                 if not other_alive:
                     set_setting("accepting", "0")
