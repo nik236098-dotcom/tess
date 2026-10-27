@@ -109,6 +109,23 @@ def send(chat_id, text, reply_to=None, markup=None):
     return tg("sendMessage", data)
 
 
+def send_parts(chat_id, text, reply_to=None):
+    """Длинный список номеров режем по строкам, чтобы Телеграм не обрезал хвост."""
+    text = str(text)
+    if len(text) <= 3500:
+        return send(chat_id, text, reply_to=reply_to)
+    chunk, first = "", True
+    for line in text.split("\n"):
+        if chunk and len(chunk) + len(line) + 1 > 3500:
+            send(chat_id, chunk, reply_to=reply_to if first else None)
+            first = False
+            chunk = line
+        else:
+            chunk = line if not chunk else chunk + "\n" + line
+    if chunk:
+        send(chat_id, chunk, reply_to=reply_to if first else None)
+
+
 def delete_message(chat_id, message_id):
     return tg("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
 
@@ -169,11 +186,22 @@ def _digits(s):
 
 
 def extract_number(text):
-    """Номер из подписи QR: 10–11 цифр, нормализуем к 7XXXXXXXXXX."""
-    d = _digits(text)
+    """Номер из подписи QR. В тексте может быть мусор — ищем сам телефон, не все цифры подряд."""
+    raw = str(text or "")
+    # +7 / 8 и 10 цифр, разделители допускаются
+    for m in re.finditer(r"(?:\+?\s*7|8)(?:[\s\-()]*\d){10}", raw):
+        d = _digits(m.group())
+        if len(d) >= 11 and d[-11] in "78":
+            return "7" + d[-10:]
+    # 10 цифр с 9 в начале, без кода страны
+    for m in re.finditer(r"(?<!\d)9(?:[\s\-()]*\d){9}(?!\d)", raw):
+        d = _digits(m.group())
+        if len(d) == 10:
+            return "7" + d
+    d = _digits(raw)
     if len(d) == 11 and d[0] in "78":
         return "7" + d[1:]
-    if len(d) == 10:
+    if len(d) == 10 and d[0] == "9":
         return "7" + d
     return ""
 
@@ -196,9 +224,19 @@ def react_kind(emoji):
     return "other"
 
 
+def _has_image(msg):
+    """Фото или картинка файлом. QR часто кидают не сжатым фото."""
+    if msg.get("photo"):
+        return True
+    doc = msg.get("document") or {}
+    mime = str(doc.get("mime_type") or "")
+    name = str(doc.get("file_name") or "").lower()
+    return mime.startswith("image/") or name.endswith((".jpg", ".jpeg", ".png", ".webp"))
+
+
 def record_qr(chat_id, msg):
-    """Если сообщение — фото с номером в подписи, запоминаем как QR. Возвращает number или ''."""
-    if not msg.get("photo"):
+    """Если сообщение — картинка с номером в подписи, запоминаем как QR. Возвращает number или ''."""
+    if not _has_image(msg):
         return ""
     cap = msg.get("caption") or ""
     num = extract_number(cap)
@@ -209,6 +247,9 @@ def record_qr(chat_id, msg):
     con = db()
     con.execute("INSERT OR IGNORE INTO qr(chat_id,msg_id,user,uid,number,ts) VALUES(?,?,?,?,?,?)",
                 (chat_id, msg.get("message_id"), user, frm.get("id"), num, float(msg.get("date") or time.time())))
+    # подпись могли дописать редактированием — номер обновляем
+    con.execute("UPDATE qr SET number=?, user=?, uid=? WHERE chat_id=? AND msg_id=?",
+                (num, user, frm.get("id"), chat_id, msg.get("message_id")))
     con.commit(); con.close()
     return num
 
@@ -236,11 +277,15 @@ def set_reaction_count(chat_id, msg_id, emojis):
 
 
 def _msg_reactions(con, chat_id, msg_id):
-    rows = con.execute("SELECT emoji FROM reactions WHERE chat_id=? AND msg_id=?", (chat_id, msg_id)).fetchall()
+    rows = con.execute("SELECT uid, emoji FROM reactions WHERE chat_id=? AND msg_id=?", (chat_id, msg_id)).fetchall()
+    # Свои реакции людей важнее общего анонимного счётчика, иначе цифра двоится и врёт.
+    own = [e for uid, e in rows if uid]
+    use = own if own else [e for _, e in rows]
     kinds = set()
-    for (e,) in rows:
+    for e in use:
         for part in str(e).split(","):
             kinds.add(react_kind(part))
+    kinds.discard("other")
     return kinds
 
 
@@ -273,51 +318,49 @@ def _window_since(text):
         return now - n * 86400, "за последние %d дн." % n
     if "час" in low:
         return now - 3600, "за последний час"
-    if "недел" in low:
+    if "недел" in low and "номер" not in low:
         return now - 7 * 86400, "за неделю"
-    if low.strip() in ("всё", "все", "all") or any(w in low for w in ("всё время", "все время", "за всё", "за все", "вообще", "всего", "всех", "за всю")):
+    if any(w in low for w in ("всё время", "все время", "за всю историю", "за всю")) or low.strip() in ("всё", "все", "all"):
         return 0, "за всё время"
     midnight = datetime.datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     return midnight.timestamp(), "за сегодня"
 
 
 def compute_stats(chat_id, since, uid=None, name=None):
-    """Статистика по присутствию реакций. uid/name — фильтр по человеку (None = все)."""
+    """Один QR — один итог: успех, неуспех, в работе или без реакции. Сумма сходится с «всего»."""
     con = db()
-    rows = con.execute("SELECT msg_id,user,uid FROM qr WHERE chat_id=? AND ts>=?", (chat_id, since)).fetchall()
+    rows = con.execute(
+        "SELECT msg_id,user,uid,number FROM qr WHERE chat_id=? AND ts>=? ORDER BY ts ASC, msg_id ASC",
+        (chat_id, since)).fetchall()
     per_user = collections.defaultdict(lambda: collections.Counter())
     total = collections.Counter()
-    for msg_id, user, quid in rows:
+    numbers = []
+    for msg_id, user, quid, number in rows:
         if uid is not None and quid != uid:
             continue
         if name is not None and name.lower() not in str(user or "").lower():
             continue
-        kinds = _msg_reactions(con, chat_id, msg_id)
+        status = qr_status(_msg_reactions(con, chat_id, msg_id))
         for tgt in (per_user[user], total):
             tgt["всего"] += 1
-            if "inwork" in kinds:
-                tgt["taken"] += 1      # ❤ — взято в работу (в т.ч. потом успех/неуспех)
-            if "success" in kinds:
-                tgt["success"] += 1
-            if "fail" in kinds:
-                tgt["fail"] += 1
-            if not kinds:
-                tgt["none"] += 1
+            tgt[status] += 1
+        numbers.append((number, user, status))
     con.close()
-    return total, per_user
+    return total, per_user, numbers
+
+
+_STATUS_WORD = {"success": "🔥 успех", "fail": "👎 неуспех", "inwork": "❤ в работе", "none": "без реакции"}
 
 
 def _fmt_line(name, c):
-    parts = ["взято в работу %d" % c["taken"]]
-    if c["success"]:
-        parts.append("успех %d" % c["success"])
-    if c["fail"]:
-        parts.append("неуспех %d" % c["fail"])
-    if c["none"]:
-        parts.append("без реакции %d" % c["none"])
-    if not c["success"] and not c["fail"]:
-        parts.append("других реакций не было")
-    return "%s: отправлено %d QR, %s" % (name, c["всего"], ", ".join(parts))
+    return "%s: %d QR — успех %d, неуспех %d, в работе %d, без реакции %d" % (
+        name, c["всего"], c["success"], c["fail"], c["inwork"], c["none"])
+
+
+_WHO_SKIP = {
+    "all", "все", "всё", "всех", "", "номера", "номерам", "номеру", "номер",
+    "общая", "общую", "общий", "итог", "статистика", "статистику", "сегодня",
+}
 
 
 def stats_answer(chat_id, period_text, who, frm):
@@ -326,14 +369,32 @@ def stats_answer(chat_id, period_text, who, frm):
     w = str(who or "all").strip().lower()
     if w in ("me", "я", "мной", "мои", "сам"):
         uid = (frm or {}).get("id")
-    elif w not in ("all", "все", "всё", "всех", ""):
+    elif w not in _WHO_SKIP and not any(x in w for x in ("номер", "общ", "статист", "сегодня", "все")):
         name = str(who)
-    total, per_user = compute_stats(chat_id, since, uid=uid, name=name)
+    total, per_user, numbers = compute_stats(chat_id, since, uid=uid, name=name)
+    head = "📊 %s" % label.capitalize()
     if total["всего"] == 0:
-        return "%s: ничего. По нулям." % label.capitalize()
-    lines = ["📊 %s:" % label]
-    for user, c in sorted(per_user.items(), key=lambda x: -x[1]["всего"]):
-        lines.append(_fmt_line(user or "кто-то", c))
+        return head + "\nОбщая: 0 QR. За этот срок записей нет."
+    lines = [head, "Общая: " + _fmt_line("всего", total).split(": ", 1)[1]]
+    lines.append("")
+    lines.append("По номерам:")
+    # один номер — одна строка, если кидали повторно показываем сколько и последний статус
+    grouped = collections.OrderedDict()
+    for number, user, status in numbers:
+        bucket = grouped.setdefault(number, {"n": 0, "user": user, "status": status})
+        bucket["n"] += 1
+        bucket["user"] = user
+        bucket["status"] = status
+    for number, bucket in grouped.items():
+        extra = " ×%d" % bucket["n"] if bucket["n"] > 1 else ""
+        who_name = bucket["user"] or "кто-то"
+        lines.append("• %s — %s · %s%s" % (
+            pretty_number(number), _STATUS_WORD.get(bucket["status"], bucket["status"]), who_name, extra))
+    if len(per_user) > 1 and uid is None and name is None:
+        lines.append("")
+        lines.append("По людям:")
+        for user, c in sorted(per_user.items(), key=lambda x: -x[1]["всего"]):
+            lines.append(_fmt_line(user or "кто-то", c))
     return "\n".join(lines)
 
 
@@ -390,7 +451,7 @@ def is_stats_request(text):
     low = text.lower()
     return any(w in low for w in ("скольк", "скок", "статист", "залит", "залил", "накид", "за день", "за час",
                                   "за сегодня", "итог", "процент", "успех", "наработал", "сводк", "чек", "куар",
-                                  "отправ", "за послед"))
+                                  "отправ", "за послед", "по номер", "общую", "общая", "общий"))
 
 
 def kb_yes_no():
@@ -512,9 +573,9 @@ def _agent_summaries(chat_id):
     lines = []
     for period in ("сегодня", "неделю", "всё"):
         since, label = _window_since(period)
-        total, _ = compute_stats(chat_id, since)
-        lines.append("%s: всего %d, 🔥%d 👎%d ❤взято %d, —без реакции %d" %
-                     (label, total["всего"], total["success"], total["fail"], total["taken"], total["none"]))
+        total, _, _ = compute_stats(chat_id, since)
+        lines.append("%s: всего %d, успех %d, неуспех %d, в работе %d, без реакции %d" %
+                     (label, total["всего"], total["success"], total["fail"], total["inwork"], total["none"]))
     return "\n".join(lines)
 
 
@@ -526,7 +587,8 @@ def analyst_reply(chat_id, text, frm):
            "Для вопросов про ТОЧНОЕ количество бери числа из блока «Сводка». Для разбора (найди, сравни, кто, "
            "странности) смотри блок «Последние QR». Реакции: ❤ взят в работу, 🔥 успех, 👎 неуспех, — без реакции. "
            "Кто спрашивает: %s." % ((frm or {}).get("username") or (frm or {}).get("first_name") or "участник"))
-    ctx = "Сводка (точные цифры от кода):\n%s\n\nПоследние %d QR (кто | время | номер | реакция):\n%s" % (summ, AGENT_CONTEXT, data or "пусто")
+    ctx = "Сводка (точные цифры от кода, их и называй, не выдумывай):\n%s\n\nПоследние %d QR (кто | время | номер | реакция):\n%s" % (
+        summ, AGENT_CONTEXT, data or "записей нет")
     msgs = [{"role": "system", "content": sys}, {"role": "system", "content": ctx}] + recall(chat_id) + [{"role": "user", "content": text}]
     out = deepseek(msgs, max_tokens=450)
     if not out:
@@ -586,12 +648,7 @@ def _json_from(s):
 
 
 def route_intent(chat_id, text, has_reply):
-    """DeepSeek разбирает намерение. Фолбэк на ключевые слова, если DeepSeek недоступен."""
-    j = _json_from(deepseek([{"role": "system", "content": ROUTER_SYS},
-                             {"role": "user", "content": text}], max_tokens=120, temperature=0) or "")
-    if isinstance(j, dict) and j.get("action") in ("chat", "analyst", "stats", "check_dups", "del_dups", "del_last", "del_this"):
-        return j.get("action"), (j.get("args") or {})
-    # фолбэк без нейросети
+    """Сначала точные команды по словам. Дипсик не решает цифры: иначе сводка уезжает в пустой ответ."""
     low = text.lower()
     last_n = _extract_last_n(low)
     is_dups = "дубл" in low or "повтор" in low or "одинаков" in low
@@ -607,13 +664,19 @@ def route_intent(chat_id, text, has_reply):
         if has_reply:
             return "del_this", {}
         return "del_dups", {"period": "", "last_n": 0}
-    if is_dups and is_check:
-        return "check_dups", {"period": "", "last_n": last_n}
     if is_stats_request(text):
         who = "me" if re.search(r"(?<![а-яё])(мной|мои|меня|я |у меня|мой)", low) else "all"
         return "stats", {"period": text, "who": who}
+    j = _json_from(deepseek([{"role": "system", "content": ROUTER_SYS},
+                             {"role": "user", "content": text}], max_tokens=120, temperature=0) or "")
+    if isinstance(j, dict) and j.get("action") in ("chat", "analyst", "stats", "check_dups", "del_dups", "del_last", "del_this"):
+        action = j.get("action")
+        args = j.get("args") or {}
+        if action in ("analyst", "chat") and is_stats_request(text):
+            return "stats", {"period": text, "who": "all"}
+        return action, args
     if any(w in low for w in ("найд", "кто ", "у кого", "сравни", "проанализ", "анализ", "странн", "лучш",
-                              "худш", "уникальн", "номер", "есть ли", "разбер", "посмотр")):
+                              "худш", "уникальн", "есть ли", "разбер")):
         return "analyst", {}
     return "chat", {}
 
@@ -639,7 +702,7 @@ def handle_trigger(chat_id, msg):
         return
     if action == "stats":
         # статистику-сводку отдаём ТОЧНЫМ кодом (цифры и формат всегда верные)
-        send(chat_id, stats_answer(chat_id, args.get("period", "сегодня"), args.get("who", "all"), frm), reply_to=mid)
+        send_parts(chat_id, stats_answer(chat_id, args.get("period", "сегодня"), args.get("who", "all"), frm), reply_to=mid)
         return
     if action == "analyst":
         # любой разбор по данным — ИИ сам, видя последние QR и точные сводки
@@ -659,7 +722,13 @@ def _reaction_emojis(react_list):
 
 
 def handle_update(upd):
-    # обычное сообщение
+    edited = upd.get("edited_message")
+    if edited and not upd.get("message"):
+        # номер дописали в подпись уже после отправки
+        chat_id = (edited.get("chat") or {}).get("id")
+        if chat_id and not (edited.get("from") or {}).get("is_bot"):
+            record_qr(chat_id, edited)
+        return
     msg = upd.get("message")
     if msg:
         chat = msg.get("chat") or {}
