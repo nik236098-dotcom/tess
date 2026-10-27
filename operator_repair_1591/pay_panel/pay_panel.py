@@ -534,6 +534,48 @@ def accepting():
     return setting("accepting", "1") == "1"
 
 
+def top_today_text(limit=10):
+    """Топ оплатчиков по успешным оплатам за текущие сутки МСК."""
+    msk = now() + 3 * 3600
+    start = (msk // 86400) * 86400 - 3 * 3600
+    day = time.strftime("%d.%m", time.gmtime(start + 3 * 3600))
+    con = db()
+    rows = con.execute(
+        "SELECT operator_id, COUNT(*) AS n, COALESCE(SUM(amount),0) AS earned "
+        "FROM payments WHERE result='success' AND canceled=0 AND at>=? AND at<? "
+        "GROUP BY operator_id ORDER BY n DESC, earned DESC LIMIT ?",
+        (start, start + 86400, limit)).fetchall()
+    total = con.execute(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(amount),0) AS earned FROM payments "
+        "WHERE result='success' AND canceled=0 AND at>=? AND at<?",
+        (start, start + 86400)).fetchone()
+    con.close()
+    if not rows:
+        return f"🏆 ТОП ОПЛАТЧИКОВ\n{SEP}\nСегодня успешных оплат ещё нет.\n{SEP}"
+
+    def pays(n):
+        n = int(n)
+        if 11 <= n % 100 <= 14:
+            word = "оплат"
+        elif n % 10 == 1:
+            word = "оплата"
+        elif n % 10 in (2, 3, 4):
+            word = "оплаты"
+        else:
+            word = "оплат"
+        return f"{n} {word}"
+
+    marks = ["🥇", "🥈", "🥉"]
+    lines = [f"🏆 ТОП ОПЛАТЧИКОВ\n{SEP}", f"📅 Сегодня, {day} МСК\n"]
+    for i, r in enumerate(rows, 1):
+        op = get_op(r["operator_id"])
+        name = op_display(op) if op else f"ID {r['operator_id']}"
+        mark = marks[i - 1] if i <= 3 else f"{i}."
+        lines.append(f"{mark} {name}\n✅ {pays(r['n'])}  ·  💰 {float(r['earned']):.2f} $")
+    lines.append(f"\n{SEP}\n📊 Всего за день: {pays(total['n'])}  ·  💰 {float(total['earned']):.2f} $")
+    return "\n".join(lines)
+
+
 def op_display(op):
     return ("@" + op["username"]) if op.get("username") else ("ID " + str(op["tg_id"]))
 
@@ -748,6 +790,9 @@ def handle_command(tg, uid, text):
             tg.send_document(uid, path, "📦 Бэкап базы панели оплат.")
         else:
             tg.send(uid, "Не удалось сделать бэкап.")
+        return True
+    if cmd.split("@")[0] == "/top":
+        tg.send(uid, top_today_text())
         return True
     if cmd == "/invite":
         toks = arg.split()
