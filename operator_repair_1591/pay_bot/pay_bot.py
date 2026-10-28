@@ -616,7 +616,7 @@ def _bank_frame(fr):
     except Exception:
         return False
     return any(w in u for w in (
-        "tbank.ru", "tinkoff.ru", "tcsbank.ru", "ecompay", "bank.ozon",
+        "tbank-online.com", "tbank.ru", "tinkoff.ru", "tcsbank.ru", "ecompay", "bank.ozon",
         "acs.", "3ds", "challenge", "sbrf.ru", "alfabank",
     ))
 

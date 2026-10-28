@@ -2048,6 +2048,11 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 if why:
                     _release_held()
                     return "cancel"
+                fr, h = pb._find_code_field(page)
+                if h is not None:
+                    reached_bank = True
+                    branch = "code"
+                    break
                 if _instant_fail():
                     _release_held()
                     retry_now = True
@@ -2056,7 +2061,13 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     _release_held()
                     hold_tab = True
                     return "success"
-                if acs["url"] and not acs["opened"]:
+                fr, h = pb._find_code_field(page)
+                if h is not None:
+                    reached_bank = True
+                    branch = "code"
+                    break
+                already_bank = any(pb._bank_frame(f) for f in pb._frames(page))
+                if acs["url"] and not acs["opened"] and not already_bank:
                     acs["opened"] = True
                     host = acs["url"].split("/")[2][:80] if "://" in acs["url"] else "?"
                     log("acs open " + host)
