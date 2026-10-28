@@ -2482,15 +2482,10 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
     io.send("🚪 Работа завершена, ты вышел из очереди. Спасибо!")
 
 
-def session_thread(tg, payer_id, io, slot):
+def session_thread(tg, payer_id, io, slot, pw):
     is_admin = (payer_id == ADMIN_ID)
+    browser = None
     try:
-        try:
-            from playwright.sync_api import sync_playwright
-        except Exception:
-            io.send("⚠️ Движок оплаты не готов на сервере (нет playwright/Chromium). Сообщи админу.")
-            tg.send(ADMIN_ID, "⚠️ Не удалось запустить движок оплаты: нет playwright/Chromium.")
-            return
         mins = max(1, int(CFG.get("idle_timeout_s") or 180) // 60)
         direct = payer_id in DIRECT_START
         DIRECT_START.discard(payer_id)
@@ -2509,47 +2504,79 @@ def session_thread(tg, payer_id, io, slot):
             io.send("⌛ Карта не пришла — освобождаю очередь.")
             queue_leave(payer_id)
             return
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-            relaunch = 0
+        browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        relaunch = 0
+        while True:
+            action = session_loop(tg, io, browser, payer_id, card, is_admin, slot)
+            if action != "relaunch":
+                break
+            relaunch += 1
             try:
-                while True:
-                    action = session_loop(tg, io, browser, payer_id, card, is_admin, slot)
-                    if action != "relaunch":
-                        break
-                    relaunch += 1
-                    try:
-                        browser.close()
-                    except Exception:
-                        pass
-                    if relaunch > 1:
-                        io.send("⏸ Страница не открывается. Остановил попытки, чтобы не слать сообщения. "
-                                "Встань в очередь ещё раз через минуту.")
-                        queue_leave(payer_id)
-                        break
-                    io.send("🔄 Браузер завис — перезапускаю один раз и продолжаю.")
-                    browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-            finally:
-                with ACTIVE_LOCK:
-                    ACTIVE_SLOTS.pop(slot, None)
-                    if not ACTIVE_SLOTS:
-                        STOP_EVENT.clear()
-                _wait_parked(slot)
-                try:
-                    browser.close()
-                except Exception:
-                    pass
-    except Exception:
+                browser.close()
+            except Exception:
+                pass
+            if relaunch > 1:
+                io.send("⏸ Страница не открывается. Остановил попытки, чтобы не слать сообщения. "
+                        "Встань в очередь ещё раз через минуту.")
+                queue_leave(payer_id)
+                break
+            io.send("🔄 Браузер завис — перезапускаю один раз и продолжаю.")
+            browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+    except Exception as exc:
         log("session error:\n" + traceback.format_exc())
         try:
             io.send("⚠️ Ошибка в сессии оплаты. Попробуй встать в очередь снова.")
         except Exception:
             pass
+        if "greenlet" in type(exc).__module__ or type(exc).__name__ == "TargetClosedError":
+            raise
     finally:
         with ACTIVE_LOCK:
             ACTIVE_SLOTS.pop(slot, None)
             if not ACTIVE_SLOTS:
                 STOP_EVENT.clear()
+        _wait_parked(slot)
+        if browser is not None:
+            try:
+                browser.close()
+            except Exception:
+                pass
+
+
+# Поток места живёт всё время работы панели. Playwright нельзя создавать
+# и убивать в новом потоке на каждого человека: зелёный поток умирает и роняет остальные браузеры.
+SLOT_JOBS = {}
+
+
+def _slot_worker(slot):
+    while True:
+        job = SLOT_JOBS[slot].get()
+        try:
+            from playwright.sync_api import sync_playwright
+        except Exception:
+            tg, payer_id, io = job
+            io.send("⚠️ Движок оплаты не готов на сервере (нет playwright/Chromium). Сообщи админу.")
+            tg.send(ADMIN_ID, "⚠️ Не удалось запустить движок оплаты: нет playwright/Chromium.")
+            with ACTIVE_LOCK:
+                ACTIVE_SLOTS.pop(slot, None)
+            continue
+        try:
+            with sync_playwright() as pw:
+                while True:
+                    tg, payer_id, io = job
+                    session_thread(tg, payer_id, io, slot, pw)
+                    job = SLOT_JOBS[slot].get()
+        except Exception:
+            log(f"slot {slot} browser driver перезапущен\n" + traceback.format_exc())
+            time.sleep(1)
+
+
+def ensure_slot_workers():
+    for i in range(slot_count()):
+        if i in SLOT_JOBS:
+            continue
+        SLOT_JOBS[i] = _queue.Queue()
+        threading.Thread(target=_slot_worker, args=(i,), daemon=True, name=f"pay-slot-{i}").start()
 
 
 def maybe_start_session(tg):
@@ -2566,9 +2593,8 @@ def maybe_start_session(tg):
         for slot, payer in zip(free, waiting[:room]):
             io = PayerIO(tg, payer)
             ACTIVE_SLOTS[slot] = {"payer": payer, "io": io}
-            t = threading.Thread(target=session_thread, args=(tg, payer, io, slot), daemon=True)
-            ACTIVE_SLOTS[slot]["thread"] = t
-            t.start()
+            ensure_slot_workers()
+            SLOT_JOBS[slot].put((tg, payer, io))
 
 
 # ── главный цикл ─────────────────────────────────────────────────────────────
