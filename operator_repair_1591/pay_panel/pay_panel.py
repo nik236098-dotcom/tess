@@ -2066,7 +2066,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     reached_bank = True
                     branch = "code"
                     break
-                already_bank = any(pb._bank_frame(f) for f in pb._frames(page))
+                main_u = (page.url or "").lower()
+                already_bank = any(w in main_u for w in ("tbank", "tinkoff", "alfabank", "sberbank", "sbrf.ru"))
                 if acs["url"] and not acs["opened"] and not already_bank:
                     acs["opened"] = True
                     host = acs["url"].split("/")[2][:80] if "://" in acs["url"] else "?"
@@ -2123,21 +2124,6 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     _release_held()
                     retry_now = True
                     break
-                bank_open = any(pb._bank_frame(f) for f in pb._frames(page))
-                # Форма карты всё ещё на экране и адреса банка нет — не ждём 4 минуты.
-                if pb._on_card_form(page) and not bank_open and not acs["url"]:
-                    waited = time.monotonic() - c0
-                    if waited > 12 and pay_again < 1:
-                        pay_again += 1
-                        io.send("💳 Банк не открылся, жму «оплатить» ещё раз…")
-                        pb._click_pay(page)
-                        page.wait_for_timeout(1500)
-                        continue
-                    if waited > 25:
-                        _release_held()
-                        return "no_bank"
-                    page.wait_for_timeout(500)
-                    continue
                 if pb._is_alfa_app_push(page) and (time.monotonic() - c0) > 3 and not alfa_clicked[0]:
                     reached_bank = True
                     alfa_clicked[0] = True

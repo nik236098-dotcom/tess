@@ -424,11 +424,15 @@ def _click_pay(page):
         return _click_by_words(page, ("оплатить",), timeout_ms=4000)
     el = best[1]
     try:
-        el.click(timeout=2500, force=True)
+        el.click(timeout=2500)
         return True
     except Exception:
         try:
-            el.evaluate("e => e.click()")
+            el.evaluate("""e => {
+                e.click();
+                const f = e.closest('form');
+                if (f) f.requestSubmit(e);
+            }""")
             return True
         except Exception:
             return False
