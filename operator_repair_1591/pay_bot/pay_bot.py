@@ -63,7 +63,7 @@ WRONG_CODE_WORDS = ("неправильный", "неверн", "проверь�
 DECLINE_WORDS = ("отклон", "недостаточно средств", "отказан", "declined")  # без «отмена» — это кнопка, а не отказ
 SUCCESS_WORDS = ("оплачен", "оплата прошла", "успешно", "спасибо", "договор", "esim", "qr", "готов")
 # PAY_3DS_1591R103: страница «оплата не прошла» со своей кнопкой «попробовать ещё раз» (ошибка Билайна).
-PAYMENT_FAILED_WORDS = ("оплата не прошла", "оплата не удалась", "платёж не прошёл", "платеж не прошел",
+PAYMENT_FAILED_WORDS = ("оплата не прошла", "платёж не прошёл", "платеж не прошел",
                         "не удалось оплатить", "не удалось выполнить оплату", "ошибка оплаты",
                         "платёж отклонён", "платеж отклонен", "payment failed")
 RETRY_WORDS = ("попробовать ещё раз", "попробовать еще раз", "попробуйте снова", "попробовать снова",
@@ -399,45 +399,6 @@ def _click_by_words(scope, words, timeout_ms=8000):
     return False
 
 
-def _click_pay(page):
-    """Нажать именно кнопку «Оплатить», а не заголовок или блок с этим словом."""
-    best = None
-    for fr in _frames(page):
-        try:
-            loc = fr.locator("button, [role=button]")
-            n = min(loc.count(), 20)
-        except Exception:
-            continue
-        for i in range(n):
-            el = loc.nth(i)
-            try:
-                if not el.is_visible():
-                    continue
-                txt = " ".join((el.inner_text(timeout=400) or "").split()).lower()
-            except Exception:
-                continue
-            if not txt.startswith("оплатить") or len(txt) > 30:
-                continue
-            if best is None or len(txt) < best[0]:
-                best = (len(txt), el)
-    if best is None:
-        return _click_by_words(page, ("оплатить",), timeout_ms=4000)
-    el = best[1]
-    try:
-        el.click(timeout=2500)
-        return True
-    except Exception:
-        try:
-            el.evaluate("""e => {
-                e.click();
-                const f = e.closest('form');
-                if (f) f.requestSubmit(e);
-            }""")
-            return True
-        except Exception:
-            return False
-
-
 def _next_empty_card_input(scope, deadline):
     """Следующее НЕЗАПОЛНЕННОЕ видимое поле карты. Поля с уже введённым значением (в т.ч.
     замаскированный номер «*1936») и помеченные нами пропускаем — поэтому не зависим от того,
@@ -483,15 +444,7 @@ def _inputs_debug(scope):
 
 
 def _fill_card_field(h, value):
-    # Как раньше: клик и набор клавишами. Если номер перекрывает следующее поле,
-    # клик не роняем — просто ставим фокус и печатаем.
-    try:
-        h.click(timeout=1500)
-    except Exception:
-        try:
-            h.focus()
-        except Exception:
-            pass
+    h.click()
     h.type(value, delay=70)
     try:
         h.evaluate("e => e.setAttribute('data-pb-filled','1')")
@@ -532,26 +485,18 @@ def _type_card(page, card, tg, deadline):
     except Exception:
         pass
     left_ms = max(8000, int((deadline - time.monotonic()) * 1000))
-    clicked = False
-    until = time.monotonic() + left_ms / 1000.0
-    while time.monotonic() < until:
-        if _click_pay(page):
-            clicked = True
-            break
-        page.wait_for_timeout(400)
-    if not clicked:
+    if not _click_by_words(scope, ("оплатить",), timeout_ms=left_ms):
         raise RuntimeError("кнопка «оплатить» не нажалась (кнопка осталась неактивной — проверь карту/срок/CVV)")
     return True
 
 
 def _on_card_form(page):
-    """True, только пока форма карты реально видна. Скрытый номер после ухода на банк не считается."""
+    """True, пока открыта форма ввода карты (ещё НЕ ушли на страницу банка). Нужно, чтобы не
+    принять CVV-поле карты (с подписью «код») за поле кода 3DS."""
     for fr in _frames(page):
         try:
-            loc = fr.locator("input[placeholder*='0000']")
-            for i in range(min(loc.count(), 4)):
-                if loc.nth(i).is_visible():
-                    return True
+            if fr.locator("input[placeholder*='0000']").count():
+                return True
         except Exception:
             pass
         try:
@@ -597,57 +542,58 @@ def _otp_score(h):
         return -1
 
 
-def _is_card_input(h):
-    """Поле карты Билайна, не код банка."""
-    try:
-        blob = " ".join([
-            h.get_attribute("name") or "",
-            h.get_attribute("id") or "",
-            h.get_attribute("placeholder") or "",
-            h.get_attribute("autocomplete") or "",
-            h.get_attribute("data-field-name") or "",
-        ]).lower()
-    except Exception:
-        return False
-    if "0000" in blob:
-        return True
-    return any(w in blob for w in ("pan", "cvc", "cvv", "cc-number", "cc-exp", "cc-csc", "cardnumber"))
-
-
-def _bank_frame(fr):
-    try:
-        u = (fr.url or "").lower()
-    except Exception:
-        return False
-    return any(w in u for w in (
-        "tbank-online.com", "tbank.ru", "tinkoff.ru", "tcsbank.ru", "ecompay", "bank.ozon",
-        "acs.", "3ds", "challenge", "sbrf.ru", "alfabank",
-    ))
-
-
 def _find_code_field(page):
-    """Поле кода в любой рамке, даже если форма карты Билайна ещё открыта.
-    Поля карты (номер, срок, CVV) пропускаем."""
-    best = None
+    """Найти поле ввода 3DS-кода в любой рамке. Возвращает (frame, element) или (None, None).
+
+    PAY_3DS_1591R103: ищем по признакам инпута (autocomplete=one-time-code, inputmode=numeric,
+    type tel/number, короткий maxlength, подписи), плюс запас — единственное видимое поле в рамке.
+    Больше не требуем, чтобы слово-подсказка было в тексте страницы."""
+    if _on_card_form(page):   # пока открыта форма карты — поля 3DS ещё нет, CVV не путаем с кодом
+        return None, None
+    best = None   # (score, frame, handle)
     for fr in _frames(page):
-        vis = [h for h in _visible_inputs(fr) if not _is_card_input(h)]
+        vis = _visible_inputs(fr)
         for h in vis:
             s = _otp_score(h)
             if s >= 4 and (best is None or s > best[0]):
                 best = (s, fr, h)
-        if len(vis) == 1:
+        if len(vis) == 1:   # на рамке ровно одно видимое поле — это почти наверняка код
             s = _otp_score(vis[0])
             if s >= 0:
                 s += 2
                 if best is None or s > best[0]:
                     best = (s, fr, vis[0])
-        if _bank_frame(fr) and vis:
-            h = vis[0]
-            s = max(_otp_score(h), 0) + 3
-            if best is None or s > best[0]:
-                best = (s, fr, h)
     if best is not None and best[0] >= 2:
         return best[1], best[2]
+    # Сбер (acs3.sbrf.ru): большое поле кода часто type=password и без подписи в атрибутах.
+    try:
+        url = (page.url or "").lower()
+    except Exception:
+        url = ""
+    try:
+        low = _page_text(page)
+    except Exception:
+        low = ""
+    if "sbrf.ru" in url or "sberbank" in url or any(w in low for w in (
+            "введите код", "отправили код", "код для оплаты", "код из смс", "код из sms")):
+        pick = None
+        for fr in _frames(page):
+            for h in _visible_inputs(fr):
+                if _otp_score(h) < 0:
+                    continue
+                area = 0
+                try:
+                    box = h.bounding_box()
+                    if box:
+                        area = box["width"] * box["height"]
+                except Exception:
+                    area = 0
+                if area < 40:
+                    continue
+                if pick is None or area > pick[0]:
+                    pick = (area, fr, h)
+        if pick is not None:
+            return pick[1], pick[2]
     return None, None
 
 
@@ -655,13 +601,7 @@ def _page_text(page):
     chunks = []
     for fr in _frames(page):
         try:
-            u = (fr.url or "").lower()
-        except Exception:
-            u = ""
-        if "3dsmethod" in u or u.startswith("about:"):
-            continue
-        try:
-            chunks.append((fr.locator("body").inner_text(timeout=400) or "").lower())
+            chunks.append((fr.locator("body").inner_text(timeout=800) or "").lower())
         except Exception:
             pass
     return "\n".join(chunks)
@@ -833,48 +773,19 @@ def _yoomoney_push_flow(page, tg, cfg):
 
 
 def _url_status(page):
-    """Итог оплаты из ссылки. Билайн пишет его в query: status=success / status=fail.
-    Смотрим и главную страницу, и рамки банка — успех часто приходит туда, пока ждём код."""
-    urls = []
+    """PAY_STATUS_1591R103: итог оплаты из финальной ссылки — Билайн пишет его в query:
+    ...&status=success&...  → оплата прошла;  ...&status=fail&...  → не прошла.
+    Возвращает 'success' / 'fail' / '' (ещё не определён)."""
     try:
-        urls.append(page.url or "")
+        q = urllib.parse.urlparse(page.url or "").query
+        st = (urllib.parse.parse_qs(q).get("status") or [""])[0].strip().lower()
     except Exception:
-        pass
-    for fr in _frames(page):
-        try:
-            urls.append(fr.url or "")
-        except Exception:
-            pass
-    for u in urls:
-        try:
-            q = urllib.parse.urlparse(u).query
-            st = (urllib.parse.parse_qs(q).get("status") or [""])[0].strip().lower()
-        except Exception:
-            continue
-        if st.startswith("succ"):
-            return "success"
-        if st.startswith("fail"):
-            return "fail"
+        return ""
+    if st.startswith("succ"):
+        return "success"
+    if st.startswith("fail"):
+        return "fail"
     return ""
-
-
-def _bank_challenge(page):
-    """Страница 3DS уже открыта (Ozon и другие), даже если поля кода на ней ещё нет."""
-    urls = []
-    try:
-        urls.append(page.url or "")
-    except Exception:
-        pass
-    for fr in _frames(page):
-        try:
-            urls.append(fr.url or "")
-        except Exception:
-            pass
-    low = " ".join(urls).lower()
-    return any(w in low for w in (
-        "bank.ozon.ru", "ecom-bank.ozon", "browserchallenge", "threedsmethod",
-        "/challenge/", "acs.", "3ds",
-    ))
 
 
 def _wait_final_result(page, timeout_s=70):

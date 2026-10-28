@@ -33,7 +33,6 @@ import os
 import queue as _queue
 import re
 import sqlite3
-import subprocess
 import sys
 import threading
 import time
@@ -1830,37 +1829,13 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
     page = ctx.new_page()
     page.set_default_timeout(3000)
     seen = {"status": "", "error": ""}
-    acs = {"url": "", "creq": "", "pareq": "", "term": "", "opened": False}
-
-    def _grab_acs(obj):
-        if isinstance(obj, dict):
-            url = str(obj.get("acsUrl") or "")
-            creq = str(obj.get("packedCReq") or obj.get("creq") or "")
-            pareq = str(obj.get("paReq") or "")
-            if url.startswith("http") and (creq or pareq) and not acs["url"]:
-                acs["url"] = url
-                acs["creq"] = creq
-                acs["pareq"] = pareq
-                acs["term"] = str(obj.get("termUrl") or "")
-                log("acs url получен")
-            for v in obj.values():
-                _grab_acs(v)
-        elif isinstance(obj, list):
-            for v in obj:
-                _grab_acs(v)
 
     def _on_resp(resp):
         try:
             u = resp.url.lower()
-            ctype = str(resp.headers.get("content-type", "")).lower()
-            if "json" in ctype or "processform" in u or "paymentorder" in u:
-                try:
-                    _grab_acs(resp.json())
-                except Exception:
-                    pass
             if "selfreg" not in u and "order" not in u:
                 return
-            if "json" not in ctype:
+            if "json" not in str(resp.headers.get("content-type", "")):
                 return
             body = resp.json()
             data = body.get("data") if isinstance(body, dict) and isinstance(body.get("data"), dict) else body
@@ -1905,6 +1880,14 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
         beeline_retries = 0
         reached_bank = False
 
+        def _bad_card():
+            try:
+                low = pb._page_text(page)
+            except Exception:
+                return False
+            return ("некорректный номер карты" in low or "некорректный срок" in low
+                    or "некорректный код" in low or "неверный номер карты" in low)
+
         def _is_decline():
             try:
                 low = pb._page_text(page)
@@ -1912,32 +1895,15 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 return False
             return any(w in low for w in pb.DECLINE_WORDS)
 
-        def _fail_button():
-            rx = re.compile(r"попробовать снова|попробуйте снова|попробовать ещё раз|попробовать еще раз", re.I)
-            for fr in pb._frames(page):
-                try:
-                    loc = fr.get_by_text(rx)
-                    for i in range(min(loc.count(), 4)):
-                        el = loc.nth(i)
-                        if el.is_visible():
-                            return el
-                except Exception:
-                    continue
-            return None
-
         def _instant_fail():
             # «Оплата не прошла» Билайна — повтор. Отказ банка («отклонено») — не он.
             if reached_bank or _is_decline():
                 return False
-            if _fail_button() is not None:
-                return True
             try:
                 low = pb._page_text(page)
             except Exception:
                 low = ""
-            if ("оплата не прошла" in low or "оплата не удалась" in low
-                    or "попробовать ещё раз" in low or "попробовать еще раз" in low
-                    or "попробуйте снова" in low or "попробовать снова" in low):
+            if "оплата не прошла" in low or "попробовать ещё раз" in low or "попробовать еще раз" in low:
                 return True
             return pb._url_status(page) == "fail" or pb._payment_failed(page)
 
@@ -1947,17 +1913,9 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             if pb._on_card_form(page):
                 return True
             beeline_retries += 1
-            io.send(f"⚠️ Оплата не прошла. Жму «попробовать снова» "
+            io.send(f"⚠️ Поля карты нет, снова «оплата не прошла». Жму «попробовать ещё раз» "
                     f"({beeline_retries}/{max_beeline}).")
-            clicked = False
-            el = _fail_button()
-            if el is not None:
-                try:
-                    el.click(timeout=2500)
-                    clicked = True
-                except Exception:
-                    clicked = False
-            if beeline_retries > max_beeline or not (clicked or pb._click_retry(page)):
+            if beeline_retries > max_beeline or not pb._click_retry(page):
                 if beeline_retries <= max_beeline:
                     io.send("⚠️ Не нашёл кнопку «попробовать ещё раз».")
                 return False
@@ -2029,6 +1987,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             try:
                 pb._type_card(page, card, io, deadline)
             except RuntimeError:
+                if _bad_card():
+                    return "bad_card"
                 if _is_decline():
                     return "decline"
                 if _instant_fail() and not pb._on_card_form(page):
@@ -2038,13 +1998,12 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 if any(w in pb._page_text(page) for w in BAD_LINK_WORDS):
                     return "bad_link"
                 return "site"
+            if _bad_card():
+                return "bad_card"
             page.wait_for_timeout(3000)
+            if _bad_card():
+                return "bad_card"
             io.send("⏳ Жду ответ банка (3DS)…")
-            try:
-                page.screenshot(path="/opt/pay_panel/view.png")
-                log("shot saved")
-            except Exception as exc:
-                log("shot " + type(exc).__name__)
             nav = time.monotonic() + page_wait
             c0 = time.monotonic()
             branch = "wait"
@@ -2052,7 +2011,6 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             stuck = None
             restarts = 0
             alfa_clicked = [False]
-            pay_again = 0
 
             def _release_held():
                 for ev in held:
@@ -2071,11 +2029,6 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 if why:
                     _release_held()
                     return "cancel"
-                fr, h = pb._find_code_field(page)
-                if h is not None:
-                    reached_bank = True
-                    branch = "code"
-                    break
                 if _instant_fail():
                     _release_held()
                     retry_now = True
@@ -2084,68 +2037,21 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     _release_held()
                     hold_tab = True
                     return "success"
-                fr, h = pb._find_code_field(page)
-                if h is not None:
-                    reached_bank = True
-                    branch = "code"
-                    break
-                main_u = (page.url or "").lower()
-                already_bank = any(w in main_u for w in ("tbank", "tinkoff", "alfabank", "sberbank", "sbrf.ru"))
-                if acs["url"] and not acs["opened"] and not already_bank:
-                    acs["opened"] = True
-                    host = acs["url"].split("/")[2][:80] if "://" in acs["url"] else "?"
-                    log("acs open " + host)
-                    io.send("🏦 Страница банка сама не открылась, открываю её.")
-                    fields = {}
-                    if acs["creq"]:
-                        fields["creq"] = acs["creq"]
-                    elif acs["pareq"]:
-                        fields["PaReq"] = acs["pareq"]
-                        if acs["term"]:
-                            fields["TermUrl"] = acs["term"]
-                    try:
-                        page.goto("about:blank", wait_until="domcontentloaded", timeout=10000)
-                        page.evaluate("""({url, fields}) => {
-                            const f = document.createElement('form');
-                            f.method = 'POST';
-                            f.action = url;
-                            for (const [k, v] of Object.entries(fields)) {
-                                const i = document.createElement('input');
-                                i.type = 'hidden';
-                                i.name = k;
-                                i.value = v;
-                                f.appendChild(i);
-                            }
-                            document.body.appendChild(f);
-                            f.submit();
-                        }""", {"url": acs["url"], "fields": fields})
-                        until = time.monotonic() + 20
-                        while time.monotonic() < until:
-                            cur = page.url or ""
-                            if cur and "about:" not in cur and "beeline" not in cur:
-                                break
-                            page.wait_for_timeout(300)
-                        else:
-                            log("acs no nav " + (page.url or "")[:140])
-                    except Exception:
-                        log("open acs failed\n" + traceback.format_exc())
-                    continue
-                fr, h = pb._find_code_field(page)
-                if h is not None:
-                    reached_bank = True
-                    branch = "code"
-                    break
                 low = pb._page_text(page)
                 if _gateway_error(low):
                     _release_held()
                     return "gateway"
+                if ("некорректный номер карты" in low or "некорректный срок" in low
+                        or "некорректный код" in low or "неверный номер карты" in low):
+                    _release_held()
+                    return "bad_card"
                 if any(w in low for w in pb.DECLINE_WORDS):
                     _release_held()
                     return "decline"
-                if ("оплата не удалась" in low or "оплата не прошла" in low
-                        or "попробуйте снова" in low or "попробовать снова" in low):
-                    _release_held()
-                    retry_now = True
+                fr, h = pb._find_code_field(page)
+                if h is not None:
+                    reached_bank = True
+                    branch = "code"
                     break
                 if pb._is_alfa_app_push(page) and (time.monotonic() - c0) > 3 and not alfa_clicked[0]:
                     reached_bank = True
@@ -2440,6 +2346,16 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
                 return
             continue
 
+        if res == "bad_card":
+            io.send("❌ Некорректный номер карты. Пришли другую.")
+            nc = wait_card(io, int(CFG["newcard_timeout_s"]))
+            if nc is None:
+                requeue_link(link)
+                break
+            cur_card = nc
+            beeline_tries = 0
+            continue
+
         if res == "decline":
             record_decline(tg, payer_id, link, cur_card, is_admin, io, shot, page_url)
             ch = ask_buttons(io, "Что делаем?",
@@ -2506,11 +2422,6 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
                 cur_card = nc
                 continue   # та же ссылка, карта другого банка
             requeue_link(link); break
-
-        if res == "no_bank":
-            io.send("⚠️ Карта введена, но страница банка не открылась. Вернул ссылку в очередь, беру следующую.")
-            requeue_link(link); link = None; beeline_tries = 0
-            continue
 
         if res == "site":
             io.send("🌐 Временный сбой (страница не ответила) — вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
@@ -2582,20 +2493,7 @@ def session_thread(tg, payer_id, io, slot):
             queue_leave(payer_id)
             return
         with sync_playwright() as pw:
-            browser = None
-            os.environ["DISPLAY"] = ":99"
-            if not os.path.exists("/tmp/.X11-unix/X99"):
-                subprocess.Popen(["Xvfb", ":99", "-screen", "0", "1280x900x24", "-ac"],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                for _ in range(10):
-                    if os.path.exists("/tmp/.X11-unix/X99"):
-                        break
-                    time.sleep(0.3)
-            try:
-                browser = pw.chromium.launch(headless=False, args=["--no-sandbox", "--disable-dev-shm-usage"])
-            except Exception:
-                log("headed browser failed, headless")
-                browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
             try:
                 session_loop(tg, io, browser, payer_id, card, is_admin, slot)
             finally:
