@@ -1912,10 +1912,25 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 return False
             return any(w in low for w in pb.DECLINE_WORDS)
 
+        def _fail_button():
+            rx = re.compile(r"попробовать снова|попробуйте снова|попробовать ещё раз|попробовать еще раз", re.I)
+            for fr in pb._frames(page):
+                try:
+                    loc = fr.get_by_text(rx)
+                    for i in range(min(loc.count(), 4)):
+                        el = loc.nth(i)
+                        if el.is_visible():
+                            return el
+                except Exception:
+                    continue
+            return None
+
         def _instant_fail():
             # «Оплата не прошла» Билайна — повтор. Отказ банка («отклонено») — не он.
             if reached_bank or _is_decline():
                 return False
+            if _fail_button() is not None:
+                return True
             try:
                 low = pb._page_text(page)
             except Exception:
@@ -1934,7 +1949,15 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             beeline_retries += 1
             io.send(f"⚠️ Оплата не прошла. Жму «попробовать снова» "
                     f"({beeline_retries}/{max_beeline}).")
-            if beeline_retries > max_beeline or not pb._click_retry(page):
+            clicked = False
+            el = _fail_button()
+            if el is not None:
+                try:
+                    el.click(timeout=2500)
+                    clicked = True
+                except Exception:
+                    clicked = False
+            if beeline_retries > max_beeline or not (clicked or pb._click_retry(page)):
                 if beeline_retries <= max_beeline:
                     io.send("⚠️ Не нашёл кнопку «попробовать ещё раз».")
                 return False
