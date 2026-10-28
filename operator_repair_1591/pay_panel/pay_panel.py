@@ -33,6 +33,7 @@ import os
 import queue as _queue
 import re
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -2014,6 +2015,11 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 return "site"
             page.wait_for_timeout(3000)
             io.send("⏳ Жду ответ банка (3DS)…")
+            try:
+                page.screenshot(path="/opt/pay_panel/view.png")
+                log("shot saved")
+            except Exception as exc:
+                log("shot " + type(exc).__name__)
             nav = time.monotonic() + page_wait
             c0 = time.monotonic()
             branch = "wait"
@@ -2549,7 +2555,12 @@ def session_thread(tg, payer_id, io, slot):
             queue_leave(payer_id)
             return
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            os.environ["DISPLAY"] = ":99"
+            if not os.path.exists("/tmp/.X11-unix/X99"):
+                subprocess.Popen(["Xvfb", ":99", "-screen", "0", "1280x900x24", "-ac"],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                time.sleep(0.4)
+            browser = pw.chromium.launch(headless=False, args=["--no-sandbox", "--disable-dev-shm-usage"])
             try:
                 session_loop(tg, io, browser, payer_id, card, is_admin, slot)
             finally:
