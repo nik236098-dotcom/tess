@@ -444,71 +444,20 @@ def _inputs_debug(scope):
 
 
 def _fill_card_field(h, value):
-    """Комбо-поле Билайна слушает только клавиши. Номер перекрывает срок и CVV,
-    поэтому фокус ставим скриптом и печатаем, а не кликаем мышью."""
+    # Как раньше: клик и набор клавишами. Если номер перекрывает следующее поле,
+    # клик не роняем — просто ставим фокус и печатаем.
     try:
-        h.evaluate("el => el.focus()")
-    except Exception:
-        pass
-    try:
-        h.click(timeout=700)
+        h.click(timeout=1500)
     except Exception:
         try:
-            h.click(force=True, timeout=700)
+            h.focus()
         except Exception:
             pass
-    try:
-        h.press("Control+a")
-        h.press("Backspace")
-    except Exception:
-        pass
-    h.type(value, delay=55)
+    h.type(value, delay=70)
     try:
         h.evaluate("e => e.setAttribute('data-pb-filled','1')")
     except Exception:
         pass
-
-
-def _click_card_pay(scope, timeout_ms):
-    """Кнопка «Оплатить» на форме карты. Не div со словом внутри всей страницы."""
-    deadline = time.monotonic() + timeout_ms / 1000.0
-    while time.monotonic() < deadline:
-        try:
-            loc = scope.locator("button, [role=button]")
-            n = min(loc.count(), 12)
-        except Exception:
-            n = 0
-        for i in range(n):
-            el = loc.nth(i)
-            try:
-                text = (el.inner_text(timeout=400) or "").strip().lower()
-            except Exception:
-                continue
-            if "оплатить" not in text or len(text) > 40:
-                continue
-            try:
-                if not el.is_visible():
-                    continue
-                if el.get_attribute("disabled") is not None:
-                    continue
-                if (el.get_attribute("aria-disabled") or "").lower() == "true":
-                    continue
-            except Exception:
-                continue
-            try:
-                el.click(timeout=2000)
-                return True
-            except Exception:
-                try:
-                    el.click(force=True, timeout=2000)
-                    return True
-                except Exception:
-                    continue
-        try:
-            scope.wait_for_timeout(300)
-        except Exception:
-            return False
-    return False
 
 
 def _type_card(page, card, tg, deadline):
@@ -544,7 +493,7 @@ def _type_card(page, card, tg, deadline):
     except Exception:
         pass
     left_ms = max(8000, int((deadline - time.monotonic()) * 1000))
-    if not _click_card_pay(scope, left_ms):
+    if not _click_by_words(scope, ("оплатить",), timeout_ms=left_ms):
         raise RuntimeError("кнопка «оплатить» не нажалась (кнопка осталась неактивной — проверь карту/срок/CVV)")
     return True
 
