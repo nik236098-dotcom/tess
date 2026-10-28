@@ -1900,26 +1900,47 @@ class TelegramMenu:
         return (r.json(), None) if ok else (None, f"HTTP {r.status_code}: {r.text[:200]}")
 
     # QR export (QR_EXPORT_1591R95) --------------------------------------------------
+    def _ready_qr_recs(self):
+        """Готовые eSIM уже в боте: выпущенные, со ссылкой. От старых к новым, без повторов."""
+        recs, seen = [], set()
+        for rec in self._oldest_first(self._esims()):
+            if rec.get("_kind") != "success" and self._status_of(rec) != "done":
+                continue
+            url = str(rec.get("sim_url") or "").strip()
+            if not url.startswith("http") or url in seen:
+                continue
+            seen.add(url)
+            recs.append(rec)
+        return recs
+
     def show_qr_export(self, step="start"):
         if step == "cancel":
             self.state.pop("qr", None)
             self._save()
             return self.show_menu(note="✖️ Выгрузка QR отменена.")
+        n = len(self._ready_qr_recs())
         self.state["view"] = "qr_export"
         self.state["qr"] = {"await": True}
         self._save()
         return self._show(
-            "🔳 <b>Выгрузка QR</b>\n\nПришли ссылки на eSIM — по одной в строке (можно сразу несколько).\n\n"
-            "По каждой зайду на страницу успеха, нажму «установить eSIM на устройство», сниму QR-код "
-            "и пришлю его сюда вместе с номером.\n\n"
+            f"🔳 <b>Выгрузка QR</b>\n\nГотовых eSIM: {n}\n"
+            "Беру уже готовые из бота, ссылки присылать не нужно.\n"
+            "Напиши число или «Все». Идут от старых к новым.\n\n"
             + self._export_proxy_note("qr"),
-            _kb([[_btn("✖️ Отмена", "m|qr|cancel")]]))
+            _kb([[_btn(f"Все ({n})", "m|qr|count|all")], [_btn("✖️ Отмена", "m|qr|cancel")]]))
 
-    def run_qr_export(self, urls):
-        urls = list(urls)[:QR_EXPORT_MAX]
-        print(f"[MENU] Выгрузка QR: {len(urls)} ссылок", flush=True)
+    def run_qr_export(self, count):
+        recs = self._ready_qr_recs()
+        if count != "all":
+            recs = recs[:max(0, int(count))]
+        urls = [str(r.get("sim_url")).strip() for r in recs][:QR_EXPORT_MAX]
+        self.state.pop("qr", None)
+        self._save()
+        if not urls:
+            return self.show_menu(note="🔳 Выгружать нечего: нет готовых eSIM.")
+        print(f"[MENU] Выгрузка QR: {len(urls)} готовых", flush=True)
         threading.Thread(target=self._qr_export_worker, args=(urls,), name="qr-export", daemon=True).start()
-        return self.show_menu(note=f"🔳 Делаю QR по {len(urls)} ссылкам — пришлю сюда по мере готовности…")
+        return self.show_menu(note=f"🔳 Делаю QR по {len(urls)} готовым — пришлю сюда по мере готовности…")
 
     # EXPORT_PROXY_1591R99: прокси и ссылка смены IP для браузера выгрузки (из «📶 Мобильный прокси»)
     # PROXY_AREAS_1591R100: area — где применяем ("qr"); если для этой области прокси выключен — идём напрямую.
@@ -2435,7 +2456,8 @@ class TelegramMenu:
             self.find_esims(t)
             return True
         if (looks_like_phone_1591r80(t) and not self.state.get("awaiting_ai") and not self.state.get("awaiting_setting")
-                and not self.state.get("awaiting_generation") and not (self.state.get("export") or {}).get("await")):
+                and not self.state.get("awaiting_generation") and not (self.state.get("export") or {}).get("await")
+                and not (self.state.get("qr") or {}).get("await")):
             self.find_esims(t)  # a bare number is searched
             return True
         if self.state.get("awaiting_setting"):  # MOBILE_PROXY_1591R69: the proxy or the IP change link
@@ -2451,20 +2473,22 @@ class TelegramMenu:
                 self._save()
                 return False
             return self._handle_generation_text(t)
-        qr = self.state.get("qr") or {}  # QR_EXPORT_1591R95
+        qr = self.state.get("qr") or {}  # готовые eSIM из бота, не вставленные ссылки
         if qr.get("await"):
             if t.startswith("/"):
                 self.state.pop("qr", None)
                 self._save()
                 return False
-            urls = _extract_urls_1591r95(t)
-            if not urls:
-                self._show("🔳 <b>Выгрузка QR</b>\n\nНе вижу ссылок. Пришли адреса eSIM (http…), по одной в строке.",
-                           _kb([[_btn("✖️ Отмена", "m|qr|cancel")]]))
+            low = t.lower()
+            if low in ("все", "всё", "all", "все сразу"):
+                self.run_qr_export("all")
                 return True
-            self.state.pop("qr", None)
-            self._save()
-            self.run_qr_export(urls)
+            if t.isdigit() and int(t) > 0:
+                self.run_qr_export(int(t))
+                return True
+            n = len(self._ready_qr_recs())
+            self._show("🔳 <b>Выгрузка QR</b>\n\nНужно число, например 10, или слово «Все».",
+                       _kb([[_btn(f"Все ({n})", "m|qr|count|all")], [_btn("✖️ Отмена", "m|qr|cancel")]]))
             return True
         exp = self.state.get("export") or {}
         if not exp.get("await"):
@@ -3014,8 +3038,13 @@ class TelegramMenu:
                     self.run_export("all")
                 else:
                     self.show_export("cancel")
-            elif action == "qr":  # QR_EXPORT_1591R95
-                self.show_qr_export("cancel" if args and args[0] == "cancel" else "start")
+            elif action == "qr":
+                if args and args[0] == "cancel":
+                    self.show_qr_export("cancel")
+                elif args and args[0] == "count":
+                    self.run_qr_export("all")
+                else:
+                    self.show_qr_export()
             elif action == "qrr":  # QR_REFRESH_1591R101: «🔄 Обновить» под QR
                 self.refresh_qr(cb, args[0] if args else "")
                 return None
