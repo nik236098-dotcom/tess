@@ -31,6 +31,7 @@ import hashlib
 import json
 import os
 import queue as _queue
+import random
 import re
 import sqlite3
 import sys
@@ -587,6 +588,34 @@ def top_today_text(limit=10):
         lines.append(f"{mark} {name}\n✅ {pays(r['n'])}  ·  💰 {float(r['earned']):.2f} $")
     lines.append(f"\n{SEP}\n📊 Всего за день: {pays(total['n'])}  ·  💰 {float(total['earned']):.2f} $")
     return "\n".join(lines)
+
+
+PAYOUT_THANKS = (
+    "Спасибо за работу, ждём вас снова ♥️",
+    "Благодарим за работу. Будем рады видеть вас снова ♥️",
+    "Спасибо, что вы с нами. До новой смены ♥️",
+    "Отличная работа. Ждём вас снова ♥️",
+    "Спасибо за труд. Возвращайтесь, мы на связи ♥️",
+    "Спасибо за сегодня. Ждём вас снова ♥️",
+    "Ценим вашу работу. До скорой встречи ♥️",
+    "Спасибо, что выбираете нас. Ждём снова ♥️",
+    "Рады, что вы с нами. Возвращайтесь ♥️",
+    "Спасибо за смену. Ждём вас снова ♥️",
+    "Благодарим за время и работу. До встречи ♥️",
+    "Хорошая работа. Будем ждать вас снова ♥️",
+    "Спасибо. Отдыхайте и приходите ещё ♥️",
+    "Вы нам очень помогли. Ждём вас снова ♥️",
+    "С теплом благодарим за работу. До следующего раза ♥️",
+    "Спасибо за аккуратную работу. Ждём вас ♥️",
+    "Благодарим. Двери открыты, ждём снова ♥️",
+    "Спасибо за работу. До скорой смены ♥️",
+    "Рады сотрудничеству. Ждём вас снова ♥️",
+    "Спасибо, что были сегодня. Ждём вас снова ♥️",
+)
+
+
+def payout_thanks():
+    return random.choice(PAYOUT_THANKS)
 
 
 def op_display(op):
@@ -1221,7 +1250,8 @@ def handle_callback(tg, ev):
                         f"✅ ВЫПЛАТА ОДОБРЕНА\n{SEP}\n"
                         f"💰 {r['amount']:.2f} $\n"
                         f"✔️ Сумма подтверждена и отправлена\n{SEP}\n"
-                        f"Если перевод не пришёл — напиши {ADMIN_CONTACT}")
+                        f"Если перевод не пришёл — напиши {ADMIN_CONTACT}\n\n"
+                        f"{payout_thanks()}")
             else:
                 con.execute("UPDATE payouts SET status='blocked', decided_at=? WHERE id=?", (now(), pid))
                 con.execute("UPDATE operators SET balance=balance+?, frozen=frozen-? WHERE tg_id=?", (r["amount"], r["amount"], r["operator_id"]))
@@ -1314,7 +1344,8 @@ def handle_callback(tg, ev):
                 tg.send(uid, f"✅ ВЫПЛАТА ОТПРАВЛЕНА\n{SEP}\n"
                              f"💰 {amt:.2f} USDT\n"
                              f"🚀 xRocket, на этот Telegram\n{SEP}\n"
-                             f"Если не видно — открой @xrocket")
+                             f"Если не видно — открой @xrocket\n\n"
+                             f"{payout_thanks()}")
                 tg.send(ADMIN_ID, f"🚀 Выплата xRocket {amt:.2f} USDT\n👤 {op_display(get_op(uid))} ({uid})")
             else:
                 con.close()
