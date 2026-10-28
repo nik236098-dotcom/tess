@@ -414,6 +414,8 @@ def add_links(urls):
     con = db()
     added = 0
     for u in urls:
+        if "beeline.ru" not in u:
+            continue
         ex = con.execute("SELECT 1 FROM links WHERE url=? AND status IN('queued','in_progress')", (u,)).fetchone()
         if ex:
             continue
@@ -1819,6 +1821,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
     панель). Возвращает: success / decline / beeline / no_code / site / cancel / timeout.
     В shot_holder["path"] кладёт скрин финальной страницы (для лога)."""
     pb = engine()
+    if "beeline.ru" not in (url or ""):
+        return "bad_link"
     page_wait = int(cfg.get("page_wait_seconds") or 240)
     code_wait = int(cfg.get("code_wait_seconds") or 300)
     ctx_kwargs = {"locale": "ru-RU"}
@@ -2516,9 +2520,6 @@ def session_thread(tg, payer_id, io, slot, pw):
             except Exception:
                 pass
             if relaunch > 1:
-                io.send("⏸ Страница не открывается. Остановил попытки, чтобы не слать сообщения. "
-                        "Встань в очередь ещё раз через минуту.")
-                queue_leave(payer_id)
                 break
             io.send("🔄 Браузер завис — перезапускаю один раз и продолжаю.")
             browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
