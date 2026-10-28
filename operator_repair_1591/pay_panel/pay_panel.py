@@ -2043,7 +2043,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                         pay_again += 1
                         io.send("💳 Банк не открылся, жму «оплатить» ещё раз…")
                         for frs in pb._frames(page):
-                            if pb._click_by_words(frs, ("оплатить",), timeout_ms=3000):
+                            if pb._click_card_pay(frs, 3000):
                                 break
                         page.wait_for_timeout(1500)
                         continue
