@@ -1854,13 +1854,17 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
     try:
         hold_tab = False
         page.on("response", _on_resp)
-        io.send("🔎Открываю оплату...")
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=90000)
-        except Exception:
-            if any(w in pb._page_text(page) for w in BAD_LINK_WORDS):
-                return "bad_link"
+        except Exception as exc:
+            log(f"goto: {type(exc).__name__}: {str(exc)[:160]}")
+            try:
+                if any(w in pb._page_text(page) for w in BAD_LINK_WORDS):
+                    return "bad_link"
+            except Exception:
+                pass
             return "site"
+        io.send("🔎Открываю оплату...")
         # ждём, пока сайт сообщит статус заказа в JSON (как чекер ссылок) — до ~10 сек
         sdeadline = time.monotonic() + 10
         while time.monotonic() < sdeadline and not seen["status"] and not seen["error"]:
@@ -2240,6 +2244,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
     global CONSEC_GATEWAY
     cur_card = card
     beeline_tries = 0
+    site_fails = 0
     link = None
     pay_cfg = dict(CFG)
     pay_cfg["browser_proxy"] = slot_proxy(slot)
@@ -2289,6 +2294,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
             uses = record_success(tg, payer_id, link, cur_card, is_admin, io, shot)
             link = None
             beeline_tries = 0
+            site_fails = 0
             SLOT_FAILS[slot] = 0
             CONSEC_GATEWAY = 0
             if uses >= 3:
@@ -2424,8 +2430,19 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
             requeue_link(link); break
 
         if res == "site":
-            io.send("🌐 Временный сбой (страница не ответила) — вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
-            requeue_link(link); link = None; beeline_tries = 0
+            requeue_link(link)
+            link = None
+            beeline_tries = 0
+            site_fails += 1
+            dead = False
+            try:
+                dead = not browser.is_connected()
+            except Exception:
+                dead = True
+            if site_fails == 1 and not dead:
+                io.send("🌐 Страница не ответила. Повторяю без новых сообщений, это не твоя вина.")
+            if dead or site_fails >= 3:
+                return "relaunch"
             continue
 
         if res == "leave":
@@ -2494,8 +2511,24 @@ def session_thread(tg, payer_id, io, slot):
             return
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            relaunch = 0
             try:
-                session_loop(tg, io, browser, payer_id, card, is_admin, slot)
+                while True:
+                    action = session_loop(tg, io, browser, payer_id, card, is_admin, slot)
+                    if action != "relaunch":
+                        break
+                    relaunch += 1
+                    try:
+                        browser.close()
+                    except Exception:
+                        pass
+                    if relaunch > 1:
+                        io.send("⏸ Страница не открывается. Остановил попытки, чтобы не слать сообщения. "
+                                "Встань в очередь ещё раз через минуту.")
+                        queue_leave(payer_id)
+                        break
+                    io.send("🔄 Браузер завис — перезапускаю один раз и продолжаю.")
+                    browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
             finally:
                 with ACTIVE_LOCK:
                     ACTIVE_SLOTS.pop(slot, None)
