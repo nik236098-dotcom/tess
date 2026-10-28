@@ -86,15 +86,25 @@ class Telegram:
     def __init__(self, cfg):
         self.token = str(cfg["token"]).strip()
         proxy = str(cfg.get("proxy") or "").strip()
-        self.session = requests.Session()
+        self._proxies = None
         if proxy and proxy.lower() not in ("direct", "none", "off", "no", "-"):
-            self.session.proxies = {"https": proxy, "http": proxy}
+            self._proxies = {"https": proxy, "http": proxy}
+        self._tl = threading.local()
         self.base = f"https://api.telegram.org/bot{self.token}"
         self.offset = None
 
+    def _http(self):
+        s = getattr(self._tl, "s", None)
+        if s is None:
+            s = requests.Session()
+            if self._proxies:
+                s.proxies = self._proxies
+            self._tl.s = s
+        return s
+
     def _call(self, method, **params):
         try:
-            r = self.session.post(f"{self.base}/{method}", data=params, timeout=60)
+            r = self._http().post(f"{self.base}/{method}", data=params, timeout=20)
             return r.json()
         except Exception as exc:
             log(f"{method} error: {type(exc).__name__}: {exc}")
@@ -143,7 +153,7 @@ class Telegram:
             if with_ents and ents:
                 data["caption_entities"] = ents
             with open(path, "rb") as f:
-                return self.session.post(f"{self.base}/sendPhoto", data=data, files={"photo": f}, timeout=120)
+                return self._http().post(f"{self.base}/sendPhoto", data=data, files={"photo": f}, timeout=40)
         try:
             r = _post(True)
             try:
@@ -173,7 +183,7 @@ class Telegram:
             if with_ents and ents:
                 data["caption_entities"] = ents
             with open(path, "rb") as f:
-                return self.session.post(f"{self.base}/sendDocument", data=data,
+                return self._http().post(f"{self.base}/sendDocument", data=data,
                                          files={"document": f}, timeout=120)
         try:
             r = _post(True)
@@ -195,7 +205,7 @@ class Telegram:
         if self.offset is not None:
             params["offset"] = self.offset
         try:
-            data = self.session.get(f"{self.base}/getUpdates", params=params, timeout=timeout + 15).json()
+            data = self._http().get(f"{self.base}/getUpdates", params=params, timeout=timeout + 15).json()
         except Exception as exc:
             log(f"getUpdates error: {type(exc).__name__}: {exc}")
             time.sleep(3)
@@ -670,7 +680,9 @@ def operator_menu_text(op):
 def show_operator_menu(tg, op, chat_id, message_id=None):
     t, k = operator_menu_text(op)
     if message_id:
-        tg.edit(chat_id, message_id, t, k)
+        r = tg.edit(chat_id, message_id, t, k)
+        if not (isinstance(r, dict) and r.get("ok")):
+            tg.send(chat_id, t, k)
     else:
         tg.send(chat_id, t, k)
 
@@ -1877,6 +1889,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
     try:
         hold_tab = False
         page.on("response", _on_resp)
+        io.send("🔎Открываю оплату...")
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=90000)
         except Exception as exc:
@@ -1887,7 +1900,6 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             except Exception:
                 pass
             return "site"
-        io.send("🔎Открываю оплату...")
         # ждём, пока сайт сообщит статус заказа в JSON (как чекер ссылок) — до ~10 сек
         sdeadline = time.monotonic() + 10
         while time.monotonic() < sdeadline and not seen["status"] and not seen["error"]:
