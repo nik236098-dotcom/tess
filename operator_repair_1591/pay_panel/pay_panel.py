@@ -264,7 +264,8 @@ def db_init():
     for tbl, col, decl in [("payments", "card_hash", "TEXT DEFAULT ''"),
                            ("payments", "exported", "INTEGER DEFAULT 0"),
                            ("invites", "max_uses", "INTEGER DEFAULT 1"),
-                           ("invites", "used_count", "INTEGER DEFAULT 0")]:
+                           ("invites", "used_count", "INTEGER DEFAULT 0"),
+                           ("cards", "blocked_until", "INTEGER DEFAULT 0")]:
         cols = [r["name"] for r in con.execute(f"PRAGMA table_info({tbl})").fetchall()]
         if col not in cols:
             con.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {decl}")
@@ -1077,7 +1078,9 @@ def handle_callback(tg, ev):
                 con.close(); tg.answer_cb(cb_id, "Уже отменено или не найдено"); return
             con.execute("UPDATE payments SET canceled=1 WHERE id=?", (pid,))
             if p["card_hash"]:
-                con.execute("UPDATE cards SET success_count=max(0, success_count-1) WHERE card_hash=?", (p["card_hash"],))
+                con.execute("UPDATE cards SET success_count=max(0, success_count-1), "
+                            "blocked_until=CASE WHEN success_count<=3 THEN 0 ELSE blocked_until END "
+                            "WHERE card_hash=?", (p["card_hash"],))
             opid = p["operator_id"]; amt = p["amount"] or 0.0
             if opid != ADMIN_ID and amt:
                 con.execute("UPDATE operators SET balance=balance-? WHERE tg_id=?", (amt, opid))
@@ -1392,11 +1395,25 @@ def card_hash(card):
     return hashlib.sha256("".join(card).encode()).hexdigest()
 
 
+CARD_LIMIT = 3
+CARD_BLOCK_S = 24 * 3600
+
+
 def card_uses(card):
     con = db()
-    r = con.execute("SELECT success_count FROM cards WHERE card_hash=?", (card_hash(card),)).fetchone()
+    ch = card_hash(card)
+    r = con.execute("SELECT success_count, blocked_until FROM cards WHERE card_hash=?", (ch,)).fetchone()
+    if not r:
+        con.close()
+        return 0
+    until = r["blocked_until"] or 0
+    if r["success_count"] >= CARD_LIMIT and until and now() >= until:
+        con.execute("UPDATE cards SET success_count=0, blocked_until=0 WHERE card_hash=?", (ch,))
+        con.commit()
+        con.close()
+        return 0
     con.close()
-    return r["success_count"] if r else 0
+    return r["success_count"] or 0
 
 
 def mask_pan(card):
@@ -1442,6 +1459,8 @@ def record_success(tg, payer_id, link, card, is_admin, io, shot=None):
     con.execute("INSERT INTO cards(card_hash,success_count) VALUES(?,1) "
                 "ON CONFLICT(card_hash) DO UPDATE SET success_count=success_count+1", (ch,))
     uses = con.execute("SELECT success_count FROM cards WHERE card_hash=?", (ch,)).fetchone()["success_count"]
+    if uses >= CARD_LIMIT:
+        con.execute("UPDATE cards SET blocked_until=? WHERE card_hash=?", (now() + CARD_BLOCK_S, ch))
     amount = 0.0
     if not is_admin:
         o = get_op(payer_id)
@@ -2214,7 +2233,7 @@ def wait_card(io, timeout, prompt=True):
             io.send(f"⚠️ Карта не принята: {err}.\nПришли заново: НОМЕР СРОК КОД")
             continue
         if card_uses(card) >= 3:
-            io.send("⛔ Эта карта уже использована 3/3 (лимит Билайна). Пришли другую карту.")
+            io.send("⛔ Эта карта уже 3/3. Снова можно через 24 часа. Пришли другую.")
             continue
         return card
     return None
@@ -2258,7 +2277,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
                 ACTIVE_SLOTS[slot]["holding"] = link is not None
         # карта исчерпана → новая/закончить
         if card_uses(cur_card) >= 3:
-            ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Лимит Билайна, больше нельзя.",
+            ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Снова можно через 24 часа.",
                              [[btn("💳 Ввести новую карту", "sess_newcard")], [btn("🚪 Закончить работу", "sess_finish")]],
                              int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
             if ch == "new":
@@ -2302,7 +2321,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
             SLOT_FAILS[slot] = 0
             CONSEC_GATEWAY = 0
             if uses >= 3:
-                ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Нужна новая.",
+                ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Снова можно через 24 часа.",
                                  [[btn("💳 Ввести новую карту", "sess_newcard")], [btn("🚪 Закончить работу", "sess_finish")]],
                                  int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
                 if ch == "new":
