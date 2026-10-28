@@ -2024,6 +2024,11 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     _release_held()
                     hold_tab = True
                     return "success"
+                fr, h = pb._find_code_field(page)
+                if h is not None:
+                    reached_bank = True
+                    branch = "code"
+                    break
                 low = pb._page_text(page)
                 if _gateway_error(low):
                     _release_held()
@@ -2031,13 +2036,9 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 if any(w in low for w in pb.DECLINE_WORDS):
                     _release_held()
                     return "decline"
-                fr, h = pb._find_code_field(page)
-                if h is not None:
-                    reached_bank = True
-                    branch = "code"
-                    break
-                # Форма карты всё ещё на экране — банк не открылся. Не ждём 4 минуты.
-                if pb._on_card_form(page):
+                bank_open = any(pb._bank_frame(f) for f in pb._frames(page))
+                # Форма карты всё ещё на экране и банка нет — не ждём 4 минуты.
+                if pb._on_card_form(page) and not bank_open:
                     waited = time.monotonic() - c0
                     if waited > 12 and pay_again < 1:
                         pay_again += 1

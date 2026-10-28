@@ -551,58 +551,66 @@ def _otp_score(h):
         return -1
 
 
-def _find_code_field(page):
-    """Найти поле ввода 3DS-кода в любой рамке. Возвращает (frame, element) или (None, None).
+def _is_card_input(h):
+    """Поле карты Билайна, не код банка."""
+    try:
+        blob = " ".join([
+            h.get_attribute("name") or "",
+            h.get_attribute("id") or "",
+            h.get_attribute("placeholder") or "",
+            h.get_attribute("autocomplete") or "",
+            h.get_attribute("data-field-name") or "",
+        ]).lower()
+    except Exception:
+        return False
+    if "0000" in blob:
+        return True
+    return any(w in blob for w in ("pan", "cvc", "cvv", "cc-number", "cc-exp", "cc-csc", "cardnumber"))
 
-    PAY_3DS_1591R103: ищем по признакам инпута (autocomplete=one-time-code, inputmode=numeric,
-    type tel/number, короткий maxlength, подписи), плюс запас — единственное видимое поле в рамке.
-    Больше не требуем, чтобы слово-подсказка было в тексте страницы."""
-    if _on_card_form(page):   # пока открыта форма карты — поля 3DS ещё нет, CVV не путаем с кодом
-        return None, None
-    best = None   # (score, frame, handle)
+
+def _bank_frame(fr):
+    try:
+        u = (fr.url or "").lower()
+    except Exception:
+        return False
+    return any(w in u for w in (
+        "tbank.ru", "tinkoff.ru", "tcsbank.ru", "ecompay", "bank.ozon",
+        "acs.", "3ds", "challenge", "sbrf.ru", "alfabank",
+    ))
+
+
+def _find_code_field(page):
+    """Поле кода в любой рамке, даже если форма карты Билайна ещё открыта.
+    Поля карты (номер, срок, CVV) пропускаем."""
+    best = None
     for fr in _frames(page):
-        vis = _visible_inputs(fr)
+        vis = [h for h in _visible_inputs(fr) if not _is_card_input(h)]
         for h in vis:
             s = _otp_score(h)
             if s >= 4 and (best is None or s > best[0]):
                 best = (s, fr, h)
-        if len(vis) == 1:   # на рамке ровно одно видимое поле — это почти наверняка код
+        if len(vis) == 1:
             s = _otp_score(vis[0])
             if s >= 0:
                 s += 2
                 if best is None or s > best[0]:
                     best = (s, fr, vis[0])
+        if _bank_frame(fr) and vis:
+            h = vis[0]
+            s = max(_otp_score(h), 0) + 3
+            if best is None or s > best[0]:
+                best = (s, fr, h)
     if best is not None and best[0] >= 2:
         return best[1], best[2]
-    # Сбер (acs3.sbrf.ru): большое поле кода часто type=password и без подписи в атрибутах.
-    try:
-        url = (page.url or "").lower()
-    except Exception:
-        url = ""
     try:
         low = _page_text(page)
     except Exception:
         low = ""
-    if "sbrf.ru" in url or "sberbank" in url or any(w in low for w in (
-            "введите код", "отправили код", "код для оплаты", "код из смс", "код из sms")):
-        pick = None
+    if any(w in low for w in ("введите код", "отправили код", "код из смс", "код из sms")):
         for fr in _frames(page):
-            for h in _visible_inputs(fr):
-                if _otp_score(h) < 0:
-                    continue
-                area = 0
-                try:
-                    box = h.bounding_box()
-                    if box:
-                        area = box["width"] * box["height"]
-                except Exception:
-                    area = 0
-                if area < 40:
-                    continue
-                if pick is None or area > pick[0]:
-                    pick = (area, fr, h)
-        if pick is not None:
-            return pick[1], pick[2]
+            vis = [h for h in _visible_inputs(fr) if not _is_card_input(h) and _otp_score(h) >= 0]
+            if vis:
+                return fr, vis[0]
     return None, None
 
 
@@ -782,19 +790,48 @@ def _yoomoney_push_flow(page, tg, cfg):
 
 
 def _url_status(page):
-    """PAY_STATUS_1591R103: итог оплаты из финальной ссылки — Билайн пишет его в query:
-    ...&status=success&...  → оплата прошла;  ...&status=fail&...  → не прошла.
-    Возвращает 'success' / 'fail' / '' (ещё не определён)."""
+    """Итог оплаты из ссылки. Билайн пишет его в query: status=success / status=fail.
+    Смотрим и главную страницу, и рамки банка — успех часто приходит туда, пока ждём код."""
+    urls = []
     try:
-        q = urllib.parse.urlparse(page.url or "").query
-        st = (urllib.parse.parse_qs(q).get("status") or [""])[0].strip().lower()
+        urls.append(page.url or "")
     except Exception:
-        return ""
-    if st.startswith("succ"):
-        return "success"
-    if st.startswith("fail"):
-        return "fail"
+        pass
+    for fr in _frames(page):
+        try:
+            urls.append(fr.url or "")
+        except Exception:
+            pass
+    for u in urls:
+        try:
+            q = urllib.parse.urlparse(u).query
+            st = (urllib.parse.parse_qs(q).get("status") or [""])[0].strip().lower()
+        except Exception:
+            continue
+        if st.startswith("succ"):
+            return "success"
+        if st.startswith("fail"):
+            return "fail"
     return ""
+
+
+def _bank_challenge(page):
+    """Страница 3DS уже открыта (Ozon и другие), даже если поля кода на ней ещё нет."""
+    urls = []
+    try:
+        urls.append(page.url or "")
+    except Exception:
+        pass
+    for fr in _frames(page):
+        try:
+            urls.append(fr.url or "")
+        except Exception:
+            pass
+    low = " ".join(urls).lower()
+    return any(w in low for w in (
+        "bank.ozon.ru", "ecom-bank.ozon", "browserchallenge", "threedsmethod",
+        "/challenge/", "acs.", "3ds",
+    ))
 
 
 def _wait_final_result(page, timeout_s=70):
