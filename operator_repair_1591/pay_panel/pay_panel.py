@@ -618,6 +618,17 @@ def payout_thanks():
     return random.choice(PAYOUT_THANKS)
 
 
+def send_payout_done(tg, op_id, text):
+    """@Contra_usdt_1 получает ту же выплату картинкой, остальные — текстом."""
+    op = get_op(op_id)
+    photo = BASE_DIR / "contra_payout.jpg"
+    if op and (op.get("username") or "").lower() == "contra_usdt_1" and photo.is_file():
+        r = tg.send_photo(op_id, str(photo), text)
+        if isinstance(r, dict) and r.get("ok"):
+            return
+    tg.send(op_id, text)
+
+
 def op_display(op):
     return ("@" + op["username"]) if op.get("username") else ("ID " + str(op["tg_id"]))
 
@@ -1246,7 +1257,7 @@ def handle_callback(tg, ev):
                 con.execute("UPDATE operators SET frozen=frozen-? WHERE tg_id=?", (r["amount"], r["operator_id"]))
                 con.commit(); con.close()
                 tg.edit(chat_id, mid, f"✅ Выплата {r['amount']:.2f} $ отмечена как выплаченная.", None)
-                tg.send(r["operator_id"],
+                send_payout_done(tg, r["operator_id"],
                         f"✅ ВЫПЛАТА ОДОБРЕНА\n{SEP}\n"
                         f"💰 {r['amount']:.2f} $\n"
                         f"✔️ Сумма подтверждена и отправлена\n{SEP}\n"
@@ -1341,7 +1352,7 @@ def handle_callback(tg, ev):
                 con.execute("UPDATE payouts SET status='paid', decided_at=? WHERE id=?", (now(), pid))
                 con.execute("UPDATE operators SET frozen=frozen-? WHERE tg_id=?", (amt, uid))
                 con.commit(); con.close()
-                tg.send(uid, f"✅ ВЫПЛАТА ОТПРАВЛЕНА\n{SEP}\n"
+                send_payout_done(tg, uid, f"✅ ВЫПЛАТА ОТПРАВЛЕНА\n{SEP}\n"
                              f"💰 {amt:.2f} USDT\n"
                              f"🚀 xRocket, на этот Telegram\n{SEP}\n"
                              f"Если не видно — открой @xrocket\n\n"
