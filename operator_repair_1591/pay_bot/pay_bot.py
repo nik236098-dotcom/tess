@@ -377,23 +377,72 @@ def _click_by_words(scope, words, timeout_ms=8000):
     deadline = time.monotonic() + timeout_ms / 1000.0
     rx = re.compile("|".join(re.escape(w) for w in words), re.I)
     while time.monotonic() < deadline:
-        for sel in ("button", "[role=button]", "a", "div", "span"):
+        for sel in ("button", "[role=button]", "input[type=submit]", "input[type=button]", "a", "div", "span"):
             try:
-                loc = scope.locator(sel).filter(has_text=rx)
+                loc = scope.locator(sel)
+                if not sel.startswith("input"):
+                    loc = loc.filter(has_text=rx)
                 n = min(loc.count(), 8)
                 for i in range(n):
                     el = loc.nth(i)
                     try:
-                        if el.is_visible() and el.is_enabled():
-                            el.scroll_into_view_if_needed(timeout=1500)
-                            el.click(timeout=2500)
-                            return True
+                        if not el.is_visible() or not el.is_enabled():
+                            continue
+                        blob = ""
+                        try:
+                            blob = el.inner_text(timeout=400) or ""
+                        except Exception:
+                            blob = ""
+                        if not blob.strip():
+                            blob = el.get_attribute("value") or ""
+                        if not rx.search(blob):
+                            continue
+                        el.scroll_into_view_if_needed(timeout=1500)
+                        el.click(timeout=2500)
+                        return True
                     except Exception:
                         continue
             except Exception:
                 continue
         try:
             scope.wait_for_timeout(300)
+        except Exception:
+            return False
+    return False
+
+
+def _click_labeled(scope, word, timeout_ms=2500):
+    """Клик по элементу, у которого свой текст или value ровно это слово, без родителя."""
+    deadline = time.monotonic() + timeout_ms / 1000.0
+    want = word.strip().lower()
+    while time.monotonic() < deadline:
+        for sel in ("button", "input[type=submit]", "input[type=button]", "[role=button]", "a", "div", "span"):
+            try:
+                loc = scope.locator(sel)
+                n = min(loc.count(), 40)
+            except Exception:
+                continue
+            for i in range(n):
+                el = loc.nth(i)
+                try:
+                    if not el.is_visible() or not el.is_enabled():
+                        continue
+                    blob = ""
+                    try:
+                        blob = (el.inner_text(timeout=300) or "").strip()
+                    except Exception:
+                        blob = ""
+                    if not blob:
+                        blob = (el.get_attribute("value") or "").strip()
+                    if blob.lower() != want:
+                        continue
+                    el.scroll_into_view_if_needed(timeout=1500)
+                    el.click(timeout=2500)
+                    return True
+                except Exception:
+                    continue
+        try:
+            scope.wait_for_timeout(200)
         except Exception:
             return False
     return False
@@ -575,7 +624,8 @@ def _find_code_field(page):
     except Exception:
         low = ""
     if "sbrf.ru" in url or "sberbank" in url or any(w in low for w in (
-            "введите код", "отправили код", "код для оплаты", "код из смс", "код из sms")):
+            "введите код", "отправили код", "код для оплаты", "код из смс", "код из sms",
+            "карта цупис", "аутентификация покупки", "введите ваш код")):
         pick = None
         for fr in _frames(page):
             for h in _visible_inputs(fr):
@@ -914,12 +964,22 @@ def _enter_3ds_code(page, tg, cfg, page_wait, code_wait):
             tg.send(f"⚠️ Не смог вписать код: {type(exc).__name__}. Пробую снова.")
             continue
         page.wait_for_timeout(700)
-        # у части банков есть кнопка подтверждения, у Т-Банка нет (автоотправка после ввода).
-        # Если страница уже ушла (код принят и банк перенаправил) — клик не валим в ошибку.
+        # ЦУПИС: поле «Ваш код» и зелёная «Подтвердить». Серую «Отправить код еще раз» не жмём.
+        clicked = False
         try:
-            _click_by_words(fr, CODE_SUBMIT_WORDS, timeout_ms=3000)
+            low = _page_text(page)
         except Exception:
-            pass
+            low = ""
+        if "карта цупис" in low or "аутентификация покупки" in low or "введите ваш код" in low:
+            for fr2 in _frames(page):
+                if _click_labeled(fr2, "подтвердить", timeout_ms=2000):
+                    clicked = True
+                    break
+        if not clicked:
+            try:
+                _click_by_words(fr, CODE_SUBMIT_WORDS, timeout_ms=3000)
+            except Exception:
+                pass
 
         # ждём реакцию банка: неверный код / отказ / принят (поле кода исчезло)
         react_deadline = time.monotonic() + 90
