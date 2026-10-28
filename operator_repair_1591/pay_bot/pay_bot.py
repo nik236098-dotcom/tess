@@ -444,25 +444,30 @@ def _inputs_debug(scope):
 
 
 def _fill_card_field(h, value):
-    # Комбо-поле Билайна: уже введённый номер перекрывает срок и CVV.
-    # Обычный клик тогда упирается в номер и вся оплата падает как «временный сбой».
-    focused = False
+    # Комбо-поле Билайна перекрывает срок и CVV номером. Клик туда не проходит,
+    # поэтому значение ставим в само поле, без нажатия мышью.
     try:
-        h.click(timeout=1500)
-        focused = True
+        h.evaluate("el => el.focus()")
     except Exception:
+        pass
+    try:
+        h.fill(value, timeout=2000)
+    except Exception:
+        h.type(value, delay=40)
+    try:
+        got = re.sub(r"\D", "", h.input_value() or "")
+    except Exception:
+        got = ""
+    if re.sub(r"\D", "", value)[-4:] not in got:
         try:
-            h.click(force=True, timeout=1500)
-            focused = True
+            h.evaluate("el => el.focus()")
         except Exception:
-            try:
-                h.focus()
-                focused = True
-            except Exception:
-                pass
-    if not focused:
-        raise RuntimeError("не удалось нажать поле карты")
-    h.type(value, delay=70)
+            pass
+        h.type(value, delay=40)
+    try:
+        h.evaluate("el => { el.dispatchEvent(new Event('change', {bubbles:true})); el.blur(); }")
+    except Exception:
+        pass
     try:
         h.evaluate("e => e.setAttribute('data-pb-filled','1')")
     except Exception:
@@ -508,12 +513,13 @@ def _type_card(page, card, tg, deadline):
 
 
 def _on_card_form(page):
-    """True, пока открыта форма ввода карты (ещё НЕ ушли на страницу банка). Нужно, чтобы не
-    принять CVV-поле карты (с подписью «код») за поле кода 3DS."""
+    """True, только пока форма карты реально видна. Скрытый номер после ухода на банк не считается."""
     for fr in _frames(page):
         try:
-            if fr.locator("input[placeholder*='0000']").count():
-                return True
+            loc = fr.locator("input[placeholder*='0000']")
+            for i in range(min(loc.count(), 4)):
+                if loc.nth(i).is_visible():
+                    return True
         except Exception:
             pass
         try:

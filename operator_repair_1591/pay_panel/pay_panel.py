@@ -1997,6 +1997,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             stuck = None
             restarts = 0
             alfa_clicked = [False]
+            pay_again = 0
 
             def _release_held():
                 for ev in held:
@@ -2035,6 +2036,22 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     reached_bank = True
                     branch = "code"
                     break
+                # Форма карты всё ещё на экране — банк не открылся. Не ждём 4 минуты.
+                if pb._on_card_form(page):
+                    waited = time.monotonic() - c0
+                    if waited > 12 and pay_again < 1:
+                        pay_again += 1
+                        io.send("💳 Банк не открылся, жму «оплатить» ещё раз…")
+                        for frs in pb._frames(page):
+                            if pb._click_by_words(frs, ("оплатить",), timeout_ms=3000):
+                                break
+                        page.wait_for_timeout(1500)
+                        continue
+                    if waited > 25:
+                        _release_held()
+                        return "no_bank"
+                    page.wait_for_timeout(500)
+                    continue
                 if pb._is_alfa_app_push(page) and (time.monotonic() - c0) > 3 and not alfa_clicked[0]:
                     reached_bank = True
                     alfa_clicked[0] = True
@@ -2394,6 +2411,11 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
                 cur_card = nc
                 continue   # та же ссылка, карта другого банка
             requeue_link(link); break
+
+        if res == "no_bank":
+            io.send("⚠️ Карта введена, но страница банка не открылась. Вернул ссылку в очередь, беру следующую.")
+            requeue_link(link); link = None; beeline_tries = 0
+            continue
 
         if res == "site":
             io.send("🌐 Временный сбой (страница не ответила) — вернул ссылку в очередь, это не твоя вина. Пробую следующую.")
