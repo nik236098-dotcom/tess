@@ -444,7 +444,24 @@ def _inputs_debug(scope):
 
 
 def _fill_card_field(h, value):
-    h.click()
+    # Комбо-поле Билайна: уже введённый номер перекрывает срок и CVV.
+    # Обычный клик тогда упирается в номер и вся оплата падает как «временный сбой».
+    focused = False
+    try:
+        h.click(timeout=1500)
+        focused = True
+    except Exception:
+        try:
+            h.click(force=True, timeout=1500)
+            focused = True
+        except Exception:
+            try:
+                h.focus()
+                focused = True
+            except Exception:
+                pass
+    if not focused:
+        raise RuntimeError("не удалось нажать поле карты")
     h.type(value, delay=70)
     try:
         h.evaluate("e => e.setAttribute('data-pb-filled','1')")
