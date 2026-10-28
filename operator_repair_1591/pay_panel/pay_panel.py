@@ -2061,18 +2061,20 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     _release_held()
                     return "decline"
                 bank_open = any(pb._bank_frame(f) for f in pb._frames(page))
-                if acs["url"] and not acs["opened"] and not bank_open and (time.monotonic() - c0) > 6:
+                if acs["url"] and not acs["opened"] and not bank_open:
                     acs["opened"] = True
+                    host = acs["url"].split("/")[2][:80] if "://" in acs["url"] else "?"
+                    log("acs open " + host)
                     io.send("🏦 Страница банка сама не открылась, открываю её.")
                     fields = {}
                     if acs["creq"]:
                         fields["creq"] = acs["creq"]
                     elif acs["pareq"]:
                         fields["PaReq"] = acs["pareq"]
-                        fields["MD"] = ""
                         if acs["term"]:
                             fields["TermUrl"] = acs["term"]
                     try:
+                        page.goto("about:blank", wait_until="domcontentloaded", timeout=10000)
                         page.evaluate("""({url, fields}) => {
                             const f = document.createElement('form');
                             f.method = 'POST';
@@ -2087,12 +2089,19 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                             document.body.appendChild(f);
                             f.submit();
                         }""", {"url": acs["url"], "fields": fields})
+                        until = time.monotonic() + 20
+                        while time.monotonic() < until:
+                            cur = page.url or ""
+                            if cur and "about:" not in cur and "beeline" not in cur:
+                                break
+                            page.wait_for_timeout(300)
+                        else:
+                            log("acs no nav " + (page.url or "")[:140])
                     except Exception:
                         log("open acs failed\n" + traceback.format_exc())
-                    page.wait_for_timeout(1500)
                     continue
-                # Форма карты всё ещё на экране и банка нет — не ждём 4 минуты.
-                if pb._on_card_form(page) and not bank_open:
+                # Форма карты всё ещё на экране и адреса банка нет — не ждём 4 минуты.
+                if pb._on_card_form(page) and not bank_open and not acs["url"]:
                     waited = time.monotonic() - c0
                     if waited > 12 and pay_again < 1:
                         pay_again += 1
