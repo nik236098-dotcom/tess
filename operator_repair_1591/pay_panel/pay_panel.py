@@ -593,6 +593,45 @@ def op_display(op):
     return ("@" + op["username"]) if op.get("username") else ("ID " + str(op["tg_id"]))
 
 
+def xrocket_payout(pid, tg_id, amount):
+    """USDT на Telegram ID через xRocket. (ok, текст). Токен только в конфиге сервера."""
+    token = str(CFG.get("xrocket_token") or "").strip()
+    if not token:
+        return False, "в конфиге нет xrocket_token"
+    body = {
+        "clientPayoutId": f"pay-{pid}",
+        "target": str(tg_id),
+        "targetType": "telegram_user_id",
+        "asset": "USDT",
+        "amount": f"{float(amount):.2f}",
+        "description": "выплата autopey",
+    }
+    try:
+        r = requests.post(
+            "https://pay.api.xrocket.exchange/api/v1/payouts",
+            json=body,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            timeout=30,
+        )
+    except Exception as exc:
+        return False, type(exc).__name__
+    try:
+        data = r.json()
+    except Exception:
+        data = {}
+    if isinstance(data, dict) and isinstance(data.get("data"), dict):
+        data = data["data"]
+    status = str(data.get("status") or "") if isinstance(data, dict) else ""
+    if r.status_code in (200, 201) and status in ("finished", "pending"):
+        return True, status
+    if r.status_code == 409:
+        return True, "already"
+    msg = ""
+    if isinstance(data, dict):
+        msg = str(data.get("detail") or data.get("title") or data.get("message") or "")
+    return False, f"{r.status_code} {msg}".strip()[:200]
+
+
 # BAD_LINK: ссылка непригодна (не наказываем оператора, уходит в архив админу)
 BAD_LINK_WORDS = ("заказ не найден", "заказ не существует", "не найден", "истёк", "истек",
                   "уже оплачен", "оплачен ранее", "оплата получена", "оплата прошла", "уже оплачена",
@@ -1253,8 +1292,8 @@ def handle_callback(tg, ev):
             if o["balance"] <= 0:
                 tg.send(uid, "Баланс пустой — выплачивать нечего."); return
             tg.send(uid, f"💸 ВЫПЛАТА\nК выплате: {o['balance']:.2f} $ (весь баланс)\n"
-                         "После запроса баланс замораживается до решения админа.",
-                    kb([[btn(f"✅ Запросить {o['balance']:.2f} $", "op_payout_go")], [btn("⬅️ Отмена", "op_refresh")]]))
+                         "USDT уйдёт в xRocket на этот Telegram сразу.",
+                    kb([[btn(f"✅ Отправить {o['balance']:.2f} $", "op_payout_go")], [btn("⬅️ Отмена", "op_refresh")]]))
             return
         if data == "op_payout_go":
             con = db()
@@ -1266,10 +1305,24 @@ def handle_callback(tg, ev):
             cur = con.execute("INSERT INTO payouts(operator_id,amount,status,requested_at) VALUES(?,?, 'pending', ?)", (uid, amt, now()))
             pid = cur.lastrowid
             con.commit(); con.close()
-            tg.send(uid, f"📨 Запрос на выплату {amt:.2f} $ отправлен. Баланс заморожен до решения админа.")
-            od = get_op(uid)
-            tg.send(ADMIN_ID, f"💸 Новый запрос на выплату\n👤 {op_display(od)} ({uid})\nСумма: {amt:.2f} $",
-                    kb([[btn("✅ Выплачено", f"pay_ok:{pid}"), btn("🚫 Заблокировать", f"pay_block:{pid}")]]))
+            ok, detail = xrocket_payout(pid, uid, amt)
+            con = db()
+            if ok:
+                con.execute("UPDATE payouts SET status='paid', decided_at=? WHERE id=?", (now(), pid))
+                con.execute("UPDATE operators SET frozen=frozen-? WHERE tg_id=?", (amt, uid))
+                con.commit(); con.close()
+                tg.send(uid, f"✅ ВЫПЛАТА ОТПРАВЛЕНА\n{SEP}\n"
+                             f"💰 {amt:.2f} USDT\n"
+                             f"🚀 xRocket, на этот Telegram\n{SEP}\n"
+                             f"Если не видно — открой @xrocket")
+                tg.send(ADMIN_ID, f"🚀 Выплата xRocket {amt:.2f} USDT\n👤 {op_display(get_op(uid))} ({uid})")
+            else:
+                con.execute("UPDATE payouts SET status='failed', decided_at=? WHERE id=?", (now(), pid))
+                con.execute("UPDATE operators SET balance=balance+?, frozen=frozen-? WHERE tg_id=?", (amt, amt, uid))
+                con.commit(); con.close()
+                tg.send(uid, f"🚫 Выплата не прошла, {amt:.2f} $ вернул на баланс.\n"
+                             f"Открой @xrocket, если кошелька ещё нет.\n{detail}")
+                tg.send(ADMIN_ID, f"🚫 xRocket не принял выплату {amt:.2f} $\n👤 {op_display(get_op(uid))} ({uid})\n{detail}")
             return
         return
 
