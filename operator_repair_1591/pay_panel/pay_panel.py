@@ -1829,13 +1829,37 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
     page = ctx.new_page()
     page.set_default_timeout(3000)
     seen = {"status": "", "error": ""}
+    acs = {"url": "", "creq": "", "pareq": "", "term": "", "opened": False}
+
+    def _grab_acs(obj):
+        if isinstance(obj, dict):
+            url = str(obj.get("acsUrl") or "")
+            creq = str(obj.get("packedCReq") or obj.get("creq") or "")
+            pareq = str(obj.get("paReq") or "")
+            if url.startswith("http") and (creq or pareq) and not acs["url"]:
+                acs["url"] = url
+                acs["creq"] = creq
+                acs["pareq"] = pareq
+                acs["term"] = str(obj.get("termUrl") or "")
+                log("acs url получен")
+            for v in obj.values():
+                _grab_acs(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                _grab_acs(v)
 
     def _on_resp(resp):
         try:
             u = resp.url.lower()
+            ctype = str(resp.headers.get("content-type", "")).lower()
+            if "json" in ctype or "processform" in u or "paymentorder" in u:
+                try:
+                    _grab_acs(resp.json())
+                except Exception:
+                    pass
             if "selfreg" not in u and "order" not in u:
                 return
-            if "json" not in str(resp.headers.get("content-type", "")):
+            if "json" not in ctype:
                 return
             body = resp.json()
             data = body.get("data") if isinstance(body, dict) and isinstance(body.get("data"), dict) else body
@@ -2037,6 +2061,36 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     _release_held()
                     return "decline"
                 bank_open = any(pb._bank_frame(f) for f in pb._frames(page))
+                if acs["url"] and not acs["opened"] and not bank_open and (time.monotonic() - c0) > 6:
+                    acs["opened"] = True
+                    io.send("🏦 Страница банка сама не открылась, открываю её.")
+                    fields = {}
+                    if acs["creq"]:
+                        fields["creq"] = acs["creq"]
+                    elif acs["pareq"]:
+                        fields["PaReq"] = acs["pareq"]
+                        fields["MD"] = ""
+                        if acs["term"]:
+                            fields["TermUrl"] = acs["term"]
+                    try:
+                        page.evaluate("""({url, fields}) => {
+                            const f = document.createElement('form');
+                            f.method = 'POST';
+                            f.action = url;
+                            for (const [k, v] of Object.entries(fields)) {
+                                const i = document.createElement('input');
+                                i.type = 'hidden';
+                                i.name = k;
+                                i.value = v;
+                                f.appendChild(i);
+                            }
+                            document.body.appendChild(f);
+                            f.submit();
+                        }""", {"url": acs["url"], "fields": fields})
+                    except Exception:
+                        log("open acs failed\n" + traceback.format_exc())
+                    page.wait_for_timeout(1500)
+                    continue
                 # Форма карты всё ещё на экране и банка нет — не ждём 4 минуты.
                 if pb._on_card_form(page) and not bank_open:
                     waited = time.monotonic() - c0
