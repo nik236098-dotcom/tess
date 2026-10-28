@@ -594,42 +594,57 @@ def op_display(op):
 
 
 def xrocket_payout(pid, tg_id, amount):
-    """USDT на Telegram ID через xRocket. (ok, текст). Токен только в конфиге сервера."""
+    """Чек USDT в xRocket. (ok, текст, ссылка). Токен только в конфиге сервера."""
     token = str(CFG.get("xrocket_token") or "").strip()
     if not token:
-        return False, "в конфиге нет xrocket_token"
+        return False, "в конфиге нет xrocket_token", ""
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+    def _post(body):
+        try:
+            r = requests.post("https://pay.api.xrocket.exchange/api/v1/cheques",
+                              json=body, headers=headers, timeout=30)
+        except Exception as exc:
+            return None, type(exc).__name__
+        try:
+            data = r.json()
+        except Exception:
+            data = {}
+        if isinstance(data, dict) and isinstance(data.get("data"), dict):
+            data = data["data"]
+        return r, data
+
     body = {
-        "clientPayoutId": f"pay-{pid}",
-        "target": str(tg_id),
-        "targetType": "telegram_user_id",
+        "clientChequeId": f"pay-{pid}",
         "asset": "USDT",
         "amount": f"{float(amount):.2f}",
         "description": "выплата autopey",
+        "targetType": "telegram_user_id",
+        "target": str(tg_id),
     }
-    try:
-        r = requests.post(
-            "https://pay.api.xrocket.exchange/api/v1/payouts",
-            json=body,
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-            timeout=30,
-        )
-    except Exception as exc:
-        return False, type(exc).__name__
-    try:
-        data = r.json()
-    except Exception:
-        data = {}
-    if isinstance(data, dict) and isinstance(data.get("data"), dict):
-        data = data["data"]
-    status = str(data.get("status") or "") if isinstance(data, dict) else ""
-    if r.status_code in (200, 201) and status in ("finished", "pending"):
-        return True, status
-    if r.status_code == 409:
-        return True, "already"
+    r, data = _post(body)
+    if r is None:
+        return False, str(data), ""
+    raw = r.text or ""
+    if r.status_code == 400 and "target_user_not_found" in raw:
+        body.pop("targetType", None)
+        body.pop("target", None)
+        body["clientChequeId"] = f"pay-{pid}-open"
+        r, data = _post(body)
+        if r is None:
+            return False, str(data), ""
+        raw = r.text or ""
+    if isinstance(data, dict) and r.status_code in (200, 201):
+        link = str(((data.get("links") or {}).get("telegramBotLink")) or "")
+        state = str(data.get("state") or "")
+        if link or state in ("active", "completed"):
+            return True, state or "active", link
+    if r.status_code == 400 and "client_id_already_taken" in raw:
+        return True, "already", ""
     msg = ""
     if isinstance(data, dict):
         msg = str(data.get("detail") or data.get("title") or data.get("message") or "")
-    return False, f"{r.status_code} {msg}".strip()[:200]
+    return False, f"{r.status_code} {msg}".strip()[:200], ""
 
 
 # BAD_LINK: ссылка непригодна (не наказываем оператора, уходит в архив админу)
@@ -1292,7 +1307,7 @@ def handle_callback(tg, ev):
             if o["balance"] <= 0:
                 tg.send(uid, "Баланс пустой — выплачивать нечего."); return
             tg.send(uid, f"💸 ВЫПЛАТА\nК выплате: {o['balance']:.2f} $ (весь баланс)\n"
-                         "USDT уйдёт в xRocket на этот Telegram сразу.",
+                         "Придёт чеком xRocket на этот Telegram.",
                     kb([[btn(f"✅ Отправить {o['balance']:.2f} $", "op_payout_go")], [btn("⬅️ Отмена", "op_refresh")]]))
             return
         if data == "op_payout_go":
@@ -1305,17 +1320,19 @@ def handle_callback(tg, ev):
             cur = con.execute("INSERT INTO payouts(operator_id,amount,status,requested_at) VALUES(?,?, 'pending', ?)", (uid, amt, now()))
             pid = cur.lastrowid
             con.commit(); con.close()
-            ok, detail = xrocket_payout(pid, uid, amt)
+            ok, detail, link = xrocket_payout(pid, uid, amt)
             con = db()
             if ok:
                 con.execute("UPDATE payouts SET status='paid', decided_at=? WHERE id=?", (now(), pid))
                 con.execute("UPDATE operators SET frozen=frozen-? WHERE tg_id=?", (amt, uid))
                 con.commit(); con.close()
-                tg.send(uid, f"✅ ВЫПЛАТА ОТПРАВЛЕНА\n{SEP}\n"
-                             f"💰 {amt:.2f} USDT\n"
-                             f"🚀 xRocket, на этот Telegram\n{SEP}\n"
-                             f"Если не видно — открой @xrocket")
-                tg.send(ADMIN_ID, f"🚀 Выплата xRocket {amt:.2f} USDT\n👤 {op_display(get_op(uid))} ({uid})")
+                text = (f"✅ ЧЕК xROCKET\n{SEP}\n"
+                        f"💰 {amt:.2f} USDT\n")
+                if link:
+                    text += f"🚀 {link}\n"
+                text += f"{SEP}\nОткрой ссылку в @xrocket и активируй чек."
+                tg.send(uid, text)
+                tg.send(ADMIN_ID, f"🚀 Чек xRocket {amt:.2f} USDT\n👤 {op_display(get_op(uid))} ({uid})")
             else:
                 con.execute("UPDATE payouts SET status='failed', decided_at=? WHERE id=?", (now(), pid))
                 con.execute("UPDATE operators SET balance=balance+?, frozen=frozen-? WHERE tg_id=?", (amt, amt, uid))
