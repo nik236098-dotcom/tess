@@ -1920,7 +1920,9 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 low = pb._page_text(page)
             except Exception:
                 low = ""
-            if "оплата не прошла" in low or "попробовать ещё раз" in low or "попробовать еще раз" in low:
+            if ("оплата не прошла" in low or "оплата не удалась" in low
+                    or "попробовать ещё раз" in low or "попробовать еще раз" in low
+                    or "попробуйте снова" in low or "попробовать снова" in low):
                 return True
             return pb._url_status(page) == "fail" or pb._payment_failed(page)
 
@@ -1930,7 +1932,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             if pb._on_card_form(page):
                 return True
             beeline_retries += 1
-            io.send(f"⚠️ Поля карты нет, снова «оплата не прошла». Жму «попробовать ещё раз» "
+            io.send(f"⚠️ Оплата не прошла. Жму «попробовать снова» "
                     f"({beeline_retries}/{max_beeline}).")
             if beeline_retries > max_beeline or not pb._click_retry(page):
                 if beeline_retries <= max_beeline:
@@ -2105,6 +2107,11 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 if any(w in low for w in pb.DECLINE_WORDS):
                     _release_held()
                     return "decline"
+                if ("оплата не удалась" in low or "оплата не прошла" in low
+                        or "попробуйте снова" in low or "попробовать снова" in low):
+                    _release_held()
+                    retry_now = True
+                    break
                 bank_open = any(pb._bank_frame(f) for f in pb._frames(page))
                 # Форма карты всё ещё на экране и адреса банка нет — не ждём 4 минуты.
                 if pb._on_card_form(page) and not bank_open and not acs["url"]:
@@ -2555,12 +2562,20 @@ def session_thread(tg, payer_id, io, slot):
             queue_leave(payer_id)
             return
         with sync_playwright() as pw:
+            browser = None
             os.environ["DISPLAY"] = ":99"
             if not os.path.exists("/tmp/.X11-unix/X99"):
                 subprocess.Popen(["Xvfb", ":99", "-screen", "0", "1280x900x24", "-ac"],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                time.sleep(0.4)
-            browser = pw.chromium.launch(headless=False, args=["--no-sandbox", "--disable-dev-shm-usage"])
+                for _ in range(10):
+                    if os.path.exists("/tmp/.X11-unix/X99"):
+                        break
+                    time.sleep(0.3)
+            try:
+                browser = pw.chromium.launch(headless=False, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            except Exception:
+                log("headed browser failed, headless")
+                browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
             try:
                 session_loop(tg, io, browser, payer_id, card, is_admin, slot)
             finally:
