@@ -399,6 +399,41 @@ def _click_by_words(scope, words, timeout_ms=8000):
     return False
 
 
+def _click_pay(page):
+    """Нажать именно кнопку «Оплатить», а не заголовок или блок с этим словом."""
+    best = None
+    for fr in _frames(page):
+        try:
+            loc = fr.locator("button, [role=button]")
+            n = min(loc.count(), 20)
+        except Exception:
+            continue
+        for i in range(n):
+            el = loc.nth(i)
+            try:
+                if not el.is_visible():
+                    continue
+                txt = " ".join((el.inner_text(timeout=400) or "").split()).lower()
+            except Exception:
+                continue
+            if not txt.startswith("оплатить") or len(txt) > 30:
+                continue
+            if best is None or len(txt) < best[0]:
+                best = (len(txt), el)
+    if best is None:
+        return _click_by_words(page, ("оплатить",), timeout_ms=4000)
+    el = best[1]
+    try:
+        el.click(timeout=2500, force=True)
+        return True
+    except Exception:
+        try:
+            el.evaluate("e => e.click()")
+            return True
+        except Exception:
+            return False
+
+
 def _next_empty_card_input(scope, deadline):
     """Следующее НЕЗАПОЛНЕННОЕ видимое поле карты. Поля с уже введённым значением (в т.ч.
     замаскированный номер «*1936») и помеченные нами пропускаем — поэтому не зависим от того,
@@ -493,7 +528,14 @@ def _type_card(page, card, tg, deadline):
     except Exception:
         pass
     left_ms = max(8000, int((deadline - time.monotonic()) * 1000))
-    if not _click_by_words(scope, ("оплатить",), timeout_ms=left_ms):
+    clicked = False
+    until = time.monotonic() + left_ms / 1000.0
+    while time.monotonic() < until:
+        if _click_pay(page):
+            clicked = True
+            break
+        page.wait_for_timeout(400)
+    if not clicked:
         raise RuntimeError("кнопка «оплатить» не нажалась (кнопка осталась неактивной — проверь карту/срок/CVV)")
     return True
 
@@ -602,15 +644,6 @@ def _find_code_field(page):
                 best = (s, fr, h)
     if best is not None and best[0] >= 2:
         return best[1], best[2]
-    try:
-        low = _page_text(page)
-    except Exception:
-        low = ""
-    if any(w in low for w in ("введите код", "отправили код", "код из смс", "код из sms")):
-        for fr in _frames(page):
-            vis = [h for h in _visible_inputs(fr) if not _is_card_input(h) and _otp_score(h) >= 0]
-            if vis:
-                return fr, vis[0]
     return None, None
 
 
@@ -618,7 +651,13 @@ def _page_text(page):
     chunks = []
     for fr in _frames(page):
         try:
-            chunks.append((fr.locator("body").inner_text(timeout=800) or "").lower())
+            u = (fr.url or "").lower()
+        except Exception:
+            u = ""
+        if "3dsmethod" in u or u.startswith("about:"):
+            continue
+        try:
+            chunks.append((fr.locator("body").inner_text(timeout=400) or "").lower())
         except Exception:
             pass
     return "\n".join(chunks)

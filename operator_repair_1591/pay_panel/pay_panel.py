@@ -2048,20 +2048,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     _release_held()
                     hold_tab = True
                     return "success"
-                fr, h = pb._find_code_field(page)
-                if h is not None:
-                    reached_bank = True
-                    branch = "code"
-                    break
-                low = pb._page_text(page)
-                if _gateway_error(low):
-                    _release_held()
-                    return "gateway"
-                if any(w in low for w in pb.DECLINE_WORDS):
-                    _release_held()
-                    return "decline"
-                bank_open = any(pb._bank_frame(f) for f in pb._frames(page))
-                if acs["url"] and not acs["opened"] and not bank_open:
+                if acs["url"] and not acs["opened"]:
                     acs["opened"] = True
                     host = acs["url"].split("/")[2][:80] if "://" in acs["url"] else "?"
                     log("acs open " + host)
@@ -2100,15 +2087,26 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     except Exception:
                         log("open acs failed\n" + traceback.format_exc())
                     continue
+                fr, h = pb._find_code_field(page)
+                if h is not None:
+                    reached_bank = True
+                    branch = "code"
+                    break
+                low = pb._page_text(page)
+                if _gateway_error(low):
+                    _release_held()
+                    return "gateway"
+                if any(w in low for w in pb.DECLINE_WORDS):
+                    _release_held()
+                    return "decline"
+                bank_open = any(pb._bank_frame(f) for f in pb._frames(page))
                 # Форма карты всё ещё на экране и адреса банка нет — не ждём 4 минуты.
                 if pb._on_card_form(page) and not bank_open and not acs["url"]:
                     waited = time.monotonic() - c0
                     if waited > 12 and pay_again < 1:
                         pay_again += 1
                         io.send("💳 Банк не открылся, жму «оплатить» ещё раз…")
-                        for frs in pb._frames(page):
-                            if pb._click_by_words(frs, ("оплатить",), timeout_ms=3000):
-                                break
+                        pb._click_pay(page)
                         page.wait_for_timeout(1500)
                         continue
                     if waited > 25:
