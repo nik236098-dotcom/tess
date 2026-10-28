@@ -1317,12 +1317,14 @@ def handle_callback(tg, ev):
                              f"Если не видно — открой @xrocket")
                 tg.send(ADMIN_ID, f"🚀 Выплата xRocket {amt:.2f} USDT\n👤 {op_display(get_op(uid))} ({uid})")
             else:
-                con.execute("UPDATE payouts SET status='failed', decided_at=? WHERE id=?", (now(), pid))
-                con.execute("UPDATE operators SET balance=balance+?, frozen=frozen-? WHERE tg_id=?", (amt, amt, uid))
-                con.commit(); con.close()
-                tg.send(uid, f"🚫 Выплата не прошла, {amt:.2f} $ вернул на баланс.\n"
-                             f"Открой @xrocket, если кошелька ещё нет.\n{detail}")
-                tg.send(ADMIN_ID, f"🚫 xRocket не принял выплату {amt:.2f} $\n👤 {op_display(get_op(uid))} ({uid})\n{detail}")
+                con.close()
+                tg.send(uid, f"⚠️ Автовыплата не удалась.\n"
+                             f"Выплата {amt:.2f} $ будет в ручном режиме.\n"
+                             f"Баланс заморожен до решения админа.")
+                od = get_op(uid)
+                tg.send(ADMIN_ID, f"💸 Автовыплата не прошла, нужна ручная\n"
+                                  f"👤 {op_display(od)} ({uid})\nСумма: {amt:.2f} $\n{detail}",
+                        kb([[btn("✅ Выплачено", f"pay_ok:{pid}"), btn("🚫 Заблокировать", f"pay_block:{pid}")]]))
             return
         return
 
