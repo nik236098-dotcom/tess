@@ -863,7 +863,7 @@ def ready_qr_urls():
     rows = con.execute(
         "SELECT COALESCE(NULLIF(l.url, ''), p.url_final) url "
         "FROM payments p LEFT JOIN links l ON l.id = p.link_id "
-        "WHERE p.result='success' AND COALESCE(p.canceled,0)=0 "
+        "WHERE p.result='success' AND COALESCE(p.canceled,0)=0 AND COALESCE(p.exported,0)=0 "
         "ORDER BY p.id"
     ).fetchall()
     con.close()
