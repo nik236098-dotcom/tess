@@ -185,6 +185,27 @@ class Telegram:
             log(f"send_photo error: {type(exc).__name__}: {exc}")
             return {"ok": False}
 
+    def edit_caption(self, chat_id, message_id, caption, kb=None):
+        data = {"chat_id": chat_id, "message_id": message_id, "caption": (caption or "")[:1000]}
+        if kb is not None:
+            data["reply_markup"] = json.dumps(kb, ensure_ascii=False)
+        return self._call("editMessageCaption", **data)
+
+    def edit_photo(self, chat_id, message_id, path, caption="", kb=None):
+        media = {"type": "photo", "media": "attach://photo", "caption": (caption or "")[:1000]}
+        data = {"chat_id": chat_id, "message_id": message_id,
+                "media": json.dumps(media, ensure_ascii=False)}
+        if kb is not None:
+            data["reply_markup"] = json.dumps(kb, ensure_ascii=False)
+        try:
+            with open(path, "rb") as f:
+                r = self._http().post(f"{self.base}/editMessageMedia", data=data,
+                                      files={"photo": ("qr.png", f, "image/png")}, timeout=60)
+            return r.json()
+        except Exception as exc:
+            log(f"edit_photo error: {type(exc).__name__}: {exc}")
+            return {"ok": False}
+
     def get_chat_admins(self, chat_id):
         r = self._call("getChatAdministrators", chat_id=chat_id)
         return r.get("result", []) if isinstance(r, dict) else []
@@ -235,7 +256,8 @@ class Telegram:
                             "uid": int(frm.get("id") or 0), "username": frm.get("username") or "",
                             "name": frm.get("first_name") or "",
                             "chat_id": (msg.get("chat") or {}).get("id"),
-                            "message_id": msg.get("message_id")})
+                            "message_id": msg.get("message_id"),
+                            "photo": bool(msg.get("photo"))})
                 continue
             mcm = upd.get("my_chat_member")
             if mcm:   # бота добавили/изменили права в канале/группе
@@ -894,6 +916,35 @@ def ready_qr_count():
     return len(ready_qr_urls())
 
 
+def _qr_links():
+    try:
+        data = json.loads(QR_LINKS_FILE.read_text("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _qr_remember(url):
+    data = _qr_links()
+    pid = str(int(time.time() * 1000))
+    while pid in data:
+        pid = str(int(pid) + 1)
+    data[pid] = url
+    if len(data) > 300:
+        for old in sorted(data, key=lambda k: int(k) if str(k).isdigit() else 0)[:-300]:
+            data.pop(old, None)
+    QR_LINKS_FILE.write_text(json.dumps(data, ensure_ascii=False), "utf-8")
+    return pid
+
+
+def _qr_by_id(pid):
+    return _qr_links().get(str(pid)) or ""
+
+
+def _qr_kb(pid):
+    return kb([[btn("🔄 Обновить", f"qrr:{pid}")]])
+
+
 def _bee_export_proxy():
     """Прокси выгрузки QR из настроек beelinetesting, если он включён именно для QR."""
     path = Path("/etc/systemd/system/beeline.service.d/zz-menu.conf")
@@ -996,14 +1047,16 @@ def _qr_export_job(tg, uid):
             res = by_url.get(url) or {}
             phone = res.get("phone") or number or "—"
             fp = res.get("file") or ""
+            pid = _qr_remember(url)
+            markup = _qr_kb(pid)
             if fp and Path(fp).is_file():
-                sent = tg.send_photo(uid, fp, f"🔳 {phone}")
+                sent = tg.send_photo(uid, fp, f"🔳 {phone}", markup)
                 if isinstance(sent, dict) and sent.get("ok"):
                     _qr_mark_exported(url)
                     ok += 1
                     continue
             fail += 1
-            tg.send(uid, f"⚠️ {phone}\n{res.get('error') or 'не отправился'}"[:500])
+            tg.send(uid, f"⚠️ {phone}\n{res.get('error') or 'не отправился'}"[:500], markup)
         tg.send(uid, f"🔳 Выгрузка QR готова\n✅ {ok}\n⚠️ {fail}")
     except Exception as exc:
         log("qr export:\n" + traceback.format_exc())
@@ -1014,10 +1067,55 @@ def _qr_export_job(tg, uid):
         QR_EXPORT_LOCK.release()
 
 
+def _qr_refresh_job(tg, uid, chat_id, mid, url, pid, was_photo):
+    import shutil
+    import subprocess
+    import tempfile
+    work = None
+    markup = _qr_kb(pid)
+    try:
+        proxy, ipurl = _bee_export_proxy()
+        work = Path(tempfile.mkdtemp(prefix="qrone-"))
+        job = {"lib": str(BASE_DIR / "bee_menu.py"), "out": str(work),
+               "urls": [url], "proxy": proxy, "ipurl": ipurl}
+        (work / "job.json").write_text(json.dumps(job), "utf-8")
+        subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "--qr-child", str(work / "job.json")],
+            timeout=180, check=False)
+        rows = []
+        result_path = work / "result.json"
+        if result_path.is_file():
+            rows = json.loads(result_path.read_text("utf-8"))
+        res = rows[0] if rows else {}
+        phone = res.get("phone") or "—"
+        fp = res.get("file") or ""
+        if fp and Path(fp).is_file():
+            caption = f"🔳 {phone}"
+            if was_photo:
+                tg.edit_photo(chat_id, mid, fp, caption, markup)
+            else:
+                tg.send_photo(uid, fp, caption, markup)
+                tg.edit(chat_id, mid, "✅ QR получен — см. новое сообщение ниже.", None)
+            return
+        text = f"⚠️ {phone}\n{res.get('error') or 'QR не получен'}\n{url[:160]}"
+        if was_photo:
+            tg.edit_caption(chat_id, mid, text[:1000], markup)
+        else:
+            tg.edit(chat_id, mid, text[:1000], markup)
+    except Exception as exc:
+        log("qr refresh:\n" + traceback.format_exc())
+        tg.send(uid, f"🔳 Не обновил QR: {type(exc).__name__}")
+    finally:
+        if work is not None:
+            shutil.rmtree(work, ignore_errors=True)
+        QR_EXPORT_LOCK.release()
+
+
 # ── pending-состояния многошагового ввода ────────────────────────────────────
 PENDING = {}   # uid -> {"await": ..., ...}
 QR_EXPORT_LOCK = threading.Lock()
 QR_EXPORTED_FILE = BASE_DIR / "qr_exported.json"
+QR_LINKS_FILE = BASE_DIR / "qr_links.json"
 
 
 # ── обработка текста ─────────────────────────────────────────────────────────
@@ -1322,7 +1420,10 @@ def handle_text(tg, ev):
 def handle_callback(tg, ev):
     uid, data = ev["uid"], ev["data"]
     chat_id, mid, cb_id = ev.get("chat_id"), ev.get("message_id"), ev.get("id")
-    tg.answer_cb(cb_id)
+    if str(data).startswith("qrr:"):
+        tg.answer_cb(cb_id, "Пробую снять QR заново…")
+    else:
+        tg.answer_cb(cb_id)
 
     op = get_op(uid)
     if op and op.get("banned"):
@@ -1377,6 +1478,19 @@ def handle_callback(tg, ev):
                 tg.send(uid, "🔳 Выгрузка QR уже идёт.")
                 return
             threading.Thread(target=_qr_export_job, args=(tg, uid), name="pay-qr", daemon=True).start()
+            return
+        if data.startswith("qrr:"):
+            url = _qr_by_id(data.split(":", 1)[1])
+            if not url:
+                tg.send(uid, "Ссылка устарела — сделай выгрузку заново.")
+                return
+            if not QR_EXPORT_LOCK.acquire(blocking=False):
+                tg.send(uid, "🔳 Выгрузка QR уже идёт.")
+                return
+            threading.Thread(
+                target=_qr_refresh_job,
+                args=(tg, uid, chat_id, mid, url, data.split(":", 1)[1], bool(ev.get("photo"))),
+                name="pay-qr-one", daemon=True).start()
             return
         if data == "adm_toggle":
             turning_on = not accepting()
