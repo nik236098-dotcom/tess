@@ -1753,6 +1753,54 @@ def mark_problem(link, reason):
     con.close()
 
 
+def payable_rub(page, pb):
+    """Сумма именно «к оплате» / на кнопке «оплатить», не любая цифра со страницы."""
+    chunks = []
+    try:
+        chunks.append(pb._page_text(page))
+    except Exception:
+        pass
+    for fr in pb._frames(page):
+        try:
+            loc = fr.locator("button, a, [role=button]")
+            n = min(loc.count(), 12)
+        except Exception:
+            continue
+        for i in range(n):
+            try:
+                chunks.append(loc.nth(i).inner_text(timeout=250) or "")
+            except Exception:
+                continue
+    text = "\n".join(chunks).replace("\xa0", " ").replace("\u202f", " ")
+    found = []
+
+    def _num(whole, frac):
+        digits = re.sub(r"\s+", "", whole or "")
+        if not digits.isdigit():
+            return None
+        if frac and str(frac).isdigit():
+            return float(f"{digits}.{frac}")
+        return float(digits)
+
+    rx = re.compile(
+        r"(?:к оплате|итого|всего|оплатить)[^\d₽]{0,30}(\d[\d ]{0,8})(?:[.,](\d{1,2}))?\s*(?:₽|руб)",
+        re.I)
+    for m in rx.finditer(text):
+        n = _num(m.group(1), m.group(2))
+        if n:
+            found.append(n)
+    if not found:
+        for line in text.splitlines():
+            low = line.lower()
+            if not any(w in low for w in ("к оплате", "итого", "оплатить")):
+                continue
+            for m in re.finditer(r"(\d[\d ]{0,8})(?:[.,](\d{1,2}))?\s*(?:₽|руб)", line, re.I):
+                n = _num(m.group(1), m.group(2))
+                if n:
+                    found.append(n)
+    return max(found) if found else None
+
+
 def record_success(tg, payer_id, link, card, is_admin, io, shot=None):
     con = db()
     con.execute("UPDATE links SET status='paid', paid_by=? WHERE id=?", (payer_id, link["id"]))
@@ -2136,7 +2184,7 @@ def _wait_parked(slot, timeout=185):
         ev.wait(timeout)
 
 
-def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
+def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=False):
     """Один заход: открыть ссылку → карта → банк/3DS/YooMoney → итог. Карту НЕ меняет (это делает
     панель). Возвращает: success / decline / beeline / no_code / site / cancel / timeout.
     В shot_holder["path"] кладёт скрин финальной страницы (для лога)."""
@@ -2178,7 +2226,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
     try:
         hold_tab = False
         page.on("response", _on_resp)
-        io.send("🔎Открываю оплату...")
+        io.send("🔎Открываю оплату...") if not quiet else None
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=90000)
         except Exception as exc:
@@ -2203,6 +2251,21 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             return "gateway"   # 504/502/503 при открытии — сбой платёжного шлюза
         if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
             return "bad_link"
+        def _over_limit():
+            rub = payable_rub(page, pb)
+            try:
+                limit = float(setting("tariff_rub") or cfg.get("tariff_rub") or 300)
+            except Exception:
+                limit = 300.0
+            if rub is not None and rub > limit:
+                if shot_holder is not None:
+                    shot_holder["rub"] = rub
+                    shot_holder["limit"] = limit
+                return True
+            return False
+
+        if _over_limit():
+            return "expensive"
         # «Оплата не прошла» — жмём «попробовать ещё раз» на этой же вкладке, ссылку заново не открываем.
         max_beeline = int(cfg.get("beeline_retry_max") or 3)
         beeline_retries = 0
@@ -2338,7 +2401,6 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 continue
             if not found_pay:
                 return "bad_link"
-            io.send(f"💳 Перешёл к оплате, ввожу карту {mask_pan(card)}…")
             # Поля карты нет, а на экране снова ошибка — не ждём 2 минуты, жмём кнопку ещё раз.
             form_deadline = time.monotonic() + int(cfg.get("card_form_wait_s") or 120)
             while not pb._on_card_form(page) and time.monotonic() < form_deadline:
@@ -2358,6 +2420,9 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 if _instant_fail():
                     return "beeline"
                 return "site"
+            if _over_limit():
+                return "expensive"
+            io.send(f"💳 Перешёл к оплате, ввожу карту {mask_pan(card)}…")
             deadline = time.monotonic() + int(cfg.get("card_form_wait_s") or 120)
             try:
                 pb._type_card(page, card, io, deadline)
@@ -2616,11 +2681,12 @@ def ask_buttons(io, text, buttons, timeout, mapping):
 
 
 # ── сессия одного оплатчика ──────────────────────────────────────────────────
-def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
+def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=None):
     global CONSEC_GATEWAY
+    if progress is None:
+        progress = {"site": 0, "relaunched": False}
     cur_card = card
     beeline_tries = 0
-    site_fails = 0
     link = None
     pay_cfg = dict(CFG)
     pay_cfg["browser_proxy"] = slot_proxy(slot)
@@ -2651,7 +2717,8 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
                 io.send("📑 Ссылки кончились. Ты остаёшься в очереди — как появятся новые, продолжим.")
                 return   # НЕ выходим из очереди
         shot_holder = {}
-        res = pay_one_link(io, browser, link["url"], cur_card, pay_cfg, shot_holder, slot)
+        res = pay_one_link(io, browser, link["url"], cur_card, pay_cfg, shot_holder, slot,
+                           quiet=progress["site"] > 0)
         shot = shot_holder.get("path")
         page_url = (shot_holder.get("url") or "").strip()
         if res not in ("success", "decline") and shot and os.path.exists(shot):
@@ -2670,7 +2737,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
             uses = record_success(tg, payer_id, link, cur_card, is_admin, io, shot)
             link = None
             beeline_tries = 0
-            site_fails = 0
+            progress["site"] = 0
             SLOT_FAILS[slot] = 0
             CONSEC_GATEWAY = 0
             if uses >= 3:
@@ -2793,6 +2860,19 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
                 continue
             break
 
+        if res == "expensive":
+            rub = (shot_holder or {}).get("rub")
+            limit = (shot_holder or {}).get("limit") or setting("tariff_rub") or 300
+            reason = f"сумма к оплате {rub:g} ₽, больше {float(limit):g} ₽"
+            mark_problem(link, reason)
+            tg.send(ADMIN_ID, f"🗄 Проблемная ссылка\n{link['url']}\nПричина: {reason}\n🕒 {msk_ts()}",
+                    kb([[btn("♻️ Вернуть в очередь", f"prob_ret:{link['id']}"),
+                         btn("🗑 Удалить", f"prob_del:{link['id']}")]]))
+            io.send(f"⚠️ К оплате {rub:g} ₽ — больше {float(limit):g} ₽. Убрал ссылку, беру следующую.")
+            link = None
+            beeline_tries = 0
+            continue
+
         if res == "bad_link":
             mark_problem(link, "не удалось начать оплату (нет кнопки / заказ не найден / истёк)")
             tg.send(ADMIN_ID, f"🗄 Проблемная ссылка\n{link['url']}\nПричина: не удалось начать оплату "
@@ -2830,16 +2910,21 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
             requeue_link(link)
             link = None
             beeline_tries = 0
-            site_fails += 1
+            progress["site"] += 1
+            n = progress["site"]
             dead = False
             try:
                 dead = not browser.is_connected()
             except Exception:
                 dead = True
-            if site_fails == 1 and not dead:
+            if n == 1 and not dead:
                 io.send("🌐 Страница не ответила. Повторяю без новых сообщений, это не твоя вина.")
-            if dead or site_fails >= 3:
+            if dead and not progress.get("relaunched"):
                 return "relaunch"
+            if n >= 3 or dead:
+                io.send("⚠️ Страница не открывается. Остановил попытки, чтобы не слать сообщения.")
+                queue_leave(payer_id)
+                return
             continue
 
         if res == "leave":
@@ -2902,19 +2987,16 @@ def session_thread(tg, payer_id, io, slot, pw):
             queue_leave(payer_id)
             return
         browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-        relaunch = 0
+        progress = {"site": 0, "relaunched": False}
         while True:
-            action = session_loop(tg, io, browser, payer_id, card, is_admin, slot)
+            action = session_loop(tg, io, browser, payer_id, card, is_admin, slot, progress)
             if action != "relaunch":
                 break
-            relaunch += 1
+            progress["relaunched"] = True
             try:
                 browser.close()
             except Exception:
                 pass
-            if relaunch > 1:
-                break
-            io.send("🔄 Браузер завис — перезапускаю один раз и продолжаю.")
             browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
     except Exception as exc:
         log("session error:\n" + traceback.format_exc())
