@@ -33,6 +33,7 @@ import os
 import queue as _queue
 import random
 import re
+import socket
 import sqlite3
 import sys
 import threading
@@ -93,6 +94,16 @@ class Telegram:
         self._tl = threading.local()
         self.base = f"https://api.telegram.org/bot{self.token}"
         self.offset = None
+        socket.setdefaulttimeout(30)
+
+    def _drop_http(self):
+        s = getattr(self._tl, "s", None)
+        if s is not None:
+            try:
+                s.close()
+            except Exception:
+                pass
+            self._tl.s = None
 
     def _http(self):
         s = getattr(self._tl, "s", None)
@@ -109,6 +120,7 @@ class Telegram:
             return r.json()
         except Exception as exc:
             log(f"{method} error: {type(exc).__name__}: {exc}")
+            self._drop_http()
             return {}
 
     def send(self, chat_id, text, kb=None, silent=False):
@@ -209,6 +221,7 @@ class Telegram:
             data = self._http().get(f"{self.base}/getUpdates", params=params, timeout=timeout + 15).json()
         except Exception as exc:
             log(f"getUpdates error: {type(exc).__name__}: {exc}")
+            self._drop_http()
             time.sleep(3)
             return []
         out = []
@@ -1321,7 +1334,11 @@ def handle_callback(tg, ev):
         if data == "adm_menu":
             show_admin_menu(tg, chat_id, mid); return
         if data == "adm_joinq":
-            queue_join(uid); show_admin_menu(tg, chat_id, mid); return
+            queue_join(uid)
+            pos = queue_pos(uid)
+            tg.send(uid, f"🟢 Ты в очереди, место {pos}. Сейчас открою оплату.")
+            show_admin_menu(tg, chat_id, mid)
+            return
         if data == "adm_leaveq":
             queue_leave(uid); show_admin_menu(tg, chat_id, mid); return
         if data.startswith("cancel_pay:"):
@@ -1484,7 +1501,11 @@ def handle_callback(tg, ev):
                     "⚠️ Не смог отправить в канал — проверь, что бот там админ. Канал всё равно сохранён."),
                     kb([[btn("⬅️ Назад", "adm_settings")]]))
             return
-        return
+        # кнопки оплатчика у админа тоже живые, иначе нажатие просто молчит
+        if data in ("op_join", "op_leave", "op_refresh", "op_payout", "op_payout_go") or data.startswith("sess_"):
+            pass
+        else:
+            return
 
     # ── оплатчик ──
     if op:
@@ -1492,6 +1513,8 @@ def handle_callback(tg, ev):
             show_operator_menu(tg, op, chat_id, mid); return
         if data == "op_join":
             queue_join(uid)
+            pos = queue_pos(uid)
+            tg.send(uid, f"🟢 Ты в очереди, место {pos}. Сейчас открою оплату.")
             show_operator_menu(tg, op, chat_id, mid)
             return
         if data == "op_leave":
@@ -1545,6 +1568,7 @@ def handle_callback(tg, ev):
 # ══════════════════════ ЭТАП 2: ДВИЖОК ОПЛАТЫ ══════════════════════════════════
 ACTIVE_SLOTS = {}               # slot -> {"payer": tg_id, "io": PayerIO, "thread": ...}
 ACTIVE_LOCK = threading.Lock()
+_STALL_NOTE = {}                 # payer -> почему место ещё не открылось, чтобы не спамить
 STOP_EVENT = threading.Event()     # аварийный стоп всех текущих сессий (/stop админом)
 _ENGINE = None
 CONSEC_GATEWAY = 0                 # подряд сбоев платёжного шлюза (504…) → шлюз лежит
@@ -2878,20 +2902,38 @@ def ensure_slot_workers():
 
 def maybe_start_session(tg):
     """Заполняет свободные места следующими людьми из очереди. Ссылки они берут уже внутри, по одной."""
+    stalled = []
     with ACTIVE_LOCK:
         if not accepting() or links_count() <= 0:
-            return
-        busy = {s["payer"] for s in ACTIVE_SLOTS.values()}
-        waiting = [p for p in queue_list() if p not in busy]
-        free = [i for i in range(slot_count()) if i not in ACTIVE_SLOTS and i not in SLOT_PAUSED]
-        # ссылка уже у того, кто её держит; место ждём только под ещё не взятые
-        pending = sum(1 for s in ACTIVE_SLOTS.values() if not s.get("holding"))
-        room = max(0, links_count() - pending)
-        for slot, payer in zip(free, waiting[:room]):
-            io = PayerIO(tg, payer)
-            ACTIVE_SLOTS[slot] = {"payer": payer, "io": io}
-            ensure_slot_workers()
-            SLOT_JOBS[slot].put((tg, payer, io))
+            why = "приём выключен" if not accepting() else "оплат в очереди нет"
+            for payer in queue_list():
+                if _STALL_NOTE.get(payer) != why:
+                    _STALL_NOTE[payer] = why
+                    stalled.append((payer, why))
+            pass
+        else:
+            busy = {s["payer"] for s in ACTIVE_SLOTS.values()}
+            waiting = [p for p in queue_list() if p not in busy]
+            free = [i for i in range(slot_count()) if i not in ACTIVE_SLOTS and i not in SLOT_PAUSED]
+            # ссылка уже у того, кто её держит; место ждём только под ещё не взятые
+            pending = sum(1 for s in ACTIVE_SLOTS.values() if not s.get("holding"))
+            room = max(0, links_count() - pending)
+            started = []
+            for slot, payer in zip(free, waiting[:room]):
+                io = PayerIO(tg, payer)
+                ACTIVE_SLOTS[slot] = {"payer": payer, "io": io}
+                ensure_slot_workers()
+                SLOT_JOBS[slot].put((tg, payer, io))
+                started.append(payer)
+                _STALL_NOTE.pop(payer, None)
+            if waiting and not started:
+                why = "свободных мест нет" if not free else "ссылки уже разбирают"
+                for payer in waiting:
+                    if _STALL_NOTE.get(payer) != why:
+                        _STALL_NOTE[payer] = why
+                        stalled.append((payer, why))
+    for payer, why in stalled:
+        tg.send(payer, f"⏳ Ты в очереди, но оплата ещё не открылась: {why}.")
 
 
 # ── главный цикл ─────────────────────────────────────────────────────────────
