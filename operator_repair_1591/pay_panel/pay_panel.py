@@ -2224,21 +2224,54 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 return False
             return any(w in low for w in pb.DECLINE_WORDS)
 
-        def _instant_fail():
-            # «Оплата не прошла» Билайна — повтор. Отказ банка («отклонено») — не он.
-            if reached_bank or _is_decline():
-                return False
+        def _fail_word():
             try:
                 low = pb._page_text(page)
             except Exception:
-                low = ""
-            if "оплата не прошла" in low or "попробовать ещё раз" in low or "попробовать еще раз" in low:
-                return True
-            return pb._url_status(page) == "fail" or pb._payment_failed(page)
+                return ""
+            for w in tuple(pb.PAYMENT_FAILED_WORDS) + ("попробовать ещё раз", "попробовать еще раз"):
+                if w in low:
+                    return w
+            return ""
+
+        def _page_fact():
+            """Только то, что реально видно. Без догадки «оплата не прошла»."""
+            word = _fail_word()
+            try:
+                url = (page.url or "").strip()
+            except Exception:
+                url = ""
+            st = pb._url_status(page)
+            bits = []
+            if word:
+                bits.append(f"на странице есть «{word}»")
+            if st:
+                bits.append(f"в ссылке status={st}")
+            if "/registration/error" in url:
+                bits.append("адрес /registration/error")
+            if not bits:
+                try:
+                    raw = " ".join(pb._page_text(page).split())
+                except Exception:
+                    raw = ""
+                bits.append("текст: " + (raw[:180] or "пусто"))
+            if url:
+                bits.append(url[:180])
+            return "\n".join(bits)
+
+        def _instant_fail():
+            # Только слова, которые есть на странице. Ссылка status=fail сама по себе ничего не доказывает.
+            if reached_bank or _is_decline():
+                return False
+            return bool(_fail_word())
+
+        def _unclear():
+            if shot_holder is not None:
+                shot_holder["note"] = _page_fact()
+            return "unclear"
 
         def _click_beeline_retry():
-            """Нет поля карты и снова «оплата не прошла» — жмём кнопку, максимум 3 раза.
-            После того как карта уже отправлена, это отказ банка, не повтор."""
+            """Кнопку жмём только до отправки карты и только если на странице есть текст ошибки."""
             nonlocal beeline_retries
             if card_sent:
                 return False
@@ -2247,8 +2280,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             if beeline_retries >= max_beeline:
                 return False
             beeline_retries += 1
-            io.send(f"⚠️ Поля карты нет, снова «оплата не прошла». Жму «попробовать ещё раз» "
-                    f"({beeline_retries}/{max_beeline}).")
+            io.send(f"⚠️ Поля карты нет.\n{_page_fact()}\n"
+                    f"Жму «попробовать ещё раз» ({beeline_retries}/{max_beeline}).")
             if not pb._click_retry(page):
                 io.send("⚠️ Не нашёл кнопку «попробовать ещё раз».")
                 return False
@@ -2366,7 +2399,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 if _instant_fail():
                     _release_held()
                     if card_sent:
-                        return "decline"
+                        return _unclear()
                     retry_now = True
                     break
                 if pb._url_status(page) == "success":
@@ -2440,7 +2473,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             _release_held()
             if retry_now:
                 if card_sent:
-                    return "decline"
+                    return _unclear()
                 if not _click_beeline_retry():
                     return "beeline"
                 continue
@@ -2695,6 +2728,27 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0):
             cur_card = nc
             beeline_tries = 0
             continue
+
+        if res == "unclear":
+            note = (shot_holder or {}).get("note") or "текст страницы не прочитался"
+            io.send(f"⚠️ Не понял страницу. Карту заново не ввожу и отказом это не считаю.\n{note[:700]}")
+            ch = ask_buttons(io, "Что делаем?",
+                             [[btn("🔁 Повторить этой картой", "sess_same")],
+                              [btn("💳 Ввести новую карту", "sess_newcard")],
+                              [btn("🚪 Закончить работу", "sess_finish")]],
+                             int(CFG["newcard_timeout_s"]),
+                             {"sess_same": "same", "sess_newcard": "new", "sess_finish": "finish"})
+            if ch == "same":
+                beeline_tries = 0
+                continue
+            if ch == "new":
+                nc = wait_card(io, int(CFG["newcard_timeout_s"]))
+                if nc is None:
+                    requeue_link(link); break
+                cur_card = nc
+                beeline_tries = 0
+                continue
+            requeue_link(link); break
 
         if res == "decline":
             record_decline(tg, payer_id, link, cur_card, is_admin, io, shot, page_url)
