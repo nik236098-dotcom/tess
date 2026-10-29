@@ -925,51 +925,79 @@ def _bee_export_proxy():
     return proxy, str(env.get("BEELINE_IP_CHANGE_URL") or "").strip()
 
 
+def _qr_child(job_path):
+    """Отдельный процесс: свой Playwright, чтобы не ронять браузеры оплаты."""
+    job = json.loads(Path(job_path).read_text("utf-8"))
+    out = Path(job["out"])
+    out.mkdir(parents=True, exist_ok=True)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("bee_menu", job["lib"])
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    rows = []
+    for i, url in enumerate(job.get("urls") or []):
+        res = {}
+        try:
+            for _, res in mod.playwright_qr_export(
+                    [url], proxy=job.get("proxy") or None,
+                    ip_change_url=job.get("ipurl") or "", rotate_every=1):
+                break
+        except Exception as exc:
+            res = {"error": f"{type(exc).__name__}: {exc}"[:180]}
+        item = {"url": url,
+                "phone": (res.get("phone") if isinstance(res, dict) else "") or "",
+                "error": (res.get("error") if isinstance(res, dict) else "") or ""}
+        png = res.get("png") if isinstance(res, dict) else None
+        if png:
+            fp = out / f"{i}.png"
+            fp.write_bytes(png)
+            item["file"] = str(fp)
+        rows.append(item)
+    (out / "result.json").write_text(json.dumps(rows, ensure_ascii=False), "utf-8")
+
+
 def _qr_export_job(tg, uid):
+    import shutil
+    import subprocess
+    import tempfile
+    work = None
     try:
         items = ready_qr_urls()
         if not items:
             tg.send(uid, "🔳 Оплаченных eSIM для QR пока нет.")
             return
         tg.send(uid, f"🔳 Снимаю QR по {len(items)} оплаченным eSIM.")
-        import importlib.util
-        lib = BASE_DIR / "bee_menu.py"
-        spec = importlib.util.spec_from_file_location("bee_menu", lib)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
         proxy, ipurl = _bee_export_proxy()
+        work = Path(tempfile.mkdtemp(prefix="qrjob-"))
+        job = {"lib": str(BASE_DIR / "bee_menu.py"), "out": str(work),
+               "urls": [u for u, _ in items], "proxy": proxy, "ipurl": ipurl}
+        (work / "job.json").write_text(json.dumps(job), "utf-8")
+        subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "--qr-child", str(work / "job.json")],
+            timeout=max(180, 100 * len(items)), check=False)
+        result_path = work / "result.json"
+        rows = json.loads(result_path.read_text("utf-8")) if result_path.is_file() else []
+        by_url = {r.get("url"): r for r in rows}
         ok = fail = 0
         for url, number in items:
-            res = {}
-            try:
-                for got_url, res in mod.playwright_qr_export([url], proxy=proxy or None, ip_change_url=ipurl, rotate_every=1):
-                    break
-            except Exception as exc:
-                res = {"png": None, "error": type(exc).__name__}
-            png = res.get("png") if isinstance(res, dict) else None
-            phone = (res.get("phone") if isinstance(res, dict) else "") or number or "—"
-            if png:
-                tmp = BASE_DIR / f"qr_{int(time.time()*1000)}.png"
-                try:
-                    tmp.write_bytes(png)
-                    sent = tg.send_photo(uid, str(tmp), f"🔳 {phone}")
-                finally:
-                    try:
-                        tmp.unlink()
-                    except OSError:
-                        pass
+            res = by_url.get(url) or {}
+            phone = res.get("phone") or number or "—"
+            fp = res.get("file") or ""
+            if fp and Path(fp).is_file():
+                sent = tg.send_photo(uid, fp, f"🔳 {phone}")
                 if isinstance(sent, dict) and sent.get("ok"):
                     _qr_mark_exported(url)
                     ok += 1
                     continue
             fail += 1
-            err = (res.get("error") if isinstance(res, dict) else "") or "не отправился"
-            tg.send(uid, f"⚠️ {phone}\n{err}"[:500])
+            tg.send(uid, f"⚠️ {phone}\n{res.get('error') or 'не отправился'}"[:500])
         tg.send(uid, f"🔳 Выгрузка QR готова\n✅ {ok}\n⚠️ {fail}")
     except Exception as exc:
         log("qr export:\n" + traceback.format_exc())
         tg.send(uid, f"🔳 Выгрузка QR прервана: {type(exc).__name__}")
     finally:
+        if work is not None:
+            shutil.rmtree(work, ignore_errors=True)
         QR_EXPORT_LOCK.release()
 
 
@@ -2933,4 +2961,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 2 and sys.argv[1] == "--qr-child":
+        _qr_child(sys.argv[2])
+    else:
+        main()
