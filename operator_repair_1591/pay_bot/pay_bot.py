@@ -954,6 +954,10 @@ def _enter_3ds_code(page, tg, cfg, page_wait, code_wait):
         if h is None:
             return "lost"
         try:
+            before = _page_text(page)
+        except Exception:
+            before = ""
+        try:
             h.click()
             try:
                 h.fill("")
@@ -981,26 +985,37 @@ def _enter_3ds_code(page, tg, cfg, page_wait, code_wait):
             except Exception:
                 pass
 
-        # ждём реакцию банка: неверный код / отказ / принят (поле кода исчезло)
+        def _wrong_hits(text):
+            return sum(text.count(w) for w in WRONG_CODE_WORDS)
+
+        # Подсказка «если код неверный» часто есть на странице сразу. Это не отказ.
+        # Отказ — только если таких слов стало больше после отправки.
+        before_hits = _wrong_hits(before)
         react_deadline = time.monotonic() + 90
+        missing_since = None
         while time.monotonic() < react_deadline:
+            if _url_status(page) == "success":
+                return "accepted"
             try:
                 low = _page_text(page)
             except Exception:
                 low = ""
-            if any(w in low for w in WRONG_CODE_WORDS):
-                tg.send("↩️ Банк: код неверный. Пришли код заново (или «📨 Повторить СМС»).")
-                break   # на следующую попытку for
-            if _payment_failed(page) or _url_status(page) == "fail" or any(w in low for w in DECLINE_WORDS):
-                return "declined"
-            if _url_status(page) == "success":
-                return "accepted"
             try:
                 _fr2, h2 = _find_code_field(page)
             except Exception:
                 return "accepted"
             if h2 is None:
-                return "accepted"
+                if missing_since is None:
+                    missing_since = time.monotonic()
+                elif time.monotonic() - missing_since > 2:
+                    return "accepted"
+            else:
+                missing_since = None
+                if _wrong_hits(low) > before_hits:
+                    tg.send("↩️ Банк: код неверный. Пришли код заново (или «📨 Повторить СМС»).")
+                    break
+            if _payment_failed(page) or _url_status(page) == "fail" or any(w in low for w in DECLINE_WORDS):
+                return "declined"
             try:
                 page.wait_for_timeout(500)
             except Exception:
