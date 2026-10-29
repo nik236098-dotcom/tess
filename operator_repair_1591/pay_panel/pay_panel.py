@@ -2207,6 +2207,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
         max_beeline = int(cfg.get("beeline_retry_max") or 3)
         beeline_retries = 0
         reached_bank = False
+        card_sent = False
 
         def _bad_card():
             try:
@@ -2236,16 +2237,20 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             return pb._url_status(page) == "fail" or pb._payment_failed(page)
 
         def _click_beeline_retry():
-            """Нет поля карты и снова «оплата не прошла» — жмём кнопку, максимум 3 раза."""
+            """Нет поля карты и снова «оплата не прошла» — жмём кнопку, максимум 3 раза.
+            После того как карта уже отправлена, это отказ банка, не повтор."""
             nonlocal beeline_retries
+            if card_sent:
+                return False
             if pb._on_card_form(page):
                 return True
+            if beeline_retries >= max_beeline:
+                return False
             beeline_retries += 1
             io.send(f"⚠️ Поля карты нет, снова «оплата не прошла». Жму «попробовать ещё раз» "
                     f"({beeline_retries}/{max_beeline}).")
-            if beeline_retries > max_beeline or not pb._click_retry(page):
-                if beeline_retries <= max_beeline:
-                    io.send("⚠️ Не нашёл кнопку «попробовать ещё раз».")
+            if not pb._click_retry(page):
+                io.send("⚠️ Не нашёл кнопку «попробовать ещё раз».")
                 return False
             # старая ошибка ещё на экране пару секунд — это не новое появление
             page.wait_for_timeout(4000)
@@ -2331,6 +2336,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
             page.wait_for_timeout(3000)
             if _bad_card():
                 return "bad_card"
+            card_sent = True
             io.send("⏳ Жду ответ банка (3DS)…")
             nav = time.monotonic() + page_wait
             c0 = time.monotonic()
@@ -2359,6 +2365,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     return "cancel"
                 if _instant_fail():
                     _release_held()
+                    if card_sent:
+                        return "decline"
                     retry_now = True
                     break
                 if pb._url_status(page) == "success":
@@ -2431,6 +2439,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 page.wait_for_timeout(500)
             _release_held()
             if retry_now:
+                if card_sent:
+                    return "decline"
                 if not _click_beeline_retry():
                     return "beeline"
                 continue
