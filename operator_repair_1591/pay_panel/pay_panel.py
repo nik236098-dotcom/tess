@@ -787,6 +787,7 @@ def admin_menu_text():
          else btn("Оплатить самому (встать в очередь)", "adm_joinq", "5445353829304387411")],
         [btn("Загрузить ссылки", "adm_load", "5877465816030515018")],
         [btn(f"Выгрузка · {n_exp}", "adm_export", "5877540355187937244")],
+        [btn(f"Выгрузка QR · {ready_qr_count()}", "adm_qr", "5987917196469213507")],
         [btn("Выключить приём", "adm_toggle", "5210952531676504517") if accepting()
          else btn("Включить приём", "adm_toggle", "5206607081334906820")],
         [btn("Оплатчики", "adm_ops", "5942877472163892475")],
@@ -841,8 +842,145 @@ def export_success_links(tg, uid):
     return len(urls)
 
 
+def _qr_exported():
+    try:
+        data = json.loads(QR_EXPORTED_FILE.read_text("utf-8"))
+        return set(data) if isinstance(data, list) else set()
+    except Exception:
+        return set()
+
+
+def _qr_mark_exported(url):
+    done = _qr_exported()
+    done.add(url)
+    QR_EXPORTED_FILE.write_text(json.dumps(sorted(done), ensure_ascii=False), "utf-8")
+
+
+def ready_qr_urls():
+    """Готовые eSIM beelinetesting: уже лежат в successful_sims, ссылку присылать не нужно."""
+    done = _qr_exported()
+    out, seen = [], set()
+    try:
+        lines = QR_READY_FILE.read_text("utf-8", errors="replace").splitlines()
+    except Exception:
+        return []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except Exception:
+            continue
+        url = str(rec.get("sim_url") or "").strip()
+        if not url.startswith("http") or url in seen or url in done:
+            continue
+        seen.add(url)
+        out.append((url, str(rec.get("sim_number") or "").strip()))
+    return out
+
+
+def ready_qr_count():
+    return len(ready_qr_urls())
+
+
+def _bee_export_proxy():
+    """Прокси выгрузки QR из настроек beelinetesting, если он включён именно для QR."""
+    path = Path("/etc/systemd/system/beeline.service.d/zz-menu.conf")
+    env = {}
+    try:
+        for line in path.read_text("utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line.startswith("Environment="):
+                continue
+            item = line.split("=", 1)[1].strip().strip('"')
+            if "=" not in item:
+                continue
+            k, v = item.split("=", 1)
+            env[k] = v
+    except Exception:
+        return None, ""
+    on = str(env.get("BEELINE_MOBILE_PROXY_ON") or "0").lower() in {"1", "on", "yes", "true"}
+    for_qr = str(env.get("BEELINE_PROXY_FOR_QR") or "1").lower() not in {"0", "off", "no", "false"}
+    if not on or not for_qr:
+        return None, ""
+    raw = str(env.get("BEELINE_MOBILE_PROXY") or "").strip()
+    text = raw
+    scheme = "http"
+    if "://" in text:
+        scheme, text = text.split("://", 1)
+        scheme = scheme.lower()
+    if scheme not in {"http", "https", "socks5"}:
+        return None, ""
+    user = password = ""
+    if "@" in text:
+        cred, text = text.rsplit("@", 1)
+        user, _, password = cred.partition(":")
+    parts = text.strip("/").split(":")
+    if len(parts) == 4 and not user:
+        parts, user, password = parts[:2], parts[2], parts[3]
+    if len(parts) != 2 or not parts[0] or not parts[1].isdigit():
+        return None, ""
+    proxy = {"server": f"{scheme}://{parts[0]}:{parts[1]}"}
+    if user:
+        proxy["username"] = user
+        proxy["password"] = password
+    return proxy, str(env.get("BEELINE_IP_CHANGE_URL") or "").strip()
+
+
+def _qr_export_job(tg, uid):
+    try:
+        items = ready_qr_urls()
+        if not items:
+            tg.send(uid, "🔳 Готовых eSIM для QR нет.")
+            return
+        tg.send(uid, f"🔳 Снимаю QR по {len(items)} готовым eSIM. Ссылки присылать не нужно.")
+        import importlib.util
+        lib = BASE_DIR / "bee_menu.py"
+        spec = importlib.util.spec_from_file_location("bee_menu", lib)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        proxy, ipurl = _bee_export_proxy()
+        ok = fail = 0
+        for url, number in items:
+            res = {}
+            try:
+                for got_url, res in mod.playwright_qr_export([url], proxy=proxy or None, ip_change_url=ipurl, rotate_every=1):
+                    break
+            except Exception as exc:
+                res = {"png": None, "error": type(exc).__name__}
+            png = res.get("png") if isinstance(res, dict) else None
+            phone = (res.get("phone") if isinstance(res, dict) else "") or number or "—"
+            if png:
+                tmp = BASE_DIR / f"qr_{int(time.time()*1000)}.png"
+                try:
+                    tmp.write_bytes(png)
+                    sent = tg.send_photo(uid, str(tmp), f"🔳 {phone}")
+                finally:
+                    try:
+                        tmp.unlink()
+                    except OSError:
+                        pass
+                if isinstance(sent, dict) and sent.get("ok"):
+                    _qr_mark_exported(url)
+                    ok += 1
+                    continue
+            fail += 1
+            err = (res.get("error") if isinstance(res, dict) else "") or "не отправился"
+            tg.send(uid, f"⚠️ {phone}\n{err}"[:500])
+        tg.send(uid, f"🔳 Выгрузка QR готова\n✅ {ok}\n⚠️ {fail}")
+    except Exception as exc:
+        log("qr export:\n" + traceback.format_exc())
+        tg.send(uid, f"🔳 Выгрузка QR прервана: {type(exc).__name__}")
+    finally:
+        QR_EXPORT_LOCK.release()
+
+
 # ── pending-состояния многошагового ввода ────────────────────────────────────
 PENDING = {}   # uid -> {"await": ..., ...}
+QR_EXPORT_LOCK = threading.Lock()
+QR_READY_FILE = Path("/opt/beeline/successful_sims.jsonl")
+QR_EXPORTED_FILE = BASE_DIR / "qr_exported.json"
 
 
 # ── обработка текста ─────────────────────────────────────────────────────────
@@ -1192,6 +1330,12 @@ def handle_callback(tg, ev):
         if data == "adm_export":
             export_success_links(tg, uid)
             show_admin_menu(tg, chat_id, mid)
+            return
+        if data == "adm_qr":
+            if not QR_EXPORT_LOCK.acquire(blocking=False):
+                tg.send(uid, "🔳 Выгрузка QR уже идёт.")
+                return
+            threading.Thread(target=_qr_export_job, args=(tg, uid), name="pay-qr", daemon=True).start()
             return
         if data == "adm_toggle":
             turning_on = not accepting()
