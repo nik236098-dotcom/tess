@@ -838,6 +838,21 @@ def _url_status(page):
     return ""
 
 
+def _esim_ready(page):
+    """eSIM уже выпущена. «Установить eSIM» на шагах оплаты само по себе успехом не считается."""
+    try:
+        low = _page_text(page)
+    except Exception:
+        return False
+    if "вы в билайне" in low:
+        return True
+    if "осталось установить" in low and "готов" in low:
+        return True
+    if "на установку esim" in low:
+        return True
+    return False
+
+
 def _wait_final_result(page, timeout_s=70):
     """PAY_STATUS_1591R103: после принятого кода страница показывает «ждём ответ от банка» ~20-40 сек,
     затем итог. Читаем status из URL (авторитетно), либо ловим форму «оплата не прошла». Успех по
@@ -847,6 +862,8 @@ def _wait_final_result(page, timeout_s=70):
         st = _url_status(page)
         if st:
             return st
+        if _esim_ready(page):
+            return "success"
         if _payment_failed(page):   # появилась форма «оплата не прошла / попробовать ещё раз»
             return "fail"
         page.wait_for_timeout(1000)

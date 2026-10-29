@@ -2249,7 +2249,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
         low = pb._page_text(page)
         if _gateway_error(low):
             return "gateway"   # 504/502/503 при открытии — сбой платёжного шлюза
-        if pb._url_status(page) == "success" or any(w in low for w in BAD_LINK_WORDS):
+        if pb._url_status(page) == "success" or pb._esim_ready(page) or any(w in low for w in BAD_LINK_WORDS):
             return "bad_link"
         def _over_limit():
             rub = payable_rub(page, pb)
@@ -2476,7 +2476,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
                         return _unclear()
                     retry_now = True
                     break
-                if pb._url_status(page) == "success":
+                if pb._url_status(page) == "success" or pb._esim_ready(page):
                     _release_held()
                     hold_tab = True
                     return "success"
@@ -2553,6 +2553,9 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
                 continue
             break
         if branch == "wait":
+            if pb._esim_ready(page):
+                hold_tab = True
+                return "success"
             r = ai_assist(io, page, cfg)   # PAY_AI_1591: интерактивный ИИ-агент на незнакомом 3DS
             if r == "success":
                 hold_tab = True
@@ -2581,6 +2584,9 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
             return "success"
         if final == "fail":
             return "decline"
+        if pb._esim_ready(page):
+            hold_tab = True
+            return "success"
         return "no_code"
     except Exception:
         log("pay_one_link error:\n" + traceback.format_exc())
