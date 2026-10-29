@@ -857,26 +857,23 @@ def _qr_mark_exported(url):
 
 
 def ready_qr_urls():
-    """Готовые eSIM beelinetesting: уже лежат в successful_sims, ссылку присылать не нужно."""
+    """Оплаченные в панели eSIM, по которым QR ещё не снимали."""
     done = _qr_exported()
+    con = db()
+    rows = con.execute(
+        "SELECT COALESCE(NULLIF(l.url, ''), p.url_final) url "
+        "FROM payments p LEFT JOIN links l ON l.id = p.link_id "
+        "WHERE p.result='success' AND COALESCE(p.canceled,0)=0 "
+        "ORDER BY p.id"
+    ).fetchall()
+    con.close()
     out, seen = [], set()
-    try:
-        lines = QR_READY_FILE.read_text("utf-8", errors="replace").splitlines()
-    except Exception:
-        return []
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rec = json.loads(line)
-        except Exception:
-            continue
-        url = str(rec.get("sim_url") or "").strip()
+    for r in rows:
+        url = str(r["url"] or "").strip()
         if not url.startswith("http") or url in seen or url in done:
             continue
         seen.add(url)
-        out.append((url, str(rec.get("sim_number") or "").strip()))
+        out.append((url, ""))
     return out
 
 
@@ -932,9 +929,9 @@ def _qr_export_job(tg, uid):
     try:
         items = ready_qr_urls()
         if not items:
-            tg.send(uid, "🔳 Готовых eSIM для QR нет.")
+            tg.send(uid, "🔳 Оплаченных eSIM для QR пока нет.")
             return
-        tg.send(uid, f"🔳 Снимаю QR по {len(items)} готовым eSIM. Ссылки присылать не нужно.")
+        tg.send(uid, f"🔳 Снимаю QR по {len(items)} оплаченным eSIM.")
         import importlib.util
         lib = BASE_DIR / "bee_menu.py"
         spec = importlib.util.spec_from_file_location("bee_menu", lib)
@@ -979,7 +976,6 @@ def _qr_export_job(tg, uid):
 # ── pending-состояния многошагового ввода ────────────────────────────────────
 PENDING = {}   # uid -> {"await": ..., ...}
 QR_EXPORT_LOCK = threading.Lock()
-QR_READY_FILE = Path("/opt/beeline/successful_sims.jsonl")
 QR_EXPORTED_FILE = BASE_DIR / "qr_exported.json"
 
 
