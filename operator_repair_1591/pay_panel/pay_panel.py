@@ -1725,6 +1725,30 @@ def slot_proxy(slot):
     return ""
 
 
+def _proxy_open(raw):
+    """Порт прокси жив. Пустой прокси — прямой выход, его проверять не нужно."""
+    text = str(raw or "").strip()
+    if not text:
+        return True
+    host = text.split("@")[-1]
+    if "://" in host:
+        host = host.split("://", 1)[1]
+    if ":" not in host:
+        return False
+    h, p = host.rsplit(":", 1)
+    if not p.isdigit():
+        return False
+    s = socket.socket()
+    s.settimeout(2)
+    try:
+        s.connect((h, int(p)))
+        return True
+    except Exception:
+        return False
+    finally:
+        s.close()
+
+
 def slot_name(slot):
     return ("основной IP", "второй IP", "третий IP")[slot] if slot < 3 else f"место {slot + 1}"
 
@@ -2345,6 +2369,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
             page.goto(url, wait_until="domcontentloaded", timeout=90000)
         except Exception as exc:
             log(f"goto: {type(exc).__name__}: {str(exc)[:160]}")
+            if "ERR_PROXY" in str(exc) or "ERR_TUNNEL" in str(exc):
+                return "proxy_dead"
             try:
                 if any(w in pb._page_text(page) for w in BAD_LINK_WORDS):
                     return "bad_link"
@@ -2514,6 +2540,14 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
                     return "beeline"
                 continue
             if not found_pay:
+                try:
+                    low = pb._page_text(page)
+                except Exception:
+                    low = ""
+                if any(w in low for w in BAD_LINK_WORDS) or seen.get("error"):
+                    return "bad_link"
+                if len(" ".join(low.split())) < 80:
+                    return "site"
                 return "bad_link"
             # Поля карты нет, а на экране снова ошибка — не ждём 2 минуты, жмём кнопку ещё раз.
             form_deadline = time.monotonic() + int(cfg.get("card_form_wait_s") or 120)
@@ -2621,6 +2655,11 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
                     reached_bank = True
                     branch = "yoomoney"
                     break
+                if pb._on_card_form(page) and time.monotonic() - c0 > 70:
+                    _release_held()
+                    if shot_holder is not None:
+                        shot_holder["note"] = "форма карты так и осталась, банк не открылся"
+                    return _unclear()
                 if _back_on_start(pb, page):
                     stuck = stuck or time.monotonic()
                     if time.monotonic() - stuck > 8 and restarts < 3:
@@ -2809,7 +2848,15 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
     beeline_tries = 0
     link = None
     pay_cfg = dict(CFG)
-    pay_cfg["browser_proxy"] = slot_proxy(slot)
+    live = slot_proxy(slot)
+    if live and not _proxy_open(live):
+        spare = take_spare(slot)
+        live = spare if spare and _proxy_open(spare) else ""
+        if not live:
+            SLOT_PAUSED.add(slot)
+            io.send("⚠️ Этот выход не отвечает. Поставлю тебя на другое место.")
+            return
+    pay_cfg["browser_proxy"] = live
     while True:
         with ACTIVE_LOCK:
             if slot in ACTIVE_SLOTS:
@@ -2966,9 +3013,14 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
             requeue_link(link); break
 
         if res == "no_code":
-            io.send(f"⚠️ Этот банк пока не поддерживается (не нашёл поле кода). Можно отдать на ручную "
-                    f"оплату — напиши {ADMIN_CONTACT}.\nПопробуй другую карту.")
-            requeue_link(link); link = None
+            reason = "банк не показал поле кода, деньги могли списаться"
+            mark_problem(link, reason)
+            tg.send(ADMIN_ID, f"🗄 Ссылка снята с очереди\n{link['url']}\nПричина: {reason}\n🕒 {msk_ts()}",
+                    kb([[btn("♻️ Вернуть в очередь", f"prob_ret:{link['id']}"),
+                         btn("🗑 Удалить", f"prob_del:{link['id']}")]]))
+            io.send(f"⚠️ Банк не показал поле кода. Ссылку снял, чтобы её не оплатили второй раз. "
+                    f"Если деньги списались — напиши {ADMIN_CONTACT}.")
+            link = None
             ch = ask_buttons(io, "Что делаем?",
                              [[btn("💳 Ввести новую карту", "sess_newcard")], [btn("🚪 Закончить работу", "sess_finish")]],
                              int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
@@ -3025,6 +3077,17 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                 cur_card = nc
                 continue   # та же ссылка, карта другого банка
             requeue_link(link); break
+
+        if res == "proxy_dead":
+            spare = take_spare(slot)
+            if spare and _proxy_open(spare):
+                pay_cfg["browser_proxy"] = spare
+                io.send("⚠️ Выход не открылся. Переключил на запасной и открываю ту же ссылку.")
+                continue
+            SLOT_PAUSED.add(slot)
+            requeue_link(link)
+            io.send("⚠️ Этот выход не отвечает. Поставлю тебя на другое место.")
+            return
 
         if res == "site":
             requeue_link(link)
