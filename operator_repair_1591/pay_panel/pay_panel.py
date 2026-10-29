@@ -2270,17 +2270,26 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 shot_holder["note"] = _page_fact()
             return "unclear"
 
+        def _is_beeline_error_page():
+            """Страница Билайна /registration/error с текстом «оплата не прошла»."""
+            try:
+                url = (page.url or "").lower()
+            except Exception:
+                url = ""
+            if "/registration/error" in url and _fail_word():
+                return True
+            return False
+
         def _click_beeline_retry():
-            """Кнопку жмём только до отправки карты и только если на странице есть текст ошибки."""
+            """На странице ошибки Билайна жмём «попробовать ещё раз», ссылку заново не открываем."""
             nonlocal beeline_retries
-            if card_sent:
-                return False
             if pb._on_card_form(page):
                 return True
             if beeline_retries >= max_beeline:
+                io.send(f"⚠️ Страница ошибки Билайна так и осталась после {max_beeline} нажатий.\n{_page_fact()}")
                 return False
             beeline_retries += 1
-            io.send(f"⚠️ Поля карты нет.\n{_page_fact()}\n"
+            io.send(f"⚠️ Страница ошибки Билайна.\n{_page_fact()}\n"
                     f"Жму «попробовать ещё раз» ({beeline_retries}/{max_beeline}).")
             if not pb._click_retry(page):
                 io.send("⚠️ Не нашёл кнопку «попробовать ещё раз».")
@@ -2398,7 +2407,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                     return "cancel"
                 if _instant_fail():
                     _release_held()
-                    if card_sent:
+                    if card_sent and not _is_beeline_error_page():
                         return _unclear()
                     retry_now = True
                     break
@@ -2472,7 +2481,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0):
                 page.wait_for_timeout(500)
             _release_held()
             if retry_now:
-                if card_sent:
+                if card_sent and not _is_beeline_error_page():
                     return _unclear()
                 if not _click_beeline_retry():
                     return "beeline"
