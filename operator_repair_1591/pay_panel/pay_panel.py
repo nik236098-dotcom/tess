@@ -94,7 +94,13 @@ class Telegram:
         self._tl = threading.local()
         self.base = f"https://api.telegram.org/bot{self.token}"
         self.offset = None
+        self._net_fails = 0   # подряд обрывов getUpdates — для бэк-оффа и «тихого» лога
         socket.setdefaulttimeout(30)
+
+    def _net_backoff(self):
+        """Пауза между повторами при обрыве связи с Telegram: 3→6→12→24→30 c."""
+        self._net_fails += 1
+        return min(30, 3 * (2 ** min(self._net_fails - 1, 3)))
 
     def _drop_http(self):
         s = getattr(self._tl, "s", None)
@@ -241,10 +247,17 @@ class Telegram:
         try:
             data = self._http().get(f"{self.base}/getUpdates", params=params, timeout=timeout + 15).json()
         except Exception as exc:
-            log(f"getUpdates error: {type(exc).__name__}: {exc}")
+            # Пишем только первый обрыв, дальше молчим и наращиваем паузу, чтобы не
+            # долбить мёртвый прокси и не засорять журнал одинаковыми ошибками.
+            if self._net_fails == 0:
+                log(f"getUpdates error: {type(exc).__name__}: {exc} "
+                    f"(связь с Telegram потеряна, повторяю с паузой)")
             self._drop_http()
-            time.sleep(3)
+            time.sleep(self._net_backoff())
             return []
+        if self._net_fails:
+            log(f"getUpdates: связь с Telegram восстановлена (было {self._net_fails} обрывов подряд)")
+            self._net_fails = 0
         out = []
         for upd in data.get("result", []) or []:
             self.offset = upd["update_id"] + 1
@@ -895,10 +908,12 @@ def ready_qr_urls():
     """Оплаченные в панели eSIM, по которым QR ещё не снимали."""
     done = _qr_exported()
     con = db()
+    # QR ведёт собственный учёт снятых (qr_exported.json / done), поэтому НЕ зависим от
+    # флага exported текстовой выгрузки — иначе «Выгрузка» ссылок убивала выгрузку QR.
     rows = con.execute(
         "SELECT COALESCE(NULLIF(l.url, ''), p.url_final) url "
         "FROM payments p LEFT JOIN links l ON l.id = p.link_id "
-        "WHERE p.result='success' AND COALESCE(p.canceled,0)=0 AND COALESCE(p.exported,0)=0 "
+        "WHERE p.result='success' AND COALESCE(p.canceled,0)=0 "
         "ORDER BY p.id"
     ).fetchall()
     con.close()
@@ -2292,34 +2307,41 @@ def _back_on_start(pb, page):
     return ("оплатить картой" in low) and ("порядок" in low or "подтвердите данные" in low)
 
 
-# Успешная вкладка не закрывается сразу: висит 3 минуты, потом закрывается сама.
+# Успешная вкладка не закрывается сразу: держим её открытой до следующего действия
+# оператора (или до конца смены), чтобы Билайн успел выпустить eSIM. Закрываем ТОЛЬКО
+# на том же потоке, что владеет Playwright: межпоточный ctx.close() роняет greenlet
+# ("cannot switch to a different thread") и оставляет контекст висеть — это утечка
+# браузеров и причина зависаний места, если ждать его закрытия в чужом потоке.
 _PARKED = {}
 _PARK_LOCK = threading.Lock()
 
 
-def _park_tab(ctx, slot, seconds=180):
-    ev = threading.Event()
+def _park_tab(ctx, slot):
+    """Отложить закрытие вкладки. Реально закроет её поток слота (см. _drain_parked)."""
     with _PARK_LOCK:
-        _PARKED.setdefault(slot, []).append(ev)
+        _PARKED.setdefault(slot, []).append(ctx)
 
-    def _run():
+
+def _drain_parked(slot, keep=0):
+    """Закрыть ранее припаркованные вкладки этого места. Вызывать ТОЛЬКО из потока
+    слота — владельца Playwright. keep — сколько последних оставить открытыми."""
+    with _PARK_LOCK:
+        ctxs = _PARKED.get(slot, [])
+        if keep > 0:
+            victims, _PARKED[slot] = ctxs[:-keep], ctxs[-keep:]
+        else:
+            victims, _PARKED[slot] = ctxs, []
+    for ctx in victims:
         try:
-            time.sleep(seconds)
-            try:
-                ctx.close()
-            except Exception:
-                pass
-        finally:
-            ev.set()
-
-    threading.Thread(target=_run, daemon=True).start()
+            ctx.close()
+        except Exception:
+            pass
 
 
-def _wait_parked(slot, timeout=185):
+def _forget_parked(slot):
+    """Снять учёт припаркованных вкладок без закрытия (браузер уже закрыт/умер)."""
     with _PARK_LOCK:
-        evs = _PARKED.pop(slot, [])
-    for ev in evs:
-        ev.wait(timeout)
+        _PARKED.pop(slot, None)
 
 
 def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=False):
@@ -2335,6 +2357,8 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
     bproxy = str(cfg.get("browser_proxy") or "").strip()
     if bproxy and bproxy.lower() not in ("direct", "none", "off", "no", "-"):
         ctx_kwargs["proxy"] = {"server": bproxy}
+    # закрываем прошлую успешную вкладку этого места — на своём (Playwright) потоке
+    _drain_parked(slot)
     ctx = browser.new_context(**ctx_kwargs)
     page = ctx.new_page()
     page.set_default_timeout(3000)
@@ -2861,6 +2885,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
         with ACTIVE_LOCK:
             if slot in ACTIVE_SLOTS:
                 ACTIVE_SLOTS[slot]["holding"] = link is not None
+                ACTIVE_SLOTS[slot]["link_id"] = link["id"] if link else 0
         # карта исчерпана → новая/закончить
         if card_uses(cur_card) >= 3:
             ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Снова можно через 24 часа.",
@@ -2868,7 +2893,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                              int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
-                if nc is None:
+                if nc in (None, "leave"):
                     break
                 cur_card = nc
                 beeline_tries = 0
@@ -2880,6 +2905,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
             with ACTIVE_LOCK:
                 if slot in ACTIVE_SLOTS:
                     ACTIVE_SLOTS[slot]["holding"] = link is not None
+                    ACTIVE_SLOTS[slot]["link_id"] = link["id"] if link else 0
             if link is None:
                 io.send("📑 Ссылки кончились. Ты остаёшься в очереди — как появятся новые, продолжим.")
                 return   # НЕ выходим из очереди
@@ -2913,7 +2939,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                                  int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
                 if ch == "new":
                     nc = wait_card(io, int(CFG["newcard_timeout_s"]))
-                    if nc is None:
+                    if nc in (None, "leave"):
                         break
                     cur_card = nc
                     continue
@@ -2926,7 +2952,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                              {"sess_next": "next", "sess_newcard": "new", "sess_finish": "finish"})
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
-                if nc is None:
+                if nc in (None, "leave"):
                     break
                 cur_card = nc
                 beeline_tries = 0
@@ -2965,7 +2991,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
         if res == "bad_card":
             io.send("❌ Некорректный номер карты. Пришли другую.")
             nc = wait_card(io, int(CFG["newcard_timeout_s"]))
-            if nc is None:
+            if nc in (None, "leave"):
                 requeue_link(link)
                 break
             cur_card = nc
@@ -2986,7 +3012,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                 continue
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
-                if nc is None:
+                if nc in (None, "leave"):
                     requeue_link(link); break
                 cur_card = nc
                 beeline_tries = 0
@@ -3006,7 +3032,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                 continue
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
-                if nc is None:
+                if nc in (None, "leave"):
                     requeue_link(link); break
                 cur_card = nc; beeline_tries = 0
                 continue
@@ -3026,7 +3052,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                              int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
-                if nc is None:
+                if nc in (None, "leave"):
                     break
                 cur_card = nc; beeline_tries = 0
                 continue
@@ -3072,7 +3098,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                              int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
-                if nc is None:
+                if nc in (None, "leave"):
                     requeue_link(link); break
                 cur_card = nc
                 continue   # та же ссылка, карта другого банка
@@ -3126,7 +3152,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                              {"sess_next": "next", "sess_newcard": "new", "sess_finish": "finish"})
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
-                if nc is None:
+                if nc in (None, "leave"):
                     break
                 cur_card = nc
                 beeline_tries = 0
@@ -3180,6 +3206,7 @@ def session_thread(tg, payer_id, io, slot, pw):
                 browser.close()
             except Exception:
                 pass
+            _forget_parked(slot)   # контексты мёртвого браузера закрывать уже нечем
             browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
     except Exception as exc:
         log("session error:\n" + traceback.format_exc())
@@ -3191,10 +3218,17 @@ def session_thread(tg, payer_id, io, slot, pw):
             raise
     finally:
         with ACTIVE_LOCK:
-            ACTIVE_SLOTS.pop(slot, None)
+            info = ACTIVE_SLOTS.pop(slot, None)
             if not ACTIVE_SLOTS:
                 STOP_EVENT.clear()
-        _wait_parked(slot)
+        # если смена оборвалась на незавершённой ссылке — вернём её в очередь
+        # (requeue_link трогает только статус in_progress, для 'paid'/'problem' это no-op)
+        if info and info.get("link_id"):
+            try:
+                requeue_link({"id": info["link_id"]})
+            except Exception:
+                pass
+        _drain_parked(slot)   # закрываем припаркованные вкладки на своём потоке, без ожидания
         if browser is not None:
             try:
                 browser.close()
@@ -3280,8 +3314,15 @@ def main():
     # RESTART_RECOVERY: незавершённые при прошлом запуске ссылки — назад в очередь
     con = db(); con.execute("UPDATE links SET status='queued' WHERE status='in_progress'"); con.commit(); con.close()
     tg = Telegram(CFG)
+    # Дожидаемся связи с Telegram (после ребута прокси может быть ещё не готов),
+    # иначе первое сообщение админу теряется, а в лог сыпятся ошибки соединения.
     me = tg._call("getMe")
-    uname = (me.get("result") or {}).get("username", "?")
+    for _ in range(20):
+        if isinstance(me, dict) and me.get("ok"):
+            break
+        time.sleep(3)
+        me = tg._call("getMe")
+    uname = (me.get("result") or {}).get("username", "?") if isinstance(me, dict) else "?"
     log(f"запущен как @{uname}. Админ: {ADMIN_ID}")
     tg.send(ADMIN_ID, "🛠 Панель оплат запущена.")
     show_admin_menu(tg, ADMIN_ID)
