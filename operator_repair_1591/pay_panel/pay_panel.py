@@ -412,6 +412,30 @@ def is_operator(tg_id):
     return get_op(tg_id) is not None
 
 
+def extra_admin_ids():
+    out = set()
+    for part in str(setting("extra_admins", "") or "").split(","):
+        part = part.strip()
+        if part.lstrip("-").isdigit():
+            out.add(int(part))
+    return out
+
+
+def is_panel_admin(uid):
+    try:
+        uid = int(uid)
+    except (TypeError, ValueError):
+        return False
+    return uid == ADMIN_ID or uid in extra_admin_ids()
+
+
+def grant_admin(tg_id):
+    ids = extra_admin_ids()
+    ids.add(int(tg_id))
+    ids.discard(ADMIN_ID)
+    set_setting("extra_admins", ",".join(str(i) for i in sorted(ids)))
+
+
 # ── очередь ──────────────────────────────────────────────────────────────────
 def queue_list():
     con = db()
@@ -1125,7 +1149,7 @@ def banned_text(op):
 
 def handle_command(tg, uid, text):
     """Админские команды. Возвращает True, если обработано."""
-    if uid != ADMIN_ID:
+    if not is_panel_admin(uid):
         return False
     parts = text.split(maxsplit=1)
     cmd = parts[0].lower()
@@ -1182,6 +1206,33 @@ def handle_command(tg, uid, text):
         except sqlite3.IntegrityError:
             tg.send(uid, "Такой код уже существует.")
         con.close()
+        return True
+    if cmd.split("@")[0] == "/setadmin":
+        target = arg.split()[0] if arg else ""
+        if not target:
+            tg.send(uid, "Формат: /setadmin ID или /setadmin @тег")
+            return True
+        if target.lstrip("-").isdigit():
+            tid = int(target)
+            op = get_op(tid)
+            label = op_display(op) if op else str(tid)
+        else:
+            op = resolve_operator(target)
+            if not op:
+                tg.send(uid, "Не нашёл такой тег. Пришли числовой ID.")
+                return True
+            tid = op["tg_id"]
+            label = op_display(op)
+        if is_panel_admin(tid):
+            tg.send(uid, f"{label} уже администратор.")
+            return True
+        grant_admin(tid)
+        tg.send(uid, f"✅ {label} теперь администратор.")
+        try:
+            tg.send(tid, "👑 Тебе выдана роль администратора.")
+            show_admin_menu(tg, tid)
+        except Exception:
+            pass
         return True
     if cmd == "/autostart":
         low = arg.lower().strip()
@@ -1337,7 +1388,7 @@ def handle_text(tg, ev):
         return
 
     # админ
-    if uid == ADMIN_ID:
+    if is_panel_admin(uid):
         st = PENDING.get(uid)
         if st and st.get("await") == "links":
             urls = re.findall(r"https?://\S+", text)
@@ -1431,7 +1482,7 @@ def handle_callback(tg, ev):
         return
 
     # ── админ ──
-    if uid == ADMIN_ID:
+    if is_panel_admin(uid):
         if data == "adm_menu":
             show_admin_menu(tg, chat_id, mid); return
         if data == "adm_joinq":
@@ -1999,7 +2050,7 @@ def record_decline(tg, payer_id, link, card, is_admin, io, shot=None, page_url=N
 def log_payment(tg, pay_id, payer_id, link, card, uses, amount, result, shot=None, page_url=None):
     ch = setting("log_channel")
     o = get_op(payer_id)
-    who = op_display(o) if o else (f"АДМИН ({payer_id})" if payer_id == ADMIN_ID else str(payer_id))
+    who = op_display(o) if o else (f"АДМИН ({payer_id})" if is_panel_admin(payer_id) else str(payer_id))
     head = "✅ УСПЕШНАЯ ОПЛАТА" if result == "success" else "❌ ОПЛАТА НЕ ПРОШЛА"
     meta = f"{head}\n👤 {who}\n💳 {mask_pan(card)} ({uses}/3)" + (f"  (+{amount:.2f} $)" if amount else "") + \
            f"\n🕒 {msk_ts()}"
@@ -3148,7 +3199,7 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
 
 
 def session_thread(tg, payer_id, io, slot, pw):
-    is_admin = (payer_id == ADMIN_ID)
+    is_admin = is_panel_admin(payer_id)
     browser = None
     try:
         mins = max(1, int(CFG.get("idle_timeout_s") or 180) // 60)
@@ -3302,7 +3353,7 @@ def main():
                         uid = ev.get("uid")
                         queue_leave(uid)
                         if ev.get("chat_id"):
-                            if uid == ADMIN_ID:
+                            if is_panel_admin(uid):
                                 show_admin_menu(tg, ev["chat_id"], ev.get("message_id"))
                             else:
                                 op = get_op(uid)
