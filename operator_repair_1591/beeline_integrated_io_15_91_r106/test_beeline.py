@@ -4326,6 +4326,34 @@ def _phone_digits(value):
     return re.sub(r"\D", "", str(value or ""))
 
 
+def _excluded_phones(*values):
+    """Contact and the client's own number must never be stored as the issued eSIM number."""
+    out = set()
+    for value in values:
+        if isinstance(value, (list, tuple, set)):
+            out |= _excluded_phones(*value)
+            continue
+        digits = _phone_digits(value)
+        if len(digits) < 10:
+            continue
+        out.add(digits)
+        if len(digits) == 11 and digits[0] in "78":
+            national = digits[1:]
+            out.add(national)
+            out.add("7" + national)
+            out.add("8" + national)
+        elif len(digits) == 10:
+            out.add("7" + digits)
+            out.add("8" + digits)
+    return out
+
+
+def _phone_excluded(normalized, excluded):
+    digits = _phone_digits(normalized)
+    national = digits[1:] if len(digits) == 11 else digits
+    return digits in excluded or national in excluded
+
+
 def _normalize_ru_phone(value):
     digits = _phone_digits(value)
     if len(digits) != 11:
@@ -4343,20 +4371,17 @@ def _normalize_ru_phone(value):
 ESIM_NUMBER_WAIT_1591R92 = max(6, min(int(os.environ.get('BEELINE_ESIM_NUMBER_WAIT') or 30), 120))
 
 
-def capture_esim_offer_page(page, diagnostic=None, contact_phone=None, timeout=6):
-    """Capture exact offer-page URL and the reserved eSIM number on that page."""
-    offer_url = str(page.url or "")
-    setattr(page, "_reserved_sim_url", offer_url)
-    setattr(page, "_reserved_sim_url_locked", True)
+def capture_esim_offer_page(page, diagnostic=None, contact_phone=None, timeout=6, extra_exclude=None):
+    """Capture the offer URL and the reserved eSIM number as one pair.
 
-    excluded = {_phone_digits(contact_phone)}
-    excluded |= {
-        x[1:] for x in list(excluded)
-        if len(x) == 11 and x.startswith(("7", "8"))
-    }
+    The link is taken from page.url at the moment the number is read, not earlier.
+    The contact and the client's own number are never stored as the eSIM number.
+    """
+    excluded = _excluded_phones(contact_phone, extra_exclude)
 
     best_number = None
     best_score = -10_000
+    offer_url = ""
     deadline = monotonic() + timeout
 
     while monotonic() < deadline and not best_number:
@@ -4421,21 +4446,30 @@ def capture_esim_offer_page(page, diagnostic=None, contact_phone=None, timeout=6
                     continue
                 digits = _phone_digits(normalized)
                 national = digits[1:] if len(digits) == 11 else digits
-                # ESIM_NUMBER_LABELED_1591R93: контактный номер исключаем ТОЛЬКО у неподписанных блоков.
-                # Если номер явно подписан («ваш номер», esim/сим — score>0) — это и есть номер eSIM на
-                # offer-странице, берём его, даже если он совпал с введённым контактным. Раньше он
-                # выбрасывался, и у половины строк выходило «номер не определён».
-                if (digits in excluded or national in excluded) and base_score <= 0:
+                # Контакт и номер клиента не записываем как номер eSIM, даже если блок подписан.
+                if digits in excluded or national in excluded:
                     continue
                 if base_score > best_score:
                     best_score = base_score
                     best_number = normalized
 
-        if not best_number:
-            page.wait_for_timeout(200)
+        if best_number:
+            try:
+                offer_url = str(page.url or "")
+            except Exception:
+                offer_url = ""
+            if offer_url:
+                break
+            best_number = None
+        page.wait_for_timeout(200)
 
-    if best_number:
+    if best_number and offer_url:
+        setattr(page, "_reserved_sim_url", offer_url)
+        setattr(page, "_reserved_sim_url_locked", True)
         setattr(page, "_reserved_sim_number", best_number)
+    else:
+        best_number = None
+        offer_url = ""
 
     if diagnostic is not None:
         try:
@@ -4455,13 +4489,10 @@ def capture_esim_offer_page(page, diagnostic=None, contact_phone=None, timeout=6
     return bool(best_number)
 
 
-def _labeled_esim_number_1591r87(page, contact_phone):
+def _labeled_esim_number_1591r87(page, *phones):
     """SIM_NUMBER_LATE_1591R87: an eSIM number that is clearly LABELLED (esim/сим/номер) on the
-    current page, excluding the client's contact number. Returns «+7…» or None. Safe on a later
-    page: a number without eSIM context (score <= 0) is never taken, so a random/support number
-    is not grabbed by mistake."""
-    excluded = {_phone_digits(contact_phone)}
-    excluded |= {x[1:] for x in list(excluded) if len(x) == 11 and x.startswith(("7", "8"))}
+    current page, excluding the client's contact and own number. Returns «+7…» or None."""
+    excluded = _excluded_phones(*phones)
     try:
         blocks = page.evaluate(r"""() => {
             const out = [];
@@ -4528,15 +4559,7 @@ def capture_reserved_sim(page, worker=None, timeout=4):
         current_url = ""
 
     url_locked = bool(getattr(page, "_reserved_sim_url_locked", False))
-    if not remembered_url and current_url and not url_locked:
-        remembered_url = current_url
-        try:
-            setattr(page, "_reserved_sim_url", remembered_url)
-        except Exception:
-            pass
-        if worker is not None:
-            worker["reserved_sim_url"] = remembered_url
-    elif worker is not None and remembered_url and not worker.get("reserved_sim_url"):
+    if worker is not None and remembered_url and not worker.get("reserved_sim_url") and url_locked:
         worker["reserved_sim_url"] = remembered_url
 
     # If the number was already captured earlier, just synchronize it to worker.
@@ -4547,6 +4570,14 @@ def capture_reserved_sim(page, worker=None, timeout=4):
         remembered_number = ""
     if worker is not None:
         remembered_number = worker.get("reserved_sim_number") or remembered_number
+
+    excluded = _excluded_phones(
+        worker.get("contact_phone") if worker is not None else None,
+        worker.get("contact_digits") if worker is not None else None,
+        row_parts(worker.get("row"))[1] if worker is not None else None,
+    )
+    if remembered_number and _phone_excluded(remembered_number, excluded):
+        remembered_number = ""
 
     if remembered_number:
         if worker is not None:
@@ -4581,6 +4612,9 @@ def capture_reserved_sim(page, worker=None, timeout=4):
                             found = "+" + (
                                 "7" + digits[1:] if digits.startswith("8") else digits
                             )
+                            if _phone_excluded(found, excluded):
+                                found = None
+                                continue
                             break
                     if found:
                         break
@@ -4612,6 +4646,9 @@ def capture_reserved_sim(page, worker=None, timeout=4):
                         found = "+" + (
                             "7" + digits[1:] if digits.startswith("8") else digits
                         )
+                        if _phone_excluded(found, excluded) or not re.search(r"e\s*-?\s*sim|\bsim\b", line, re.I):
+                            found = None
+                            continue
                         break
             except Exception:
                 pass
@@ -4623,12 +4660,21 @@ def capture_reserved_sim(page, worker=None, timeout=4):
 
     if found:
         try:
+            current_url = str(page.url or "")
+        except Exception:
+            current_url = ""
+        if "registration" in current_url:
+            remembered_url = current_url
+        try:
             setattr(page, "_reserved_sim_number", found)
+            if remembered_url:
+                setattr(page, "_reserved_sim_url", remembered_url)
+                setattr(page, "_reserved_sim_url_locked", True)
         except Exception:
             pass
         if worker is not None:
             worker["reserved_sim_number"] = found
-            if remembered_url and not worker.get("reserved_sim_url"):
+            if remembered_url:
                 worker["reserved_sim_url"] = remembered_url
 
         print(
@@ -6477,6 +6523,7 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
             page,
             diagnostic=diagnostic,
             contact_phone=phone,
+            extra_exclude=active_digits,
             timeout=ESIM_NUMBER_WAIT_1591R92,  # ESIM_NUMBER_WAIT_1591R92
         )
         _remember_order_1591r69(page, phone, digits)  # ORDER_REUSE_1591R69
@@ -6556,6 +6603,13 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
     else:
         print("Использую уже открытую форму — браузер не перезапускаю.", flush=True)
         expect(page.locator('input[name="ctn"]')).to_be_visible(timeout=8000)
+        capture_esim_offer_page(
+            page,
+            diagnostic=diagnostic,
+            contact_phone=phone,
+            extra_exclude=active_digits,
+            timeout=8,
+        )
         # Даже при повторном использовании готовой формы новый cascade-slot
         # не выпускаем до завершения protected stage этой строки.
 
@@ -7038,6 +7092,15 @@ def start_row_in_worker(base_dir, browser_version, worker, row):
     # protected overlay реально закрылся.
     setattr(page, "_launch_ready_event", worker.get("launch_ready_event"))
 
+    # Новая строка не наследует номер и ссылку прошлой: пара пишется только с этой страницы.
+    for attr in ("_reserved_sim_url", "_reserved_sim_number", "_reserved_sim_url_locked"):
+        try:
+            delattr(page, attr)
+        except Exception:
+            pass
+    worker["reserved_sim_url"] = None
+    worker["reserved_sim_number"] = None
+
     if not worker["form_ready"]:
         worker["contact_digits"] = "791900011" + f"{secrets.randbelow(100):02d}"
         digits = worker["contact_digits"]
@@ -7131,7 +7194,12 @@ def start_row_in_worker(base_dir, browser_version, worker, row):
         elif getattr(page, "_reserved_sim_url_locked", False):
             # SIM_NUMBER_LATE_1591R87: number may have rendered after the offer-page scan — look again,
             # but only for a clearly labelled eSIM number (never the contact / a random one).
-            late = _labeled_esim_number_1591r87(page, row_parts(worker.get("row"))[1])
+            late = _labeled_esim_number_1591r87(
+                page,
+                row_parts(worker.get("row"))[1],
+                worker.get("contact_phone"),
+                worker.get("contact_digits"),
+            )
             if late:
                 worker["reserved_sim_number"] = late
                 try:
@@ -7890,12 +7958,6 @@ def _reuse_order_1591r69(worker):
             pass
         _forget_order_1591r69(worker, "форма по ссылке не открылась" + (f" ({error})" if error else ""))
         return False
-    setattr(page, "_reserved_sim_url", rec["url"])
-    setattr(page, "_reserved_sim_url_locked", True)
-    if rec.get("sim_number"):
-        setattr(page, "_reserved_sim_number", rec["sim_number"])
-    if rec.get("contact_digits") and rec.get("contact_phone"):
-        worker["contact_digits"], worker["contact_phone"] = rec["contact_digits"], rec["contact_phone"]
     try:
         diagnostic.write("order_reused", url=rec["url"], age_seconds=int(age), opens=rec["opens"])
     except Exception:
