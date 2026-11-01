@@ -3373,7 +3373,7 @@ def main():
                         continue
                     _pay_cb = {
                         "sess_next", "sess_same", "sess_newcard", "sess_finish",
-                        "ai_call", "ai_cancel", "resend_sms", "yoo_sms", "op_leave",
+                        "ai_call", "ai_cancel", "resend_sms", "code_cancel", "yoo_sms", "op_leave",
                     }
                     _cmd = (ev["kind"] == "text" and ev.get("text", "").startswith("/"))
                     _data = ev.get("data") or ""

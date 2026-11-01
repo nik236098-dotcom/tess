@@ -907,7 +907,7 @@ def _wait_code_or_resend(tg, timeout_seconds):
                     tg.answer_callback(ev.get("id"))
                 if ev.get("data") == "resend_sms":
                     return ("resend", None)
-                if ev.get("data") in ("op_leave", "ai_cancel", "sess_finish"):
+                if ev.get("data") in ("code_cancel", "op_leave", "ai_cancel", "sess_finish"):
                     return ("cancel", None)
                 continue
             t = (ev.get("text") or "").strip()
@@ -926,8 +926,10 @@ def _enter_3ds_code(page, tg, cfg, page_wait, code_wait):
     """Цикл ввода кода из SMS/пуша. Возвращает один из вердиктов:
        accepted / declined / wrong_exhausted / timeout / cancelled / lost.
     На каждом шаге есть кнопка «📨 Повторить СМС» (PAY_RESEND_1591R103)."""
-    resend_kb = {"inline_keyboard": [[{"text": "📨 Повторить СМС (запросить код заново)",
-                                       "callback_data": "resend_sms"}]]}
+    resend_kb = {"inline_keyboard": [[
+        {"text": "📨 Повторить СМС", "callback_data": "resend_sms"},
+        {"text": "✖️ Отмена", "callback_data": "code_cancel"},
+    ]]}
     for attempt in range(1, 6):
         fr = h = None
         field_deadline = time.monotonic() + page_wait
