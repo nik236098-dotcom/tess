@@ -6613,13 +6613,14 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
     else:
         print("Использую уже открытую форму — браузер не перезапускаю.", flush=True)
         expect(page.locator('input[name="ctn"]')).to_be_visible(timeout=8000)
-        capture_esim_offer_page(
-            page,
-            diagnostic=diagnostic,
-            contact_phone=phone,
-            extra_exclude=active_digits,
-            timeout=8,
-        )
+        if not getattr(page, "_reserved_sim_number", None):
+            capture_esim_offer_page(
+                page,
+                diagnostic=diagnostic,
+                contact_phone=phone,
+                extra_exclude=active_digits,
+                timeout=4,
+            )
         # Даже при повторном использовании готовой формы новый cascade-slot
         # не выпускаем до завершения protected stage этой строки.
 
@@ -7956,6 +7957,18 @@ def _reuse_order_1591r69(worker):
     opened, error = False, ""
     try:
         page.goto(rec["url"], wait_until="domcontentloaded", timeout=45000)
+        # Номер eSIM виден на этой странице заказа и пропадает после перехода к форме.
+        capture_esim_offer_page(
+            page,
+            diagnostic=diagnostic,
+            contact_phone=worker.get("contact_phone"),
+            extra_exclude=row_parts(worker.get("row"))[1] if worker.get("row") else None,
+            timeout=ESIM_NUMBER_WAIT_1591R92,
+        )
+        if not getattr(page, "_reserved_sim_number", None) and rec.get("sim_number") and rec.get("url"):
+            setattr(page, "_reserved_sim_url", rec["url"])
+            setattr(page, "_reserved_sim_number", rec["sim_number"])
+            setattr(page, "_reserved_sim_url_locked", True)
         ensure_region_page(page, diagnostic)
         opened = _order_to_form_1591r69(page)
     except Exception as exc:

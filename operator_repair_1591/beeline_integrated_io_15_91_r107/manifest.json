@@ -3,7 +3,7 @@
   "files": {
     "test_beeline.py": {
       "input_sha256": "d65cf902eefa9fe66ed0e1e6260d40d9924e646c1cb57d3576103723a918c4d7",
-      "output_sha256": "b614fd7e3c7fc4a2cc5508ddafb116e1c4e9e487347164492f25db2c72377800",
+      "output_sha256": "d2cb8b29eea7232e07af181a71da66423ce4e7f496cb9bc4e022d7f773e07af6",
       "previous_output_sha256": [
         "0a35859f964752c85c30edb12e20ba8f64fa76174fb1938fb12904acf4a9e84f",
         "e494e479b040836cf996933129ed701ac8ba8c397683eb6253c117e2624bb004",
@@ -203,7 +203,8 @@
         "d65cf902eefa9fe66ed0e1e6260d40d9924e646c1cb57d3576103723a918c4d7",
         "b69d048d0a6c34824e8a1001673b5dbbe787cb2887a844223386a4ed1812811c",
         "b2cc2485cc029c1d8d6d5d05e53f1e1ed99cf376648a56261782f82b32375ae6",
-        "6b89b3ac39d9b0822958452ac83cc98ea074c64fbed34f97174e81f260a698b0"
+        "6b89b3ac39d9b0822958452ac83cc98ea074c64fbed34f97174e81f260a698b0",
+        "b614fd7e3c7fc4a2cc5508ddafb116e1c4e9e487347164492f25db2c72377800"
       ]
     },
     "server_controller.py": {
@@ -278,7 +279,7 @@
   "preserved_ast_sha256": {
     "fill_test_signature": "95bc230fd6cfeddd66c12f9431df89d49bfb5e57cb1c2cd2c1b5efcc40cc406b",
     "fill_signature_and_submit": "e79933df907a67a8b4082f3eee5bdc18d0d53cdc74354ed2af5e8a619fb79f36",
-    "run_registration": "3bcaf22decceba02cb2ceba51fba3d5df5285900b7577656f44cf2d26d45a616",
+    "run_registration": "7713bfc04adda77e2aba4dc409e697a5f91bbd2498e1526534c2e5f16012144f",
     "process_registration_row": "5429a0ef4a75464989e2d2c0b0a6544ecaa8caff3c8f37bbe6b1c26a1a1b8bba",
     "try_click_resend_once": "ead8fb4a507eb30c475bc00e7632f0a4aa5b3515215af9d3e2c5367d17572542",
     "queue_success_assist": "a4c9749e6d3f629294eeb164e8152a24e5cdeeb0cd9949932cec6357e683d2e1",
