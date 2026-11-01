@@ -494,7 +494,7 @@ def _inputs_debug(scope):
 
 def _fill_card_field(h, value):
     h.click()
-    h.type(value, delay=70)
+    h.type(value, delay=40)
     try:
         h.evaluate("e => e.setAttribute('data-pb-filled','1')")
     except Exception:
@@ -527,7 +527,7 @@ def _type_card(page, card, tg, deadline):
         page.keyboard.press("Tab")
     except Exception:
         pass
-    page.wait_for_timeout(800)
+    page.wait_for_timeout(250)
     # кнопка «оплатить» может стать активной не сразу — ждём до дедлайна
     try:
         tg.send("💳 Карта введена, жму «оплатить» (жду активации кнопки)…")

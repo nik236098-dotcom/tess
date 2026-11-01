@@ -2428,12 +2428,20 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
             except Exception:
                 pass
             return "site"
-        # ждём, пока сайт сообщит статус заказа в JSON (как чекер ссылок) — до ~10 сек
+        # Статус заказа в JSON. Если кнопка оплаты уже на экране — не ждём все 10 секунд.
+        sped = False
         sdeadline = time.monotonic() + 10
         while time.monotonic() < sdeadline and not seen["status"] and not seen["error"]:
             if STOP_EVENT.is_set():
                 return "stopped"
-            page.wait_for_timeout(300)
+            try:
+                ready = pb._on_card_form(page) or "оплатить" in pb._page_text(page)
+            except Exception:
+                ready = False
+            if ready and not sped:
+                sped = True
+                sdeadline = min(sdeadline, time.monotonic() + 1.2)
+            page.wait_for_timeout(250)
         # eSIM уже выпущена/активирована или ошибка сайта → ссылка непригодна (за секунды)
         if seen["error"] or seen["status"] == USED_STATUS:
             return "bad_link"
@@ -2548,15 +2556,15 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
             if not pb._click_retry(page):
                 io.send("⚠️ Не нашёл кнопку «попробовать ещё раз».")
                 return False
-            # старая ошибка ещё на экране пару секунд — это не новое появление
-            page.wait_for_timeout(4000)
-            deadline = time.monotonic() + 12
+            page.wait_for_timeout(600)
+            started = time.monotonic()
+            deadline = started + 8
             while time.monotonic() < deadline:
                 if pb._on_card_form(page) or STOP_EVENT.is_set():
                     break
-                if _instant_fail():
+                if time.monotonic() - started > 2.2 and _instant_fail():
                     break
-                page.wait_for_timeout(400)
+                page.wait_for_timeout(300)
             return True
 
         branch = "wait"
@@ -2582,10 +2590,10 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
                 if pb._on_card_form(page):
                     found_pay = True
                     break
-                if pb._click_by_words(page.main_frame, pb.PAY_BUTTON_WORDS, timeout_ms=2000):
+                if pb._click_by_words(page.main_frame, pb.PAY_BUTTON_WORDS, timeout_ms=500):
                     found_pay = True
                     break
-                page.wait_for_timeout(1200)
+                page.wait_for_timeout(300)
             if retry_now:
                 if not _click_beeline_retry():
                     return "beeline"
@@ -2639,7 +2647,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
                 return "site"
             if _bad_card():
                 return "bad_card"
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(400)
             if _bad_card():
                 return "bad_card"
             card_sent = True
@@ -2741,7 +2749,7 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
                                 if _instant_fail():
                                     retry_now = True
                                     break
-                            page.wait_for_timeout(2000)
+                            page.wait_for_timeout(400)
                             nav = time.monotonic() + page_wait
                             c0 = time.monotonic()
                         continue
