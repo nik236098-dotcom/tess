@@ -343,17 +343,23 @@ def _qr_number_from_text(text):
 
 
 def _qr_valid_from_text(text):
-    """Срок с экрана QR. Дату не показываем, только время: «21:40» или «6 часов»."""
+    """Срок с экрана QR. Только время, без даты: «5ч 38 минут» или «21:40»."""
+    blob = re.sub(r"\s+", " ", str(text or ""))
+    m = re.search(r"\d+\s*ч(?:ас\w*)?(?:\s*\d+\s*мин\w*)?", blob, re.I)
+    if m:
+        return re.sub(r"\s+", " ", m.group(0)).strip()
+    m = re.search(r"\d+\s*мин\w*", blob, re.I)
+    if m:
+        return re.sub(r"\s+", " ", m.group(0)).strip()
     lines = [re.sub(r"\s+", " ", ln).strip() for ln in str(text or "").splitlines()]
     lines = [ln for ln in lines if ln]
     raw = ""
     for ln in lines:
         low = ln.lower()
-        if re.search(r"\d", ln) and any(k in low for k in ("действ", "в течение", "осталось", "истека", "истеч")):
+        if re.search(r"\d", ln) and any(k in low for k in ("действ", "в течение", "осталось", "истека", "истеч", "установк")):
             raw = ln
             break
     if not raw:
-        blob = re.sub(r"\s+", " ", " ".join(lines))
         for rx in (
             r"(?:действует|действител\w*|в течение)\s+\S.{0,50}",
             r"до\s+\d{1,2}[./]\d{1,2}[./]\d{2,4}(?:[, ]+\d{1,2}:\d{2})?",
