@@ -1743,14 +1743,12 @@ SLOT_PROXY = {}                    # slot -> запасной socks, если о
 SPARES = []                        # ещё не использованные запасные прокси
 _SPARES_READY = False
 _SPARE_LOCK = threading.Lock()
-TWIN_HOST = 0                      # четвёртое место — вторая вкладка этого браузера, тот же IP
+TWIN_HOST = 0                      # четвёртое место — тот же IP, свой браузер в своём потоке
 TWIN_SLOT = 3
-_TWIN_PORT = 9333
-_TWIN_READY = threading.Event()
 
 
 def slot_count():
-    """Три выхода по своим IP и ещё одно место: вторая вкладка основного IP."""
+    """Три выхода по своим IP и ещё одно место на основном IP."""
     if str(CFG.get("browser_proxy_3") or "").strip():
         base = 3
     elif str(CFG.get("browser_proxy_2") or "").strip():
@@ -1812,33 +1810,8 @@ def _proxy_open(raw):
 
 def slot_name(slot):
     if slot == TWIN_SLOT:
-        return "основной IP, вкладка 2"
+        return "основной IP, место 2"
     return ("основной IP", "второй IP", "третий IP")[slot] if slot < 3 else f"место {slot + 1}"
-
-
-def _keep_twin_browser():
-    """Один Chromium основного IP. Четвёртое место подключается к нему второй вкладкой."""
-    from playwright.sync_api import sync_playwright
-    while True:
-        try:
-            with sync_playwright() as pw:
-                browser = pw.chromium.launch(
-                    headless=True,
-                    args=["--no-sandbox", "--disable-dev-shm-usage",
-                          f"--remote-debugging-port={_TWIN_PORT}"],
-                )
-                _TWIN_READY.set()
-                while True:
-                    try:
-                        if not browser.is_connected():
-                            break
-                    except Exception:
-                        break
-                    time.sleep(2)
-        except Exception:
-            log("twin browser перезапущен\n" + traceback.format_exc())
-        _TWIN_READY.clear()
-        time.sleep(2)
 
 
 def take_spare(slot):
@@ -3265,31 +3238,18 @@ def session_thread(tg, payer_id, io, slot, pw):
             io.send("⌛ Карта не пришла — освобождаю очередь.")
             queue_leave(payer_id)
             return
-        shared = slot in (TWIN_HOST, TWIN_SLOT)
-        if shared:
-            if not _TWIN_READY.wait(40):
-                io.send("⚠️ Вторая вкладка ещё не поднялась. Встань в очередь ещё раз.")
-                queue_leave(payer_id)
-                return
-            browser = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{_TWIN_PORT}")
-        else:
-            browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         progress = {"site": 0, "relaunched": False}
         while True:
             action = session_loop(tg, io, browser, payer_id, card, is_admin, slot, progress)
             if action != "relaunch":
                 break
             progress["relaunched"] = True
-            if shared:
-                if not _TWIN_READY.wait(40):
-                    break
-                browser = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{_TWIN_PORT}")
-            else:
-                try:
-                    browser.close()
-                except Exception:
-                    pass
-                browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            try:
+                browser.close()
+            except Exception:
+                pass
+            browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
     except Exception as exc:
         log("session error:\n" + traceback.format_exc())
         try:
@@ -3304,7 +3264,7 @@ def session_thread(tg, payer_id, io, slot, pw):
             if not ACTIVE_SLOTS:
                 STOP_EVENT.clear()
         _wait_parked(slot)
-        if browser is not None and slot not in (TWIN_HOST, TWIN_SLOT):
+        if browser is not None:
             try:
                 browser.close()
             except Exception:
@@ -3340,9 +3300,6 @@ def _slot_worker(slot):
 
 
 def ensure_slot_workers():
-    if not getattr(ensure_slot_workers, "_twin", False):
-        ensure_slot_workers._twin = True
-        threading.Thread(target=_keep_twin_browser, daemon=True, name="pay-twin").start()
     for i in range(slot_count()):
         if i in SLOT_JOBS:
             continue
