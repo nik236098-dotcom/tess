@@ -343,23 +343,36 @@ def _qr_number_from_text(text):
 
 
 def _qr_valid_from_text(text):
-    """Срок с экрана QR: «действует 6 часов», «до 02.11.2026 21:40», «осталось 05:48»."""
+    """Срок с экрана QR. Дату не показываем, только время: «21:40» или «6 часов»."""
     lines = [re.sub(r"\s+", " ", ln).strip() for ln in str(text or "").splitlines()]
     lines = [ln for ln in lines if ln]
+    raw = ""
     for ln in lines:
         low = ln.lower()
         if re.search(r"\d", ln) and any(k in low for k in ("действ", "в течение", "осталось", "истека", "истеч")):
-            return ln[:120]
-    blob = re.sub(r"\s+", " ", " ".join(lines))
-    for rx in (
-        r"(?:действует|действител\w*|в течение)\s+\S.{0,50}",
-        r"до\s+\d{1,2}[./]\d{1,2}[./]\d{2,4}(?:[, ]+\d{1,2}:\d{2})?",
-        r"осталось\s+\d{1,2}:\d{2}(?::\d{2})?",
-    ):
-        m = re.search(rx, blob, re.I)
-        if m:
-            return m.group(0).strip()[:120]
-    return ""
+            raw = ln
+            break
+    if not raw:
+        blob = re.sub(r"\s+", " ", " ".join(lines))
+        for rx in (
+            r"(?:действует|действител\w*|в течение)\s+\S.{0,50}",
+            r"до\s+\d{1,2}[./]\d{1,2}[./]\d{2,4}(?:[, ]+\d{1,2}:\d{2})?",
+            r"осталось\s+\d{1,2}:\d{2}(?::\d{2})?",
+        ):
+            m = re.search(rx, blob, re.I)
+            if m:
+                raw = m.group(0).strip()
+                break
+    if not raw:
+        return ""
+    raw = re.sub(r"\d{1,2}[./]\d{1,2}[./]\d{2,4}", " ", raw)
+    raw = re.sub(
+        r"\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?:\s+\d{4})?",
+        " ", raw, flags=re.I)
+    clock = re.search(r"\d{1,2}:\d{2}(?::\d{2})?", raw)
+    if clock:
+        return clock.group(0)
+    return re.sub(r"\s+", " ", raw).strip(" ,.-")[:80]
 
 
 async def _qr_best_candidate(page):
