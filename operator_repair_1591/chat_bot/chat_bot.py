@@ -411,7 +411,24 @@ _WHO_SKIP = {
 }
 
 
+def _numbers_listing(numbers):
+    grouped = collections.OrderedDict()
+    for number, user, status in numbers:
+        bucket = grouped.setdefault(number, {"n": 0, "user": user, "status": status})
+        bucket["n"] += 1
+        bucket["user"] = user
+        bucket["status"] = status
+    lines = []
+    for number, bucket in grouped.items():
+        extra = " ×%d" % bucket["n"] if bucket["n"] > 1 else ""
+        who_name = bucket["user"] or "кто-то"
+        lines.append("• %s — %s · %s%s" % (
+            pretty_number(number), _STATUS_WORD.get(bucket["status"], bucket["status"]), who_name, extra))
+    return "\n".join(lines)
+
+
 def stats_answer(chat_id, period_text, who, frm):
+    """Короткий отчёт без номеров. Список номеров отдаётся отдельно, по кнопке."""
     since, until, label = _window_since(period_text or "сегодня")
     uid = name = None
     w = str(who or "all").strip().lower()
@@ -422,28 +439,14 @@ def stats_answer(chat_id, period_text, who, frm):
     total, per_user, numbers = compute_stats(chat_id, since, uid=uid, name=name, until=until)
     head = "📊 %s" % label.capitalize()
     if total["всего"] == 0:
-        return head + "\nОбщая: 0 QR. За этот срок записей нет."
+        return head + "\nОбщая: 0 QR. За этот срок записей нет.", ""
     lines = [head, "Общая: " + _fmt_line("всего", total).split(": ", 1)[1]]
-    lines.append("")
-    lines.append("По номерам:")
-    # один номер — одна строка, если кидали повторно показываем сколько и последний статус
-    grouped = collections.OrderedDict()
-    for number, user, status in numbers:
-        bucket = grouped.setdefault(number, {"n": 0, "user": user, "status": status})
-        bucket["n"] += 1
-        bucket["user"] = user
-        bucket["status"] = status
-    for number, bucket in grouped.items():
-        extra = " ×%d" % bucket["n"] if bucket["n"] > 1 else ""
-        who_name = bucket["user"] or "кто-то"
-        lines.append("• %s — %s · %s%s" % (
-            pretty_number(number), _STATUS_WORD.get(bucket["status"], bucket["status"]), who_name, extra))
     if len(per_user) > 1 and uid is None and name is None:
         lines.append("")
         lines.append("По людям:")
         for user, c in sorted(per_user.items(), key=lambda x: -x[1]["всего"]):
             lines.append(_fmt_line(user or "кто-то", c))
-    return "\n".join(lines)
+    return "\n".join(lines), _numbers_listing(numbers)
 
 
 # ---------------------------------------------------------------- дубли
@@ -467,6 +470,18 @@ def find_duplicates(chat_id, since=0, last_n=None):
 
 # ---------------------------------------------------------------- логика запросов
 PENDING = {}            # chat_id -> {"ids":[...], "numbers":[...], "ts":...}
+STATS_LISTS = {}        # token -> {"chat_id", "text", "ts"}
+
+
+def _remember_numbers(chat_id, text):
+    token = "%x" % (int(time.time() * 1000) & 0xFFFFFFFF)
+    while token in STATS_LISTS:
+        token = "%x" % ((int(token, 16) + 1) & 0xFFFFFFFF)
+    STATS_LISTS[token] = {"chat_id": chat_id, "text": text, "ts": time.time()}
+    if len(STATS_LISTS) > 30:
+        for old in sorted(STATS_LISTS, key=lambda k: STATS_LISTS[k]["ts"])[:-30]:
+            STATS_LISTS.pop(old, None)
+    return token
 
 
 def _today_since():
@@ -750,8 +765,13 @@ def handle_trigger(chat_id, msg):
         do_delete_last(chat_id, args.get("n", 1), args.get("who", "all"), frm, mid)
         return
     if action == "stats":
-        # статистику-сводку отдаём ТОЧНЫМ кодом (цифры и формат всегда верные)
-        send_parts(chat_id, stats_answer(chat_id, args.get("period", "сегодня"), args.get("who", "all"), frm), reply_to=mid)
+        # короткий отчёт без номеров; список — по кнопке под сообщением
+        short, listing = stats_answer(chat_id, args.get("period", "сегодня"), args.get("who", "all"), frm)
+        markup = None
+        if listing:
+            token = _remember_numbers(chat_id, listing)
+            markup = {"inline_keyboard": [[{"text": "Показать номера", "callback_data": "nums:" + token}]]}
+        send(chat_id, short, reply_to=mid, markup=markup)
         return
     if action == "analyst":
         # любой разбор по данным — ИИ сам, видя последние QR и точные сводки
@@ -835,6 +855,13 @@ def handle_update(upd):
             PENDING.pop(chat_id, None)
             answer_cb(cb["id"], "Отменил")
             send(chat_id, "Ну и ладно, живите.")
+        elif data.startswith("nums:"):
+            item = STATS_LISTS.get(data.split(":", 1)[1])
+            if not item or item.get("chat_id") != chat_id:
+                answer_cb(cb["id"], "Список устарел, спроси статистику ещё раз")
+                return
+            answer_cb(cb["id"], "Кидаю номера")
+            send_parts(chat_id, item["text"], reply_to=(cb.get("message") or {}).get("message_id"))
         return
 
 
