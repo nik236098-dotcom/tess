@@ -334,9 +334,35 @@ def _window_since(text):
     return midnight.timestamp(), None, "за сегодня"
 
 
+def _drop_gone_messages(chat_id, msg_ids):
+    """Сообщение стёрли в чате — Телеграм боту об этом не пишет. Проверяем и убираем из базы."""
+    ids = list(dict.fromkeys(msg_ids))[-250:]
+    if not ids:
+        return set()
+
+    def one(mid):
+        r = tg("editMessageCaption", {"chat_id": chat_id, "message_id": mid, "caption": "."})
+        if r.get("ok"):
+            return None
+        desc = str(r.get("description") or "").lower()
+        return mid if "not found" in desc else None
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(8) as pool:
+        gone = {mid for mid in pool.map(one, ids) if mid}
+    if gone:
+        con = db()
+        for mid in gone:
+            con.execute("DELETE FROM qr WHERE chat_id=? AND msg_id=?", (chat_id, mid))
+            con.execute("DELETE FROM reactions WHERE chat_id=? AND msg_id=?", (chat_id, mid))
+        con.commit()
+        con.close()
+    return gone
+
+
 def compute_stats(chat_id, since, uid=None, name=None, until=None):
-    """Один номер от одного человека — один QR. Повтор того же номера не увеличивает счётчик.
-    Берётся последняя отправка и её реакция. Сумма по людям сходится с «всего»."""
+    """Один номер от одного человека — один QR. Повтор и уже удалённое сообщение не считаются.
+    Берётся последняя живая отправка и её реакция. Сумма по людям сходится с «всего»."""
     con = db()
     if until is None:
         rows = con.execute(
@@ -346,8 +372,13 @@ def compute_stats(chat_id, since, uid=None, name=None, until=None):
         rows = con.execute(
             "SELECT msg_id,user,uid,number FROM qr WHERE chat_id=? AND ts>=? AND ts<? ORDER BY ts ASC, msg_id ASC",
             (chat_id, since, until)).fetchall()
+    con.close()
+    gone = _drop_gone_messages(chat_id, [r[0] for r in rows])
+    con = db()
     latest = {}
     for msg_id, user, quid, number in rows:
+        if msg_id in gone:
+            continue
         if uid is not None and quid != uid:
             continue
         if name is not None and name.lower() not in str(user or "").lower():
