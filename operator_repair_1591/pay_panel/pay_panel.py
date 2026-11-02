@@ -1927,6 +1927,14 @@ def mask_pan(card):
     return "****" + card[0][-4:]
 
 
+def mask_pan_log(card):
+    """В канал логов: первые 6 (банк) и последние 4. Оператору по-прежнему только хвост."""
+    pan = re.sub(r"\D", "", str(card[0]))
+    if len(pan) < 10:
+        return mask_pan(card)
+    return pan[:6] + "******" + pan[-4:]
+
+
 def take_next_link():
     """Следующая ссылка строго по порядку. Два места не могут взять одну и ту же."""
     con = db()
@@ -2069,7 +2077,7 @@ def log_payment(tg, pay_id, payer_id, link, card, uses, amount, result, shot=Non
     o = get_op(payer_id)
     who = op_display(o) if o else (f"АДМИН ({payer_id})" if is_panel_admin(payer_id) else str(payer_id))
     head = "✅ УСПЕШНАЯ ОПЛАТА" if result == "success" else "❌ ОПЛАТА НЕ ПРОШЛА"
-    meta = f"{head}\n👤 {who}\n💳 {mask_pan(card)} ({uses}/3)" + (f"  (+{amount:.2f} $)" if amount else "") + \
+    meta = f"{head}\n👤 {who}\n💳 {mask_pan_log(card)} ({uses}/3)" + (f"  (+{amount:.2f} $)" if amount else "") + \
            f"\n🕒 {msk_ts()}"
     stopped = (page_url or "").strip()
     if result != "success":
