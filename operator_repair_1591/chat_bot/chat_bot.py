@@ -335,7 +335,8 @@ def _window_since(text):
 
 
 def compute_stats(chat_id, since, uid=None, name=None, until=None):
-    """Один QR — один итог: успех, неуспех, в работе или без реакции. Сумма сходится с «всего»."""
+    """Один номер от одного человека — один QR. Повтор того же номера не увеличивает счётчик.
+    Берётся последняя отправка и её реакция. Сумма по людям сходится с «всего»."""
     con = db()
     if until is None:
         rows = con.execute(
@@ -345,20 +346,23 @@ def compute_stats(chat_id, since, uid=None, name=None, until=None):
         rows = con.execute(
             "SELECT msg_id,user,uid,number FROM qr WHERE chat_id=? AND ts>=? AND ts<? ORDER BY ts ASC, msg_id ASC",
             (chat_id, since, until)).fetchall()
-    per_user = collections.defaultdict(lambda: collections.Counter())
-    total = collections.Counter()
-    numbers = []
+    latest = {}
     for msg_id, user, quid, number in rows:
         if uid is not None and quid != uid:
             continue
         if name is not None and name.lower() not in str(user or "").lower():
             continue
         status = qr_status(_msg_reactions(con, chat_id, msg_id))
+        latest[(quid or user, number)] = (user, number, status)
+    con.close()
+    per_user = collections.defaultdict(lambda: collections.Counter())
+    total = collections.Counter()
+    numbers = []
+    for _key, (user, number, status) in latest.items():
         for tgt in (per_user[user], total):
             tgt["всего"] += 1
             tgt[status] += 1
         numbers.append((number, user, status))
-    con.close()
     return total, per_user, numbers
 
 
