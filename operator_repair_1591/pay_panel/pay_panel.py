@@ -976,6 +976,12 @@ def _qr_kb(pid):
     return kb([[btn("🔄 Обновить", f"qrr:{pid}")]])
 
 
+def _qr_cap(phone, valid):
+    head = f"🔳 {phone}"
+    valid = str(valid or "").strip()
+    return head + (f"\n⏳ {valid}" if valid else "")
+
+
 def _bee_export_proxy():
     """Прокси выгрузки QR из настроек beelinetesting, если он включён именно для QR."""
     path = Path("/etc/systemd/system/beeline.service.d/zz-menu.conf")
@@ -1041,6 +1047,7 @@ def _qr_child(job_path):
             res = {"error": f"{type(exc).__name__}: {exc}"[:180]}
         item = {"url": url,
                 "phone": (res.get("phone") if isinstance(res, dict) else "") or "",
+                "valid": (res.get("valid") if isinstance(res, dict) else "") or "",
                 "error": (res.get("error") if isinstance(res, dict) else "") or ""}
         png = res.get("png") if isinstance(res, dict) else None
         if png:
@@ -1081,7 +1088,7 @@ def _qr_export_job(tg, uid):
             pid = _qr_remember(url)
             markup = _qr_kb(pid)
             if fp and Path(fp).is_file():
-                sent = tg.send_photo(uid, fp, f"🔳 {phone}", markup)
+                sent = tg.send_photo(uid, fp, _qr_cap(phone, res.get("valid")), markup)
                 if isinstance(sent, dict) and sent.get("ok"):
                     _qr_mark_exported(url)
                     ok += 1
@@ -1121,7 +1128,7 @@ def _qr_refresh_job(tg, uid, chat_id, mid, url, pid, was_photo):
         phone = res.get("phone") or "—"
         fp = res.get("file") or ""
         if fp and Path(fp).is_file():
-            caption = f"🔳 {phone}"
+            caption = _qr_cap(phone, res.get("valid"))
             if was_photo:
                 tg.edit_photo(chat_id, mid, fp, caption, markup)
             else:
