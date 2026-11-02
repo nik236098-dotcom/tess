@@ -133,8 +133,9 @@ class Telegram:
         if ents:
             data["entities"] = ents
         r = self._call("sendMessage", **data)
-        if _emoji_rejected(r):
-            log(f"custom emoji rejected: {r.get('description')}")
+        if not (isinstance(r, dict) and r.get("ok")):
+            if isinstance(r, dict) and r.get("description"):
+                log(f"sendMessage повтор: {r.get('description')}")
             data.pop("entities", None)
             r = self._call("sendMessage", **data)
         return r
@@ -601,6 +602,12 @@ def btn(text, data, icon=None, style=None):
     if style:
         b["style"] = style
     return b
+
+
+def queue_opened_text(pos):
+    return (f"🟢 Ты в очереди, место {pos}.\n\n"
+            f"Пришли карту одним сообщением:\n\n"
+            f"НОМЕР  СРОК  CVV")
 
 
 def accepting():
@@ -1488,7 +1495,7 @@ def handle_callback(tg, ev):
         if data == "adm_joinq":
             queue_join(uid)
             pos = queue_pos(uid)
-            tg.send(uid, f"🟢 Ты в очереди, место {pos}. Сейчас открою оплату.")
+            tg.send(uid, queue_opened_text(pos))
             show_admin_menu(tg, chat_id, mid)
             return
         if data == "adm_leaveq":
@@ -1679,7 +1686,7 @@ def handle_callback(tg, ev):
         if data == "op_join":
             queue_join(uid)
             pos = queue_pos(uid)
-            tg.send(uid, f"🟢 Ты в очереди, место {pos}. Сейчас открою оплату.")
+            tg.send(uid, queue_opened_text(pos))
             show_operator_menu(tg, op, chat_id, mid)
             return
         if data == "op_leave":
