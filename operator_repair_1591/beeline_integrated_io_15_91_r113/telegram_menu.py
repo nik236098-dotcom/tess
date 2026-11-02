@@ -343,14 +343,28 @@ def _qr_number_from_text(text):
 
 
 def _qr_valid_from_text(text):
-    """Срок с экрана QR. Только время, без даты: «5ч 38 минут» или «21:40»."""
+    """Срок с экрана: «5ч 38 минут». Часов на странице нет — сами считаем «до ЧЧ:ММ мск»."""
+    from datetime import datetime, timedelta, timezone
+
+    def with_deadline(remain):
+        remain = (remain or "").strip()
+        if not remain:
+            return ""
+        hm = re.search(r"(\d+)\s*ч", remain, re.I)
+        mm = re.search(r"(\d+)\s*мин", remain, re.I)
+        if not hm and not mm:
+            return remain
+        now = datetime.now(timezone(timedelta(hours=3)))
+        end = now + timedelta(hours=int(hm.group(1)) if hm else 0, minutes=int(mm.group(1)) if mm else 0)
+        return f"{remain}\nдо {end.strftime('%H:%M')} мск"
+
     blob = re.sub(r"\s+", " ", str(text or ""))
     m = re.search(r"\d+\s*ч(?:ас\w*)?(?:\s*\d+\s*мин\w*)?", blob, re.I)
     if m:
-        return re.sub(r"\s+", " ", m.group(0)).strip()
+        return with_deadline(re.sub(r"\s+", " ", m.group(0)).strip())
     m = re.search(r"\d+\s*мин\w*", blob, re.I)
     if m:
-        return re.sub(r"\s+", " ", m.group(0)).strip()
+        return with_deadline(re.sub(r"\s+", " ", m.group(0)).strip())
     lines = [re.sub(r"\s+", " ", ln).strip() for ln in str(text or "").splitlines()]
     lines = [ln for ln in lines if ln]
     raw = ""
@@ -378,7 +392,7 @@ def _qr_valid_from_text(text):
     clock = re.search(r"\d{1,2}:\d{2}(?::\d{2})?", raw)
     if clock:
         return clock.group(0)
-    return re.sub(r"\s+", " ", raw).strip(" ,.-")[:80]
+    return with_deadline(re.sub(r"\s+", " ", raw).strip(" ,.-")[:80])
 
 
 async def _qr_best_candidate(page):
