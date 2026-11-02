@@ -342,6 +342,26 @@ def _qr_number_from_text(text):
     return None
 
 
+def _qr_valid_from_text(text):
+    """Срок с экрана QR: «действует 6 часов», «до 02.11.2026 21:40», «осталось 05:48»."""
+    lines = [re.sub(r"\s+", " ", ln).strip() for ln in str(text or "").splitlines()]
+    lines = [ln for ln in lines if ln]
+    for ln in lines:
+        low = ln.lower()
+        if re.search(r"\d", ln) and any(k in low for k in ("действ", "в течение", "осталось", "истека", "истеч")):
+            return ln[:120]
+    blob = re.sub(r"\s+", " ", " ".join(lines))
+    for rx in (
+        r"(?:действует|действител\w*|в течение)\s+\S.{0,50}",
+        r"до\s+\d{1,2}[./]\d{1,2}[./]\d{2,4}(?:[, ]+\d{1,2}:\d{2})?",
+        r"осталось\s+\d{1,2}:\d{2}(?::\d{2})?",
+    ):
+        m = re.search(rx, blob, re.I)
+        if m:
+            return m.group(0).strip()[:120]
+    return ""
+
+
 async def _qr_best_candidate(page):
     """Самый большой почти-квадратный <img>/<canvas>/<svg> на странице — это и есть QR-код (крупнее логотипа)."""
     loc = page.locator("img, canvas, svg")
@@ -487,6 +507,7 @@ async def _qr_attempt_async(page, url, reload=False):
         return {"phone": number, "png": None, "stable": False, "ready": True, "final_url": page.url[:200],
                 "error": "кнопка «установить eSIM на устройство» не нажалась"}
     # 3) дождаться QR-кода
+    body = ""
     qr_deadline = time.monotonic() + QR_PAGE_WAIT_SECONDS
     while time.monotonic() < qr_deadline:
         try:
@@ -497,10 +518,16 @@ async def _qr_attempt_async(page, url, reload=False):
             break
         await page.wait_for_timeout(500)
     png, stable = await _qr_shoot_stable(page)   # QR_RETRY_1591R97: снимаем, когда код перестал меняться
+    try:
+        body = await page.locator("body").inner_text(timeout=2000) or body
+    except Exception:
+        pass
+    valid = _qr_valid_from_text(body)
     if png is None:
         return {"phone": number, "png": None, "stable": False, "ready": True, "final_url": page.url[:200],
-                "error": "QR-код на странице не загрузился"}
-    return {"phone": number, "png": png, "stable": stable, "ready": True, "final_url": page.url[:200], "error": None}
+                "valid": valid, "error": "QR-код на странице не загрузился"}
+    return {"phone": number, "png": png, "stable": stable, "ready": True, "final_url": page.url[:200],
+            "valid": valid, "error": None}
 
 
 async def _qr_one_async(browser, url, timeout=QR_EXPORT_TIMEOUT_SECONDS):
@@ -1981,7 +2008,9 @@ class TelegramMenu:
 
     @staticmethod
     def _qr_caption(res):
-        return ("📱 " + res["phone"]) if res.get("phone") else "QR-код (номер не найден)"
+        head = ("📱 " + res["phone"]) if res.get("phone") else "QR-код (номер не найден)"
+        valid = str(res.get("valid") or "").strip()
+        return head + ("\n⏳ " + valid if valid else "")
 
     def _qr_kb(self, pid):
         return _kb([[_btn("🔄 Обновить", f"m|qrr|{pid}")]])
