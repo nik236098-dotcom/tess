@@ -982,6 +982,11 @@ def _qr_cap(phone, valid):
     return head + (f"\n⏳ {valid}" if valid else "")
 
 
+def _qr_fail_text(phone, error, url):
+    err = str(error or "не отправился").strip()
+    return f"⚠️ {phone or '—'}\n{err}\n{url}"[:4000]
+
+
 def _bee_export_proxy():
     """Прокси выгрузки QR из настроек beelinetesting, если он включён именно для QR."""
     path = Path("/etc/systemd/system/beeline.service.d/zz-menu.conf")
@@ -1094,7 +1099,7 @@ def _qr_export_job(tg, uid):
                     ok += 1
                     continue
             fail += 1
-            tg.send(uid, f"⚠️ {phone}\n{res.get('error') or 'не отправился'}"[:500], markup)
+            tg.send(uid, _qr_fail_text(phone, res.get("error"), url), markup)
         tg.send(uid, f"🔳 Выгрузка QR готова\n✅ {ok}\n⚠️ {fail}")
     except Exception as exc:
         log("qr export:\n" + traceback.format_exc())
@@ -1135,7 +1140,7 @@ def _qr_refresh_job(tg, uid, chat_id, mid, url, pid, was_photo):
                 tg.send_photo(uid, fp, caption, markup)
                 tg.edit(chat_id, mid, "✅ QR получен — см. новое сообщение ниже.", None)
             return
-        text = f"⚠️ {phone}\n{res.get('error') or 'QR не получен'}\n{url[:160]}"
+        text = _qr_fail_text(phone, res.get("error") or "QR не получен", url)
         if was_photo:
             tg.edit_caption(chat_id, mid, text[:1000], markup)
         else:
