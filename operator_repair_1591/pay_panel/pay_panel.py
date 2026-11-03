@@ -318,6 +318,7 @@ def db_init():
             con.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {decl}")
     con.execute("UPDATE invites SET used_count=1 WHERE used_by!=0 AND used_count=0")
     con.execute("UPDATE invites SET max_uses=1 WHERE max_uses IS NULL OR max_uses<1")
+    release_expired_cards(con)
     # дефолтные настройки
     defaults = {"default_rate_usd": str(CFG["default_rate_usd"]), "tariff_rub": str(CFG["tariff_rub"]),
                 "accepting": "1", "log_channel": ""}
@@ -1919,20 +1920,29 @@ CARD_LIMIT = 3
 CARD_BLOCK_S = 24 * 3600
 
 
-def card_uses(card):
-    con = db()
-    ch = card_hash(card)
-    r = con.execute("SELECT success_count, blocked_until FROM cards WHERE card_hash=?", (ch,)).fetchone()
-    if not r:
-        con.close()
-        return 0
-    until = r["blocked_until"] or 0
-    if r["success_count"] >= CARD_LIMIT and until and now() >= until:
-        con.execute("UPDATE cards SET success_count=0, blocked_until=0 WHERE card_hash=?", (ch,))
+def release_expired_cards(con=None):
+    """3/3 держится только до blocked_until. Пустой или прошедший срок — карта снова с нуля."""
+    own = con is None
+    if own:
+        con = db()
+    con.execute(
+        "UPDATE cards SET success_count=0, blocked_until=0 "
+        "WHERE success_count>=? AND (COALESCE(blocked_until,0)=0 OR blocked_until<=?)",
+        (CARD_LIMIT, now()))
+    if own:
         con.commit()
         con.close()
-        return 0
+
+
+def card_uses(card):
+    con = db()
+    release_expired_cards(con)
+    ch = card_hash(card)
+    r = con.execute("SELECT success_count, blocked_until FROM cards WHERE card_hash=?", (ch,)).fetchone()
+    con.commit()
     con.close()
+    if not r:
+        return 0
     return r["success_count"] or 0
 
 
