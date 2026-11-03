@@ -1935,15 +1935,26 @@ def release_expired_cards(con=None):
 
 
 def card_uses(card):
+    """Считаются только успешные оплаты за последние 24 часа.
+    Если счётчик в базе меньше (лимит сняли вручную), он и остаётся меньше."""
     con = db()
-    release_expired_cards(con)
     ch = card_hash(card)
-    r = con.execute("SELECT success_count, blocked_until FROM cards WHERE card_hash=?", (ch,)).fetchone()
+    since = now() - CARD_BLOCK_S
+    n = con.execute(
+        "SELECT COUNT(*) FROM payments WHERE card_hash=? AND result='success' "
+        "AND COALESCE(canceled,0)=0 AND at>=?",
+        (ch, since)).fetchone()[0]
+    row = con.execute(
+        "SELECT success_count, blocked_until FROM cards WHERE card_hash=?", (ch,)).fetchone()
+    stored = int(row["success_count"] or 0) if row else n
+    uses = min(stored, n) if row else n
+    if uses < CARD_LIMIT:
+        con.execute(
+            "UPDATE cards SET success_count=?, blocked_until=0 WHERE card_hash=?",
+            (uses, ch))
     con.commit()
     con.close()
-    if not r:
-        return 0
-    return r["success_count"] or 0
+    return uses
 
 
 def mask_pan(card):
@@ -2042,11 +2053,8 @@ def record_success(tg, payer_id, link, card, is_admin, io, shot=None):
     con = db()
     con.execute("UPDATE links SET status='paid', paid_by=? WHERE id=?", (payer_id, link["id"]))
     ch = card_hash(card)
-    con.execute("INSERT INTO cards(card_hash,success_count) VALUES(?,1) "
-                "ON CONFLICT(card_hash) DO UPDATE SET success_count=success_count+1", (ch,))
-    uses = con.execute("SELECT success_count FROM cards WHERE card_hash=?", (ch,)).fetchone()["success_count"]
-    if uses >= CARD_LIMIT:
-        con.execute("UPDATE cards SET blocked_until=? WHERE card_hash=?", (now() + CARD_BLOCK_S, ch))
+    con.execute("INSERT INTO cards(card_hash,success_count) VALUES(?,0) "
+                "ON CONFLICT(card_hash) DO NOTHING", (ch,))
     amount = 0.0
     if not is_admin:
         o = get_op(payer_id)
@@ -2054,10 +2062,25 @@ def record_success(tg, payer_id, link, card, is_admin, io, shot=None):
         ensure_stat_day(payer_id)
         con.execute("UPDATE operators SET balance=balance+?, success_today=success_today+1, "
                     "success_total=success_total+1, fail_streak=0 WHERE tg_id=?", (amount, payer_id))
+    pay_at = now()
     cur = con.execute("INSERT INTO payments(link_id,operator_id,card_mask,card_hash,result,amount,url_final,at) "
                       "VALUES(?,?,?,?,?,?,?,?)",
-                      (link["id"], payer_id, mask_pan(card), ch, "success", amount, link["url"], now()))
+                      (link["id"], payer_id, mask_pan(card), ch, "success", amount, link["url"], pay_at))
     pay_id = cur.lastrowid
+    since = pay_at - CARD_BLOCK_S
+    ats = [r[0] for r in con.execute(
+        "SELECT at FROM payments WHERE card_hash=? AND result='success' "
+        "AND COALESCE(canceled,0)=0 AND at>=? ORDER BY at",
+        (ch, since))]
+    stored = int(con.execute(
+        "SELECT success_count FROM cards WHERE card_hash=?", (ch,)).fetchone()["success_count"] or 0) + 1
+    uses = min(stored, len(ats))
+    if uses >= CARD_LIMIT and ats:
+        anchor = ats[max(0, len(ats) - CARD_LIMIT)]
+        con.execute("UPDATE cards SET success_count=?, blocked_until=? WHERE card_hash=?",
+                    (uses, anchor + CARD_BLOCK_S, ch))
+    else:
+        con.execute("UPDATE cards SET success_count=?, blocked_until=0 WHERE card_hash=?", (uses, ch))
     con.commit()
     con.close()
     if is_admin:
