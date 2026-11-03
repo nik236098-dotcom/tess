@@ -2940,13 +2940,13 @@ def wait_card(io, timeout, prompt=True):
             io.send(f"⚠️ Карта не принята: {err}.\nПришли заново: НОМЕР СРОК КОД")
             continue
         if card_uses(card) >= 3:
-            io.send("⛔ Эта карта уже 3/3. Снова можно через 24 часа. Пришли другую.")
+            io.send(f"⛔ Карта {mask_pan(card)} уже 3/3. Снова можно через 24 часа. Пришли другую.")
             continue
         return card
     return None
 
 
-def ask_buttons(io, text, buttons, timeout, mapping):
+def ask_buttons(io, text, buttons, timeout, mapping, on_text=None):
     io.send(text, kb(buttons))
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -2963,10 +2963,23 @@ def ask_buttons(io, text, buttons, timeout, mapping):
             if d == "op_leave":
                 return "finish"
         else:
-            t = (ev.get("text") or "").strip().lower()
+            raw = (ev.get("text") or "").strip()
+            t = raw.lower()
+            if on_text and raw:
+                got = on_text(raw)
+                if got is not None:
+                    return got
             if t in ("отмена", "stop", "/stop", "закончить"):
                 return "finish"
     return None
+
+
+def _pasted_card(text):
+    """Номер, присланный вместо кнопки «новая карта», сразу становится текущей картой."""
+    card, err = validate_card(text)
+    if err:
+        return None
+    return ("card", card)
 
 
 # ── сессия одного оплатчика ──────────────────────────────────────────────────
@@ -2995,7 +3008,15 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
         if card_uses(cur_card) >= 3:
             ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Снова можно через 24 часа.",
                              [[btn("💳 Ввести новую карту", "sess_newcard")], [btn("🚪 Закончить работу", "sess_finish")]],
-                             int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
+                             int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"},
+                             on_text=_pasted_card)
+            if isinstance(ch, tuple) and ch[0] == "card":
+                if card_uses(ch[1]) >= 3:
+                    io.send(f"⛔ Карта {mask_pan(ch[1])} уже 3/3. Снова можно через 24 часа. Пришли другую.")
+                    continue
+                cur_card = ch[1]
+                beeline_tries = 0
+                continue
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
                 if nc is None:
@@ -3040,7 +3061,15 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
             if uses >= 3:
                 ch = ask_buttons(io, f"⛔ Карта {mask_pan(cur_card)} — 3/3. Снова можно через 24 часа.",
                                  [[btn("💳 Ввести новую карту", "sess_newcard")], [btn("🚪 Закончить работу", "sess_finish")]],
-                                 int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
+                                 int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"},
+                                 on_text=_pasted_card)
+                if isinstance(ch, tuple) and ch[0] == "card":
+                    if card_uses(ch[1]) >= 3:
+                        io.send(f"⛔ Карта {mask_pan(ch[1])} уже 3/3. Снова можно через 24 часа. Пришли другую.")
+                        continue
+                    cur_card = ch[1]
+                    beeline_tries = 0
+                    continue
                 if ch == "new":
                     nc = wait_card(io, int(CFG["newcard_timeout_s"]))
                     if nc is None:
