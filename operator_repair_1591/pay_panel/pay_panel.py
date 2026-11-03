@@ -1100,6 +1100,7 @@ def _qr_export_job(tg, uid):
                     continue
             fail += 1
             tg.send(uid, _qr_fail_text(phone, res.get("error"), url), markup)
+            _qr_mark_exported(url)
         tg.send(uid, f"🔳 Выгрузка QR готова\n✅ {ok}\n⚠️ {fail}")
     except Exception as exc:
         log("qr export:\n" + traceback.format_exc())
