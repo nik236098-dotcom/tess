@@ -1,0 +1,3 @@
+SOURCE CHECKSUMS OK. Running offline tests before any service operation.
+Ran 58 tests in 5.555s — OK
+CHECK OK. No source files or services changed.
