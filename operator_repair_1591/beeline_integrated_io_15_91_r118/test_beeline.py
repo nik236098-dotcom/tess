@@ -6539,13 +6539,15 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
                 flush=True,
             )
 
-            # Старый рабочий вариант: определяем переход по фактическому
-            # состоянию страницы и не возвращаемся к выбору eSIM, если
-            # оформление уже открылось.
+            # Страница после «идём дальше» стала открываться дольше 12 секунд.
+            # Раньше вкладка перезагружалась и снова выбирала eSIM, не дождавшись перехода.
             source_url = page.url
-            transition_deadline = monotonic() + 12
+            transition_deadline = monotonic() + 45
             while monotonic() < transition_deadline:
                 try:
+                    if "/registration" in (page.url or ""):
+                        transition_ok = True
+                        break
                     choice = page.get_by_role(
                         "button",
                         name=re.compile(r"выбрать способ регистрации", re.I),
@@ -6556,7 +6558,7 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
 
                     old_next = page.get_by_role(
                         "button",
-                        name=re.compile(r"^\\s*(?:ид[её]м дальше|к оформлению)\\s*$", re.I),
+                        name=re.compile(r"^\s*(?:ид[её]м дальше|к оформлению)\s*$", re.I),
                     )
                     old_screen_gone = (
                         old_next.count() == 0
@@ -6585,7 +6587,7 @@ def run_registration(page, diagnostic, phone, digits, active_digits, second_valu
                 f"registration_transition_stuck_{transition_attempt}"
             )
             print(
-                "Через 12 секунд перехода действительно нет. "
+                "Через 45 секунд страница после «идём дальше» так и не открылась. "
                 "Перезагружаю эту вкладку и повторяю ту же строку.",
                 flush=True,
             )
