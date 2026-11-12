@@ -2967,6 +2967,9 @@ def ask_buttons(io, text, buttons, timeout, mapping, on_text=None):
             t = raw.lower()
             if on_text and raw:
                 got = on_text(raw)
+                if isinstance(got, tuple) and got and got[0] == "bad":
+                    io.send(f"⚠️ Карта не принята: {got[1]}.\nПришли заново: НОМЕР СРОК КОД")
+                    continue
                 if got is not None:
                     return got
             if t in ("отмена", "stop", "/stop", "закончить"):
@@ -2975,11 +2978,33 @@ def ask_buttons(io, text, buttons, timeout, mapping, on_text=None):
 
 
 def _pasted_card(text):
-    """Номер, присланный вместо кнопки «новая карта», сразу становится текущей картой."""
+    """Номер, присланный вместо кнопки «новая карта», сразу становится текущей картой.
+    Короткий текст — не карта, его не трогаем. Длинный, но кривой — говорим, что не так."""
+    if len(re.sub(r"\D", "", text)) < 16:
+        return None
     card, err = validate_card(text)
     if err:
-        return None
+        return ("bad", err)
+    if card_uses(card) >= 3:
+        return ("bad", f"карта {mask_pan(card)} уже 3/3. Снова можно через 24 часа")
     return ("card", card)
+
+
+def _taken_card(ch):
+    if isinstance(ch, tuple) and ch and ch[0] == "card":
+        return ch[1]
+    return None
+
+
+def _use_pasted_card(io, ch):
+    """True, если вместо кнопки прислали карту и она уже стала текущей. False — решать по кнопке."""
+    taken = _taken_card(ch)
+    if taken is None:
+        return None
+    if card_uses(taken) >= 3:
+        io.send(f"⛔ Карта {mask_pan(taken)} уже 3/3. Снова можно через 24 часа. Пришли другую.")
+        return "blocked"
+    return taken
 
 
 # ── сессия одного оплатчика ──────────────────────────────────────────────────
@@ -3082,7 +3107,15 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                               [btn("💳 Новая карта", "sess_newcard")],
                               [btn("🚪 Закончить работу", "sess_finish")]],
                              int(CFG["idle_timeout_s"]),
-                             {"sess_next": "next", "sess_newcard": "new", "sess_finish": "finish"})
+                             {"sess_next": "next", "sess_newcard": "new", "sess_finish": "finish"},
+                             on_text=_pasted_card)
+            pasted = _use_pasted_card(io, ch)
+            if pasted == "blocked":
+                continue
+            if pasted:
+                cur_card = pasted
+                beeline_tries = 0
+                continue
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
                 if nc is None:
@@ -3139,7 +3172,15 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                               [btn("💳 Ввести новую карту", "sess_newcard")],
                               [btn("🚪 Закончить работу", "sess_finish")]],
                              int(CFG["newcard_timeout_s"]),
-                             {"sess_same": "same", "sess_newcard": "new", "sess_finish": "finish"})
+                             {"sess_same": "same", "sess_newcard": "new", "sess_finish": "finish"},
+                             on_text=_pasted_card)
+            pasted = _use_pasted_card(io, ch)
+            if pasted == "blocked":
+                continue
+            if pasted:
+                cur_card = pasted
+                beeline_tries = 0
+                continue
             if ch == "same":
                 beeline_tries = 0
                 continue
@@ -3159,7 +3200,15 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                               [btn("💳 Ввести новую карту", "sess_newcard")],
                               [btn("🚪 Закончить работу", "sess_finish")]],
                              int(CFG["newcard_timeout_s"]),
-                             {"sess_same": "same", "sess_newcard": "new", "sess_finish": "finish"})
+                             {"sess_same": "same", "sess_newcard": "new", "sess_finish": "finish"},
+                             on_text=_pasted_card)
+            pasted = _use_pasted_card(io, ch)
+            if pasted == "blocked":
+                continue
+            if pasted:
+                cur_card = pasted
+                beeline_tries = 0
+                continue
             if ch == "same":
                 beeline_tries = 0
                 continue
@@ -3182,7 +3231,15 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
             link = None
             ch = ask_buttons(io, "Что делаем?",
                              [[btn("💳 Ввести новую карту", "sess_newcard")], [btn("🚪 Закончить работу", "sess_finish")]],
-                             int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
+                             int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"},
+                             on_text=_pasted_card)
+            pasted = _use_pasted_card(io, ch)
+            if pasted == "blocked":
+                continue
+            if pasted:
+                cur_card = pasted
+                beeline_tries = 0
+                continue
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
                 if nc is None:
@@ -3228,7 +3285,14 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                                  "Воспользуйся картой ДРУГОГО банка — попробуем эту же ссылку ещё раз.",
                              [[btn("💳 Ввести карту другого банка", "sess_newcard")],
                               [btn("🚪 Закончить работу", "sess_finish")]],
-                             int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"})
+                             int(CFG["newcard_timeout_s"]), {"sess_newcard": "new", "sess_finish": "finish"},
+                             on_text=_pasted_card)
+            pasted = _use_pasted_card(io, ch)
+            if pasted == "blocked":
+                continue
+            if pasted:
+                cur_card = pasted
+                continue   # та же ссылка, карта другого банка
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
                 if nc is None:
@@ -3282,7 +3346,15 @@ def session_loop(tg, io, browser, payer_id, card, is_admin, slot=0, progress=Non
                               [btn("💳 Новая карта", "sess_newcard")],
                               [btn("🚪 Закончить работу", "sess_finish")]],
                              int(CFG["idle_timeout_s"]),
-                             {"sess_next": "next", "sess_newcard": "new", "sess_finish": "finish"})
+                             {"sess_next": "next", "sess_newcard": "new", "sess_finish": "finish"},
+                             on_text=_pasted_card)
+            pasted = _use_pasted_card(io, ch)
+            if pasted == "blocked":
+                continue
+            if pasted:
+                cur_card = pasted
+                beeline_tries = 0
+                continue
             if ch == "new":
                 nc = wait_card(io, int(CFG["newcard_timeout_s"]))
                 if nc is None:
