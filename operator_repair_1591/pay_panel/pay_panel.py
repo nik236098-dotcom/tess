@@ -833,6 +833,36 @@ def show_operator_menu(tg, op, chat_id, message_id=None):
         tg.send(chat_id, t, k)
 
 
+def queue_admin_text():
+    """Кто стоит в очереди и кто уже занял место. Только для админской кнопки."""
+    q = queue_list()
+    working = {}
+    with ACTIVE_LOCK:
+        for slot, info in list(ACTIVE_SLOTS.items()):
+            working[info.get("payer")] = slot
+    if not q and not working:
+        return f"👥 ОЧЕРЕДЬ\n{SEP}\nСейчас никого.\n{SEP}"
+    lines = [f"👥 ОЧЕРЕДЬ\n{SEP}"]
+    seen = set()
+    for n, payer in enumerate(q, 1):
+        op = get_op(payer)
+        name = op_display(op) if op else f"ID {payer}"
+        slot = working.get(payer)
+        if slot is not None:
+            lines.append(f"{n}. {name} — место {slot + 1}")
+        else:
+            lines.append(f"{n}. {name}")
+        seen.add(payer)
+    for payer, slot in working.items():
+        if payer in seen or not payer:
+            continue
+        op = get_op(payer)
+        name = op_display(op) if op else f"ID {payer}"
+        lines.append(f"• {name} — место {slot + 1}")
+    lines.append(SEP)
+    return "\n".join(lines)
+
+
 # ── меню админа ──────────────────────────────────────────────────────────────
 def admin_menu_text():
     con = db()
@@ -857,6 +887,7 @@ def admin_menu_text():
         [btn(f"Выгрузка QR · {ready_qr_count()}", "adm_qr", "5987917196469213507")],
         [btn("Выключить приём", "adm_toggle", "5210952531676504517") if accepting()
          else btn("Включить приём", "adm_toggle", "5206607081334906820")],
+        [btn(f"Очередь · {len(queue_list())}", "adm_queue", "5465240704705898089")],
         [btn("Оплатчики", "adm_ops", "5942877472163892475")],
         [btn(f"Запросы на выплаты · {n_pay}", "adm_payouts", "5409048419211682843")],
         [btn(f"Проблемные ссылки · {prob}", "adm_prob", "5447644880824181073")],
@@ -1514,6 +1545,10 @@ def handle_callback(tg, ev):
             return
         if data == "adm_leaveq":
             queue_leave(uid); show_admin_menu(tg, chat_id, mid); return
+        if data == "adm_queue":
+            tg.edit(chat_id, mid, queue_admin_text(),
+                    kb([[btn("Обновить", "adm_queue", "5877410604225924969")], [btn("⬅️ Назад", "adm_menu")]]))
+            return
         if data.startswith("cancel_pay:"):
             pid = int(data.split(":")[1])
             con = db(); p = con.execute("SELECT * FROM payments WHERE id=?", (pid,)).fetchone()
