@@ -7516,12 +7516,18 @@ def tick_auth_wait(base_dir, worker):
 
     if "/registration/error" in current_url:
         capture_blackbox(worker, "registration_error_page")
+        reason = "registration/error до подтверждения"
+        try:
+            reason = _error_page_final_reason(page) or reason
+        except Exception:
+            pass
         print(
-            f"[Вкладка {worker['id']}] Сайт открыл registration/error — "
-            "сразу повторяю ту же строку.",
+            f"[Вкладка {worker['id']}] Сайт открыл registration/error ({reason}). "
+            "Тот же заказ заново не кручу.",
             flush=True,
         )
-        restart_same_row_in_new_page(worker)
+        _forget_order_1591r69(worker, "registration/error")
+        _error_recover(base_dir, worker, reason)
         return
 
     if monotonic() >= worker["auth_deadline"]:
@@ -9378,6 +9384,7 @@ def _error_recover(base_dir, worker, reason):
     except Exception:
         pass
     remember_processed_number(base_dir, worker.get("row"))  # ROW_SKIP_PERSIST_1591R22: not back after a restart
+    _forget_order_1591r69(worker, "строка пропущена после registration/error")
     worker["row"] = None
     worker["phase"] = "IDLE"
     set_tab_status(worker, "⏭", f"Строка {key} пропущена после повторной registration/error. Беру следующую.")
