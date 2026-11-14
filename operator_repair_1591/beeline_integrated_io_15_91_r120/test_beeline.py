@@ -7605,6 +7605,17 @@ def _success_trace_dump_1591r120(worker):
         pass
 
 
+# SKIP_SEND_NEW_PUSH_1591R120 — ERROR_ORDER/SEND_NEW_PUSH = «номер уже существующий абонент».
+# Повтор всегда даёт ту же ошибку (проверено на данных: такие номера не проходят никогда), поэтому
+# не крутим строку до ROW_RESTART_MAX, а пропускаем сразу и помечаем номер обработанным.
+def _is_send_new_push_error(page):
+    try:
+        body = str((_tab_status_1591r76(page) or {}).get("body") or "")
+    except Exception:
+        return False
+    return "SEND_NEW_PUSH" in body
+
+
 def tick_auth_wait(base_dir, worker):
     page = worker["page"]
     if page.is_closed():
@@ -7633,6 +7644,12 @@ def tick_auth_wait(base_dir, worker):
         current_url = ""
 
     if "/registration/error" in current_url:
+        if _is_send_new_push_error(page):
+            # SKIP_SEND_NEW_PUSH_1591R120: номер — уже существующий абонент, повтор бессмыслен.
+            # _error_skip_final сам пишет error_skipped_rows.txt, помечает номер обработанным
+            # (не вернётся в очередь) и переводит воркер на следующую строку.
+            _error_skip_final(worker, "ERROR_ORDER/SEND_NEW_PUSH: номер уже существующий абонент")
+            return
         capture_blackbox(worker, "registration_error_page")
         print(
             f"[Вкладка {worker['id']}] Сайт открыл registration/error — "
