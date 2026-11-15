@@ -2717,29 +2717,36 @@ _PARKED = {}
 _PARK_LOCK = threading.Lock()
 
 
-def _park_tab(ctx, slot, seconds=180):
-    ev = threading.Event()
+def _park_tab(ctx, slot):
+    """Отложить закрытие успешной вкладки. Реально закроет её поток слота (см. _drain_parked).
+    HANG_FIX_1591: раньше тут поднимался отдельный поток, который через 180 c звал ctx.close().
+    Но Playwright привязан к своему потоку: межпоточный close ронял greenlet и контекст НЕ
+    закрывался (утечка браузеров), а ожидание этого в _wait_parked морозило МЕСТО до 185 c —
+    отсюда «🔎Открываю оплату…» и тишина на минуты, нет запроса карты, очередь не двигается."""
     with _PARK_LOCK:
-        _PARKED.setdefault(slot, []).append(ev)
+        _PARKED.setdefault(slot, []).append(ctx)
 
-    def _run():
+
+def _drain_parked(slot, keep=0):
+    """Закрыть ранее припаркованные вкладки места. Вызывать ТОЛЬКО из потока слота (владельца
+    Playwright). keep — сколько последних оставить открытыми."""
+    with _PARK_LOCK:
+        ctxs = _PARKED.get(slot, [])
+        if keep > 0:
+            victims, _PARKED[slot] = ctxs[:-keep], ctxs[-keep:]
+        else:
+            victims, _PARKED[slot] = ctxs, []
+    for ctx in victims:
         try:
-            time.sleep(seconds)
-            try:
-                ctx.close()
-            except Exception:
-                pass
-        finally:
-            ev.set()
-
-    threading.Thread(target=_run, daemon=True).start()
+            ctx.close()
+        except Exception:
+            pass
 
 
-def _wait_parked(slot, timeout=185):
+def _forget_parked(slot):
+    """Снять учёт припаркованных вкладок без закрытия (браузер уже закрыт/умер)."""
     with _PARK_LOCK:
-        evs = _PARKED.pop(slot, [])
-    for ev in evs:
-        ev.wait(timeout)
+        _PARKED.pop(slot, None)
 
 
 def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=False):
@@ -2755,6 +2762,9 @@ def pay_one_link(io, browser, url, card, cfg, shot_holder=None, slot=0, quiet=Fa
     bproxy = str(cfg.get("browser_proxy") or "").strip()
     if bproxy and bproxy.lower() not in ("direct", "none", "off", "no", "-"):
         ctx_kwargs["proxy"] = {"server": bproxy}
+    # HANG_FIX_1591: закрываем прошлую успешную вкладку этого места — на своём (Playwright) потоке,
+    # без блокировки и без межпоточного close.
+    _drain_parked(slot)
     ctx = browser.new_context(**ctx_kwargs)
     page = ctx.new_page()
     page.set_default_timeout(3000)
@@ -3734,6 +3744,7 @@ def session_thread(tg, payer_id, io, slot, pw):
                 browser.close()
             except Exception:
                 pass
+            _forget_parked(slot)   # HANG_FIX_1591: контексты мёртвого браузера закрывать уже нечем
             browser = pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
     except Exception as exc:
         log("session error:\n" + traceback.format_exc())
@@ -3748,7 +3759,7 @@ def session_thread(tg, payer_id, io, slot, pw):
             ACTIVE_SLOTS.pop(slot, None)
             if not ACTIVE_SLOTS:
                 STOP_EVENT.clear()
-        _wait_parked(slot)
+        _drain_parked(slot)   # HANG_FIX_1591: закрываем припаркованные вкладки на своём потоке, без ожидания
         if browser is not None:
             try:
                 browser.close()
