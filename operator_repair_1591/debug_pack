@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Архив отладки beeline: последние «чёрные ящики» (page.html, screen.png, meta.json) + журнал за 3 часа
+# + confirm_errors.jsonl. Собирает и присылает архив владельцу в Telegram через того же бота.
+# Запуск: bash debug_pack [сколько_случаев, по умолчанию 15]
+set -u
+N="${1:-15}"
+APP=/opt/beeline
+D="/tmp/beeline_debug_$(date +%H%M%S)"
+mkdir -p "$D"
+cd "$APP" || { echo "нет $APP"; exit 1; }
+
+ls -dt diagnostics/session_*/blackbox/*/ diagnostics/blackbox/*/ 2>/dev/null | head -n "$N" \
+  | while read -r c; do cp -r "$c" "$D/"; done
+journalctl -u beeline --since "-3 hours" --no-pager -o short-iso 2>/dev/null \
+  | grep -iE "WATCHDOG|Вкладка|подпис|registration/error|offer|не был найден|SUCCESS GUARD" \
+  | tail -800 > "$D/journal.txt"
+tail -50 confirm_errors.jsonl > "$D/confirm_errors.jsonl" 2>/dev/null
+
+tar czf "$D.tar.gz" -C /tmp "$(basename "$D")"
+rm -rf "$D"
+SIZE=$(stat -c %s "$D.tar.gz" 2>/dev/null || echo 0)
+echo "Архив: $D.tar.gz ($((SIZE / 1024 / 1024)) МБ, случаев: $N)"
+if [ "$SIZE" -gt 48000000 ] && [ "$N" -gt 3 ]; then
+  echo "Больше лимита Telegram (50 МБ) — пересобираю с 5 случаями"
+  rm -f "$D.tar.gz"
+  exec bash "$0" 5
+fi
+
+PY="$APP/venv/bin/python"; [ -x "$PY" ] || PY=python3
+"$PY" - "$D.tar.gz" <<'PY'
+import json, sys, requests
+c = json.load(open('/opt/beeline/telegram_config.json'))
+p = str(c.get('proxy') or '')
+px = {} if p.lower() in ('', 'direct', 'none', 'off', 'no', '-') else {'https': p, 'http': p}
+f = sys.argv[1]
+with open(f, 'rb') as fh:
+    r = requests.post('https://api.telegram.org/bot%s/sendDocument' % c['token'],
+                      data={'chat_id': c['chat_id'], 'caption': 'Архив отладки beeline'},
+                      files={'document': fh}, proxies=px, timeout=180)
+print('Telegram:', r.status_code, 'отправлено' if r.ok else r.text[:300])
+PY

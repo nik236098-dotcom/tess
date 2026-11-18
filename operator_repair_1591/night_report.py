@@ -1,0 +1,695 @@
+#!/usr/bin/env python3
+"""Сводка работы бота за последние часы. Только читает, ничего не меняет.
+
+    sudo python3 /root/tess/operator_repair_1591/night_report.py        # за 14 часов
+    sudo python3 /root/tess/operator_repair_1591/night_report.py 24     # за 24 часа
+
+Показывает: ревизию и настройки, сколько строк обработано по часам, чем закончились строки
+(results.jsonl), сколько успехов / оплат / неподтверждённых подписей, почему строки
+пропускались, перезапуски. Номера и личные данные не печатает.
+"""
+import collections
+import html as _html
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+APP = Path(os.environ.get("APP_DIR") or "/opt/beeline")
+HOURS = float(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].replace(".", "").isdigit() else 14.0
+SINCE = time.time() - HOURS * 3600
+SINCE_TEXT = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(SINCE))
+FIRST = False
+
+
+def hide(text):
+    """Numbers and phones out: «+7 905 375 38 08» → N."""
+    text = _html.unescape(str(text or "")).replace("\xa0", " ")
+    return re.sub(r"\+?\d[\d\s()\-]{6,}\d|\d{4,}", "N", text)
+
+
+def page_text(html):
+    html = re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", html)
+    return [hide(t).strip() for t in re.sub(r"<[^>]+>", "\n", html).splitlines() if len(hide(t).strip()) > 3]
+
+
+def records(name):
+    out = []
+    try:
+        lines = (APP / name).read_text("utf-8", errors="replace").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        try:
+            rec = json.loads(line)
+        except Exception:
+            continue
+        if str(rec.get("time") or "") >= SINCE_TEXT:
+            out.append(rec)
+    return out
+
+
+def journal():
+    if os.environ.get("NR_JOURNAL_FILE"):  # a saved journal (short-iso lines) instead of journalctl: tests, offline analysis
+        return Path(os.environ["NR_JOURNAL_FILE"]).read_text("utf-8", errors="replace").splitlines()
+    try:
+        return subprocess.run(["journalctl", "-u", "beeline", "--since", f"-{int(HOURS * 60)}min", "--no-pager", "-o", "short-iso"],
+                              capture_output=True, text=True, timeout=120).stdout.splitlines()
+    except Exception as exc:
+        print(f"journalctl недоступен: {exc}")
+        return []
+
+
+def main():
+    src = (APP / "test_beeline.py").read_text("utf-8", errors="replace") if (APP / "test_beeline.py").exists() else ""
+    revs = [int(x) for x in re.findall(r"_1591R(\d+)", src)]
+    build = "exp8" if "EXPERIMENT_BROWSERS8_1591" in src else ("full" if "SIGN_ROBUST_1591R31" in src else "lite")
+    print(f"== Сводка за {HOURS:g} ч (с {SINCE_TEXT[5:16]})")
+    print(f"Ревизия: r{max(revs) if revs else '?'} ({build})")
+    try:
+        env = subprocess.run(["systemctl", "show", "beeline", "-p", "Environment", "-p", "NRestarts", "-p", "ActiveEnterTimestamp"],
+                             capture_output=True, text=True, timeout=15).stdout
+        for part in re.findall(r"(BEELINE_[A-Z_]+=\S*|NRestarts=\d+|ActiveEnterTimestamp=.*)", env):
+            print("  " + part)
+    except Exception:
+        pass
+
+    results = records("results.jsonl")
+    print(f"\n== Строки с результатом: {len(results)}")
+    for status, n in collections.Counter(str(r.get("status") or "?") for r in results).most_common():
+        print(f"  {n:5d}  {status}")
+    per_hour = collections.Counter(str(r.get("time") or "")[11:13] for r in results)
+    if per_hour:
+        print("  по часам: " + "  ".join(f"{h}ч:{per_hour[h]}" for h in sorted(per_hour)))
+
+    print("\n== Итоги")
+    for name, title in (("successful_sims.jsonl", "✅ успех (договор)"), ("payment_required.jsonl", "💳 дошли до оплаты"),
+                        ("unverified_signatures.jsonl", "❔ подпись не подтверждена"), ("deferred_rows.jsonl", "↩️ строка отложена")):
+        print(f"  {len(records(name)):5d}  {title}")
+
+    for rec in records("unverified_signatures.jsonl"):  # which ones, so `tab N HH:MM` can follow each
+        print(f"         ❔ {str(rec.get('time'))[5:16]} вкладка {rec.get('tab')}: {hide(rec.get('reason'))[:150]}")
+
+    lines = [x for x in journal() if "dbus" not in x]
+    processed = sum("сохранён как обработанный" in x for x in lines)
+    print(f"\n== Журнал: строк журнала {len(lines)}, номеров отмечено обработанными {processed}")
+    counters = collections.Counter()
+    reasons = collections.Counter()
+    for x in lines:
+        m = re.search(r"пропущена без повтора: (.*?)\. Worker", x)
+        if m:
+            reasons[re.sub(r"\d{6,}", "N", m.group(1))[:90]] += 1
+        for key, title in (("пропущена после повторной registration/error", "пропущено после registration/error"),
+                           ("Ожидаю подтверждение: попытка 1/6", "ждали подтверждения (начало)"),
+                           ("6 попыток завершены", "6 попыток подтверждения без ответа"),
+                           ("Плановый перезапуск", "плановый перезапуск"),
+                           ("automation завершилась", "процесс регистрации завершился"),
+                           ("Traceback", "ошибки Python (Traceback)"),
+                           ("[AI", "строк от DeepSeek"),
+                           ("Переход не состоялся", "переход не состоялся — повтор строки")):
+            if key in x:
+                counters[title] += 1
+    for title, n in counters.most_common():
+        print(f"  {n:5d}  {title}")
+    if reasons:
+        print("  Причины пропуска строк:")
+        for reason, n in reasons.most_common(8):
+            print(f"  {n:5d}  {reason}")
+    # Python errors: the last line of each traceback, grouped (numbers hidden)
+    errors = collections.Counter()
+    for i, x in enumerate(lines):
+        if "Traceback" not in x:
+            continue
+        for y in lines[i + 1:i + 60]:
+            msg = y.split("]: ", 1)[-1].strip()
+            if re.match(r"^[\w.]*(Error|Exception|Exit|Interrupt)\b", msg):
+                errors[hide(msg)[:150]] += 1
+                break
+    if errors:
+        print("\n== Ошибки Python (самые частые)")
+        for msg, n in errors.most_common(10):
+            print(f"  {n:5d}  {msg}")
+
+    # What the site wrote on the /registration/error pages the rows were skipped on
+    pages = collections.Counter()
+    for case in APP.glob("diagnostics/**/blackbox/*error_final_skip*"):
+        try:
+            if case.stat().st_mtime < SINCE:
+                continue
+            html = (case / "page.html").read_text("utf-8", errors="replace")
+        except OSError:
+            continue
+        text = page_text(html)
+        found = [t for t in text if re.search(r"ошиб|пошло не так|не удал|невозмож|отказ|попробуй|недоступ|провер|не совпад|номер|лимит|уже", t, re.I)]
+        key = " | ".join(found[:3]) or " | ".join(text[:3])
+        pages[key[:200]] += 1
+    if pages:
+        print("\n== Что было на странице /registration/error")
+        for key, n in pages.most_common(8):
+            print(f"  {n:5d}  {key}")
+
+    post_auth(lines)
+
+    last = [x for x in lines if "Результат строки" in x or "Вкладка" in x][-5:]
+    if last:
+        print("\n== Последние события вкладок")
+        for x in last:
+            print("  " + x[5:16].replace("T", " ") + "  " + hide(x.split("]: ", 1)[-1])[:180])
+
+
+def post_auth(lines):
+    """Rows that passed the confirmation («🔒 SUCCESS GUARD») and how each ended: a success, payment or
+    unverified record of the same tab after it, or lost — with the tab's last notable line."""
+    stamp = lambda x: x[:19].replace("T", " ")
+    finals = []
+    for name, title in (("successful_sims.jsonl", "✅ успех"), ("payment_required.jsonl", "💳 оплата"),
+                        ("unverified_signatures.jsonl", "❔ подпись не подтверждена")):
+        for rec in records(name):
+            finals.append((str(rec.get("time") or ""), str(rec.get("tab")), title))
+    episodes = []  # [tab, start, end, notable lines]
+    open_ep = {}
+    restarts = []
+    for x in lines:
+        m = re.search(r"\[Вкладка (\d+)\]", x)
+        if "automation завершилась" in x or "Плановый перезапуск" in x or "BROWSER RESTART" in x:
+            restarts.append((stamp(x), hide(x.split("]: ", 1)[-1])[:120]))
+        if not m:
+            continue
+        tab, msg = m.group(1), hide(x.split("]: ", 1)[-1])
+        if "SUCCESS GUARD" in x:
+            if tab in open_ep:
+                open_ep[tab][2] = stamp(x)
+            open_ep[tab] = [tab, stamp(x), None, []]
+            episodes.append(open_ep[tab])
+            continue
+        ep = open_ep.get(tab)
+        if ep is None:
+            continue
+        if "Экран подтверждения открыт" in x or "Открываю корзину" in x or "Новая physical-вкладка готова" in x:
+            ep[2] = stamp(x)
+            open_ep.pop(tab, None)
+            continue
+        if re.search(r"error|ошиб|не удал|закрыт|перезапуск|таймаут|timeout|пропуска|не найден|не подтвержд|подпис|договор|оплат", msg, re.I):
+            ep[3].append(msg)
+    if not episodes:
+        print("\n== После подтверждения: ни одна строка не прошла подтверждение")
+        return
+    used = set()
+    outcome = collections.Counter()
+    lost = []
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    for tab, start, end, notes in episodes:
+        hit = next((f for f in finals if f not in used and f[1] == tab and start <= f[0] <= (end or now)), None)
+        if hit:
+            used.add(hit)
+            outcome[hit[2]] += 1
+            continue
+        if end is None and time.time() - time.mktime(time.strptime(start, "%Y-%m-%d %H:%M:%S")) < 900:
+            outcome["⏳ ещё в работе"] += 1
+            continue
+        cause = next((r[1] for r in restarts if start <= r[0] <= (end or now)), "")
+        lost.append((start, tab, cause or (notes[-1] if notes else "вкладка взяла следующую строку без записи об итоге")))
+    print(f"\n== После подтверждения клиентом: {len(episodes)} строк")
+    for title, n in outcome.most_common():
+        print(f"  {n:5d}  {title}")
+    print(f"  {len(lost):5d}  ❌ потеряно (нет записи об итоге)")
+    for start, tab, why in lost[-15:]:
+        print(f"         {start[5:16]} вкладка {tab}: {why[:140]}")
+
+
+def field_context(html, field_id):
+    """The open elements around <input id=field_id>: tag, class, hidden/style/aria-hidden."""
+    from html.parser import HTMLParser
+    void = {"input", "img", "br", "hr", "meta", "link", "source", "area", "base", "col", "embed", "param", "track", "wbr"}
+
+    class P(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack, self.found = [], None
+
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            if tag == "input" and a.get("id") == field_id and self.found is None:
+                self.found = list(self.stack) + [(tag, a)]
+            if tag not in void:
+                self.stack.append((tag, a))
+
+        def handle_endtag(self, tag):
+            for i in range(len(self.stack) - 1, -1, -1):
+                if self.stack[i][0] == tag:
+                    del self.stack[i:]
+                    break
+
+    p = P()
+    try:
+        p.feed(html)
+    except Exception:
+        return []
+    if not p.found:
+        return [f"поля {field_id} на странице нет"]
+    out = []
+    for tag, a in p.found[-12:]:
+        bits = [tag]
+        for key in ("class", "style", "hidden", "aria-hidden", "aria-expanded", "data-t-id", "disabled", "inert"):
+            if key in a:
+                bits.append(f"{key}={hide(a[key] if a[key] is not None else '')[:70]!r}")
+        out.append(" ".join(bits))
+    return out
+
+
+def error_page(pattern="введите данные снова"):
+    """The newest error page with `pattern`: its buttons, links, fields and what the tab did before."""
+    cases = []
+    for case in APP.glob("diagnostics/**/blackbox/*"):
+        try:
+            html = (case / "page.html").read_text("utf-8", errors="replace")
+        except OSError:
+            continue
+        try:
+            exc_text = str(json.loads((case / "meta.json").read_text("utf-8")).get("exception") or "").lower()
+        except Exception:
+            exc_text = ""
+        if pattern in _html.unescape(html).replace("\xa0", " ").lower() or pattern in exc_text or pattern in case.name.lower():
+            cases.append((case.stat().st_mtime, case, html))
+    print(f"== Снимков с «{pattern}» (на странице или в тексте ошибки): {len(cases)}")
+    if not cases:
+        return
+    stats = collections.Counter()
+    ages = collections.Counter()
+    rows = collections.Counter()
+    for _, case_i, _ in cases:
+        try:
+            meta_i = json.loads((case_i / "meta.json").read_text("utf-8"))
+        except Exception:
+            continue
+        stats[f"фаза {meta_i.get('phase')}, попытка подтверждения {meta_i.get('confirm_attempt')}"] += 1
+        age = float(meta_i.get("last_progress_age_seconds") or 0)
+        bucket = "до 10 с" if age < 10 else "10–30 с" if age < 30 else "30–65 с" if age < 65 else "больше 65 с"
+        ages[f"{meta_i.get('last_progress_label')}: {bucket}"] += 1
+        rows[str(meta_i.get("row_no"))] += 1
+    print("\n-- На каком шаге (все случаи)")
+    for key, n in stats.most_common(10):
+        print(f"  {n:5d}  {key}")
+    print("-- Последний шаг бота перед ошибкой и сколько секунд назад")
+    for key, n in ages.most_common(10):
+        print(f"  {n:5d}  {key}")
+    print(f"-- Разных строк: {len(rows)}, строк с ошибкой 2+ раз: {sum(1 for v in rows.values() if v > 1)}")
+    mtime, case, html = (min if FIRST else max)(cases, key=lambda c: c[0])
+    try:
+        meta = json.loads((case / "meta.json").read_text("utf-8"))
+    except Exception:
+        meta = {}
+    print(f"Снимок: {time.strftime('%d.%m %H:%M:%S', time.localtime(mtime))}, вкладка {meta.get('tab')}, фаза {meta.get('phase')}")
+    print("URL: " + re.sub(r"\?.*", "?…", str(meta.get("url") or "")))
+    print("Заголовок: " + hide(meta.get("title")))
+    if meta.get("exception"):
+        print("\n-- Ошибка целиком")
+        for line in hide(meta.get("exception")).splitlines()[:25]:
+            print("  " + line[:220])
+    probe = field_context(html, "phone-input")
+    if probe:
+        print("\n-- Где стоит поле phone-input (снаружи внутрь)")
+        for line in probe:
+            print("  " + line)
+    print("\n-- Текст страницы")
+    for line in page_text(html)[:25]:
+        print("  " + line[:160])
+    print("\n-- Кнопки и ссылки")
+    for tag, attrs, inner in re.findall(r"(?is)<(button|a)\b([^>]*)>(.*?)</\1>", html):
+        label = " ".join(page_text(inner)) or ""
+        href = re.search(r'href="([^"]*)"', attrs)
+        kind = re.search(r'type="([^"]*)"', attrs)
+        print(f"  <{tag}> «{label[:60]}»" + (f" href={re.sub(r'[?#].*', '', href.group(1))[:80]}" if href else "")
+              + (f" type={kind.group(1)}" if kind else ""))
+    print("\n-- Поля")
+    for attrs in re.findall(r"(?is)<(?:input|textarea|select)\b([^>]*)>", html):
+        if re.search(r'aria-invalid="true"|status_error|_error\b|invalid', attrs):
+            name = re.search(r'(?:name|id|aria-label)="([^"]*)"', attrs)
+            print(f"  ⚠️ поле с ошибкой: {hide(name.group(1)) if name else attrs[:80]}")
+    for msg in re.findall(r"(?is)<[^>]+(?:error|invalid|hint)[^>]*>([^<]{3,120})<", html)[:10]:
+        print(f"  ⚠️ подсказка: {hide(msg.strip())}")
+    for attrs in re.findall(r"(?is)<(?:input|select|textarea)\b([^>]*)>", html):
+        got = {k: hide(v)[:50] for k, v in re.findall(r'\b(name|type|id|placeholder|aria-label|inputmode|autocomplete|data-[\w-]+)="([^"]*)"', attrs)}
+        print("  " + " ".join(f"{k}={v!r}" for k, v in got.items()))
+    for label in re.findall(r"(?is)<label\b[^>]*>(.*?)</label>", html)[:12]:
+        txt = " ".join(page_text(label))
+        if txt:
+            print(f"  подпись: {txt[:80]}")
+    tab, when = meta.get("tab"), str(meta.get("time") or "")
+    if tab and when:
+        print(f"\n-- Что делала вкладка {tab} за 4 минуты до ошибки")
+        try:
+            start = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.mktime(time.strptime(when, "%Y-%m-%d %H:%M:%S")) - 240))
+            out = subprocess.run(["journalctl", "-u", "beeline", "--since", start, "--until", when, "--no-pager", "-o", "cat"],
+                                 capture_output=True, text=True, timeout=60).stdout.splitlines()
+        except Exception as exc:
+            out = [f"journalctl: {exc}"]
+        mine = [x for x in out if f"[Вкладка {tab}]" in x or f"TAB {tab}" in x or f"tab{tab}" in x.lower()]
+        for x in mine[-40:]:
+            print("  " + hide(x)[:180])
+
+
+def lost_pages():
+    """Error pages saved after the confirmation (the tab was past CONFIRM/RESEND): time, step, text, buttons."""
+    before_auth = {"CONFIRM", "RESEND", "AUTH_WAIT", "FILL", "IDLE", "RESTART_ROW_READY", "ERROR_ASSIST", "ERROR_RECOVERY", "None", ""}
+    seen = set()
+    shown = 0
+    for case in sorted(APP.glob("diagnostics/**/blackbox/*error*"), key=lambda c: c.stat().st_mtime):
+        try:
+            if case.stat().st_mtime < SINCE:
+                continue
+            meta = json.loads((case / "meta.json").read_text("utf-8"))
+            html = (case / "page.html").read_text("utf-8", errors="replace")
+        except Exception:
+            continue
+        if str(meta.get("phase")) in before_auth or not ("after_auth" in case.name or str(meta.get("phase")).startswith(("POST_AUTH", "SUCCESS", "SIGN"))):
+            continue
+        key = (meta.get("tab"), str(meta.get("time"))[:16])
+        if key in seen:
+            continue
+        seen.add(key)
+        shown += 1
+        print(f"\n== {str(meta.get('time'))[5:16]}  вкладка {meta.get('tab')}  шаг {meta.get('phase')}  ({case.name.split('_row')[-1].split('_', 1)[-1]})")
+        print("URL: " + re.sub(r"\?.*", "?…", str(meta.get("url") or "")))
+        for line in page_text(html)[:14]:
+            print("  " + line[:160])
+        buttons = [" ".join(page_text(inner)) for _, _, inner in re.findall(r"(?is)<(button|a)\b([^>]*)>(.*?)</\1>", html)]
+        buttons = [b for b in buttons if b]
+        if buttons:
+            print("  Кнопки: " + " | ".join(dict.fromkeys(buttons))[:200])
+    if not shown:
+        print("Страниц ошибки после подтверждения за это время нет.")
+
+
+def error_summary():
+    """All blackbox cases in the window grouped by: reason, the error text and what the page was."""
+    groups = collections.Counter()
+    hours = collections.defaultdict(collections.Counter)
+    essence = collections.Counter()
+    for case in APP.glob("diagnostics/**/blackbox/*"):
+        try:
+            if case.stat().st_mtime < SINCE:
+                continue
+            meta = json.loads((case / "meta.json").read_text("utf-8"))
+        except Exception:
+            continue
+        try:
+            text = page_text((case / "page.html").read_text("utf-8", errors="replace"))
+        except Exception:
+            text = []
+        url = re.sub(r"^https?://[^/]+", "", re.sub(r"[?#].*", "", str(meta.get("url") or "")))
+        marks = [t for t in text if re.search(r"запрос заблокирован|случайный номер|выберите способ|несколько шагов|"
+                                              r"номер должен|нужен номер|введите данные снова|что-то пошло не так|"
+                                              r"укажите ваши данные|тариф для смарт", t, re.I)]
+        page = (url or "?") + (" — " + " / ".join(dict.fromkeys(m[:40] for m in marks[:2])) if marks else "")
+        exc = hide(str(meta.get("exception") or ""))[:90]
+        reason = case.name.split("_row", 1)[-1].split("_", 1)[-1]
+        key = f"{reason} | {page}" + (f" | {exc}" if exc else "")
+        reenter = any("введите данные снова" in m.lower() for m in marks)
+        if reason.startswith("confirm_cycle_complete"):
+            essence["норма: 6 попыток закончились, клиент не подтвердил (это не ошибка)"] += 1
+        elif reenter and reason.startswith("registration_error"):
+            essence["«введите данные снова»: страница ошибки (бот вводит строку заново)"] += 1
+        elif reenter:
+            essence["«введите данные снова»: тот же случай, второй снимок"] += 1
+        elif "/basket" in url:
+            essence["корзина (поле номера, тариф): перегрузка или сбой страницы"] += 1
+        else:
+            essence["прочее"] += 1
+        groups[key] += 1
+        hours[key][str(meta.get("time") or "")[11:13]] += 1
+    print(f"== По сути за {HOURS:g} ч (снимок бота ≠ ошибка: одно событие может дать два снимка)")
+    for key, n in essence.most_common():
+        print(f"{n:5d}  {key}")
+    print()
+    print(f"== Ошибки за {HOURS:g} ч (снимки бота), по видам")
+    for key, n in groups.most_common(15):
+        when = " ".join(f"{h}ч:{c}" for h, c in sorted(hours[key].items()))
+        print(f"{n:5d}  {key}\n       часы: {when}")
+
+
+def confirm_errors():
+    """CONFIRM_TRACE_1591R76: the site's answers before an error page on the confirmation screen (confirm_errors.jsonl)."""
+    recs = records("confirm_errors.jsonl")
+    print(f"== Ошибки после экрана подтверждения с ответами сайта за {HOURS:g} ч: {len(recs)}")
+    if not recs:
+        print("Записей нет (нужна ревизия 76 и хотя бы одна такая ошибка).")
+        return
+    codes, last_req, clicks = collections.Counter(), collections.Counter(), collections.Counter()
+    tab_codes, texts = collections.Counter(), collections.Counter()
+    after_click, after_start = collections.Counter(), collections.Counter()
+    attempts, pushes_ok, posts = collections.Counter(), collections.Counter(), collections.Counter()
+
+    def secs(text):
+        try:
+            h, m, s = (int(x) for x in str(text).split(":"))
+            return h * 3600 + m * 60 + s
+        except ValueError:
+            return None
+
+    def bucket(delta, edges):
+        for edge in edges:
+            if delta < edge:
+                return f"до {edge} с"
+        return f"{edges[-1]} с и больше"
+    code_re = re.compile(r'"(selfregStatus|codeValue|errorCode|errorMessage|message|error|status|state|reason)"\s*:\s*"([^"]{1,80})"')
+    for rec in recs:
+        answers = [a for a in rec.get("answers") or [] if "mark" not in a]
+        # when the site's status turned into an error: seconds after the last «Отправить снова» and after the row started
+        items = rec.get("answers") or []
+        err = next((i for i, a in enumerate(items) if "mark" not in a and "ERROR_ORDER" in str(a.get("body"))), None)
+        if err is not None and secs(items[err].get("t")) is not None:
+            t_err = secs(items[err]["t"])
+            clicks_before = [secs(a.get("t")) for a in items[:err] if "Отправить снова" in str(a.get("mark"))]
+            starts = [secs(a.get("t")) for a in items[:err] if str(a.get("mark", "")).startswith("строка")]
+            after_click[bucket((t_err - clicks_before[-1]) % 86400, (5, 15, 65)) if clicks_before and clicks_before[-1] is not None
+                        else "кнопку «Отправить снова» ещё не нажимали"] += 1
+            if starts and starts[0] is not None:
+                after_start[bucket((t_err - starts[0]) % 86400, (60, 70, 130, 200))] += 1
+        attempts[f"попытка {rec.get('attempt')}"] += 1
+        sent = [a for a in items if "mark" not in a and "sendnewpush" in str(a.get("url")).lower()]
+        accepted = sum(1 for a in sent if int(a.get("status") or 0) < 400)
+        pushes_ok[f"повторных push принято {accepted}, отказов {len(sent) - accepted}"] += 1
+        for a in items:
+            if "mark" not in a and a.get("method") != "GET":
+                posts[f"{a.get('method')} {([p for p in str(a.get('url') or '').split('/') if p] or ['?'])[-1]} → {a.get('status')}"] += 1
+        status = rec.get("tab_status") or {}
+        found = [f"{k}={hide(v)}" for k, v in code_re.findall(str(status.get("body") or "")) if v.strip() and v.lower() not in ("null", "ok")]
+        tab_codes[(", ".join(dict.fromkeys(found)) or f"HTTP {status.get('status')}: {hide(status.get('body'))[:80]}")[:160]] += 1
+        if rec.get("page_text"):
+            texts[hide(rec["page_text"])[:150]] += 1
+        marks = [a.get("mark", "") for a in rec.get("answers") or [] if "mark" in a]
+        clicks["после нажатия «Отправить снова»" if any("Отправить снова" in m for m in marks) else "без нажатия «Отправить снова»"] += 1
+        for a in answers[-3:]:
+            name = ([p for p in str(a.get("url") or "").split("/") if p] or ["?"])[-1]
+            last_req[f"{a.get('method')} {name} → {a.get('status')}"] += 1
+        seen = set()
+        for a in answers[-6:]:
+            for k, v in code_re.findall(str(a.get("body") or "")):
+                if v.strip() and v.lower() not in ("null", "ok") and (k, v) not in seen:
+                    seen.add((k, v))
+                    codes[f"{k}={hide(v)}"] += 1
+    print("\n-- Статус заказа, запрошенный из вкладки с ошибкой")
+    for key, n in tab_codes.most_common(12):
+        print(f"  {n:5d}  {key}")
+    print("-- Текст страницы ошибки")
+    for key, n in texts.most_common(8):
+        print(f"  {n:5d}  {key}")
+    print("-- На какой попытке пришла ошибка")
+    for key, n in sorted(attempts.items()):
+        print(f"  {n:5d}  {key}")
+    print("-- Сколько повторных push сайт принял до ошибки (в записи видны ответы с начала строки)")
+    for key, n in pushes_ok.most_common():
+        print(f"  {n:5d}  {key}")
+    print("-- Все запросы POST в этих строках")
+    for key, n in posts.most_common(12):
+        print(f"  {n:5d}  {key}")
+    print("-- Через сколько после последнего «Отправить снова» статус стал ERROR_ORDER")
+    for key, n in sorted(after_click.items(), key=lambda kv: -kv[1]):
+        print(f"  {n:5d}  {key}")
+    print("-- Через сколько после начала строки статус стал ERROR_ORDER")
+    for key, n in sorted(after_start.items(), key=lambda kv: -kv[1]):
+        print(f"  {n:5d}  {key}")
+    print("-- Когда")
+    for key, n in clicks.most_common():
+        print(f"  {n:5d}  {key}")
+    print("-- Коды в последних ответах сайта перед ошибкой (сколько ошибок с этим кодом)")
+    for key, n in codes.most_common(15):
+        print(f"  {n:5d}  {key}")
+    print("-- Последние запросы перед ошибкой")
+    for key, n in last_req.most_common(12):
+        print(f"  {n:5d}  {key}")
+    for rec in recs[-2:]:
+        print(f"\n== {str(rec.get('time'))[5:16]}  вкладка {rec.get('tab')}  попытка {rec.get('attempt')}  "
+              f"({rec.get('reason')}, последний шаг бота {rec.get('last_step')})")
+        print("URL: " + str(rec.get("url") or ""))
+        print("Текст: " + hide(rec.get("page_text"))[:300])
+        status = rec.get("tab_status") or {}
+        print(f"Статус из вкладки: {status.get('url')} → {status.get('status')}  {hide(status.get('body'))[:600]}")
+        for a in (rec.get("answers") or [])[-24:]:
+            if "mark" in a:
+                print(f"  {a.get('t')} — {hide(a['mark'])}")
+                continue
+            name = re.sub(r"^https?://[^/]+", "", str(a.get("url") or ""))
+            more = f" ×{a['n']} до {a.get('t_last')}" if int(a.get("n") or 1) > 1 else ""
+            print(f"  {a.get('t')} {a.get('method')} {name[:80]} → {a.get('status')}{more}  {hide(a.get('body'))[:300]}")
+
+
+def neighbours():
+    """Does a push request of one tab break the others? For every «Отправить снова» of the journal: how many OTHER tabs
+    opened a confirmation screen (sent a new push) or started a row in the seconds before, and how often the click then
+    ended in the token error (confirm_errors.jsonl). If the error rate rises with the number of neighbours, parallel
+    orders from one address break each other."""
+    stamp = re.compile(r"^(\d{4}-\d\d-\d\d)T(\d\d:\d\d:\d\d)")
+    events = []
+    for line in journal():
+        m = stamp.match(line)
+        tab = re.search(r"\[Вкладка (\d+)\]", line)
+        if not m or not tab:
+            continue
+        when = time.mktime(time.strptime(f"{m.group(1)} {m.group(2)}", "%Y-%m-%d %H:%M:%S"))
+        kind = ("open" if "Экран подтверждения открыт" in line else "start" if "Обрабатываю строку" in line
+                else "click" if "После 65 секунд нажата" in line else "")
+        if kind:
+            events.append((when, int(tab.group(1)), kind))
+    errors = []
+    for rec in records("confirm_errors.jsonl"):
+        try:
+            errors.append((time.mktime(time.strptime(str(rec["time"]), "%Y-%m-%d %H:%M:%S")), int(rec["tab"]),
+                           any("sendnewpush" in str(a.get("url")).lower() and int(a.get("status") or 0) >= 400
+                               for a in rec.get("answers") or [])))
+        except (KeyError, ValueError):
+            continue
+    print(f"== Соседние вкладки и ошибка на «Отправить снова» за {HOURS:g} ч")
+    clicks = [e for e in events if e[2] == "click"]
+    print(f"Нажатий «Отправить снова» в журнале: {len(clicks)}, записей об ошибке: {len(errors)}")
+    if not clicks or not errors:
+        print("Мало данных: нужны нажатия в журнале и записи confirm_errors.jsonl (ревизия 76+).")
+        return
+    for window in (15, 30, 60):
+        table = collections.defaultdict(lambda: [0, 0])
+        for when, tab, _ in clicks:
+            near = sum(1 for w, other, kind in events if kind in ("open", "start") and other != tab and when - window <= w <= when)
+            failed = any(e_tab == tab and 0 <= e_when - when <= 12 and e_push for e_when, e_tab, e_push in errors)
+            bucket = "0" if near == 0 else "1" if near == 1 else "2" if near == 2 else "3 и больше"
+            table[bucket][0] += 1
+            table[bucket][1] += failed
+        print(f"\n-- Сколько ДРУГИХ вкладок за {window} с до нажатия открыли подтверждение или начали строку")
+        for bucket in ("0", "1", "2", "3 и больше"):
+            total, bad = table.get(bucket, [0, 0])
+            if total:
+                print(f"  соседей {bucket:>10}: нажатий {total:4d}, из них ошибка 412: {bad:3d} ({100 * bad / total:.0f}%)")
+
+
+def tab_journal(tab, start, minutes=30):
+    """One tab's journal from HH:MM (today, or yesterday when that is still ahead) for `minutes`,
+    without the captcha matcher's noise; DeepSeek's lines about that tab are kept too."""
+    now = time.localtime()
+    day = time.strftime("%Y-%m-%d", now)
+    if start > time.strftime("%H:%M", now):
+        day = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
+    since = f"{day} {start}:00"
+    until = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.mktime(time.strptime(since, "%Y-%m-%d %H:%M:%S")) + minutes * 60))
+    out = subprocess.run(["journalctl", "-u", "beeline", "--since", since, "--until", until, "--no-pager", "-o", "short-iso"],
+                         capture_output=True, text=True, timeout=120).stdout.splitlines()
+    noise = re.compile(r"SHAPE_|MATCH_|CAPTURE_|SPLIT_|SUBMIT_|ATTEMPT_\d|Выделен|дескриптор|образцов|растяжения|сопоставление|Выбор полного|dbus")
+    mine = [x for x in out if (f"[Вкладка {tab}]" in x or f"TAB {tab}" in x or f"Вкладка {tab} " in x
+                               or f"tab{tab}_" in x or f"вкладк{tab}" in x.lower()) and not noise.search(x)]
+    print(f"== Вкладка {tab}: {since[5:16]} + {minutes} мин, строк {len(mine)}")
+    for x in mine[:120]:
+        print("  " + x[11:19] + "  " + hide(x.split("]: ", 1)[-1])[:200])
+
+
+def unverified_details():
+    """Every «❔ подпись не подтверждена» row in the window: why, what the site answered to the signing,
+    and the page the tab stayed on (the newest snapshot of that tab before the record)."""
+    recs = records("unverified_signatures.jsonl")
+    print(f"== ❔ подпись не подтверждена за {HOURS:g} ч: {len(recs)}")
+    snaps = []
+    for case in APP.glob("diagnostics/**/blackbox/*"):
+        if not re.search(r"success_unverified|after_sign_click|registration_error_after_auth|signature", case.name):
+            continue
+        try:
+            meta = json.loads((case / "meta.json").read_text("utf-8"))
+        except Exception:
+            continue
+        snaps.append((str(meta.get("time") or ""), str(meta.get("tab")), case, meta))
+    for rec in recs:
+        when, tab = str(rec.get("time") or ""), str(rec.get("tab"))
+        print(f"\n== {when[5:16]}  вкладка {tab}")
+        print("Причина: " + hide(rec.get("reason"))[:200])
+        print("Страница в конце: " + re.sub(r"[?#].*", "", str(rec.get("final_url") or "")) + " — " + hide(rec.get("final_title"))[:80])
+        trace = rec.get("sign_trace") or {}
+        if trace:
+            print("Подпись: " + re.sub(r"[?#].*", "", str(trace.get("url_before") or "")) + " → " + re.sub(r"[?#].*", "", str(trace.get("url_after") or "")))
+            for r in (trace.get("responses") or [])[:8]:
+                path = re.sub(r"^https?://[^/]+", "", re.sub(r"[?#].*", "", str(r.get("url") or "")))
+                # the signing answers in full (the site says there why it refused the signature)
+                limit = 900 if re.search(r"sign|passport", path, re.I) else 120
+                body = hide(json.dumps(r.get("body"), ensure_ascii=False))[:limit] if "body" in r else ""
+                print(f"  {r.get('method') or ''} {path} → {r.get('status')}" + (f"  {body}" if body else ""))
+            for x in (trace.get("failed") or [])[:3]:
+                print("  сбой сети: " + hide(json.dumps(x, ensure_ascii=False))[:150])
+            for x in (trace.get("console") or [])[:6]:
+                print("  console: " + hide(json.dumps(x, ensure_ascii=False))[:300])
+        mine = [s_ for s_ in snaps if s_[1] == tab and s_[0] <= when]
+        if mine:
+            stamp, _, case, meta = max(mine, key=lambda x: x[0])
+            try:
+                html = (case / "page.html").read_text("utf-8", errors="replace")
+            except Exception:
+                html = ""
+            print(f"Последний снимок вкладки: {stamp[11:19]} ({case.name.split('_row')[-1].split('_', 1)[-1]}), "
+                  + re.sub(r"[?#].*", "", str(meta.get("url") or "")))
+            for line in page_text(html)[:25]:
+                print("  " + line[:200])
+            canvases = re.findall(r"(?is)<canvas\b([^>]*)>", html)
+            for attrs in canvases[:4]:
+                print("  холст: " + re.sub(r"\s+", " ", attrs)[:200])
+            buttons = [" ".join(page_text(inner)) for _, _, inner in re.findall(r"(?is)<(button|a)\b([^>]*)>(.*?)</\1>", html)]
+            buttons = [x for x in buttons if x]
+            if buttons:
+                print("  Кнопки: " + " | ".join(dict.fromkeys(buttons))[:200])
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "unverified":
+        HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 72.0
+        SINCE = time.time() - HOURS * 3600
+        SINCE_TEXT = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(SINCE))
+        unverified_details()
+        sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "tab":
+        tab_journal(sys.argv[2], sys.argv[3], int(sys.argv[4]) if len(sys.argv) > 4 else 30)
+        sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "errors":
+        HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 14.0
+        SINCE = time.time() - HOURS * 3600
+        error_summary()
+        sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "neighbours":
+        HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 3.0
+        SINCE = time.time() - HOURS * 3600
+        SINCE_TEXT = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(SINCE))
+        neighbours()
+        sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "confirm":
+        HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 14.0
+        SINCE = time.time() - HOURS * 3600
+        SINCE_TEXT = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(SINCE))
+        confirm_errors()
+        sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "lost":
+        HOURS = float(sys.argv[2]) if len(sys.argv) > 2 else 24.0
+        SINCE = time.time() - HOURS * 3600
+        lost_pages()
+        sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "page":
+        HOURS = 0
+        FIRST = "--first" in sys.argv
+        error_page(" ".join(a for a in sys.argv[2:] if a != "--first").lower() or "введите данные снова")
+    else:
+        main()
